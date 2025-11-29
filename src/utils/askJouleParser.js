@@ -935,10 +935,16 @@ function parseCommandLocal(query, context = {}) {
     return { action: "breakEven", cost };
   }
 
+  // Helper: Check if this is a question (should not navigate)
+  const isQuestion = /^(?:what|how|why|when|where|is|are|can|does|do|will|would|should|tell\s+me|explain|describe)/i.test(q.trim());
+  
   // Navigation commands - comprehensive tool support
+  // Only navigate if it's an explicit navigation intent, not a question
   // 1. 7-Day Cost Forecaster
   if (
-    /(?:forecast|7\s*day|weekly|week|predict|estimate\s+cost)/i.test(q) &&
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:forecast|7\s*day|weekly|cost\s+forecast)/i.test(q) ||
+     /(?:forecast|7\s*day|weekly)\s+(?:page|tool|calculator)/i.test(q)) &&
     !/thermostat/.test(qLower)
   ) {
     return { action: "navigate", target: "forecast" };
@@ -946,7 +952,10 @@ function parseCommandLocal(query, context = {}) {
 
   // 2. System Comparison (heat pump vs gas furnace)
   if (
-    /(?:compar|vs|versus|heat\s*pump\s+vs|gas\s+vs|compare\s+systems)/i.test(q)
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:comparison|compare|vs|versus)/i.test(q) ||
+     /(?:comparison|compare)\s+(?:page|tool|calculator)/i.test(q) ||
+     /(?:heat\s*pump\s+vs|gas\s+vs)\s+(?:page|tool|calculator)/i.test(q))
   ) {
     return { action: "navigate", target: "comparison" };
   }
@@ -967,36 +976,38 @@ function parseCommandLocal(query, context = {}) {
 
   // 4. A/C Charging Calculator
   if (
-    /(?:charging|subcool|refrigerant|charge\s+calculator|a\/?c\s+charg)/i.test(
-      q
-    )
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:charging|subcool|refrigerant|charge\s+calculator|a\/?c\s+charg)/i.test(q) ||
+     /(?:charging|charge\s+calculator)\s+(?:page|tool|calculator)/i.test(q))
   ) {
     return { action: "navigate", target: "charging" };
   }
 
   // 5. Performance Analyzer (thermal factor from thermostat data)
   if (
-    /(?:performance\s+analyz|thermal\s+factor|building\s+factor|upload\s+thermostat|analyze\s+data)/i.test(
-      q
-    )
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:performance\s+analyz|analyzer|upload\s+thermostat)/i.test(q) ||
+     /(?:performance\s+analyz|analyzer)\s+(?:page|tool)/i.test(q) ||
+     /upload\s+thermostat\s+(?:data|csv)/i.test(q))
   ) {
     return { action: "navigate", target: "analyzer" };
   }
 
   // 6. Calculation Methodology
   if (
-    /(?:methodology|how\s+(?:does|do)\s+(?:the\s+)?(?:math|calculation)|explain\s+(?:the\s+)?(?:math|formula)|formula)/i.test(
-      q
-    )
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:methodology|formula|math)/i.test(q) ||
+     /(?:methodology|formula)\s+(?:page|document)/i.test(q))
   ) {
     return { action: "navigate", target: "methodology" };
   }
 
   // 7. Settings
   if (
-    /(?:settings|preferences|configuration|adjust\s+settings|change\s+settings)/i.test(
-      q
-    ) &&
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:settings|preferences|configuration)/i.test(q) ||
+     /(?:settings|preferences|configuration)\s+(?:page|menu)/i.test(q) ||
+     /(?:adjust|change)\s+settings/i.test(q)) &&
     !/winter|summer|temp/.test(qLower)
   ) {
     return { action: "navigate", target: "settings" };
@@ -1004,18 +1015,18 @@ function parseCommandLocal(query, context = {}) {
 
   // 8. Thermostat Strategy Analyzer
   if (
-    /(?:thermostat\s+(?:strategy|analyz)|setback|constant\s+temp|nightly\s+setback|thermostat\s+compar)/i.test(
-      q
-    )
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:thermostat\s+(?:strategy|analyz)|setback\s+analyz)/i.test(q) ||
+     /(?:thermostat\s+(?:strategy|analyz)|setback\s+analyz)\s+(?:page|tool)/i.test(q))
   ) {
     return { action: "navigate", target: "thermostat" };
   }
 
   // 9. Monthly Budget Planner
   if (
-    /(?:monthly\s+budget|budget\s+plan|track\s+costs|budget\s+tool|plan\s+budget)/i.test(
-      q
-    )
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:monthly\s+budget|budget\s+plan)/i.test(q) ||
+     /(?:monthly\s+budget|budget\s+plan)\s+(?:page|tool)/i.test(q))
   ) {
     return { action: "navigate", target: "budget" };
   }
@@ -1178,9 +1189,9 @@ function parseCommandLocal(query, context = {}) {
 
   // 10. Upgrade ROI Analyzer
   if (
-    /(?:upgrade|roi|return\s+on\s+investment|payback|should\s+i\s+upgrade)/i.test(
-      q
-    ) &&
+    !isQuestion &&
+    (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:upgrade|roi|return\s+on\s+investment)/i.test(q) ||
+     /(?:upgrade|roi)\s+(?:page|tool|calculator)/i.test(q)) &&
     !qLower.includes("break")
   ) {
     return { action: "navigate", target: "roi" };
