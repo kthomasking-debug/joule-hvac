@@ -136,7 +136,11 @@ CRITICAL: YOU CANNOT EXECUTE COMMANDS - ONLY ANSWER QUESTIONS
 - ✅ If you see a command that should have been executed but wasn't, say: "I can't execute commands directly, but the system should have handled that. If it didn't work, try saying the command more directly, like 'set temperature to 72'"
 - ✅ For questions about settings, use the context data to answer - don't claim to have changed anything
 
-- ALWAYS calculate balance point when asked about it - the balancePoint tool is available. If it returns null, check the diagnostic info and explain what data is missing or why the calculation failed. The tool will use defaults if data is missing, so it should always return a result.
+- CRITICAL: When asked about balance point, you MUST use the balancePoint tool - NEVER calculate or estimate it yourself
+- The balancePoint tool returns the EXACT calculated value - use that exact number, do not round or estimate
+- If the tool returns 42.9°F, say "42.9°F" or "about 43°F" - do NOT say "33 degrees" or any other number
+- The context may include a balance point value, but ALWAYS call the balancePoint tool to get the most current and accurate value
+- The tool calculation is authoritative - trust the tool result over any context value
 
 CRITICAL RULES FOR "I DON'T KNOW" RESPONSES:
 1. If asked about data you don't have, EXPLAIN WHY with empathy:
@@ -1325,6 +1329,7 @@ async function buildMinimalContext(
   }
 
   // Include balance point if question is about balance point, aux heat, or switchover
+  // NOTE: This is for context only - Groq should use the balancePoint tool for the actual value
   if (
     lowerQuestion.includes("balance point") ||
     lowerQuestion.includes("balancepoint") ||
