@@ -1367,7 +1367,8 @@ async function buildMinimalContext(
 
       const balancePointResult = calculateBalancePoint(settingsForCalc);
       if (balancePointResult && balancePointResult.balancePoint) {
-        context += `\nBalance point: ${balancePointResult.balancePoint}°F`;
+        context += `\nBalance point (context - use tool for exact value): ${balancePointResult.balancePoint}°F`;
+        context += `\n⚠️ IMPORTANT: When stating the balance point, you MUST call the balancePoint tool to get the exact current value. Do NOT use this context value - always call the tool.`;
         if (balancePointResult.heatLossFactor) {
           context += ` (Heat loss: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F)`;
         }
