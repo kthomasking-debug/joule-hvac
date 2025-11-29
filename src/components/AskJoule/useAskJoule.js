@@ -312,7 +312,9 @@ export function useAskJoule({
             return true;
           }
         } catch {}
-        setOutput({ message: "Temperature data not available. Connect your Ecobee thermostat to see real-time temperature.", status: "info" });
+        const msg = "Temperature data not available. Connect your Ecobee thermostat to see real-time temperature.";
+        setOutput({ message: msg, status: "info" });
+        if (speak) speak(msg);
         return true;
       }
       
@@ -326,7 +328,9 @@ export function useAskJoule({
             return true;
           }
         } catch {}
-        setOutput({ message: "Humidity data not available. Connect your Ecobee thermostat to see real-time humidity.", status: "info" });
+        const msg = "Humidity data not available. Connect your Ecobee thermostat to see real-time humidity.";
+        setOutput({ message: msg, status: "info" });
+        if (speak) speak(msg);
         return true;
       }
       
@@ -342,7 +346,9 @@ export function useAskJoule({
             return true;
           }
         } catch {}
-        setOutput({ message: "HVAC status not available. Connect your Ecobee thermostat to see real-time status.", status: "info" });
+        const msg = "HVAC status not available. Connect your Ecobee thermostat to see real-time status.";
+        setOutput({ message: msg, status: "info" });
+        if (speak) speak(msg);
         return true;
       }
       
@@ -723,11 +729,16 @@ Amen.`);
         setLoadingMessage(""); // Clear loading
         setShowGroqPrompt(false);
         // Set the sales answer as the response
-        setAgenticResponse({
+        const salesResponse = {
           success: true,
           message: parsed.salesAnswer,
           source: "salesFAQ",
-        });
+        };
+        setAgenticResponse(salesResponse);
+        // Speak the sales answer immediately
+        if (speak && speechEnabled && parsed.salesAnswer) {
+          speak(parsed.salesAnswer);
+        }
         if (onParsed) onParsed(parsed); // Notify parent
         return;
       }
