@@ -381,7 +381,9 @@ export function useAskJoule({
       }
       
       if (type === "yesterdayCost") {
-        setOutput({ message: "Yesterday's cost calculation requires thermostat runtime data. Upload CSV data in Performance Analyzer to see daily costs.", status: "info" });
+        const msg = "Yesterday's cost calculation requires thermostat runtime data. Upload CSV data in Performance Analyzer to see daily costs.";
+        setOutput({ message: msg, status: "info" });
+        if (speak) speak(msg);
         return true;
       }
     }
