@@ -1748,31 +1748,30 @@ async function buildMinimalContext(
     lowerQuestion.includes("supersede") ||
     lowerQuestion.includes("obsolete");
 
-  if (isTechnicalQuestion) {
-    try {
-      // Import and use RAG query
-      const { queryHVACKnowledge } = await import("../utils/rag/ragQuery.js");
-      const ragResult = await queryHVACKnowledge(question);
+  // Always attempt RAG for all questions - it provides HVAC knowledge base
+  // RAG is non-blocking - if it fails, we continue without it
+  try {
+    // Import and use RAG query
+    const { queryHVACKnowledge } = await import("../utils/rag/ragQuery.js");
+    const ragResult = await queryHVACKnowledge(question);
 
-      if (ragResult.success && ragResult.content) {
-        // Truncate to avoid token limits (keep first 2000 chars)
-        const knowledgeSnippet = ragResult.content.substring(0, 2000);
-        context += `\n\n═══════════════════════════════════════════════════
+    if (ragResult.success && ragResult.content) {
+      // Truncate to avoid token limits (keep first 2000 chars)
+      const knowledgeSnippet = ragResult.content.substring(0, 2000);
+      context += `\n\n═══════════════════════════════════════════════════
 ⚠️ CRITICAL: USE THIS KNOWLEDGE BASE CONTENT TO ANSWER THE QUESTION ⚠️
 ═══════════════════════════════════════════════════\n\n${knowledgeSnippet}\n\n═══════════════════════════════════════════════════
 IMPORTANT: Base your answer on the knowledge above. Cite specific standards, causes, symptoms, and solutions from the knowledge base.
 ═══════════════════════════════════════════════════\n`;
-        if (ragResult.content.length > 2000) {
-          context +=
-            "\n[Note: Additional knowledge base content was truncated for length]";
-        }
+      if (ragResult.content.length > 2000) {
+        context +=
+          "\n[Note: Additional knowledge base content was truncated for length]";
       }
-    } catch (error) {
-      // If RAG fails, continue without it (non-blocking)
-      console.warn("[groqAgent] RAG query failed:", error);
-      context +=
-        "\n\n[Note: HVAC knowledge base search unavailable - using general knowledge]";
     }
+  } catch (error) {
+    // If RAG fails, continue without it (non-blocking)
+    console.warn("[groqAgent] RAG query failed:", error);
+    // Don't add note to context - just continue silently
   }
 
   return context;
