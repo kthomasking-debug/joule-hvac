@@ -17,8 +17,8 @@
 
 # Build environment
 [build.environment]
-  NODE_VERSION = "20"
-  NPM_VERSION = "10"
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
 
 # Optional: Set custom headers for better security and performance
 [[headers]]
