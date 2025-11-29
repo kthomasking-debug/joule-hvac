@@ -100,8 +100,8 @@ export function useSpeechSynthesis(options = {}) {
   const personalityWrap = useCallback(
     (text) => {
       if (!text) return "";
-      if (personality === "friendly") return `Sure thing! ${text}`;
-      if (personality === "warm") return `Absolutely. ${text}`;
+      // Removed hardcoded pleasantries - let the AI speak for itself
+      // The AI (Llama) is smart enough to be polite on its own
       if (personality === "concise")
         return String(text).replace(/\s+/g, " ").trim();
       return text;
