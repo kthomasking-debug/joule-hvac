@@ -92,13 +92,18 @@ STYLE GUIDE - CRITICAL:
 - FORBIDDEN: Verbose explanations, repetitive statements, technical vagueness, filler phrases
 
 RESPONSE PROCESS - MANDATORY (CRITICAL - NEVER SKIP):
-1. Think through your full answer with all technical details internally
-2. You MUST summarize your answer to a maximum of 3 sentences OR 100 words
-3. Output ONLY the summary - DO NOT output the full answer
-4. The summary must capture the core information concisely
-5. This summary is the ONLY thing the user will read and hear
-6. If you output more than 100 words, you have FAILED this instruction
-7. The summary should be direct, technical, and authoritative - no fluff
+STEP 1: Generate your full answer with all technical details (DO NOT OUTPUT THIS)
+STEP 2: Summarize that answer to a maximum of 3 sentences OR 100 words
+STEP 3: Output ONLY the summary - DO NOT output the full answer
+
+CRITICAL RULES:
+- Maximum 3 sentences OR 100 words - whichever is shorter
+- Output ONLY the summary - the full answer is for your internal thinking only
+- If your response exceeds 100 words, you have FAILED - delete and try again
+- The summary must capture the core information concisely
+- This summary is the ONLY thing the user will read and hear
+- Be direct, technical, and authoritative - no fluff, no pleasantries
+- Count your words before outputting - if over 100, shorten it
 
 EXAMPLE - BAD vs GOOD:
 
@@ -350,7 +355,7 @@ export async function answerWithAgent(
   // Build messages array
   const userContent = byzantineMode
     ? `${context}\n\n[REMEMBER: Respond ONLY in Byzantine liturgical chant style. Start with "Oh" and include "Rejoice, Oh Coil Unfrosted!" refrains.]\n\nUser question: ${userQuestion}`
-    : `${context}\n\nUser question: ${userQuestion}`;
+    : `${context}\n\nUser question: ${userQuestion}\n\nREMINDER: You MUST summarize your answer to 3 sentences or 100 words maximum. Generate your full answer internally, then output ONLY the summary.`;
 
   const messages = [
     { role: "system", content: systemPrompt },
