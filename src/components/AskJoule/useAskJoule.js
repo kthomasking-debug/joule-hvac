@@ -121,6 +121,11 @@ export function useAskJoule({
     onFinal: (finalText) => {
       if (!finalText) return;
       
+      // Auto-enable speech when using voice input (user expects voice output)
+      if (!speechEnabled && toggleSpeech) {
+        toggleSpeech();
+      }
+      
       // finalText now contains only the NEW command (hook handles extraction)
       setValue(finalText);
       // Submit shortly after finalization - use ref to access handleSubmit
@@ -901,17 +906,21 @@ Amen.`);
 
   // Speak the agentic response when it arrives
   useEffect(() => {
-    if (agenticResponse?.success && agenticResponse?.message && speak && speechEnabled) {
+    if (agenticResponse?.success && agenticResponse?.message && speak) {
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
-        // Small delay to ensure UI has updated
-        setTimeout(() => {
-          speak(responseText);
-        }, 300);
+        // Check if speech is enabled, or if we should enable it for voice responses
+        const shouldSpeak = speechEnabled || isListening; // Speak if enabled OR if user is using voice input
+        if (shouldSpeak) {
+          // Small delay to ensure UI has updated
+          setTimeout(() => {
+            speak(responseText);
+          }, 300);
+        }
       }
     }
-  }, [agenticResponse, speak, speechEnabled]);
+  }, [agenticResponse, speak, speechEnabled, isListening]);
 
   const toggleListening = () => {
     if (isListening) {
