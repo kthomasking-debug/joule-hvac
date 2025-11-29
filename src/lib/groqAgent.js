@@ -142,6 +142,14 @@ CRITICAL: YOU CANNOT EXECUTE COMMANDS - ONLY ANSWER QUESTIONS
 - The context may include a balance point value, but ALWAYS call the balancePoint tool to get the most current and accurate value
 - The tool calculation is authoritative - trust the tool result over any context value
 
+CRITICAL: ALWAYS PRIORITIZE MEASURED DATA FROM ANALYZER OVER CALCULATED ESTIMATES
+- If the context includes "CSV ANALYSIS DATA" or "REAL MEASURED DATA" with heat loss factor or balance point, USE THOSE VALUES
+- Measured data from thermostat CSV uploads is MORE ACCURATE than calculated estimates
+- When answering "is my home efficient" or "what's my heat loss", ALWAYS check for measured data first
+- Format: "Based on your actual thermostat data, your measured heat loss factor is X BTU/hr per °F"
+- Only use calculated estimates if no measured data is available
+- The measured heat loss factor from the analyzer is the EXACT BTU/hr per °F from your real system performance
+
 CRITICAL RULES FOR "I DON'T KNOW" RESPONSES:
 1. If asked about data you don't have, EXPLAIN WHY with empathy:
    - "I'd love to help with that, but I don't have access to [specific sensor/data]" 
@@ -1184,8 +1192,12 @@ async function buildMinimalContext(
   if (isShortCyclingQuestion || isEfficiencyQuestion) {
     const csvDiagnostics = getCSVDiagnosticsData();
     if (csvDiagnostics && csvDiagnostics.hasData) {
-      context += `\n\nCSV ANALYSIS DATA (from System Performance Analyzer - REAL MEASURED DATA):\n`;
-      context += `This is actual measured data from your thermostat CSV upload, not estimates.\n`;
+      context += `\n\n═══════════════════════════════════════════════════════════════\n`;
+      context += `CSV ANALYSIS DATA (from System Performance Analyzer - REAL MEASURED DATA)\n`;
+      context += `═══════════════════════════════════════════════════════════════\n`;
+      context += `⚠️ CRITICAL: This is ACTUAL MEASURED DATA from your thermostat CSV upload.\n`;
+      context += `⚠️ ALWAYS USE THESE VALUES over any calculated estimates when answering efficiency questions.\n`;
+      context += `⚠️ These are the EXACT measured values from your real system performance.\n`;
       if (csvDiagnostics.latestAnalysis) {
         const analysis = csvDiagnostics.latestAnalysis;
         context += `Latest analysis results:\n`;
