@@ -191,14 +191,14 @@ export function useAskJoule({
       speechManuallyStoppedRef.current = false;
     } else {
       // System finished speaking - resume recognition if user wanted to listen
-      // BUT: Don't resume if user manually stopped the speech
+      // Note: We allow resume even if user manually stopped speech (they might want to continue listening)
       // Only resume if we're not currently listening (to avoid conflicts)
       // Add a longer delay to prevent rapid toggling
-      if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
+      if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
         // Longer delay to ensure speech synthesis has fully stopped and state has settled
         const timeoutId = setTimeout(() => {
           // Double-check conditions before resuming
-          if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
+          if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
             startListening();
           }
           speechTimeoutRef.current = null;
@@ -1044,6 +1044,16 @@ Amen.`);
     stopSpeaking: () => {
       speechManuallyStoppedRef.current = true; // Mark that user manually stopped
       stopSpeaking();
+      
+      // Resume microphone if it was active before speech started
+      if (shouldBeListeningRef.current && !isListening && recognitionSupported) {
+        // Small delay to ensure speech has fully stopped
+        setTimeout(() => {
+          if (shouldBeListeningRef.current && !isListening) {
+            startListening();
+          }
+        }, 300);
+      }
     },
     setShowSuggestions,
     setError,
