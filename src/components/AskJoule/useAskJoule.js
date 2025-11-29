@@ -1090,11 +1090,16 @@ Amen.`);
         }
         
         // Check if speech is enabled, or if we should enable it for voice responses
+        // IMPORTANT: Always speak if speechEnabled is true (speaker button is on),
+        // regardless of microphone state. This allows typed questions to be spoken.
         const shouldSpeak = speechEnabled || isListening; // Speak if enabled OR if user is using voice input
         if (shouldSpeak) {
           // Longer delay to ensure UI has updated and state has settled
           setTimeout(() => {
             isProcessingResponseRef.current = false; // Clear processing flag
+            // Only respect speechManuallyStoppedRef if microphone was active when stopped
+            // If user has speaker button on but mic off, always speak (they want audio output)
+            // speechManuallyStoppedRef is reset for new responses above, so this should work
             if (!speechManuallyStoppedRef.current && responseText && responseText.trim()) {
               speak(responseText);
             }
