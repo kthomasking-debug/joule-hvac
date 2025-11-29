@@ -86,11 +86,6 @@ export function useAskJoule({
   const speakerAutoEnabledRef = useRef(false); // Track if we auto-enabled speaker for this session
   const isProcessingResponseRef = useRef(false); // Prevent concurrent response processing
   const speechTimeoutRef = useRef(null); // Track speech timeout to prevent multiple calls
-  const stopCheckIntervalRef = useRef(null); // Track interval for checking "stop" command while speaking
-  const stopCheckTranscriptRef = useRef(""); // Track transcript during stop-check listening bursts
-  const isInBurstRef = useRef(false); // Track if we're currently in a listening burst
-  const burstTimeoutRef = useRef(null); // Track timeout for ending listening burst
-  const checkIntervalRef = useRef(null); // Track interval for checking "stop" during burst
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -217,125 +212,10 @@ export function useAskJoule({
     }
   }, [isSpeaking, isListening, recognitionSupported, startListening, stopListening]);
 
-  // While speaking, periodically check for "stop" command
-  // This allows users to say "stop" even while Ask Joule is talking
-  // Strategy: Periodically enable mic for brief bursts (400ms) every 1.5 seconds
-  // During these bursts, check transcript for "stop" and immediately stop if found
-  useEffect(() => {
-    if (!recognitionSupported || !isSpeaking) {
-      // Clear any existing interval when not speaking
-      if (stopCheckIntervalRef.current) {
-        clearInterval(stopCheckIntervalRef.current);
-        stopCheckIntervalRef.current = null;
-      }
-      stopCheckTranscriptRef.current = "";
-      return;
-    }
-
-    // Set up periodic checks for "stop" command
-    stopCheckIntervalRef.current = setInterval(() => {
-      // Don't start a new burst if we're already in one or speech stopped
-      if (isInBurstRef.current || !isSpeaking) {
-        return;
-      }
-
-      // Start a brief listening burst
-      // BUT: Only if user hasn't manually turned off the microphone
-      if (!shouldBeListeningRef.current) {
-        // User has manually turned off the microphone - don't start listening bursts
-        return;
-      }
-      
-      isInBurstRef.current = true;
-      stopCheckTranscriptRef.current = ""; // Reset for this burst
-      
-      // Enable listening for a brief moment (only if user wants to listen)
-      if (!isListening && shouldBeListeningRef.current) {
-        startListening();
-      }
-      
-      // Check for "stop" during the burst
-      const checkForStop = () => {
-        // Check the current transcript (from the hook's state)
-        const currentTranscript = transcript?.toLowerCase().trim() || "";
-        
-        // Also check our burst-specific transcript
-        const burstTranscript = stopCheckTranscriptRef.current.toLowerCase().trim();
-        const combinedTranscript = (currentTranscript + " " + burstTranscript).trim();
-        
-        // Check if "stop" was detected (word boundary to avoid false positives)
-        if (/\bstop\b/i.test(combinedTranscript)) {
-          // User said "stop" - immediately stop speaking
-          speechManuallyStoppedRef.current = true;
-          stopSpeaking();
-          if (isListening) {
-            stopListening();
-          }
-          isInBurstRef.current = false;
-          if (stopCheckIntervalRef.current) {
-            clearInterval(stopCheckIntervalRef.current);
-            stopCheckIntervalRef.current = null;
-          }
-          if (burstTimeoutRef.current) {
-            clearTimeout(burstTimeoutRef.current);
-            burstTimeoutRef.current = null;
-          }
-          if (checkIntervalRef.current) {
-            clearInterval(checkIntervalRef.current);
-            checkIntervalRef.current = null;
-          }
-          return;
-        }
-      };
-      
-      // Check immediately and then periodically during the burst
-      checkForStop();
-      checkIntervalRef.current = setInterval(checkForStop, 100); // Check every 100ms
-      
-      // End the burst after 400ms
-      burstTimeoutRef.current = setTimeout(() => {
-        if (checkIntervalRef.current) {
-          clearInterval(checkIntervalRef.current);
-          checkIntervalRef.current = null;
-        }
-        if (isListening && !shouldBeListeningRef.current) {
-          // Only stop if user didn't want continuous listening
-          stopListening();
-        }
-        isInBurstRef.current = false;
-        stopCheckTranscriptRef.current = "";
-        burstTimeoutRef.current = null;
-      }, 400); // 400ms listening burst
-    }, 1500); // Check every 1.5 seconds
-
-    return () => {
-      if (stopCheckIntervalRef.current) {
-        clearInterval(stopCheckIntervalRef.current);
-        stopCheckIntervalRef.current = null;
-      }
-      if (burstTimeoutRef.current) {
-        clearTimeout(burstTimeoutRef.current);
-        burstTimeoutRef.current = null;
-      }
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
-      }
-      isInBurstRef.current = false;
-      stopCheckTranscriptRef.current = "";
-    };
-  }, [isSpeaking, recognitionSupported, isListening, transcript, startListening, stopListening, stopSpeaking]);
-
   // Update input live while listening
   // But don't overwrite if value was just cleared (wait a bit after clearing)
-  // Also update stop check transcript during listening bursts
   useEffect(() => {
     if (isListening && transcript) {
-      // Update stop check transcript if we're in a listening burst (while speaking)
-      if (isSpeaking && stopCheckIntervalRef.current) {
-        stopCheckTranscriptRef.current = transcript;
-      }
-      
       // Only update if we haven't just cleared the value (give it a moment)
       if (!valueClearedRef.current) {
         setValue(transcript);
