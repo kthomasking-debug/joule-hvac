@@ -430,11 +430,24 @@ export async function answerWithAgent(
         error: errorData,
       });
 
-      // Handle rate limiting
+      // Handle rate limiting with automatic fallback
       if (response.status === 429) {
+        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const fallbackModel = handleRateLimitFallback(modelName);
+        
+        // If we switched models, retry the request with fallback model
+        if (fallbackModel !== modelName) {
+          console.log(`[groqAgent] Retrying with fallback model: ${fallbackModel}`);
+          // Retry with fallback model (recursive call with updated model)
+          return await callGroqAPI(apiKey, messages, {
+            ...options,
+            model: fallbackModel,
+          });
+        }
+        
         return {
           error: true,
-          message: "Rate limit exceeded. Please wait a moment and try again.",
+          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
 

@@ -856,6 +856,10 @@ const GroqApiKeyInput = () => {
     setModel(selectedModel);
     try {
       localStorage.setItem("groqModel", selectedModel);
+      // Clear fallback state when user manually changes model
+      import("../lib/groqModelFallback.js").then(({ clearFallbackState }) => {
+        clearFallbackState();
+      });
       // Trigger storage event for other components to pick up the change
       window.dispatchEvent(new Event("storage"));
     } catch {}
