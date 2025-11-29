@@ -1902,10 +1902,29 @@ export async function answerWithRAG(
     },
   ];
 
-  // Get model with fallback logic
+  // Get model with fallback logic and dynamic best model selection
   let modelName = "llama-3.3-70b-versatile";
   if (typeof window !== "undefined") {
-    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    let storedModel = localStorage.getItem("groqModel");
+    
+    // If no stored model or using default, try to get best model dynamically
+    if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
+      try {
+        const apiKey = localStorage.getItem("groqApiKey");
+        if (apiKey) {
+          const { getBestModel } = await import("./groqModels.js");
+          const bestModel = await getBestModel(apiKey);
+          if (bestModel) {
+            storedModel = bestModel;
+            localStorage.setItem("groqModel", bestModel);
+          }
+        }
+      } catch (error) {
+        console.warn("[groqAgent] Failed to get best model, using default:", error);
+      }
+    }
+    
+    storedModel = storedModel || "llama-3.3-70b-versatile";
     const { getCurrentModel } = await import("./groqModelFallback.js");
     modelName = getCurrentModel(storedModel);
   }
