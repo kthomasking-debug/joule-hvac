@@ -79,6 +79,7 @@ export function useAskJoule({
   const submitRef = useRef(null);
   const handleSubmitRef = useRef(null);
   const valueClearedRef = useRef(false);
+  const shouldBeListeningRef = useRef(false);
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -158,6 +159,30 @@ export function useAskJoule({
     enabled: wakeWordEnabled && recognitionSupported,
     wakeWord: "hey joule", // Note: Actually uses "Hey Pico" (Porcupine built-in)
   });
+
+  // Pause speech recognition when speech synthesis is speaking
+  // This prevents the microphone from picking up the system's own voice
+  useEffect(() => {
+    if (!recognitionSupported) return;
+    
+    if (isSpeaking) {
+      // System is speaking - pause recognition
+      if (isListening) {
+        shouldBeListeningRef.current = true; // Remember user wanted to listen
+        stopListening();
+      }
+    } else {
+      // System finished speaking - resume recognition if user wanted to listen
+      if (shouldBeListeningRef.current && !isListening) {
+        // Small delay to ensure speech synthesis has fully stopped
+        setTimeout(() => {
+          if (shouldBeListeningRef.current && !isSpeaking) {
+            startListening();
+          }
+        }, 300);
+      }
+    }
+  }, [isSpeaking, isListening, recognitionSupported, startListening, stopListening]);
 
   // Update input live while listening
   // But don't overwrite if value was just cleared (wait a bit after clearing)
@@ -832,8 +857,16 @@ Amen.`);
   }, [handleSubmit]);
 
   const toggleListening = () => {
-    if (isListening) stopListening();
-    else startListening();
+    if (isListening) {
+      shouldBeListeningRef.current = false; // User manually stopped
+      stopListening();
+    } else {
+      shouldBeListeningRef.current = true; // User wants to listen
+      // Only start if not currently speaking
+      if (!isSpeaking) {
+        startListening();
+      }
+    }
   };
 
   const handleRetryGroq = () => {
