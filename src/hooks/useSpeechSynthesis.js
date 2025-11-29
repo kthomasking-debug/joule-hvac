@@ -159,14 +159,35 @@ export function useSpeechSynthesis(options = {}) {
         }
 
         if (!selectedVoice) {
-          // Prefer English voices, then female voices for better clarity
+          // Prefer British English (en-GB) voices for a more formal/JARVIS vibe
+          // Then prefer UK English, then any English, then fallback to first available
           selectedVoice =
+            // First: British English (en-GB) - most formal/smart sounding
+            voices.find(
+              (v) =>
+                v.lang === "en-GB" &&
+                (v.name.toLowerCase().includes("male") ||
+                  v.name.toLowerCase().includes("uk") ||
+                  v.name.toLowerCase().includes("british"))
+            ) ||
+            voices.find((v) => v.lang === "en-GB") ||
+            // Second: UK English variants
             voices.find(
               (v) =>
                 v.lang.startsWith("en") &&
-                v.name.toLowerCase().includes("female")
+                (v.name.toLowerCase().includes("uk") ||
+                  v.name.toLowerCase().includes("british") ||
+                  v.name.toLowerCase().includes("england"))
             ) ||
+            // Third: Any English male voice (deeper/more authoritative)
+            voices.find(
+              (v) =>
+                v.lang.startsWith("en") &&
+                v.name.toLowerCase().includes("male")
+            ) ||
+            // Fourth: Any English voice
             voices.find((v) => v.lang.startsWith("en")) ||
+            // Fallback: First available voice
             voices[0];
         }
 

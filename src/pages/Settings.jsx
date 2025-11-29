@@ -165,6 +165,109 @@ const ProCodeInput = () => {
   );
 };
 
+const VoicePicker = () => {
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(() => {
+    try {
+      return localStorage.getItem("askJouleVoice") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    const loadVoices = () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const voices = window.speechSynthesis.getVoices();
+        // Filter to English voices and sort by preference (British first)
+        const englishVoices = voices
+          .filter((v) => v.lang.startsWith("en"))
+          .sort((a, b) => {
+            // Prioritize British English
+            const aIsGB = a.lang === "en-GB" || a.name.toLowerCase().includes("uk") || a.name.toLowerCase().includes("british");
+            const bIsGB = b.lang === "en-GB" || b.name.toLowerCase().includes("uk") || b.name.toLowerCase().includes("british");
+            if (aIsGB && !bIsGB) return -1;
+            if (!aIsGB && bIsGB) return 1;
+            // Then prioritize male voices (deeper/more authoritative)
+            const aIsMale = a.name.toLowerCase().includes("male");
+            const bIsMale = b.name.toLowerCase().includes("male");
+            if (aIsMale && !bIsMale) return -1;
+            if (!aIsMale && bIsMale) return 1;
+            return a.name.localeCompare(b.name);
+          });
+        setAvailableVoices(englishVoices);
+      }
+    };
+
+    loadVoices();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
+  const handleVoiceChange = (e) => {
+    const voiceName = e.target.value;
+    setSelectedVoice(voiceName);
+    try {
+      if (voiceName) {
+        localStorage.setItem("askJouleVoice", voiceName);
+      } else {
+        localStorage.removeItem("askJouleVoice");
+      }
+    } catch (err) {
+      console.warn("Failed to save voice preference:", err);
+    }
+  };
+
+  const getVoiceLabel = (voice) => {
+    const lang = voice.lang === "en-GB" ? "🇬🇧 British" : voice.lang === "en-US" ? "🇺🇸 American" : "🇬🇧/🇺🇸";
+    const gender = voice.name.toLowerCase().includes("male") ? "♂ Male" : voice.name.toLowerCase().includes("female") ? "♀ Female" : "";
+    return `${lang} ${gender ? `- ${gender}` : ""} - ${voice.name}`;
+  };
+
+  if (availableVoices.length === 0) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Loading voices...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label
+        htmlFor="voice-picker"
+        className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+      >
+        Voice Persona
+      </label>
+      <select
+        id="voice-picker"
+        value={selectedVoice}
+        onChange={handleVoiceChange}
+        className={fullInputClasses}
+        aria-label="Voice persona selection"
+      >
+        <option value="">Default (Auto-select best voice)</option>
+        {availableVoices.map((voice) => (
+          <option key={voice.name} value={voice.name}>
+            {getVoiceLabel(voice)}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Choose a voice for Ask Joule. British English voices sound more formal and authoritative (JARVIS-like).
+      </p>
+    </div>
+  );
+};
+
 const VoiceListenDurationInput = () => {
   const [value, setValue] = useState(() => {
     const raw = localStorage.getItem("askJouleListenSeconds");
@@ -1542,8 +1645,11 @@ const SettingsPage = () => {
               <GroqApiKeyInput />
             </Section>
 
-            <Section title="Voice Listening Duration" icon={<Mic size={20} />}>
-              <VoiceListenDurationInput />
+            <Section title="Voice Settings" icon={<Mic size={20} />}>
+              <div className="space-y-4">
+                <VoicePicker />
+                <VoiceListenDurationInput />
+              </div>
             </Section>
 
             {/* Detailed Annual Estimate Toggle */}
