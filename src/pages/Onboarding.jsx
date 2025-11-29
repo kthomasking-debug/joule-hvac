@@ -130,14 +130,43 @@ export default function Onboarding() {
     setLocationLoading(true);
 
     try {
-      const response = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-          cityInput
-        )}&count=10&language=en&format=json`
-      );
-      const data = await response.json();
+      const inputParts = cityInput.split(",").map(s => s.trim());
+      const cityPart = inputParts[0];
+      const statePart = inputParts[1]?.toUpperCase();
+      
+      // Expand state abbreviation to full name if needed
+      const stateFullName = US_STATES[statePart] || statePart;
+      
+      // Try multiple query formats for better results
+      const queries = [
+        `${cityPart}, ${stateFullName}`, // Full state name
+        `${cityPart}, ${statePart}`,     // Abbreviation
+        cityPart,                        // Just city (fallback)
+      ];
+      
+      let data = null;
+      let lastError = null;
+      
+      // Try each query until we get results
+      for (const query of queries) {
+        try {
+          const response = await fetch(
+            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+              query
+            )}&count=10&language=en&format=json`
+          );
+          data = await response.json();
+          
+          if (data.results && data.results.length > 0) {
+            break; // Found results, stop trying
+          }
+        } catch (err) {
+          lastError = err;
+          continue;
+        }
+      }
 
-      if (!data.results || data.results.length === 0) {
+      if (!data || !data.results || data.results.length === 0) {
         setLocationError("Location not found. Please check the spelling.");
         setLocationLoading(false);
         return;
@@ -148,15 +177,18 @@ export default function Onboarding() {
         (r) => (r.country_code || "").toLowerCase() === "us"
       );
       
-      const inputParts = cityInput.split(",");
-      const inputState = inputParts[1]?.trim().toLowerCase();
+      const inputStateLower = statePart?.toLowerCase() || "";
+      const stateFullNameLower = stateFullName?.toLowerCase() || "";
       
+      // Improved matching: check both abbreviation and full name
       let bestResult = usResults.find((r) => {
         const adminLower = (r.admin1 || "").toLowerCase();
         return (
-          adminLower === inputState ||
-          adminLower.startsWith(inputState) ||
-          inputState.length === 2
+          adminLower === inputStateLower ||
+          adminLower === stateFullNameLower ||
+          adminLower.startsWith(stateFullNameLower) ||
+          stateFullNameLower.startsWith(adminLower) ||
+          (inputStateLower.length === 2 && adminLower.includes(inputStateLower))
         );
       }) || usResults[0] || data.results[0];
 
