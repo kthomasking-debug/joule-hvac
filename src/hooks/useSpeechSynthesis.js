@@ -242,6 +242,7 @@ export function useSpeechSynthesis(options = {}) {
       const cleanText = text
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
+        .replace(/Joule/gi, "Jewel") // Phonetic hack: "Joule" → "Jewel" (rhymes with "pool") so TTS pronounces it correctly
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
         .replace(/°F/g, " degrees Fahrenheit")
         .replace(/(\d+)\s*HSPF/gi, "$1 H S P F")
