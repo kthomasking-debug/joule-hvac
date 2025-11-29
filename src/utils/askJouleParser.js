@@ -94,6 +94,21 @@ const OFFLINE_KNOWLEDGE = {
   "CMC model": "CMC (Canadian Meteorological Centre) is Canada's weather model, excellent for North American forecasts. It's part of the Global Environmental Multiscale (GEM) model system and performs well for continental weather patterns.",
   "GEFS": "GEFS (Global Ensemble Forecast System) is NOAA's ensemble forecast system with 30+ ensemble members. It runs multiple model variations to show forecast uncertainty and probability. More reliable than single-model forecasts because it accounts for model uncertainty.",
   "AI ensemble": "AI ensembles use machine learning models like Google's GraphCast, NVIDIA's FourCastNet, and Huawei's Pangu-Weather. These models learn patterns from historical weather data and can be faster than traditional physics-based models, but may struggle with extreme events not seen in training data.",
+  // Weather Terminology (NOAA/NWS & AMS Glossary)
+  "SSW": "SSW (Sudden Stratospheric Warming) is a rapid temperature increase in the stratosphere that disrupts the Polar Vortex. This often displaces cold arctic air southward about 2-3 weeks later. For heating systems, SSW events increase the risk of deep freezes and extended cold periods. Recommendation: Check your Aux Heat lockout setting and ensure your system can handle sub-zero temperatures.",
+  "Polar Vortex": "The Polar Vortex is a large area of low pressure and cold air surrounding Earth's poles. When it weakens or splits (often due to SSW), cold arctic air can plunge southward, causing extreme cold snaps. For HVAC: These events can last 1-2 weeks with temperatures 20-30°F below normal. Ensure your heat pump lockout is properly set and aux heat is ready.",
+  "AO": "AO (Arctic Oscillation) measures pressure differences between the Arctic and mid-latitudes. Negative AO means lower Arctic pressure, allowing cold air to spill south. Positive AO keeps cold air locked in the Arctic. Negative AO = increased heating demand and potential for extreme cold events.",
+  "NAO": "NAO (North Atlantic Oscillation) measures pressure differences between Iceland and the Azores. Negative NAO brings cold, stormy weather to the East Coast. Positive NAO brings mild, dry conditions. Negative NAO in winter = higher heating costs and increased risk of cold snaps for Eastern US.",
+  "PNA": "PNA (Pacific-North American pattern) affects weather patterns across North America. Positive PNA brings cold air to the Eastern US, while negative PNA brings warmer conditions. Positive PNA in winter = increased heating demand for the Eastern US.",
+  "MJO": "MJO (Madden-Julian Oscillation) is a tropical weather pattern that moves eastward around the globe in 30-60 day cycles. MJO Phase 8 (active in Western Pacific) can enhance cold air outbreaks in the Eastern US about 1-2 weeks later. For HVAC: MJO Phase 8 forecasts suggest preparing for potential cold snaps.",
+  "teleconnections": "Teleconnections are large-scale weather patterns that influence regional weather thousands of miles away. Key teleconnections: AO (Arctic Oscillation), NAO (North Atlantic Oscillation), PNA (Pacific-North American), and MJO (Madden-Julian Oscillation). These patterns drive cold snaps, heat waves, and extreme weather events. Understanding teleconnections helps predict heating/cooling demand weeks in advance.",
+  "dew point": "Dew point is the temperature at which air becomes saturated with water vapor and condensation forms. High dew points (above 65°F) feel muggy and increase cooling load. Low dew points (below 30°F) feel dry and increase heating load. Dew point affects heat pump efficiency - high humidity reduces evaporator efficiency.",
+  "wet bulb": "Wet bulb temperature is the lowest temperature air can reach through evaporative cooling. It's measured with a thermometer wrapped in a wet cloth. Wet bulb is critical for HVAC sizing - it determines the maximum cooling capacity needed. High wet bulb (above 75°F) means high cooling demand and reduced heat pump efficiency.",
+  "enthalpy": "Enthalpy is the total heat content of air, including both sensible heat (temperature) and latent heat (moisture). High enthalpy air requires more energy to cool. HVAC systems must remove both sensible and latent heat. High enthalpy conditions (hot + humid) significantly increase cooling costs.",
+  "psychrometrics": "Psychrometrics is the study of air and water vapor mixtures. Key properties: dry bulb temperature, wet bulb temperature, dew point, relative humidity, and enthalpy. Understanding psychrometrics helps optimize HVAC efficiency - removing moisture (latent load) requires more energy than cooling air (sensible load).",
+  "omega block": "An Omega Block is a high-pressure pattern shaped like the Greek letter Ω that blocks normal weather flow. It can trap extreme weather (heat or cold) in one region for extended periods. For HVAC: Omega blocks can cause 1-2 week periods of extreme temperatures, significantly impacting energy costs. Prepare for extended heating or cooling demand.",
+  "HDD": "HDD (Heating Degree Days) measures how much heating is needed. Calculated as the difference between 65°F and the average daily temperature. Higher HDD = more heating required. ProStat uses HDD to calculate annual heating costs.",
+  "CDD": "CDD (Cooling Degree Days) measures how much cooling is needed. Calculated as the difference between the average daily temperature and 65°F. Higher CDD = more cooling required. ProStat uses CDD to calculate annual cooling costs.",
 };
 
 // Offline Intelligence Calculator Functions
@@ -148,6 +163,50 @@ function calculateOfflineAnswer(query, context = {}) {
     }
     // Default to general weather models answer
     return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["weather models"] };
+  }
+  
+  // Weather terminology questions (NOAA/NWS & AMS Glossary)
+  if (/\bSSW\b/i.test(query) || /sudden\s+stratospheric\s+warming/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["SSW"] };
+  }
+  if (/polar\s+vortex/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["Polar Vortex"] };
+  }
+  if (/\bAO\b/i.test(query) || /arctic\s+oscillation/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["AO"] };
+  }
+  if (/\bNAO\b/i.test(query) || /north\s+atlantic\s+oscillation/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["NAO"] };
+  }
+  if (/\bPNA\b/i.test(query) || /pacific.*north\s+american/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["PNA"] };
+  }
+  if (/\bMJO\b/i.test(query) || /maden.*julian/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["MJO"] };
+  }
+  if (/teleconnection/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["teleconnections"] };
+  }
+  if (/dew\s+point/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["dew point"] };
+  }
+  if (/wet\s+bulb/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["wet bulb"] };
+  }
+  if (/enthalpy/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["enthalpy"] };
+  }
+  if (/psychrometr/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["psychrometrics"] };
+  }
+  if (/omega\s+block/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["omega block"] };
+  }
+  if (/\bHDD\b/i.test(query) || /heating\s+degree\s+days/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["HDD"] };
+  }
+  if (/\bCDD\b/i.test(query) || /cooling\s+degree\s+days/i.test(query)) {
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["CDD"] };
   }
   
   // 3. Calculator Queries
