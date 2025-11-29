@@ -238,10 +238,16 @@ export function useSpeechSynthesis(options = {}) {
       // Cancel any ongoing speech
       window.speechSynthesis.cancel();
 
-      // Clean text for better speech (remove emojis, special chars)
+      // Clean text for better speech (remove emojis, special chars, markdown)
       const cleanText = text
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
+        // Remove markdown formatting (prevents TTS from reading "asterisk bold asterisk")
+        .replace(/\*\*/g, "") // Remove bold markers (**)
+        .replace(/\*/g, "") // Remove italic markers (*)
+        .replace(/`/g, "") // Remove code markers (`)
+        .replace(/#/g, "") // Remove header markers (#)
+        .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1") // Convert links [text](url) to just "text"
         // Phonetic hacks for correct pronunciation
         .replace(/Joule/gi, "Jool") // "Joule" → "Jool" (rhymes with "pool")
         .replace(/ASHRAE/gi, "Ash Ray") // "ASHRAE" → "Ash Ray" (rhymes with "Trash Day")
