@@ -84,6 +84,8 @@ export function useAskJoule({
   const speechManuallyStoppedRef = useRef(false);
   const lastProcessedResponseRef = useRef(null); // Track last processed response to prevent loops
   const speakerAutoEnabledRef = useRef(false); // Track if we auto-enabled speaker for this session
+  const isProcessingResponseRef = useRef(false); // Prevent concurrent response processing
+  const speechTimeoutRef = useRef(null); // Track speech timeout to prevent multiple calls
 
   // --- Hooks ---
   // Wake word detection enabled state
