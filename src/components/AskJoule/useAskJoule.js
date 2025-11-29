@@ -281,6 +281,10 @@ export function useAskJoule({
     setOutput: ({ message, status }) => {
       setError(message);
       setOutputStatus(status);
+      // Speak error messages
+      if (status === "error" && speak && speechEnabled && message) {
+        speak(message);
+      }
     },
     speak,
     navigate,
