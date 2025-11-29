@@ -23,7 +23,7 @@ export const SALES_FAQ = [
     ],
     question: "Does this work with Nest thermostats?",
     answer:
-      "ProStat is purpose-built for the Ecobee architecture. We don't support inferior thermostats because they don't give us the data fidelity we need to save you money. Ecobee provides robust local HomeKit integration (zero cloud fees), instant CSV downloads, and the data quality our algorithms require. Have a Nest? Join the waitlist - we'll add support if there's enough demand.",
+      "ProStat is purpose-built for the Ecobee architecture. We don't support other thermostats because they don't give us the data fidelity we need to save you money. Ecobee provides robust local HomeKit integration (zero cloud fees), instant CSV downloads, and the data quality our algorithms require. Have a Nest? Join the waitlist - we'll add support if there's enough demand.",
     category: "compatibility",
   },
   {
