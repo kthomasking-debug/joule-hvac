@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Zap, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Zap, ThumbsUp, ThumbsDown, X } from "lucide-react";
 
 // Extract text from agentic response - handle various formats
 function extractResponseText(response) {
@@ -34,7 +34,9 @@ export const AskJouleResponse = ({
   onRetryGroq,
   onCancelGroq,
   transcript,
-  isListening
+  isListening,
+  isSpeaking,
+  stopSpeaking
 }) => {
   const [feedback, setFeedback] = useState(null); // 'up', 'down', or null
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
@@ -143,9 +145,22 @@ export const AskJouleResponse = ({
       {/* Main Answer - simplified to avoid nested cards */}
       {hasContent && !error && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden" data-testid="response-card">
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 flex items-center gap-2">
-            <Zap size={16} className="text-white fill-current" />
-            <span className="text-sm font-semibold text-white">Joule Assistant</span>
+          <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap size={16} className="text-white fill-current" />
+              <span className="text-sm font-semibold text-white">Joule Assistant</span>
+            </div>
+            {/* Stop Talking Button - only show when speaking */}
+            {isSpeaking && stopSpeaking && (
+              <button
+                onClick={stopSpeaking}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-medium transition-colors"
+                title="Stop talking"
+              >
+                <X size={14} />
+                <span>Stop</span>
+              </button>
+            )}
           </div>
           
           <div className="p-4 text-gray-800 dark:text-gray-200 leading-relaxed">

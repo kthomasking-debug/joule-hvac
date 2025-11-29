@@ -908,17 +908,22 @@ Amen.`);
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
+        // Auto-enable speaker if user is using voice input (microphone is active)
+        if (isListening && !speechEnabled && toggleSpeech) {
+          toggleSpeech(); // Enable the speaker button
+        }
+        
         // Check if speech is enabled, or if we should enable it for voice responses
         const shouldSpeak = speechEnabled || isListening; // Speak if enabled OR if user is using voice input
         if (shouldSpeak) {
-          // Small delay to ensure UI has updated
+          // Small delay to ensure UI has updated and speaker is enabled
           setTimeout(() => {
             speak(responseText);
-          }, 300);
+          }, 500);
         }
       }
     }
-  }, [agenticResponse, speak, speechEnabled, isListening]);
+  }, [agenticResponse, speak, speechEnabled, isListening, toggleSpeech]);
 
   const toggleListening = () => {
     if (isListening) {
@@ -975,6 +980,7 @@ Amen.`);
     handleSubmit,
     toggleListening,
     toggleSpeech,
+    stopSpeaking,
     setShowSuggestions,
     setError,
     handleRetryGroq,

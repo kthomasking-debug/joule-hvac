@@ -23,6 +23,8 @@ const AskJoule = (props) => {
         onCancelGroq={state.handleCancelGroq}
         transcript={state.transcript}
         isListening={state.isListening}
+        isSpeaking={state.isSpeaking}
+        stopSpeaking={state.stopSpeaking}
       />
 
       {/* Ask Joule Header - hidden if hideHeader prop is true */}
