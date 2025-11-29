@@ -1,0 +1,51 @@
+{
+  "user": {
+    "name": "Thomas",
+    "preferences": {
+      "comfortFirst": false,
+      "minimizeAuxHeat": true,
+      "allowLargeSetbacks": false
+    }
+  },
+  "system": {
+    "primarySystem": "heatPump",
+    "type": "heatPumpWithAux",
+    "manufacturer": "Mitsubishi",
+    "model": "Hyper Heat",
+    "capacity": 36000,
+    "capacityUnit": "BTU",
+    "hspf2": 10.5,
+    "seer2": 20,
+    "afue": null,
+    "tons": 3
+  },
+  "building": {
+    "squareFeet": 2400,
+    "insulationLevel": 0.65,
+    "homeShape": 0.9,
+    "ceilingHeight": 8,
+    "elevation": 2300
+  },
+  "location": {
+    "city": "Blairsville",
+    "state": "Georgia",
+    "lat": 34.8764,
+    "lon": -83.9582,
+    "elevation": 2300,
+    "climateZone": "4A"
+  },
+  "utility": {
+    "electricityCost": 0.15,
+    "gasCost": 1.2,
+    "electricityUnit": "kWh",
+    "gasUnit": "therm"
+  },
+  "thermostat": {
+    "brand": "Ecobee",
+    "model": "SmartThermostat",
+    "hasRemoteSensors": false,
+    "hasOutdoorSensor": false,
+    "apiEnabled": true
+  }
+}
+

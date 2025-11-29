@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Groq Integration Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .info { background: #d1ecf1; color: #0c5460; }
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    .response {
+      margin-top: 10px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-left: 4px solid #007bff;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .test-question {
+      font-weight: bold;
+      color: #495057;
+      margin-top: 15px;
+    }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,.1);
+      border-radius: 50%;
+      border-top-color: #007bff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 Groq Integration Test</h1>
+    <p>Test the Groq AI fallback integration for Ask Joule</p>
+
+    <div class="test-section">
+      <h3>API Key Setup</h3>
+      <input type="text" id="apiKey" placeholder="Enter your Groq API key (starts with gsk_...)">
+      <button onclick="saveApiKey()">Save API Key</button>
+      <button onclick="clearApiKey()">Clear API Key</button>
+      <div id="apiKeyStatus" class="status info" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>Custom Question Test</h3>
+      <input type="text" id="customQuestion" placeholder="Enter your question here...">
+      <button onclick="testCustomQuestion()" id="customBtn">Ask Question</button>
+      <div id="customResponse"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>Automated Test Questions</h3>
+      <button onclick="runAllTests()" id="runAllBtn">Run All Tests</button>
+      <button onclick="clearResults()">Clear Results</button>
+      <div id="testResults"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the Groq integration
+    import { askJouleFallback } from '/src/lib/groqIntegration.js';
+    
+    // Make functions available globally
+    window.askJouleFallback = askJouleFallback;
+
+    // Test questions covering various scenarios
+    window.testQuestions = [
+      // Basic questions
+      "What's the temperature?",
+      "What mode are you in?",
+      "Is the system running?",
+      
+      // Temperature commands
+      "Set the temperature to 72 degrees",
+      "Make it warmer by 2 degrees",
+      
+      // Energy questions
+      "How much energy am I using?",
+      "What can I do to save energy?",
+      
+      // System questions
+      "Is my HVAC running normally?",
+      "Should I change the filter?",
+      
+      // Weather questions
+      "What's the weather outside?",
+      "How will today's weather affect my home?",
+      
+      // Missing data questions (should handle gracefully)
+      "What's the humidity in the bedroom?",
+      "Which rooms are occupied?",
+      
+      // Fun questions
+      "Tell me a temperature joke",
+      "What temperature would a penguin like?",
+    ];
+
+    window.saveApiKey = function() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      if (!apiKey) {
+        showStatus('apiKeyStatus', 'Please enter an API key', 'error');
+        return;
+      }
+      
+      localStorage.setItem('groqApiKey', apiKey);
+      showStatus('apiKeyStatus', '✅ API key saved successfully!', 'success');
+      document.getElementById('apiKey').value = '';
+    };
+
+    window.clearApiKey = function() {
+      localStorage.removeItem('groqApiKey');
+      showStatus('apiKeyStatus', '🗑️ API key cleared', 'info');
+    };
+
+    window.testCustomQuestion = async function() {
+      const question = document.getElementById('customQuestion').value.trim();
+      if (!question) {
+        alert('Please enter a question');
+        return;
+      }
+
+      const apiKey = localStorage.getItem('groqApiKey') || '';
+      const responseDiv = document.getElementById('customResponse');
+      const btn = document.getElementById('customBtn');
+      
+      btn.disabled = true;
+      responseDiv.innerHTML = '<div class="loading"></div> Asking Groq AI...';
+
+      try {
+        const result = await window.askJouleFallback(question, apiKey);
+        
+        if (result.error) {
+          responseDiv.innerHTML = `<div class="status error">❌ Error: ${result.message}</div>`;
+          if (result.needsSetup) {
+            responseDiv.innerHTML += '<p>Please enter your Groq API key above.</p>';
+          }
+        } else {
+          responseDiv.innerHTML = `
+            <div class="status success">✅ Response received</div>
+            <div class="response">${result.message || JSON.stringify(result, null, 2)}</div>
+          `;
+        }
+      } catch (error) {
+        responseDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    window.runAllTests = async function() {
+      const apiKey = localStorage.getItem('groqApiKey') || '';
+      
+      if (!apiKey) {
+        alert('Please enter and save your Groq API key first');
+        return;
+      }
+
+      const resultsDiv = document.getElementById('testResults');
+      const btn = document.getElementById('runAllBtn');
+      btn.disabled = true;
+      
+      resultsDiv.innerHTML = '<div class="status info">🔄 Running tests...</div>';
+      
+      let passCount = 0;
+      let failCount = 0;
+      let html = '';
+
+      for (let i = 0; i < window.testQuestions.length; i++) {
+        const question = window.testQuestions[i];
+        html += `<div class="test-question">${i + 1}. ${question}</div>`;
+        
+        try {
+          const result = await window.askJouleFallback(question, apiKey);
+          
+          if (result.error) {
+            failCount++;
+            html += `<div class="status error">❌ FAIL: ${result.message}</div>`;
+          } else {
+            passCount++;
+            const message = result.message || JSON.stringify(result);
+            html += `<div class="status success">✅ PASS</div>`;
+            html += `<div class="response">${message.substring(0, 200)}${message.length > 200 ? '...' : ''}</div>`;
+          }
+        } catch (error) {
+          failCount++;
+          html += `<div class="status error">❌ ERROR: ${error.message}</div>`;
+        }
+        
+        // Update results progressively
+        resultsDiv.innerHTML = html;
+        
+        // Small delay between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      html = `
+        <div class="status info">
+          📊 Test Results: ${passCount} passed, ${failCount} failed out of ${window.testQuestions.length} total
+        </div>
+      ` + html;
+      
+      resultsDiv.innerHTML = html;
+      btn.disabled = false;
+    };
+
+    window.clearResults = function() {
+      document.getElementById('testResults').innerHTML = '';
+      document.getElementById('customResponse').innerHTML = '';
+    };
+
+    function showStatus(elementId, message, type) {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = `status ${type}`;
+      element.style.display = 'block';
+      setTimeout(() => {
+        element.style.display = 'none';
+      }, 5000);
+    }
+
+    // Check if API key exists on load
+    window.addEventListener('load', () => {
+      const apiKey = localStorage.getItem('groqApiKey');
+      if (apiKey) {
+        showStatus('apiKeyStatus', '✅ API key found in localStorage', 'success');
+      } else {
+        showStatus('apiKeyStatus', 'ℹ️ No API key found. Please enter one above.', 'info');
+      }
+    });
+  </script>
+</body>
+</html>
+

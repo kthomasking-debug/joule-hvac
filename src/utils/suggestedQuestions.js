@@ -1,0 +1,93 @@
+// Contextual question suggestions for Ask Joule
+
+export const commonQuestions = [
+  { text: "Comprehensive analysis", category: "agentic", icon: "🔍" },
+  { text: "What can I save?", category: "savings", icon: "💰" },
+  { text: "What's my balance point?", category: "analysis", icon: "⚖️" },
+  {
+    text: "Calculate my charging targets",
+    category: "calculator",
+    icon: "🧪",
+  },
+  { text: "What's my heat loss factor?", category: "analysis", icon: "📊" },
+  { text: "Compare heat pump vs gas", category: "comparison", icon: "⚡" },
+  { text: "Setback savings calculator", category: "calculator", icon: "💡" },
+];
+
+export const pageSpecificQuestions = {
+  "/": [
+    { text: "Comprehensive analysis", icon: "🔍" },
+    { text: "What can I save this month?", icon: "💰" },
+    { text: "Show my energy flow", icon: "📊" },
+    { text: "How efficient is my system?", icon: "⚡" },
+  ],
+  "/cost-forecaster": [
+    { text: "Cost forecast for next week", icon: "📅" },
+    { text: "What will heating cost this week?", icon: "🌡️" },
+    { text: "When should I switch to aux heat?", icon: "🔥" },
+    { text: "What's the coldest day predicted?", icon: "❄️" },
+  ],
+  "/cost-comparison": [
+    { text: "Analyze my system costs", icon: "🔍" },
+    { text: "Which system saves more money?", icon: "💵" },
+    { text: "What's the ROI of upgrading to 18 SEER?", icon: "📈" },
+    { text: "Compare my current vs new system", icon: "⚖️" },
+  ],
+  "/energy-flow": [
+    { text: "Full system analysis", icon: "🔍" },
+    { text: "What's my balance point?", icon: "⚖️" },
+    { text: "How much energy goes to heating?", icon: "🔥" },
+    { text: "Explain my thermal factor", icon: "📐" },
+  ],
+  "/charging-calculator": [
+    { text: "Calculate charging for R-410A at 85°F", icon: "🧪" },
+    { text: "What's target subcooling for R-32?", icon: "🎯" },
+    { text: "Check superheat targets", icon: "📏" },
+  ],
+  "/performance-analyzer": [
+    { text: "Analyze my system performance", icon: "🔍" },
+    { text: "What's my heat loss factor?", icon: "📊" },
+    { text: "Calculate system performance", icon: "⚡" },
+    { text: "Show my thermal factor", icon: "📐" },
+  ],
+  "/thermostat-analyzer": [
+    { text: "All my savings opportunities", icon: "💰" },
+    { text: "Calculate setback savings", icon: "💰" },
+    { text: "What's the best sleep setback?", icon: "😴" },
+    { text: "Optimize my schedule", icon: "⏰" },
+  ],
+  "/settings": [
+    { text: "Set my location to Denver", icon: "📍" },
+    { text: "Update my SEER to 16", icon: "⚡" },
+    { text: "Change utility cost to $0.12/kWh", icon: "💵" },
+  ],
+};
+
+export function getSuggestedQuestions(pathname = "/") {
+  // Return page-specific questions if available, otherwise common questions
+  const pageQuestions = pageSpecificQuestions[pathname] || [];
+
+  if (pageQuestions.length > 0) {
+    return pageQuestions;
+  }
+
+  // Return a random subset of common questions
+  return commonQuestions.slice(0, 3);
+}
+
+export function getRandomTip() {
+  const tips = [
+    "🔍 Try 'Comprehensive analysis' to run all tools at once",
+    "💡 Ask me to calculate your balance point",
+    "🧪 I can calculate A/C charging targets for any refrigerant",
+    "📊 Try 'What's my heat loss factor?' for performance metrics",
+    "⚡ Ask me to compare heat pump vs gas costs",
+    "🌡️ I can estimate heating costs from weather forecasts",
+    "🎯 Say 'Calculate setback savings' for thermostat strategies",
+    "📈 Ask about your system's thermal factor",
+    "💰 Say 'All my savings' to see every savings opportunity",
+    "📅 Ask for a 'cost forecast' to predict next week's bills",
+  ];
+
+  return tips[Math.floor(Math.random() * tips.length)];
+}

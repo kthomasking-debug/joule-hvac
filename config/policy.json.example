@@ -1,0 +1,25 @@
+{
+  "safety": {
+    "maxTemp": 78,
+    "minTemp": 60,
+    "maxTempDeltaPerHour": 3,
+    "maxSetback": 3
+  },
+  "auxHeat": {
+    "stripHeatProtection": true,
+    "maxAuxRuntimePerHour": 20,
+    "preferHeatPump": true,
+    "allowAuxDuringRecovery": true
+  },
+  "recovery": {
+    "adaptiveRecovery": true,
+    "maxRecoveryTime": 120,
+    "preventAuxDuringRecovery": false
+  },
+  "confirmations": {
+    "requireConfirmBeforeScheduleChange": true,
+    "requireConfirmBeforeLargeTempChange": true,
+    "largeTempChangeThreshold": 3
+  }
+}
+

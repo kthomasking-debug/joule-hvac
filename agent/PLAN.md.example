@@ -1,0 +1,22 @@
+# PLAN
+
+Goal: Diagnose why auxiliary heat activated at 6AM this morning
+
+## Subtasks:
+1. ✅ Read heating events log for today
+2. ✅ Check outdoor temperature at 6AM
+3. ✅ Read thermostat settings (recovery, aux threshold)
+4. ✅ Compare indoor temp drop vs outdoor temp
+5. ⏳ Analyze recovery logic
+6. ⏳ Explain cause to user
+
+## Next Action:
+Read config/policy.json to check aux heat settings
+
+## Context:
+- User asked: "Why did my auxiliary heat activate at 6AM?"
+- Current indoor temp: 72°F
+- Target temp: 70°F
+- Outdoor temp: 24°F
+- System: Heat pump with aux strips
+

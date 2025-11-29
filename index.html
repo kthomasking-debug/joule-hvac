@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" class="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/app-icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/app-icon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180x180.png">
+  <meta name="description"
+    content="Joule HVAC - Your Home Energy, Measured. Professional HVAC energy calculator for homeowners and technicians." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Joule HVAC - Your Home Energy, Measured</title>
+</head>
+
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100 transition-colors">
+  <!-- GitHub Pages redirect handler -->
+  <script>
+    (function() {
+      var redirect = sessionStorage.redirect;
+      delete sessionStorage.redirect;
+      if (redirect && redirect !== location.pathname) {
+        history.replaceState(null, null, redirect);
+      }
+    })();
+  </script>
+  
+  <div id="root" class="min-h-screen flex flex-col"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>

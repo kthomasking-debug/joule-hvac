@@ -1,0 +1,49 @@
+# Netlify configuration for Joule HVAC
+# See: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Command to build the application
+  # Uses build:netlify to set VITE_BASE_PATH=/
+  command = "npm run build:netlify"
+  
+  # Directory with the built files to deploy
+  publish = "dist"
+
+# SPA redirect rule - makes React Router work on all routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Build environment
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+
+# Optional: Set custom headers for better security and performance
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Cache static assets for 1 year
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Optional: Custom domain configuration
+# Uncomment and update when you add a custom domain
+# [context.production]
+#   environment = { NODE_ENV = "production" }
+
+# Optional: Deploy preview settings
+# [context.deploy-preview]
+#   command = "npm run build"
+
+# Optional: Branch deploys
+# [context.branch-deploy]
+#   command = "npm run build"

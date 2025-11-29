@@ -1,0 +1,14 @@
+# Ignore Python requirements - this is a Node.js/React app
+requirements.txt
+
+# Ignore other non-essential files
+*.md
+docs/
+.github/
+android/
+scripts/
+server/
+test-*.js
+*.cjs
+*.mjs
+

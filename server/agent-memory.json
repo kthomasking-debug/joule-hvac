@@ -1,0 +1,27 @@
+{
+  "goals": [
+    {
+      "goal": "time",
+      "ts": 1763918469693
+    },
+    {
+      "goal": "fresh-goal-1",
+      "ts": 1763832069578
+    },
+    {
+      "goal": "fresh-goal-2",
+      "ts": 1763832069578
+    }
+  ],
+  "facts": [
+    {
+      "fact": "fresh-fact-1",
+      "ts": 1763745669578
+    },
+    {
+      "fact": "fresh-fact-2",
+      "ts": 1763745669578
+    }
+  ],
+  "settingsSnapshot": null
+}

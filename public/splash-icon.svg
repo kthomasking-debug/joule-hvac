@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background -->
+  <rect width="512" height="512" fill="#1e293b"/>
+  
+  <!-- Heat pump icon with engineering theme -->
+  <g transform="translate(256, 256)">
+    <!-- Outer circle -->
+    <circle cx="0" cy="0" r="120" fill="#0f172a" stroke="#3b82f6" stroke-width="4"/>
+    
+    <!-- Heat pump compressor symbol -->
+    <path d="M -40 -40 L -40 40 L 40 40 L 40 -40 Z" fill="none" stroke="#60a5fa" stroke-width="6" stroke-linejoin="round"/>
+    
+    <!-- Cooling/heating arrows -->
+    <path d="M -60 0 L -40 0" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+    <path d="M -65 -8 L -60 0 L -65 8" stroke="#ef4444" stroke-width="4" stroke-linecap="round" fill="none"/>
+    
+    <path d="M 40 0 L 60 0" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
+    <path d="M 65 -8 L 60 0 L 65 8" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" fill="none"/>
+    
+    <!-- Center compressor detail -->
+    <circle cx="0" cy="0" r="15" fill="#60a5fa"/>
+    <circle cx="0" cy="0" r="8" fill="#1e293b"/>
+  </g>
+  
+  <!-- App name -->
+  <text x="256" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="42" font-weight="700" fill="#f1f5f9" text-anchor="middle">Joule</text>
+  <text x="256" y="455" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#94a3b8" text-anchor="middle">Your Home Energy, Measured</text>
+</svg>

@@ -1,0 +1,59 @@
+name: CI — Node Units, DOM Tests & Playwright E2E
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run test:ci
+
+  dom-and-e2e:
+    name: DOM Tests & Playwright E2E
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+      - run: npm ci
+      - name: Install browsers for Playwright
+        run: npx playwright install --with-deps
+      - name: Run DOM tests
+        run: npm run test:dom
+      - name: Run Playwright E2E
+        env:
+          CI: true
+        run: |
+          npm run e2e:install
+          npm run e2e:test -- --reporter=html --reporter=list
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+            **/playwright-report
+            **/test-results
+      - name: Upload visual smoke test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-smoke-screenshots
+          path: test-results/*.png
+          if-no-files-found: ignore

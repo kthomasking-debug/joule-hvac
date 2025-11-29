@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Ask Joule</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .info { background: #264f78; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #5a1d1d; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #1e3a1e; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        button { 
+            background: #0e639c; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            margin: 5px; 
+            cursor: pointer; 
+            border-radius: 3px;
+        }
+        button:hover { background: #1177bb; }
+        pre { background: #2d2d30; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Ask Joule Debug Console</h1>
+    
+    <div class="info">
+        <strong>Step 1: Check localStorage</strong>
+        <button onclick="checkStorage()">Check Storage</button>
+        <div id="storageResult"></div>
+    </div>
+
+    <div class="info">
+        <strong>Step 2: Test Groq API directly</strong>
+        <button onclick="testGroqAPI()">Test API</button>
+        <div id="apiResult"></div>
+    </div>
+
+    <div class="info">
+        <strong>Step 3: Test AI SDK</strong>
+        <button onclick="testAISDK()">Test SDK</button>
+        <div id="sdkResult"></div>
+    </div>
+
+    <script>
+        function checkStorage() {
+            const result = document.getElementById('storageResult');
+            const apiKey1 = localStorage.getItem('groqApiKey');
+            const apiKey2 = localStorage.getItem('groq_api_key');
+            
+            result.innerHTML = `<pre>
+groqApiKey: ${apiKey1 ? apiKey1.substring(0, 20) + '...' : 'NOT SET'}
+groq_api_key: ${apiKey2 ? apiKey2.substring(0, 20) + '...' : 'NOT SET'}
+
+Full keys:
+groqApiKey: ${apiKey1 || 'null'}
+groq_api_key: ${apiKey2 || 'null'}
+</pre>`;
+        }
+
+        async function testGroqAPI() {
+            const result = document.getElementById('apiResult');
+            result.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const apiKey = localStorage.getItem('groqApiKey') || localStorage.getItem('groq_api_key');
+                if (!apiKey) {
+                    result.innerHTML = '<p class="error">No API key found in localStorage!</p>';
+                    return;
+                }
+                
+                // Test fetching models
+                const response = await fetch('https://api.groq.com/openai/v1/models', {
+                    headers: {
+                        'Authorization': 'Bearer ' + apiKey,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    result.innerHTML = `<p class="error">API Error ${response.status}: ${errorText}</p>`;
+                    return;
+                }
+                
+                const data = await response.json();
+                result.innerHTML = `<pre class="success">✅ API is working!
+Found ${data.data.length} models:
+${data.data.map((m, i) => `${i + 1}. ${m.id}`).join('\\n')}
+</pre>`;
+            } catch (error) {
+                result.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            }
+        }
+
+        async function testAISDK() {
+            const result = document.getElementById('sdkResult');
+            result.innerHTML = '<p>Testing AI SDK...</p>';
+            
+            try {
+                const apiKey = localStorage.getItem('groqApiKey') || localStorage.getItem('groq_api_key');
+                if (!apiKey) {
+                    result.innerHTML = '<p class="error">No API key found!</p>';
+                    return;
+                }
+                
+                // Try to import the modules
+                result.innerHTML = '<p>Importing AI modules...</p>';
+                const aiModule = await import('/node_modules/ai/dist/index.js');
+                const groqModule = await import('/node_modules/@ai-sdk/groq/dist/index.js');
+                
+                result.innerHTML += '<p class="success">✅ Modules imported successfully!</p>';
+                result.innerHTML += `<pre>AI module keys: ${Object.keys(aiModule).join(', ')}
+Groq module keys: ${Object.keys(groqModule).join(', ')}</pre>`;
+                
+                // Try to use them
+                const { generateText } = aiModule;
+                const { groq } = groqModule;
+                
+                result.innerHTML += '<p>Calling Groq API via SDK...</p>';
+                
+                const response = await generateText({
+                    model: groq('llama-3.3-70b-versatile'),
+                    prompt: 'Say "Hello from Groq!" in exactly 3 words.',
+                    apiKey: apiKey,
+                });
+                
+                result.innerHTML += `<pre class="success">✅ SDK Test Successful!
+Response: ${response.text || JSON.stringify(response)}</pre>`;
+                
+            } catch (error) {
+                result.innerHTML += `<p class="error">❌ SDK Error: ${error.message}</p>`;
+                result.innerHTML += `<pre>${error.stack}</pre>`;
+            }
+        }
+
+        // Auto-check on load
+        window.onload = checkStorage;
+    </script>
+</body>
+</html>

@@ -1,0 +1,567 @@
+/* Design tokens */
+:root {
+  --gradient-brand: linear-gradient(135deg, #2d95f5 0%, #1478d8 50%, #0d5faa 100%);
+  --radius-md: 12px;
+}
+
+html,
+body {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Simple custom components without @apply to avoid build issues */
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+html.dark .card {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: #334155;
+  backdrop-filter: blur(6px);
+}
+
+.card-hover {
+  transition: box-shadow .25s, border-color .25s;
+}
+
+.card-hover:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #56b0ff;
+}
+
+html.dark .card-hover:hover {
+  border-color: #2d95f5;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html.dark .badge {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+
+.badge-accent {
+  background: #d9ecff;
+  color: #0d5faa;
+}
+
+html.dark .badge-accent {
+  background: #0f4d82;
+  color: #b9ddff;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+html.dark .btn {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #1478d8;
+  color: #ffffff;
+  border-color: #1478d8;
+  box-shadow: 0 4px 10px rgba(20, 120, 216, 0.25);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2d95f5;
+  border-color: #2d95f5;
+  box-shadow: 0 6px 20px rgba(45, 149, 245, 0.4);
+  transform: translateY(-2px);
+}
+
+html.dark .btn-primary {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #e2e8f0;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(20, 120, 216, 0.3);
+}
+
+html.dark .btn-secondary {
+  background: #1e293b;
+  color: #f1f5f9;
+  border-color: #334155;
+}
+
+html.dark .btn-secondary:hover:not(:disabled) {
+  background: #334155;
+}
+
+.btn-outline {
+  background: transparent;
+  color: #334155;
+  border-color: #cbd5e1;
+  border-width: 2px;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: #f1f5f9;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .btn-outline {
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+html.dark .btn-outline:hover:not(:disabled) {
+  background: #1e293b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ef4444;
+  border-color: #ef4444;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #475569;
+  border-color: transparent;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+html.dark .btn-ghost {
+  color: #cbd5e1;
+}
+
+html.dark .btn-ghost:hover:not(:disabled) {
+  background: #1e293b;
+}
+
+.app-header-bar {
+  position: sticky;
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+html.dark .app-header-bar {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: #334155;
+}
+
+.app-header-inner {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (min-width: 640px) {
+  .app-header-inner {
+    padding: 0.75rem 1rem;
+  }
+}
+
+.app-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #2d95f5, #56b0ff, #1478d8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.app-nav {
+  display: none;
+}
+
+@media (min-width:768px) {
+  .app-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+}
+
+.app-nav a {
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #475569;
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  background: #f1f5f9;
+}
+
+html.dark .app-nav a {
+  color: #cbd5e1;
+}
+
+html.dark .app-nav a:hover {
+  background: #1e293b;
+}
+
+.app-nav a.active,
+.nav-link.active {
+  background: #d9ecff;
+  color: #0d5faa;
+  font-weight: 600;
+  position: relative;
+}
+
+.app-nav a.active::after,
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  height: 2px;
+  background: #0d5faa;
+  border-radius: 1px;
+}
+
+html.dark .app-nav a.active,
+html.dark .nav-link.active {
+  background: #0f4d82;
+  color: #b9ddff;
+}
+
+html.dark .app-nav a.active::after,
+html.dark .nav-link.active::after {
+  background: #b9ddff;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 4px 8px;
+  text-decoration: none;
+  color: #475569;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+html.dark .nav-link {
+  color: #cbd5e1;
+}
+
+.nav-link:hover {
+  background: #f1f5f9;
+  color: #0d5faa;
+}
+
+html.dark .nav-link:hover {
+  background: #1e293b;
+  color: #b9ddff;
+}
+
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem 0.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid #e2e8f0;
+  backdrop-filter: blur(8px);
+  z-index: 60;
+  box-shadow: 0 -6px 20px rgba(2, 6, 23, 0.25);
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  height: calc(3.5rem + env(safe-area-inset-bottom));
+}
+
+html.dark .mobile-nav {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: #334155;
+}
+
+.mobile-nav a,
+.mobile-nav button {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  min-height: 44px;
+  position: relative;
+}
+
+@media (min-width:768px) {
+  .mobile-nav {
+    display: none;
+  }
+}
+
+.mobile-nav a {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.mobile-nav a.active,
+.mobile-nav button.active {
+  background: #d9ecff;
+  color: #0d5faa;
+  border-radius: 8px;
+}
+
+html.dark .mobile-nav a,
+html.dark .mobile-nav button {
+  color: #cbd5e1;
+}
+
+html.dark .mobile-nav a.active,
+html.dark .mobile-nav button.active {
+  background: #0f4d82;
+  color: #b9ddff;
+}
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 4rem;
+}
+
+/* Give extra bottom padding on small screens so fixed bottom nav doesn't cover content (depending on device safe-area inset) */
+@media (max-width: 767px) {
+  .page {
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+  }
+
+  /* Ensure header's internal nav isn't also transformed into a bottom nav (legacy App.css) */
+  .app-header nav {
+    display: none !important;
+  }
+}
+
+@media (min-width:640px) {
+  .page {
+    padding: 2rem 1.5rem 3rem;
+  }
+}
+
+.fade-in {
+  animation: fadeIn .4s ease both;
+}
+
+.slide-up {
+  animation: slideUp .45s ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Print Styles */
+@media print {
+
+  /* Hide navigation and UI elements */
+  .app-header-bar,
+  .mobile-nav,
+  .app-nav,
+  button,
+  .btn,
+  input[type="range"],
+  .dashboard-link {
+    display: none !important;
+  }
+
+  /* Ensure content fills the page */
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .page {
+    max-width: 100% !important;
+    padding: 0.5in !important;
+  }
+
+  /* Ensure cards and content are visible */
+  .card {
+    border: 1px solid #ddd !important;
+    background: white !important;
+    page-break-inside: avoid;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Show all text in black for printing */
+  * {
+    color: black !important;
+  }
+
+  /* Preserve important colors for charts and highlights */
+  .text-blue-600,
+  .text-green-600,
+  .text-red-600,
+  .text-orange-600 {
+    color: inherit !important;
+  }
+
+  /* Ensure tables print properly */
+  table {
+    page-break-inside: avoid;
+  }
+
+  /* Better heading visibility */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    page-break-after: avoid;
+    font-weight: bold !important;
+  }
+
+  /* Expand collapsed sections */
+  details {
+    display: block !important;
+  }
+
+  details summary {
+    display: none !important;
+  }
+
+  /* Make charts and images visible */
+  svg,
+  canvas,
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+}

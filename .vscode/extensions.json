@@ -1,0 +1,12 @@
+{
+    // Recommended extensions for this workspace
+    "recommendations": [
+        "dbaeumer.vscode-eslint", // ESLint
+        "esbenp.prettier-vscode", // Prettier
+        "eamodio.gitlens", // GitLens
+        "dotnetsa.dotenv", // DotENV (or use: mikestead.dotenv)
+        "ms-vscode.vscode-typescript-tslint-plugin", // TS linting (optional)
+        "github.copilot", // GitHub Copilot (optional)
+        "github.copilot-chat" // GitHub Copilot Chat (optional)
+    ]
+}

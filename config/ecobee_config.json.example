@@ -1,0 +1,11 @@
+{
+  "apiKey": "YOUR_ECOBEE_API_KEY",
+  "accessToken": "YOUR_ACCESS_TOKEN",
+  "refreshToken": "YOUR_REFRESH_TOKEN",
+  "thermostatId": "123456789012",
+  "baseUrl": "https://api.ecobee.com",
+  "version": "1",
+  "autoRefresh": true,
+  "refreshInterval": 3600
+}
+

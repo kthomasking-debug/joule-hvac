@@ -1,0 +1,20 @@
+# NOTES
+
+## Learned Facts:
+- User prefers minimal auxiliary heat usage
+- Heat pump is 3-ton Mitsubishi Hyper Heat
+- House is 2,400 sq ft, 1980s build
+- Outdoor sensor connected via Ecobee weather API
+- Aux lockout is set to 35°F (from policy.json)
+
+## Heuristics:
+- Defrost cycles require no intervention unless > 40 min continuous
+- Strip heat costs ~3-6x more than compressor
+- User prefers "comfort-first" strategy unless strips activate
+- Large setbacks (>3°F) often trigger strips during recovery
+
+## System Behavior:
+- Balance point appears to be around 30°F
+- Recovery typically takes 1.5-2 hours for 2°F setback
+- Aux heat activates when outdoor temp < 25°F OR temp delta > 3°F
+

@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+// Node.js-based pre-commit hook for Windows/GitHub Desktop compatibility
+// Uses ES modules (since package.json has "type": "module")
+
+import { execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Skip if HUSKY is disabled
+if (process.env.HUSKY === '0') {
+  process.exit(0);
+}
+
+// Check if we're in a git repository
+const gitDir = path.resolve(__dirname, '..', '.git');
+if (!fs.existsSync(gitDir)) {
+  process.exit(0);
+}
+
+try {
+  // Try to run lint-staged
+  execSync('npx --no-install lint-staged', {
+    stdio: 'inherit',
+    cwd: path.resolve(__dirname, '..'),
+    shell: true,
+    windowsHide: true,
+    env: { ...process.env, FORCE_COLOR: '0' }
+  });
+} catch (error) {
+  // If lint-staged fails, exit with error code
+  // But allow the commit if it's just a missing command
+  // execSync errors use .status (exit code), not .code
+  // Status 127 = command not found
+  if (error.status === 127) {
+    // Command not found - skip hook
+    console.warn('lint-staged not found, skipping pre-commit hook');
+    process.exit(0);
+  }
+  process.exit(error.status || 1);
+}
