@@ -134,9 +134,15 @@ function calculateOfflineAnswer(query, context = {}) {
     return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["differential"] };
   }
   
-  // Weather model questions
-  if (/(?:what|explain|tell\s+me\s+about|how\s+do|what\s+are)\s+(?:the\s+)?(?:big\s+4|weather\s+models?|forecast\s+models?)/i.test(query) ||
-      /(?:EC|CMC|GEFS|AI\s+ensemble|weather\s+model)/i.test(query)) {
+  // Weather model questions - only match explicit questions about models themselves
+  // Don't match questions about weather events that happen to mention models
+  const isExplicitModelQuestion = 
+    /(?:what|explain|tell\s+me\s+about|how\s+do|what\s+are)\s+(?:the\s+)?(?:big\s+4|weather\s+models?|forecast\s+models?)/i.test(query) ||
+    /\b(?:EC|CMC|GEFS)\s+(?:model|forecast)/i.test(query) ||
+    /(?:AI\s+ensemble|machine\s+learning\s+model)/i.test(query) ||
+    /weather\s+model\s+(?:is|are|work|used|use)/i.test(query);
+  
+  if (isExplicitModelQuestion) {
     if (/\bEC\b/i.test(query) && !/(?:CMC|GEFS|AI)/i.test(query)) {
       return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["EC model"] };
     }
