@@ -131,6 +131,25 @@ function calculateOfflineAnswer(query, context = {}) {
     return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["differential"] };
   }
   
+  // Weather model questions
+  if (/(?:what|explain|tell\s+me\s+about|how\s+do|what\s+are)\s+(?:the\s+)?(?:big\s+4|weather\s+models?|forecast\s+models?)/i.test(query) ||
+      /(?:EC|CMC|GEFS|AI\s+ensemble|weather\s+model)/i.test(query)) {
+    if (/\bEC\b/i.test(query) && !/(?:CMC|GEFS|AI)/i.test(query)) {
+      return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["EC model"] };
+    }
+    if (/\bCMC\b/i.test(query) && !/(?:EC|GEFS|AI)/i.test(query)) {
+      return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["CMC model"] };
+    }
+    if (/\bGEFS\b/i.test(query) && !/(?:EC|CMC|AI)/i.test(query)) {
+      return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["GEFS"] };
+    }
+    if (/(?:AI\s+ensemble|machine\s+learning\s+model)/i.test(query)) {
+      return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["AI ensemble"] };
+    }
+    // Default to general weather models answer
+    return { action: "offlineAnswer", type: "knowledge", answer: OFFLINE_KNOWLEDGE["weather models"] };
+  }
+  
   // 3. Calculator Queries
   const celsiusMatch = query.match(/convert\s+(\d+(?:\.\d+)?)\s+celsius\s+to\s+fahrenheit/i);
   if (celsiusMatch) {
