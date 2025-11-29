@@ -580,13 +580,34 @@ export async function executeCommand(input, userSettings = {}) {
 
   // Handle regular set command
   if (params.commandType === "set" || params.commandType === "toggle") {
+    // Check if this is a user setting (winter/summer thermostat, etc.) that should be handled elsewhere
+    const normalizedSetting = params.settingName.toLowerCase().trim();
+    const isUserSetting = 
+      normalizedSetting.includes("winter thermostat") ||
+      normalizedSetting.includes("summer thermostat") ||
+      normalizedSetting.includes("winter temp") ||
+      normalizedSetting.includes("summer temp") ||
+      normalizedSetting.includes("hspf") ||
+      normalizedSetting.includes("seer") ||
+      normalizedSetting.includes("capacity") ||
+      normalizedSetting.includes("square feet") ||
+      normalizedSetting.includes("insulation");
+    
+    if (isUserSetting) {
+      return {
+        isCommand: true,
+        success: false,
+        error: `"${params.settingName}" is a system setting, not a thermostat setting. Try: "set winter thermostat to ${params.valueStr}" or "set summer thermostat to ${params.valueStr}". Available thermostat settings: heat differential, cool differential, dissipation time, aux lockout, compressor lockout, etc.`,
+      };
+    }
+    
     // Map setting name
     const settingKey = mapSettingName(params.settingName);
     if (!settingKey) {
       return {
         isCommand: true,
         success: false,
-        error: `I don't recognize the setting "${params.settingName}". Available settings: heat differential, cool differential, dissipation time, aux lockout, etc.`,
+        error: `I don't recognize the setting "${params.settingName}". Available thermostat settings: heat differential, cool differential, dissipation time, aux lockout, compressor lockout, temperature correction, etc. For system settings like winter/summer thermostat, use: "set winter thermostat to X" or "set summer thermostat to X".`,
       };
     }
 
