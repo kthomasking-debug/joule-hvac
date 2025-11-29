@@ -242,12 +242,14 @@ export function useSpeechSynthesis(options = {}) {
       const cleanText = text
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
-        .replace(/Joule/gi, "Jewel") // Phonetic hack: "Joule" → "Jewel" (rhymes with "pool") so TTS pronounces it correctly
-        .replace(/ASHRAE/gi, "ashray") // Phonetic hack: "ASHRAE" → "ashray" (like "ashtray" without the "t")
+        .replace(/Joule/gi, "Jool") // Phonetic hack: "Joule" → "Jool" (rhymes with "pool") so TTS pronounces it correctly
+        .replace(/ASHRAE/gi, "Ash Ray") // Phonetic hack: "ASHRAE" → "Ash Ray" (rhymes with "Trash Day" or "Stingray")
         .replace(/\bDOE\b/gi, "D O E") // Pronounce DOE as letters (Department of Energy acronym)
+        .replace(/\bBTU\b/gi, "B T U") // Forces letter-by-letter pronunciation
+        .replace(/\bHSPF\b/gi, "H S P F") // Forces letter-by-letter pronunciation
         .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
         .replace(/°F/g, " degrees Fahrenheit")
-        .replace(/(\d+)\s*HSPF/gi, "$1 H S P F")
+        .replace(/(\d+)\s*HSPF/gi, "$1 H S P F") // Handle HSPF with numbers (e.g., "9 HSPF")
         .replace(/(\d+)\s*SEER/gi, "$1 S E E R")
         .replace(/(\d+)\s*AFUE/gi, "$1 A F U E")
         .replace(/kBTU/gi, "thousand B T U")
