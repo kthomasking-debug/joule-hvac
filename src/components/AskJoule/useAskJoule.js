@@ -122,9 +122,7 @@ export function useAskJoule({
       if (!finalText) return;
       
       // Auto-enable speech when using voice input (user expects voice output)
-      if (!speechEnabled && toggleSpeech) {
-        toggleSpeech();
-      }
+      // Note: We'll check isListening in the useEffect instead to avoid closure issues
       
       // finalText now contains only the NEW command (hook handles extraction)
       setValue(finalText);
