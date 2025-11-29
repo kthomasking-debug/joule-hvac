@@ -728,33 +728,6 @@ function AppInner() {
         </nav>
 
         <div className="flex items-center space-x-2">
-          {/* Global Mute Button */}
-          <button
-            onClick={toggleMute}
-            className={`px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-              isMuted
-                ? "bg-red-500 hover:bg-red-600 text-white border-2 border-red-600"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
-            }`}
-            aria-label={isMuted ? "Unmute voice" : "Mute voice"}
-            title={
-              isMuted
-                ? "Voice MUTED - Click to unmute"
-                : "Voice ON - Click to mute"
-            }
-          >
-            {isMuted ? (
-              <>
-                <VolumeX size={20} className="inline sm:mr-2" />
-                <span className="hidden sm:inline">MUTED</span>
-              </>
-            ) : (
-              <>
-                <Volume2 size={20} className="inline sm:mr-2" />
-                <span className="hidden sm:inline">Voice</span>
-              </>
-            )}
-          </button>
           <button
             onClick={toggleDarkMode}
             className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
