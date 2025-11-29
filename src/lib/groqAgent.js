@@ -811,7 +811,7 @@ async function answerWithPlanning(
     ...enrichedHistory,
     {
       role: "user",
-      content: `${context}\n\nTOOL RESULTS:\n${toolResultsSummary}\n\nUser question: ${userQuestion}\n\nProvide a helpful response based on the tool results above.`,
+      content: `${context}\n\nTOOL RESULTS:\n${toolResultsSummary}\n\nUser question: ${userQuestion}\n\nProvide a helpful response based on the tool results above.\n\nCRITICAL: Summarize to 3 sentences or 100 words maximum. Output ONLY the summary.`,
     },
   ];
 
