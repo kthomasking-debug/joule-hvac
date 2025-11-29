@@ -912,6 +912,12 @@ Amen.`);
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
+        // Don't speak if user manually stopped previous speech
+        if (speechManuallyStoppedRef.current) {
+          speechManuallyStoppedRef.current = false; // Reset for next response
+          return; // Skip speaking this response
+        }
+        
         // Auto-enable speaker if user is using voice input (microphone is active)
         if (isListening && !speechEnabled && toggleSpeech) {
           toggleSpeech(); // Enable the speaker button
