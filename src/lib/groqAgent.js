@@ -375,9 +375,16 @@ export async function answerWithAgent(
   }
 
   // Get model from options or localStorage, fallback to default
+  // Check for automatic fallback/retry logic
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    modelName = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    // Import dynamically to avoid circular dependencies
+    const { getCurrentModel } = await import("./groqModelFallback.js");
+    modelName = getCurrentModel(storedModel);
+  } else if (typeof window !== "undefined") {
+    const { getCurrentModel } = await import("./groqModelFallback.js");
+    modelName = getCurrentModel(modelName);
   }
   if (!modelName) {
     modelName = "llama-3.3-70b-versatile";
@@ -1833,6 +1840,14 @@ export async function answerWithRAG(
     },
   ];
 
+  // Get model with fallback logic
+  let modelName = "llama-3.3-70b-versatile";
+  if (typeof window !== "undefined") {
+    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    const { getCurrentModel } = await import("./groqModelFallback.js");
+    modelName = getCurrentModel(storedModel);
+  }
+
   try {
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
@@ -1843,7 +1858,7 @@ export async function answerWithRAG(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: modelName,
           messages,
           temperature: 0.7,
           max_tokens: 800,
@@ -1854,9 +1869,22 @@ export async function answerWithRAG(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
+        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const fallbackModel = handleRateLimitFallback(modelName);
+        
+        // If we switched models, retry the request with fallback model
+        if (fallbackModel !== modelName) {
+          console.log(`[groqAgent] Retrying RAG query with fallback model: ${fallbackModel}`);
+          // Retry with fallback model
+          return await searchHVACKnowledge(query, {
+            ...options,
+            model: fallbackModel,
+          });
+        }
+        
         return {
           error: true,
-          message: "Rate limit exceeded. Please wait a moment and try again.",
+          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
       
