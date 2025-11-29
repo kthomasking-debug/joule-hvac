@@ -816,9 +816,9 @@ const SmartThermostatDemo = () => {
   // Get Groq model and location for status bar
   const groqModel = useMemo(() => {
     try {
-      return localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+      return localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
     } catch {
-      return "llama-3.1-8b-instant";
+      return "llama-3.3-70b-versatile";
     }
   }, []);
 

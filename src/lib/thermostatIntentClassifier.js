@@ -38,7 +38,7 @@ export const INTENT_TYPES = {
 export async function classifyIntent(
   command,
   apiKey,
-  model = "llama-3.1-8b-instant"
+  model = "llama-3.3-70b-versatile"
 ) {
   if (!apiKey || !apiKey.trim()) {
     // Fallback to regex if no API key

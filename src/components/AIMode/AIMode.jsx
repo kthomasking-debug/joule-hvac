@@ -73,7 +73,7 @@ export function AIMode() {
   const Animation = condition === 'night' ? Night : condition === 'snowy' ? Snowy : condition === 'rainy' ? Rainy : Sunny;
   const ttsPref = typeof window !== 'undefined' ? localStorage.getItem('askJouleTts') === 'on' : false;
   const groqKey = typeof window !== 'undefined' ? localStorage.getItem('groqApiKey') || '' : '';
-  const groqModel = typeof window !== 'undefined' ? localStorage.getItem('groqModel') || 'llama-3.1-8b-instant' : 'llama-3.1-8b-instant';
+  const groqModel = typeof window !== 'undefined' ? localStorage.getItem('groqModel') || 'llama-3.3-70b-versatile' : 'llama-3.3-70b-versatile';
   
   // Get user location for status bar
   const userLocation = useMemo(() => {

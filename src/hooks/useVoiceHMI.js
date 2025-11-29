@@ -261,7 +261,7 @@ export default function useVoiceHMI() {
         // Get Groq API key from localStorage
         const groqApiKey = localStorage.getItem("groqApiKey") || "";
         const groqModel =
-          localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+          localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
 
         // Call Groq API for AI response
         const result = await askJouleFallback(query, groqApiKey, groqModel);

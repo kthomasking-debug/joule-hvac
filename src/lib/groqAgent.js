@@ -344,10 +344,10 @@ export async function answerWithAgent(
   // Get model from options or localStorage, fallback to default
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    modelName = localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+    modelName = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
   }
   if (!modelName) {
-    modelName = "llama-3.1-8b-instant";
+    modelName = "llama-3.3-70b-versatile";
   }
 
   // Call Groq API
@@ -738,10 +738,10 @@ async function answerWithPlanning(
   // Get model from options or localStorage, fallback to default
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    modelName = localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+    modelName = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
   }
   if (!modelName) {
-    modelName = "llama-3.1-8b-instant";
+    modelName = "llama-3.3-70b-versatile";
   }
 
   try {
@@ -1712,7 +1712,7 @@ export async function answerWithRAG(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
+          model: "llama-3.3-70b-versatile",
           messages,
           temperature: 0.7,
           max_tokens: 800,

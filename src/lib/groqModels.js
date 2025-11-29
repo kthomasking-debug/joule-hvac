@@ -49,7 +49,7 @@ export function suggestModel(models) {
 
   // Priority order for model suggestions (fastest/most practical first)
   const priorityModels = [
-    "llama-3.1-8b-instant", // Fast and efficient
+    "llama-3.3-70b-versatile", // High quality and smart
     "llama-3.1-70b-versatile", // High quality (if still available)
     "mixtral-8x7b-32768", // Large context
     "llama-3.1-405b-reasoning", // Reasoning model

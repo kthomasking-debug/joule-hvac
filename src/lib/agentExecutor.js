@@ -338,7 +338,7 @@ Or describe what tool you'd use in natural language with personality - like "Let
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "llama-3.3-70b-versatile",
         messages,
         temperature: 0.7,
         max_tokens: 500,

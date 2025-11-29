@@ -178,8 +178,8 @@ export function useAskJouleController(props) {
   }, [groqKeyProp]);
 
   const groqModel = useMemo(() => {
-    if (typeof window === "undefined") return "llama-3.1-8b-instant";
-    return localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+    if (typeof window === "undefined") return "llama-3.3-70b-versatile";
+    return localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
   }, []);
 
   // ===== Location =====

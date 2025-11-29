@@ -1,5 +1,5 @@
-import React from "react";
-import { Zap } from "lucide-react";
+import React, { useState } from "react";
+import { Zap, ThumbsUp, ThumbsDown } from "lucide-react";
 
 // Extract text from agentic response - handle various formats
 function extractResponseText(response) {
@@ -36,6 +36,27 @@ export const AskJouleResponse = ({
   transcript,
   isListening
 }) => {
+  const [feedback, setFeedback] = useState(null); // 'up', 'down', or null
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+
+  const handleFeedback = (type) => {
+    setFeedback(type);
+    if (type === "down") {
+      setShowFeedbackForm(true);
+    } else {
+      // Thumbs up - just log it
+      console.log("[AskJoule] Positive feedback received");
+      // TODO: Send to analytics/backend
+    }
+  };
+
+  const handleSubmitFeedback = () => {
+    console.log("[AskJoule] Negative feedback:", feedbackText);
+    // TODO: Send to analytics/backend
+    setShowFeedbackForm(false);
+    setFeedbackText("");
+  };
   // Debug logging
   React.useEffect(() => {
     if (agenticResponse) {
@@ -131,6 +152,66 @@ export const AskJouleResponse = ({
             <div className="whitespace-pre-wrap" data-testid="response-text">
               {responseText || answer}
             </div>
+            
+            {/* Feedback Buttons */}
+            <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-3">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Was this helpful?</span>
+              <button
+                onClick={() => handleFeedback("up")}
+                className={`p-1.5 rounded transition-colors ${
+                  feedback === "up"
+                    ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                    : "text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                }`}
+                title="Helpful"
+              >
+                <ThumbsUp size={16} />
+              </button>
+              <button
+                onClick={() => handleFeedback("down")}
+                className={`p-1.5 rounded transition-colors ${
+                  feedback === "down"
+                    ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                    : "text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                }`}
+                title="Not helpful"
+              >
+                <ThumbsDown size={16} />
+              </button>
+            </div>
+
+            {/* Feedback Form */}
+            {showFeedbackForm && (
+              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  What was wrong?
+                </p>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="Tell us what went wrong or what could be improved..."
+                  className="w-full p-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none"
+                  rows={3}
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleSubmitFeedback}
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors"
+                  >
+                    Submit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowFeedbackForm(false);
+                      setFeedbackText("");
+                    }}
+                    className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             
             {/* Show metadata if available */}
             {agenticResponse?.tokensUsed && (

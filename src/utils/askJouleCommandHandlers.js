@@ -945,7 +945,7 @@ export function handleAdvancedSettingsCommand(parsed, callbacks) {
     case "queryGroqModel": {
       try {
         const model =
-          localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+          localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
         setOutput({
           message: `✓ Current Groq model: ${model}`,
           status: "info",

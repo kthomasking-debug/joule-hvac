@@ -252,7 +252,7 @@ const AskJouleHelp = () => {
             <ol className="list-decimal list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1 ml-4">
               <li>Go to Settings page</li>
               <li>Paste your Groq API key</li>
-              <li>Select your preferred AI model (llama-3.1-8b-instant recommended)</li>
+              <li>Select your preferred AI model (llama-3.3-70b-versatile recommended)</li>
               <li>Enter your home details (square footage, SEER/HSPF, location, etc.)</li>
               <li>Set your electricity and gas rates</li>
             </ol>

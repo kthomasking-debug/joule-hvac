@@ -462,9 +462,9 @@ const GroqApiKeyInput = () => {
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState(() => {
     try {
-      return localStorage.getItem("groqModel") || "llama-3.1-8b-instant";
+      return localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
     } catch {
-      return "llama-3.1-8b-instant";
+      return "llama-3.3-70b-versatile";
     }
   });
   const [availableModels, setAvailableModels] = useState([]);
@@ -509,7 +509,7 @@ const GroqApiKeyInput = () => {
         setModelError(error.message);
         // Use fallback model if fetch fails
         setAvailableModels([
-          { id: "llama-3.1-8b-instant", object: "model" },
+          { id: "llama-3.3-70b-versatile", object: "model" },
         ]);
       } finally {
         setLoadingModels(false);

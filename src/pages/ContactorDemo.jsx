@@ -628,8 +628,8 @@ export default function ContactorDemo() {
         typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
       const model =
         typeof window !== "undefined"
-          ? localStorage.getItem("groqModel") || "llama-3.1-8b-instant"
-          : "llama-3.1-8b-instant";
+          ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile"
+          : "llama-3.3-70b-versatile";
 
       // Classify intent
       const classification = await classifyIntent(command, apiKey, model);
@@ -674,8 +674,8 @@ export default function ContactorDemo() {
       typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
     const model =
       typeof window !== "undefined"
-        ? localStorage.getItem("groqModel") || "llama-3.1-8b-instant"
-        : "llama-3.1-8b-instant";
+        ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile"
+        : "llama-3.3-70b-versatile";
     if (!apiKey) {
       return "🧠 Advanced Q&A disabled (no Groq API key). Add one in Settings to enable richer answers.";
     }
