@@ -172,6 +172,13 @@ export function useAskJoule({
   useEffect(() => {
     if (!recognitionSupported) return;
     
+    // Clear any pending timeouts when effect runs
+    const currentTimeout = speechTimeoutRef.current;
+    if (currentTimeout) {
+      clearTimeout(currentTimeout);
+      speechTimeoutRef.current = null;
+    }
+    
     if (isSpeaking) {
       // System is speaking - pause recognition if it's currently listening
       if (isListening) {
@@ -184,15 +191,21 @@ export function useAskJoule({
       // System finished speaking - resume recognition if user wanted to listen
       // BUT: Don't resume if user manually stopped the speech
       // Only resume if we're not currently listening (to avoid conflicts)
+      // Add a longer delay to prevent rapid toggling
       if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
-        // Small delay to ensure speech synthesis has fully stopped
+        // Longer delay to ensure speech synthesis has fully stopped and state has settled
         const timeoutId = setTimeout(() => {
           // Double-check conditions before resuming
           if (shouldBeListeningRef.current && !isListening && !isSpeaking && !speechManuallyStoppedRef.current) {
             startListening();
           }
-        }, 500);
-        return () => clearTimeout(timeoutId);
+          speechTimeoutRef.current = null;
+        }, 1000); // Increased from 500ms to 1000ms for stability
+        speechTimeoutRef.current = timeoutId;
+        return () => {
+          clearTimeout(timeoutId);
+          speechTimeoutRef.current = null;
+        };
       }
     }
   }, [isSpeaking, isListening, recognitionSupported, startListening, stopListening]);
@@ -914,12 +927,16 @@ Amen.`);
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
+        // Prevent concurrent processing
+        if (isProcessingResponseRef.current) {
+          return; // Already processing a response
+        }
+        
         // Prevent processing the same response multiple times (infinite loop prevention)
-        const responseId = `${agenticResponse.message}-${Date.now()}`;
+        const responseId = agenticResponse.message; // Use just the message as ID
         if (lastProcessedResponseRef.current === responseId) {
           return; // Already processed this exact response
         }
-        lastProcessedResponseRef.current = responseId;
         
         // Don't speak if user manually stopped previous speech
         if (speechManuallyStoppedRef.current) {
@@ -927,27 +944,39 @@ Amen.`);
           return; // Skip speaking this response
         }
         
+        // Mark as processing
+        isProcessingResponseRef.current = true;
+        lastProcessedResponseRef.current = responseId;
+        
         // Auto-enable speaker if user is using voice input (microphone is active)
         // Only do this once per session to prevent loops
         if (isListening && !speechEnabled && toggleSpeech && !speakerAutoEnabledRef.current) {
           speakerAutoEnabledRef.current = true; // Mark that we've auto-enabled
           toggleSpeech(); // Enable the speaker button
-          // Wait a bit for state to update before speaking
+          
+          // Wait for state to settle before speaking (longer delay to prevent rapid toggling)
           setTimeout(() => {
-            if (speechEnabled || isListening) {
+            isProcessingResponseRef.current = false; // Clear processing flag
+            // Double-check conditions before speaking
+            if (!speechManuallyStoppedRef.current && responseText && responseText.trim()) {
               speak(responseText);
             }
-          }, 300);
+          }, 800); // Increased delay to allow state to settle
           return; // Exit early to prevent double-speaking
         }
         
         // Check if speech is enabled, or if we should enable it for voice responses
         const shouldSpeak = speechEnabled || isListening; // Speak if enabled OR if user is using voice input
         if (shouldSpeak) {
-          // Small delay to ensure UI has updated and speaker is enabled
+          // Longer delay to ensure UI has updated and state has settled
           setTimeout(() => {
-            speak(responseText);
-          }, 500);
+            isProcessingResponseRef.current = false; // Clear processing flag
+            if (!speechManuallyStoppedRef.current && responseText && responseText.trim()) {
+              speak(responseText);
+            }
+          }, 800); // Increased from 500ms to 800ms for stability
+        } else {
+          isProcessingResponseRef.current = false; // Clear flag if not speaking
         }
       }
     }
