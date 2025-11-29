@@ -379,7 +379,7 @@ const LandingPage = () => {
               {faqOpen[1] && (
                 <div className="px-4 pb-4 text-gray-600 dark:text-gray-400">
                   <p className="mb-2">
-                    <strong>ProStat is purpose-built for the Ecobee architecture.</strong> We don't support other thermostats because they don't give us the data fidelity we need to save you money.
+                    <strong>ProStat is purpose-built for the Ecobee architecture.</strong> We don't support other thermostats due to current API costs.
                   </p>
                   <p className="mb-2">
                     Ecobee provides robust local HomeKit integration (zero cloud fees, zero approval), instant CSV downloads for our Free tier, and the data quality our algorithms require.
