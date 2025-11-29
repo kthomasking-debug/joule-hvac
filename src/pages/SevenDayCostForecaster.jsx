@@ -70,6 +70,7 @@ import * as heatUtils from "../lib/heatUtils";
 import { computeHourlyRate } from "../lib/costUtils";
 import useForecast from "../hooks/useForecast";
 import { reducer, initialState } from "./heatpump/reducer";
+import { detectWeatherAnomalies } from "../utils/weatherAnomalyDetector";
 import DailyBreakdownTable from "./heatpump/DailyBreakdownTable";
 import Joyride from "react-joyride";
 import {
