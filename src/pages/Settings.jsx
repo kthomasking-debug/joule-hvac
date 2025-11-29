@@ -804,8 +804,10 @@ const GroqApiKeyInput = () => {
         const models = await fetchGroqModels(value);
         
         // Filter out decommissioned models
+        // Note: Models are fetched dynamically from Groq API, so deprecated models
+        // should already be excluded. This is a safety filter.
         const activeModels = models.filter((m) => {
-          const decommissioned = ["llama-3.1-70b-versatile"];
+          const decommissioned = ["llama-3.1-70b-versatile"]; // Add more as they're deprecated
           return !decommissioned.includes(m.id);
         });
 

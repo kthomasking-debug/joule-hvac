@@ -47,10 +47,13 @@ export function suggestModel(models) {
     return null;
   }
 
-  // Priority order for model suggestions (fastest/most practical first)
+  // Priority order for model suggestions (most powerful first, appropriate for Ask Joule)
+  // Default to llama-3.3-70b-versatile as the most powerful appropriate model
   const priorityModels = [
-    "llama-3.3-70b-versatile", // High quality and smart
-    "llama-3.1-70b-versatile", // High quality (if still available)
+    "llama-3.3-70b-versatile", // Most powerful - default for Ask Joule
+    "llama-3.1-8b-instant", // Fast alternative
+    "meta-llama/llama-guard-4-12b", // Safety/guard model
+    "llama-3.1-70b-versatile", // High quality (if still available, may be deprecated)
     "mixtral-8x7b-32768", // Large context
     "llama-3.1-405b-reasoning", // Reasoning model
     "llama-3.2-90b-text-preview", // Latest preview
@@ -92,8 +95,16 @@ export function formatModelLabel(modelId) {
     .replace(/\b(\d+)(b|B)\b/g, "$1B")
     .replace(/\b(\d+)(k|K)\b/g, "$1K");
 
+  // Handle meta-llama prefix
+  if (modelId.startsWith("meta-llama/")) {
+    label = modelId.replace(/^meta-llama\//, "").replace(/-/g, " ");
+    label = label.replace(/\b(\d+)(b|B)\b/g, "$1B");
+  }
+  
   // Add helpful descriptions based on model characteristics
-  if (modelId.includes("instant")) {
+  if (modelId.includes("guard")) {
+    label += " (Safety/Guard)";
+  } else if (modelId.includes("instant")) {
     label += " (Fast)";
   } else if (modelId.includes("versatile")) {
     label += " (High Quality)";
@@ -116,10 +127,12 @@ export function formatModelLabel(modelId) {
 export function getModelDescription(modelId) {
   if (!modelId) return "";
 
-  if (modelId.includes("instant")) {
+  if (modelId.includes("guard")) {
+    return "Safety and content moderation model";
+  } else if (modelId.includes("instant")) {
     return "Best balance of speed and quality";
   } else if (modelId.includes("versatile")) {
-    return "More accurate but slower";
+    return "Most powerful - best for Ask Joule (default)";
   } else if (modelId.includes("32768") || modelId.includes("large")) {
     return "Good for complex queries with large context";
   } else if (modelId.includes("reasoning")) {
