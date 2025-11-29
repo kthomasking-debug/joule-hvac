@@ -20,6 +20,8 @@ import {
   Circle,
   DollarSign,
   ExternalLink,
+  Plus,
+  Edit2,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -42,7 +44,6 @@ import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import EcobeeSettings from "../components/EcobeeSettings";
 import ProstatBridgeSettings from "../components/ProstatBridgeSettings";
 import { setProCode, clearProCode, hasProAccess } from "../utils/demoMode";
-import { Plus, Trash2, Edit2 } from "lucide-react";
 
 const Section = ({ title, icon, children, ...props }) => (
   <div
