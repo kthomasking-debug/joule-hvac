@@ -166,20 +166,23 @@ export function useAskJoule({
     if (!recognitionSupported) return;
     
     if (isSpeaking) {
-      // System is speaking - pause recognition
+      // System is speaking - pause recognition if it's currently listening
       if (isListening) {
         shouldBeListeningRef.current = true; // Remember user wanted to listen
         stopListening();
       }
     } else {
       // System finished speaking - resume recognition if user wanted to listen
-      if (shouldBeListeningRef.current && !isListening) {
+      // Only resume if we're not currently listening (to avoid conflicts)
+      if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
         // Small delay to ensure speech synthesis has fully stopped
-        setTimeout(() => {
-          if (shouldBeListeningRef.current && !isSpeaking) {
+        const timeoutId = setTimeout(() => {
+          // Double-check conditions before resuming
+          if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
             startListening();
           }
-        }, 300);
+        }, 500);
+        return () => clearTimeout(timeoutId);
       }
     }
   }, [isSpeaking, isListening, recognitionSupported, startListening, stopListening]);
@@ -876,10 +879,8 @@ Amen.`);
       stopListening();
     } else {
       shouldBeListeningRef.current = true; // User wants to listen
-      // Only start if not currently speaking
-      if (!isSpeaking) {
-        startListening();
-      }
+      // Start listening immediately - the pause/resume logic will handle pausing if speaking
+      startListening();
     }
   };
 
