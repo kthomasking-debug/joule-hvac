@@ -10,6 +10,7 @@ import {
   checkPolicy,
   getDiagnosticData,
   getCSVDiagnosticsData,
+  getForecastData,
 } from "./agentTools.js";
 import { loadThermostatSettings } from "./thermostatSettings.js";
 import {
@@ -1263,6 +1264,45 @@ async function buildMinimalContext(
       }
     } else {
       context += `\n\nCSV Analysis Data: Not available. Upload thermostat CSV data on the System Performance Analyzer page to get detailed cycling analysis.\n`;
+    }
+  }
+
+  // Check for forecast/temperature questions (high, low, specific day, next week, etc.)
+  const isForecastQuestion =
+    lowerQuestion.includes("forecast") ||
+    lowerQuestion.includes("high") ||
+    lowerQuestion.includes("low") ||
+    lowerQuestion.includes("coldest") ||
+    lowerQuestion.includes("warmest") ||
+    lowerQuestion.includes("next week") ||
+    lowerQuestion.includes("next month") ||
+    lowerQuestion.includes("7 day") ||
+    lowerQuestion.includes("7-day") ||
+    /(?:what'?s?|what is|tell me|show me).*(?:high|low|temp).*(?:for|on|next|tomorrow|tuesday|wednesday|thursday|friday|saturday|sunday|monday)/i.test(lowerQuestion) ||
+    /(?:coldest|warmest).*(?:low|high|temp|day)/i.test(lowerQuestion);
+
+  if (isForecastQuestion) {
+    const forecastData = getForecastData();
+    if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length > 0) {
+      context += `\n\n═══════════════════════════════════════════════════════════════\n`;
+      context += `7-DAY COST FORECAST DATA\n`;
+      context += `═══════════════════════════════════════════════════════════════\n`;
+      context += `Location: ${forecastData.location || "Unknown"}\n`;
+      context += `Daily Forecast Summary:\n`;
+      forecastData.dailySummary.forEach((day) => {
+        context += `- ${day.day}: Low ${day.lowTemp.toFixed(1)}°F, High ${day.highTemp.toFixed(1)}°F`;
+        if (day.avgHumidity) {
+          context += `, Avg Humidity ${day.avgHumidity.toFixed(0)}%`;
+        }
+        if (day.cost) {
+          context += `, Cost $${day.cost.toFixed(2)}`;
+        }
+        context += `\n`;
+      });
+      context += `\nUse this data to answer questions about specific days, highs, lows, or temperature ranges.\n`;
+      context += `═══════════════════════════════════════════════════════════════\n`;
+    } else {
+      context += `\n\n7-Day Forecast Data: Not available. Run a forecast on the 7-Day Cost Forecaster page to see temperature predictions.\n`;
     }
   }
 

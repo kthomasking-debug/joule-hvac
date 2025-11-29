@@ -621,6 +621,38 @@ export function getDiagnosticData(query, thermostatData, userSettings) {
 }
 
 /**
+ * Get 7-Day Cost Forecast data
+ * Returns daily high/low temperatures and forecast summary
+ */
+export function getForecastData() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const forecastSummary = localStorage.getItem("last_forecast_summary");
+    if (!forecastSummary) {
+      return null;
+    }
+
+    const parsed = JSON.parse(forecastSummary);
+    if (!parsed) {
+      return null;
+    }
+
+    return {
+      location: parsed.location || null,
+      timestamp: parsed.timestamp || null,
+      totalHPCost: parsed.totalHPCost || null,
+      dailySummary: parsed.dailySummary || [], // Array of {day, lowTemp, highTemp, avgHumidity, cost, energy}
+    };
+  } catch (e) {
+    console.warn("Failed to parse forecast data:", e);
+    return null;
+  }
+}
+
+/**
  * Available tools registry
  * This defines what the LLM can do
  */

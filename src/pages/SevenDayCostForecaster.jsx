@@ -1282,7 +1282,7 @@ const SevenDayCostForecaster = () => {
   const calculatedHeatLossBtu = perDegree * deltaTForDesign;
   const calculatedHeatLossKw = calculatedHeatLossBtu / heatUtils.BTU_PER_KWH;
 
-  // Persist last forecast summary for home dashboard
+  // Persist last forecast summary for home dashboard and Ask Joule
   useEffect(() => {
     if (weeklyMetrics && foundLocationName) {
       try {
@@ -1293,6 +1293,8 @@ const SevenDayCostForecaster = () => {
           totalSavings: null,
           estimatedAnnualSavings: null,
           timestamp: Date.now(),
+          // Include daily summary for Ask Joule access
+          dailySummary: weeklyMetrics.summary || [],
         };
         localStorage.setItem("last_forecast_summary", JSON.stringify(payload));
       } catch {
