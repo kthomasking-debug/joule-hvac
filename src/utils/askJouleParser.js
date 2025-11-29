@@ -365,26 +365,31 @@ function parseCommandLocal(query, context = {}) {
     }
   }
 
-  // Winter-specific
+  // Winter-specific - handle "winter thermostat", "winter thermostat setting", "winter temp", etc.
   if (
-    /(?:set\s+winter(?:\s+(?:thermostat|temp|thermo))?|set\s+thermostat\s+winter)\s*(?:to\s+)?(\d{2})/i.test(
+    /(?:set\s+winter(?:\s+(?:thermostat|temp|thermo|setting))?|set\s+(?:thermostat\s+)?winter(?:\s+setting)?|set\s+winter\s+thermostat\s+setting)\s*(?:to\s+)?(\d{2})/i.test(
       q
     )
   ) {
     const match = q.match(
-      /(?:set\s+winter(?:\s+(?:thermostat|temp|thermo))?|set\s+thermostat\s+winter)\s*(?:to\s+)?(\d{2})/i
+      /(?:set\s+winter(?:\s+(?:thermostat|temp|thermo|setting))?|set\s+(?:thermostat\s+)?winter(?:\s+setting)?|set\s+winter\s+thermostat\s+setting)\s*(?:to\s+)?(\d{2})/i
     );
-    return { action: "setWinterTemp", value: parseInt(match[1], 10) };
+    if (match && match[1]) {
+      return { action: "setWinterTemp", value: parseInt(match[1], 10) };
+    }
   }
+  // Summer-specific - handle "summer thermostat", "summer thermostat setting", "summer temp", etc.
   if (
-    /(?:set\s+summer(?:\s+(?:thermostat|temp|thermo))?|set\s+thermostat\s+summer)\s*(?:to\s+)?(\d{2})/i.test(
+    /(?:set\s+summer(?:\s+(?:thermostat|temp|thermo|setting))?|set\s+(?:thermostat\s+)?summer(?:\s+setting)?|set\s+summer\s+thermostat\s+setting)\s*(?:to\s+)?(\d{2})/i.test(
       q
     )
   ) {
     const match = q.match(
-      /(?:set\s+summer(?:\s+(?:thermostat|temp|thermo))?|set\s+thermostat\s+summer)\s*(?:to\s+)?(\d{2})/i
+      /(?:set\s+summer(?:\s+(?:thermostat|temp|thermo|setting))?|set\s+(?:thermostat\s+)?summer(?:\s+setting)?|set\s+summer\s+thermostat\s+setting)\s*(?:to\s+)?(\d{2})/i
     );
-    return { action: "setSummerTemp", value: parseInt(match[1], 10) };
+    if (match && match[1]) {
+      return { action: "setSummerTemp", value: parseInt(match[1], 10) };
+    }
   }
 
   // What-if scenarios (check BEFORE navigation to avoid "upgrade" matching roi)
