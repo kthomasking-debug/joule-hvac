@@ -789,9 +789,15 @@ async function answerWithPlanning(
   ];
 
   // Get model from options or localStorage, fallback to default
+  // Check for automatic fallback/retry logic
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
-    modelName = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    const storedModel = localStorage.getItem("groqModel") || "llama-3.3-70b-versatile";
+    const { getCurrentModel } = await import("./groqModelFallback.js");
+    modelName = getCurrentModel(storedModel);
+  } else if (typeof window !== "undefined") {
+    const { getCurrentModel } = await import("./groqModelFallback.js");
+    modelName = getCurrentModel(modelName);
   }
   if (!modelName) {
     modelName = "llama-3.3-70b-versatile";
@@ -818,9 +824,23 @@ async function answerWithPlanning(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
+        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const fallbackModel = handleRateLimitFallback(modelName);
+        
+        // If we switched models, retry the request with fallback model
+        if (fallbackModel !== modelName) {
+          console.log(`[groqAgent] Retrying streaming with fallback model: ${fallbackModel}`);
+          // Retry with fallback model
+          return await callGroqAPIStreaming(apiKey, messages, {
+            ...options,
+            model: fallbackModel,
+            onChunk,
+          });
+        }
+        
         return {
           error: true,
-          message: "Rate limit exceeded. Please wait a moment and try again.",
+          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
       
