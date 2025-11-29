@@ -196,13 +196,13 @@ export function useAskJoule({
       speechManuallyStoppedRef.current = false;
     } else {
       // System finished speaking - resume recognition if user wanted to listen
-      // Note: We allow resume even if user manually stopped speech (they might want to continue listening)
+      // IMPORTANT: Only resume if shouldBeListeningRef is true (user hasn't manually turned it off)
       // Only resume if we're not currently listening (to avoid conflicts)
       // Add a longer delay to prevent rapid toggling
       if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
         // Longer delay to ensure speech synthesis has fully stopped and state has settled
         const timeoutId = setTimeout(() => {
-          // Double-check conditions before resuming
+          // Double-check conditions before resuming (including that user still wants to listen)
           if (shouldBeListeningRef.current && !isListening && !isSpeaking) {
             startListening();
           }
@@ -240,11 +240,17 @@ export function useAskJoule({
       }
 
       // Start a brief listening burst
+      // BUT: Only if user hasn't manually turned off the microphone
+      if (!shouldBeListeningRef.current) {
+        // User has manually turned off the microphone - don't start listening bursts
+        return;
+      }
+      
       isInBurstRef.current = true;
       stopCheckTranscriptRef.current = ""; // Reset for this burst
       
-      // Enable listening for a brief moment
-      if (!isListening) {
+      // Enable listening for a brief moment (only if user wants to listen)
+      if (!isListening && shouldBeListeningRef.current) {
         startListening();
       }
       
