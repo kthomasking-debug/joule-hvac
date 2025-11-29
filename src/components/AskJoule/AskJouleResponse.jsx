@@ -42,6 +42,15 @@ export const AskJouleResponse = ({
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
 
+  // Memoize stop handler to prevent re-creation on every render
+  const handleStopSpeaking = React.useCallback((e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (stopSpeaking) {
+      stopSpeaking();
+    }
+  }, [stopSpeaking]);
+
   const handleFeedback = (type) => {
     setFeedback(type);
     if (type === "down") {
@@ -153,7 +162,9 @@ export const AskJouleResponse = ({
             {/* Stop Talking Button - only show when speaking */}
             {isSpeaking && stopSpeaking && (
               <button
-                onClick={stopSpeaking}
+                type="button"
+                onClick={handleStopSpeaking}
+                onMouseDown={(e) => e.preventDefault()} // Prevent any auto-triggering
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-medium transition-colors"
                 title="Stop talking"
               >
