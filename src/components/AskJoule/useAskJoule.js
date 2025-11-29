@@ -958,13 +958,20 @@ Amen.`);
       if (response) {
         if (response.error) {
           console.log("[AskJoule] Response has error:", response.message);
+          const errorMessage = response.message || "AI request failed";
           // Store the full error object to check for needsApiKey
           if (response.needsApiKey) {
             setError("API_KEY_ERROR"); // Special marker for API key error
             setOutputStatus("error");
           } else {
-            setError(response.message || "AI request failed");
+            setError(errorMessage);
             setOutputStatus("error");
+            // Also set agenticResponse so the error message can be spoken
+            setAgenticResponse({
+              success: false,
+              error: true,
+              message: errorMessage,
+            });
           }
         } else if (response.success && response.message) {
           console.log(
@@ -1043,9 +1050,10 @@ Amen.`);
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
 
-  // Speak the agentic response when it arrives
+  // Speak the agentic response when it arrives (including error messages)
   useEffect(() => {
-    if (agenticResponse?.success && agenticResponse?.message && speak) {
+    if (agenticResponse?.message && speak) {
+      // Speak both success and error messages
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
