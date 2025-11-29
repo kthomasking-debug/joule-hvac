@@ -82,6 +82,8 @@ export function useAskJoule({
   const valueClearedRef = useRef(false);
   const shouldBeListeningRef = useRef(false);
   const speechManuallyStoppedRef = useRef(false);
+  const lastProcessedResponseRef = useRef(null); // Track last processed response to prevent loops
+  const speakerAutoEnabledRef = useRef(false); // Track if we auto-enabled speaker for this session
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -912,6 +914,13 @@ Amen.`);
       // Extract clean text from response
       const responseText = agenticResponse.message;
       if (responseText && responseText.trim()) {
+        // Prevent processing the same response multiple times (infinite loop prevention)
+        const responseId = `${agenticResponse.message}-${Date.now()}`;
+        if (lastProcessedResponseRef.current === responseId) {
+          return; // Already processed this exact response
+        }
+        lastProcessedResponseRef.current = responseId;
+        
         // Don't speak if user manually stopped previous speech
         if (speechManuallyStoppedRef.current) {
           speechManuallyStoppedRef.current = false; // Reset for next response
@@ -919,8 +928,17 @@ Amen.`);
         }
         
         // Auto-enable speaker if user is using voice input (microphone is active)
-        if (isListening && !speechEnabled && toggleSpeech) {
+        // Only do this once per session to prevent loops
+        if (isListening && !speechEnabled && toggleSpeech && !speakerAutoEnabledRef.current) {
+          speakerAutoEnabledRef.current = true; // Mark that we've auto-enabled
           toggleSpeech(); // Enable the speaker button
+          // Wait a bit for state to update before speaking
+          setTimeout(() => {
+            if (speechEnabled || isListening) {
+              speak(responseText);
+            }
+          }, 300);
+          return; // Exit early to prevent double-speaking
         }
         
         // Check if speech is enabled, or if we should enable it for voice responses
@@ -933,14 +951,16 @@ Amen.`);
         }
       }
     }
-  }, [agenticResponse, speak, speechEnabled, isListening, toggleSpeech]);
+  }, [agenticResponse, speak, speechEnabled, isListening]); // Removed toggleSpeech from deps - it's stable
 
   const toggleListening = () => {
     if (isListening) {
       shouldBeListeningRef.current = false; // User manually stopped
       stopListening();
+      speakerAutoEnabledRef.current = false; // Reset auto-enable flag when user stops listening
     } else {
       shouldBeListeningRef.current = true; // User wants to listen
+      speakerAutoEnabledRef.current = false; // Reset auto-enable flag for new session
       // Start listening immediately - the pause/resume logic will handle pausing if speaking
       startListening();
     }
