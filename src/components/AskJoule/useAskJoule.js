@@ -759,6 +759,17 @@ Amen.`);
           if (onParsed) onParsed(parsed); // Notify parent
           return;
         }
+        // Command was parsed but not handled - don't send to Groq
+        // The command parser should have handled it, so this is an error
+        setError(`I couldn't execute that command. Please try rephrasing it, or check if the command is supported.`);
+        setOutputStatus("error");
+        setIsLoadingGroq(false);
+        setLoadingMessage("");
+        setShowGroqPrompt(false);
+        if (speak && speechEnabled) {
+          speak("I couldn't execute that command. Please try rephrasing it.");
+        }
+        return;
       }
 
       // 2. Fallback to Groq Agent
