@@ -936,14 +936,21 @@ Amen.`);
         
         // Prevent processing the same response multiple times (infinite loop prevention)
         const responseId = agenticResponse.message; // Use just the message as ID
+        
+        // If this is a NEW response (different from last), reset the manual stop flag
+        // This allows new responses to speak even if user stopped the previous one
+        if (lastProcessedResponseRef.current !== responseId) {
+          speechManuallyStoppedRef.current = false; // Reset for new response
+        }
+        
         if (lastProcessedResponseRef.current === responseId) {
           return; // Already processed this exact response
         }
         
-        // Don't speak if user manually stopped previous speech
-        if (speechManuallyStoppedRef.current) {
-          speechManuallyStoppedRef.current = false; // Reset for next response
-          return; // Skip speaking this response
+        // Don't speak if user manually stopped THIS specific response
+        // (Only block if it's the same response that was stopped)
+        if (speechManuallyStoppedRef.current && lastProcessedResponseRef.current === responseId) {
+          return; // Skip speaking this response (user stopped it)
         }
         
         // Mark as processing
