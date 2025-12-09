@@ -907,6 +907,7 @@ function AppInner() {
                 handleHumidityChange,
                 heatLossFactor,
                 setHeatLossFactor,
+                analyzerHeatLossSource: latestAnalysis?.heatLossSource || null,
               }}
             />
           </>

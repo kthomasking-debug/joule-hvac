@@ -1423,18 +1423,92 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
           <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
             Insulation Quality
           </label>
+          <div className="flex gap-2">
+            <select
+              value={[1.4, 1.0, 0.65].includes(settings.insulationLevel ?? 1.0) ? (settings.insulationLevel ?? 1.0) : "custom"}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "custom") {
+                  // Keep current custom value, just show input
+                  return;
+                }
+                onSettingChange("insulationLevel", Number(val));
+              }}
+              className="flex-1 px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={settings.useManualHeatLoss}
+            >
+              <option value={1.4}>Poor (pre-1980, minimal upgrades) - 1.4×</option>
+              <option value={1.0}>Average (1990s-2000s, code-min) - 1.0×</option>
+              <option value={0.65}>Good (post-2010, ENERGY STAR) - 0.65×</option>
+              <option value="custom">Custom value...</option>
+            </select>
+            {(![1.4, 1.0, 0.65].includes(settings.insulationLevel ?? 1.0)) && (
+              <input
+                type="number"
+                min={0.1}
+                max={2.0}
+                step={0.05}
+                value={settings.insulationLevel ?? 1.0}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (!isNaN(val) && val >= 0.1 && val <= 2.0) {
+                    onSettingChange("insulationLevel", val);
+                  }
+                }}
+                className="w-24 px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={settings.useManualHeatLoss}
+                placeholder="Custom"
+              />
+            )}
+          </div>
+          <p className="text-xs text-[#A7B0BA] mt-1.5 max-w-md">
+            <strong>Current:</strong> {settings.insulationLevel?.toFixed(2) ?? "1.00"}× (lower = better insulation). Values &lt;0.65 (e.g., 0.50×) are very aggressive and may not account for real-world infiltration/window losses that DOE includes. For typical homes, 0.70-0.80× is more realistic than 0.50×.
+          </p>
+        </div>
+      </div>
+      
+      {/* Building Shape and Ceiling Height */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+            Building Shape
+          </label>
           <select
-            value={settings.insulationLevel ?? 1.0}
-            onChange={(e) =>
-              onSettingChange("insulationLevel", Number(e.target.value))
-            }
+            value={settings.homeShape ?? 1.0}
+            onChange={(e) => onSettingChange("homeShape", Number(e.target.value))}
             className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={settings.useManualHeatLoss}
           >
-            <option value={1.4}>Poor</option>
-            <option value={1.0}>Average</option>
-            <option value={0.65}>Good</option>
+            <option value={0.9}>Two-Story (less exterior surface)</option>
+            <option value={1.0}>Split-Level / Standard</option>
+            <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
+            <option value={1.15}>Manufactured Home</option>
+            <option value={1.25}>Cabin / A-Frame</option>
           </select>
+          <p className="text-xs text-[#A7B0BA] mt-1.5">
+            Affects surface area exposure and heat loss. Single-story homes have more roof/floor area per square foot.
+          </p>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+            Average Ceiling Height
+          </label>
+          <select
+            value={settings.ceilingHeight ?? 8}
+            onChange={(e) => onSettingChange("ceilingHeight", Number(e.target.value))}
+            className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={settings.useManualHeatLoss}
+          >
+            <option value={8}>8 feet (standard)</option>
+            <option value={9}>9 feet</option>
+            <option value={10}>10 feet</option>
+            <option value={12}>12 feet (vaulted)</option>
+            <option value={16}>16+ feet (cathedral)</option>
+          </select>
+          <p className="text-xs text-[#A7B0BA] mt-1.5">
+            Higher ceilings increase the volume to heat and energy needs (+10% per foot above 8').
+          </p>
         </div>
       </div>
       
@@ -1572,55 +1646,84 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
           </div>
 
           {/* Analyzer CSV Option */}
-          <div className="flex items-start gap-3">
-            <label className="inline-flex items-center gap-2 mt-1">
-              <input
-                type="radio"
-                name="heatLossSource"
-                className="h-4 w-4"
-                checked={!!settings.useAnalyzerHeatLoss}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    onSettingChange("useManualHeatLoss", false);
-                    onSettingChange("useCalculatedHeatLoss", false);
-                    onSettingChange("useAnalyzerHeatLoss", true);
-                    // Mark that user has made an explicit choice - never auto-select again
-                    localStorage.setItem('heatLossMethodUserChoice', 'true');
-                  }
-                }}
-              />
-            </label>
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                ○ From CSV Analyzer
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
-              </p>
-              {settings.useAnalyzerHeatLoss && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                  {outletContext?.heatLossFactor 
-                    ? `Current value: ${Number(outletContext.heatLossFactor).toFixed(1)} BTU/hr/°F`
-                    : (
-                      <span>
-                        No analyzer data available.{" "}
-                        <Link 
-                          to="/performance-analyzer" 
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          Upload CSV in System Performance Analyzer →
-                        </Link>
-                      </span>
-                    )}
-                </p>
-              )}
-              {!settings.useAnalyzerHeatLoss && outletContext?.heatLossFactor && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
-                  CSV data available but not active. Using DOE calculated data instead.
-                </p>
-              )}
-            </div>
-          </div>
+          {(() => {
+            // Check if analyzer has measured data (not fallback/estimated)
+            const analyzerSource = settings.analyzerHeatLossSource || outletContext?.analyzerHeatLossSource;
+            const isMeasured = analyzerSource === 'measured';
+            const hasAnalyzerData = outletContext?.heatLossFactor || settings.analyzerHeatLoss;
+            const isDisabled = !hasAnalyzerData || !isMeasured;
+            
+            return (
+              <div className={`flex items-start gap-3 ${isDisabled ? 'opacity-50' : ''}`}>
+                <label className="inline-flex items-center gap-2 mt-1">
+                  <input
+                    type="radio"
+                    name="heatLossSource"
+                    className="h-4 w-4"
+                    checked={!!settings.useAnalyzerHeatLoss && !isDisabled}
+                    disabled={isDisabled}
+                    onChange={(e) => {
+                      if (e.target.checked && !isDisabled) {
+                        onSettingChange("useManualHeatLoss", false);
+                        onSettingChange("useCalculatedHeatLoss", false);
+                        onSettingChange("useAnalyzerHeatLoss", true);
+                        // Mark that user has made an explicit choice - never auto-select again
+                        localStorage.setItem('heatLossMethodUserChoice', 'true');
+                      }
+                    }}
+                  />
+                </label>
+                <div className="flex-1">
+                  <label className={`block text-xs font-semibold ${isDisabled ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
+                    ○ From CSV Analyzer
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
+                  </p>
+                  
+                  {isDisabled && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                      {!hasAnalyzerData ? (
+                        <span>
+                          No analyzer data available.{" "}
+                          <Link 
+                            to="/performance-analyzer" 
+                            className="text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            Upload CSV in System Performance Analyzer →
+                          </Link>
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>Unavailable:</strong> Your CSV data didn't contain a valid 3+ hour coast-down period. 
+                          Upload data with a longer "heat off" period to enable this option.{" "}
+                          <Link 
+                            to="/performance-analyzer" 
+                            className="text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            Re-analyze in System Performance Analyzer →
+                          </Link>
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  
+                  {!isDisabled && settings.useAnalyzerHeatLoss && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                      Current value: {Number(outletContext?.heatLossFactor || settings.analyzerHeatLoss).toFixed(1)} BTU/hr/°F
+                      <span className="ml-2 text-emerald-500 dark:text-emerald-300">(Measured from coast-down)</span>
+                    </p>
+                  )}
+                  
+                  {!isDisabled && !settings.useAnalyzerHeatLoss && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                      Measured CSV data available ({Number(outletContext?.heatLossFactor || settings.analyzerHeatLoss).toFixed(1)} BTU/hr/°F). Click to use it.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </Section>

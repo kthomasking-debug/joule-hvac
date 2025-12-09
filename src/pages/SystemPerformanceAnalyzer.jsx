@@ -28,20 +28,8 @@ import { getAnnualHDD, getAnnualCDD, calculateAnnualHeatingCostFromHDD, calculat
 import { saveCsvData, loadCsvData, hasCsvData, getCsvMetadata, getStorageStats, listAllCsvData } from '../lib/csvDatabase';
 import '../styles/print.css';
 
-// Import chart components normally for now (lazy loading can be added later if needed)
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
-} from 'recharts';
+// NOTE: Recharts is imported by AnalysisGraphs component, not duplicated here
+// to avoid bundler issues ("Cannot access 'Q' before initialization")
 
 // analyzeThermostatData has been moved to src/utils/coastDownPhysics.js
 // Imported at the top of the file
@@ -506,7 +494,6 @@ const SystemPerformanceAnalyzer = () => {
   const [, setAnalysisResults] = useState(null);
   const [parsedCsvRows, setParsedCsvRows] = useState(null); // Will be loaded from IndexedDB on mount
   const [dataForAnalysisRows, setDataForAnalysisRows] = useState(null); // Will be loaded from IndexedDB on mount
-  const [csvRestoreAttempted, setCsvRestoreAttempted] = useState(false); // Track if we've attempted restore
   const [fileTooLargeForStorage, setFileTooLargeForStorage] = useState(false);
   const [showNerdMode, setShowNerdMode] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -697,7 +684,7 @@ const SystemPerformanceAnalyzer = () => {
             const parts = t.split(':');
             if (parts.length < 2) return false;
             const minutes = parseInt(parts[1].replace(/^0+/, '') || '0', 10);
-            return minutes === 0 || minutes === 15 || minutes === 30 || minutes === 45;
+            return [0, 15, 30, 45].includes(minutes);
           });
           const dataForAnalysis = sampledData.length >= 4 ? sampledData : storedData;
           
@@ -716,11 +703,13 @@ const SystemPerformanceAnalyzer = () => {
       }
     }
     
+    autoRunAnalysis();
+    
     // Reset ref when zone changes
     return () => {
       hasAutoRunRef.current = false;
     };
-  }, [activeZoneId]); // Run once on mount and when zone changes
+  }, [activeZoneId, parsedCsvRows]); // Run once on mount and when zone/CSV data changes
   
   // Close export menu when clicking outside
   React.useEffect(() => {
@@ -738,6 +727,7 @@ const SystemPerformanceAnalyzer = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [lastAnalysisWasMeasured, setLastAnalysisWasMeasured] = useState(false);
   const [progress, setProgress] = useState({ stage: '', percent: 0 });
   // Manual estimator UI state
   const [showManualEstimator, setShowManualEstimator] = useState(false);
@@ -1824,10 +1814,17 @@ const SystemPerformanceAnalyzer = () => {
       // it won't persist. This is handled gracefully by the forecaster's fallback logic.
       if (setUserSetting) {
         setUserSetting("analyzerHeatLoss", results.heatLossFactor);
+        // Also store the source so Settings page knows if it's measured or fallback
+        setUserSetting("analyzerHeatLossSource", results.heatLossSource || 'default');
       }
       setProgress({ stage: 'Complete!', percent: 100 });
-      if (results.usingDoeFallback) {
-        setSuccessMessage("Analysis complete using typical building heat loss. Upload a file with a longer 'heat off' period to get a measured value.");
+      
+      // Track whether this analysis was from a measured coast-down
+      const wasMeasured = results.heatLossSource === 'measured';
+      setLastAnalysisWasMeasured(wasMeasured);
+      
+      if (results.usingDoeFallback || !wasMeasured) {
+        setSuccessMessage("Analysis complete using estimated building heat loss. Upload a file with a longer 'heat off' period (3+ hours) to get a measured value.");
       } else {
         setSuccessMessage("Success! The calculated Heat Loss Factor is now available in the other calculator tools.");
       }
@@ -2012,8 +2009,8 @@ const SystemPerformanceAnalyzer = () => {
           console.log(`[SystemPerformanceAnalyzer] ✅ Saved ${data.length} rows to IndexedDB`);
         } catch (storageErr) {
           console.error('[SystemPerformanceAnalyzer] Failed to save CSV data to IndexedDB:', storageErr);
-          // Don't set fileTooLargeForStorage - IndexedDB should handle large files
-          // But log the error for debugging
+          // IndexedDB should handle large files, but if it fails, we'll still use the data in memory
+          // Don't set fileTooLargeForStorage - IndexedDB handles large datasets
         }
 
         // Store CSV data summary for Ask Joule to use (still use localStorage for small metadata)
@@ -2062,21 +2059,6 @@ const SystemPerformanceAnalyzer = () => {
         const dataForAnalysis = sampledData.length >= 4 ? sampledData : data;
         if (sampledData.length > 0 && sampledData.length < data.length) {
           logger.debug(`analyzeThermostatData: sampled ${sampledData.length} rows at 15-min intervals (of ${data.length}) for faster analysis`);
-        }
-        
-        // Store FULL CSV data in IndexedDB (handles large datasets without size limits)
-        // IndexedDB can store MB+ of data, so we don't need to truncate
-        setProgress({ stage: 'Saving CSV data to IndexedDB...', percent: 50 });
-        
-        try {
-          const filename = file ? file.name : 'uploaded_data.csv';
-          await saveCsvData(data, activeZoneId, filename);
-          setFileTooLargeForStorage(false);
-          console.log(`[SystemPerformanceAnalyzer] ✅ Saved ${data.length} rows to IndexedDB`);
-        } catch (storageErr) {
-          console.error('[SystemPerformanceAnalyzer] Failed to save CSV data to IndexedDB:', storageErr);
-          // IndexedDB should handle large files, but if it fails, we'll still use the data in memory
-          // Don't set fileTooLargeForStorage - IndexedDB handles large datasets
         }
         
         // Set the data in state for charts and display (always use full data for current session)
@@ -2435,19 +2417,35 @@ const SystemPerformanceAnalyzer = () => {
         })()}
 
         {successMessage && (
-          <div className="mt-6 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg p-6 space-y-4">
-            <p className="text-lg text-emerald-700 dark:text-emerald-300 font-semibold">{successMessage}</p>
-            <button
-              onClick={() => navigate('/cost-forecaster', { state: { useCalculatedFactor: true } })}
-              className="w-full inline-flex items-center justify-center px-6 py-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg font-bold text-lg hover:from-emerald-700 hover:to-green-700 dark:from-emerald-600 dark:to-green-600 dark:hover:from-emerald-500 dark:hover:to-green-500 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              <span className="mr-2">→</span>
-              Use this data in the 7-Day Cost Forecaster
-            </button>
-            <p className="text-sm text-emerald-600 dark:text-emerald-400">Your calculated heat loss factor will be imported automatically</p>
+          <div className={`mt-6 ${lastAnalysisWasMeasured 
+            ? 'bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 border-2 border-emerald-300 dark:border-emerald-700' 
+            : 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 border-2 border-amber-300 dark:border-amber-700'} rounded-lg p-6 space-y-4`}>
+            <p className={`text-lg font-semibold ${lastAnalysisWasMeasured 
+              ? 'text-emerald-700 dark:text-emerald-300' 
+              : 'text-amber-700 dark:text-amber-300'}`}>{successMessage}</p>
+            
+            {lastAnalysisWasMeasured ? (
+              <>
+                <button
+                  onClick={() => navigate('/cost-forecaster', { state: { useCalculatedFactor: true } })}
+                  className="w-full inline-flex items-center justify-center px-6 py-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg font-bold text-lg hover:from-emerald-700 hover:to-green-700 dark:from-emerald-600 dark:to-green-600 dark:hover:from-emerald-500 dark:hover:to-green-500 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <span className="mr-2">→</span>
+                  Use this data in the 7-Day Cost Forecaster
+                </button>
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">Your calculated heat loss factor will be imported automatically</p>
+              </>
+            ) : (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                <strong>Note:</strong> Without a valid 3+ hour coast-down period, the "From CSV Analyzer" option will be unavailable in other tools. 
+                You can still use the DOE-calculated or manual heat loss methods.
+              </p>
+            )}
             <button
               onClick={() => setSuccessMessage("")}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+              className={`px-4 py-2 ${lastAnalysisWasMeasured 
+                ? 'bg-emerald-600 hover:bg-emerald-700' 
+                : 'bg-amber-600 hover:bg-amber-700'} text-white rounded-lg font-medium transition-colors`}
             >
               Dismiss
             </button>
@@ -2737,9 +2735,15 @@ const SystemPerformanceAnalyzer = () => {
             // Calculate annual waste estimate
             const calculateWaste = () => {
               if (!annualEstimate || !userSettings) return null;
-              // Estimate optimal cost (assuming 10% better efficiency is achievable)
-              const optimalEstimate = annualEstimate * 0.9;
-              const waste = annualEstimate - optimalEstimate;
+              
+              const totalCost = typeof annualEstimate.totalCost === 'number'
+                ? annualEstimate.totalCost
+                : null;
+              
+              if (totalCost == null) return null;
+              
+              const optimalCost = totalCost * 0.9; // assume 10% improvement
+              const waste = totalCost - optimalCost;
               return waste > 0 ? waste : 0;
             };
             const annualWaste = calculateWaste();
@@ -2806,12 +2810,14 @@ const SystemPerformanceAnalyzer = () => {
                 {/* Block 2: Money & Comfort Summary */}
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl p-6 mb-6 border border-blue-200 dark:border-blue-800">
                   <div className="flex items-center justify-between flex-wrap gap-4 mb-2">
-                    <div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Annual waste</div>
-                      <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                        {annualWaste ? `~$${Math.round(annualWaste)}/year` : 'Minimal'}
+                      <div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Annual waste</div>
+                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                          {typeof annualWaste === 'number'
+                            ? `~$${Math.round(annualWaste)}/year`
+                            : 'Minimal'}
+                        </div>
                       </div>
-                    </div>
                     <div>
                       <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Comfort risk</div>
                       <div className={`text-3xl font-bold ${
@@ -3071,7 +3077,6 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
 
                   {/* Efficiency Comparison Bar */}
                   {(() => {
-                    const heatLossPerSqFt = result.heatLossFactor ? result.heatLossFactor / squareFeet : 0;
                     const calculatePercentile = (heatLossFactor) => {
                       if (heatLossFactor < 300) return 98;
                       if (heatLossFactor < 400) return 95;
@@ -3577,8 +3582,11 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
 
                   {/* Per Square Foot Analysis */}
                   {result.heatLossFactor != null && (() => {
-                    const squareFeet = userSettings?.squareFeet || activeZone?.squareFeet || 2000;
-                    const heatLossPerSqFt = squareFeet > 0 ? result.heatLossFactor / squareFeet : 0;
+                    const sqFt = userSettings?.squareFeet || activeZone?.squareFeet || 0;
+                    const heatLossPerSqFt = result.heatLossFactor && sqFt > 0
+                      ? result.heatLossFactor / sqFt
+                      : null;
+                    if (heatLossPerSqFt == null) return null;
                     return (
                     <div>
                       <p className="font-bold text-gray-200 mb-2">📏 Normalized Per-Square-Foot Factor</p>
@@ -3591,7 +3599,7 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
                       </p>
                       <code className="block p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700 mb-2" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Normalized Factor = Heat Loss Factor / Square Feet<br />
-                        = {result.heatLossFactor.toFixed(1)} BTU/hr/°F / {squareFeet.toLocaleString()} sq ft<br />
+                        = {result.heatLossFactor.toFixed(1)} BTU/hr/°F / {sqFt.toLocaleString()} sq ft<br />
                         = <strong>{heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft</strong>
                       </code>
                       <div className="bg-gray-800/40 p-3 rounded-lg text-sm space-y-1 mb-2">
