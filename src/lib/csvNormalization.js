@@ -1,37 +1,42 @@
 // Brand-agnostic CSV normalization for System Performance Analyzer
 
+// ☦️ ECOBEE CSV FORMAT: Ecobee CSVs have column names that get truncated in Excel:
+// - "Outdoor Temp (F)" becomes "Outdoor Tel" or "Outdoor Tei"
+// - "Current Temp (F)" becomes "Current Ten"
+// - "Heat Stage 1 (sec)" becomes "Heat Stage" or "Heat Stage :" or "Heat Stage 1"
+// - "Aux Heat 1 (Fan (sec))" becomes "Aux Heat 1 (" or "Aux Heat 1"
 const HEADER_SYNONYMS = {
   Date: [/^date$/i],
   Time: [/^time$/i],
   Timestamp: [/^(timestamp|date\s*time|datetime|date_time|date-time)$/i],
   "Outdoor Temp (F)": [
+    /^outdoor\s*tel/i,           // Ecobee truncated: "Outdoor Tel"
+    /^outdoor\s*tei/i,           // Alternative truncation: "Outdoor Tei"
+    /^outdoor\s*temp/i,          // "Outdoor Temp" (partial or full)
     /^(out|outside|outdoor)[^a-zA-Z0-9_]*temp/i,
     /^outdoor temperature\s*\(f\)/i,
     /^outdoor temperature$/i,
     /^outside temperature$/i,
-    /^outdoor tel$/i, // Ecobee truncated: "Outdoor Tel"
-    /^outdoor\s*tel/i,
   ],
   "Thermostat Temperature (F)": [
+    /^current\s*ten/i,           // Ecobee truncated: "Current Ten" (Current Temperature)
+    /^current\s*temp/i,          // "Current Temp" (partial or full)
     /^(thermostat|indoor|inside)[^a-zA-Z0-9_]*temp/i,
     /^indoor temperature\s*\(f\)/i,
     /^thermostat temperature$/i,
     /^temperature\s*\(f\)$/i,
-    /^current ten$/i, // Ecobee truncated: "Current Ten" (Current Temperature)
-    /^current\s*ten/i,
-    /^current temp/i,
   ],
   "Heat Stage 1 (sec)": [
+    /^heat\s*stage\s*1?\s*:?\s*\(?/i,  // Ecobee: "Heat Stage :" or "Heat Stage 1 (" (truncated)
+    /^heat\s*stage\s*1/i,              // "Heat Stage 1" (with or without units)
+    /^heat\s*stage$/i,                 // Ecobee: "Heat Stage" (without "1" or units)
     /^(heat|compressor|stage\s*1|hp stage 1).*?(sec|seconds|runtime|run time|time)$/i,
-    /^heat stage 1$/i,
-    /^heat stage$/i, // Ecobee: "Heat Stage" (without "1" or units)
-    /^heat\s*stage$/i,
   ],
   "Aux Heat 1 (sec)": [
+    /^aux\s*heat\s*1\s*\(fan/i,        // Ecobee: "Aux Heat 1 (Fan (sec))" truncated to "Aux Heat 1 (Fan"
+    /^aux\s*heat\s*1\s*\(/i,           // Ecobee truncated: "Aux Heat 1 ("
+    /^aux\s*heat\s*1/i,                // "Aux Heat 1" (partial)
     /^(aux|auxiliary).*?(heat).*?(sec|seconds|runtime|run time|time)$/i,
-    /^aux heat 1$/i,
-    /^aux heat 1\s*\(fan\s*\(sec\)\)$/i, // Ecobee: "Aux Heat 1 (Fan (sec))"
-    /^aux heat 1\s*\(fan/i,
   ],
 };
 

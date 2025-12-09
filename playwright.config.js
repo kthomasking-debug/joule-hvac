@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import os from "os";
 
 /**
  * Playwright configuration for end-to-end testing
@@ -13,9 +14,7 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
   /* Optimize workers: Use CPU count - 1 for better performance, but limit to 4 max */
-  workers: process.env.CI
-    ? 1
-    : Math.min(4, (require("os").cpus().length || 4) - 1),
+  workers: process.env.CI ? 1 : Math.min(4, (os.cpus().length || 4) - 1),
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ["html"],

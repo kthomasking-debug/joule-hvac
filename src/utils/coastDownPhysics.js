@@ -21,6 +21,11 @@ import logger from "./logger";
 
 export const analyzeThermostatData = (data, config) => {
   // Detect column names - check for raw ecobee format first
+  // ☦️ ECOBEE CSV FORMAT: Ecobee CSVs have column names that get truncated in Excel:
+  // - "Outdoor Temp (F)" becomes "Outdoor Tel" or "Outdoor Tei"
+  // - "Current Temp (F)" becomes "Current Ten"
+  // - "Heat Stage 1 (sec)" becomes "Heat Stage" or "Heat Stage :" or "Heat Stage 1"
+  // - "Aux Heat 1 (Fan (sec))" becomes "Aux Heat 1 (" or "Aux Heat 1"
   let outdoorTempCol,
     thermostatTempCol,
     heatStage1Col,
@@ -33,36 +38,50 @@ export const analyzeThermostatData = (data, config) => {
     const availableCols = Object.keys(sampleRow);
     logger.debug("Available columns in data:", availableCols);
 
-    // Try to find ecobee columns first (raw format)
-    outdoorTempCol =
-      availableCols.find((col) => /^Outdoor Tel$/i.test(col.trim())) ||
-      availableCols.find((col) => /outdoor.*temp/i.test(col)) ||
-      "Outdoor Temp (F)";
+    // Helper function to find column by patterns (case-insensitive, trim whitespace)
+    const findCol = (patterns) => {
+      for (const pattern of patterns) {
+        const found = availableCols.find((col) => pattern.test(col.trim()));
+        if (found) return found;
+      }
+      return null;
+    };
 
-    thermostatTempCol =
-      availableCols.find((col) => /^Current Ten$/i.test(col.trim())) ||
-      availableCols.find((col) =>
-        /^(thermostat|indoor|current).*temp/i.test(col)
-      ) ||
-      "Thermostat Temperature (F)";
+    // Try to find ecobee columns first (raw format) - handle truncated names
+    // Patterns are ordered from most specific to most general
+    outdoorTempCol = findCol([
+      /^Outdoor\s*Tel/i,           // Ecobee truncated: "Outdoor Tel"
+      /^Outdoor\s*Tei/i,           // Alternative truncation
+      /^Outdoor\s*Temp/i,          // Full name or partial
+      /outdoor.*temp/i,            // Generic outdoor temp
+    ]) || "Outdoor Temp (F)";
 
-    // Ecobee "Heat Stage" might be in seconds or might need conversion
-    // Also check for "Aux Heat 1 (Fan (sec))" format
-    heatStage1Col =
-      availableCols.find((col) => /^Heat Stage$/i.test(col.trim())) ||
-      availableCols.find((col) => /heat.*stage/i.test(col)) ||
-      "Heat Stage 1 (sec)";
+    thermostatTempCol = findCol([
+      /^Current\s*Ten/i,           // Ecobee truncated: "Current Ten"
+      /^Current\s*Temp/i,          // Full current temp
+      /^Thermostat\s*Temp/i,       // Thermostat Temperature
+      /^(thermostat|indoor|current).*temp/i, // Generic patterns
+    ]) || "Thermostat Temperature (F)";
 
-    auxHeatCol =
-      availableCols.find((col) =>
-        /^Aux Heat 1\s*\(Fan\s*\(sec\)\)$/i.test(col.trim())
-      ) ||
-      availableCols.find((col) => /^Aux Heat 1$/i.test(col.trim())) ||
-      availableCols.find((col) => /aux.*heat/i.test(col)) ||
-      "Aux Heat 1 (sec)";
+    // Ecobee "Heat Stage" variants - handle all truncated formats
+    // Note: Column name might include colon or other chars due to Excel truncation
+    heatStage1Col = findCol([
+      /^Heat\s*Stage\s*1?\s*:?\s*\(?/i,  // "Heat Stage :" or "Heat Stage 1 (" etc.
+      /^Heat\s*Stage\s*1/i,              // "Heat Stage 1" (with or without sec)
+      /^Heat\s*Stage$/i,                 // Just "Heat Stage"
+      /heat.*stage/i,                    // Generic heat stage pattern
+    ]) || "Heat Stage 1 (sec)";
 
-    timeCol = availableCols.find((col) => /^Time$/i.test(col.trim())) || "Time";
-    dateCol = availableCols.find((col) => /^Date$/i.test(col.trim())) || "Date";
+    // Aux Heat variants - handle truncated "(Fan (sec))" format
+    auxHeatCol = findCol([
+      /^Aux\s*Heat\s*1\s*\(Fan/i,        // "Aux Heat 1 (Fan (sec))" truncated
+      /^Aux\s*Heat\s*1\s*\(/i,           // "Aux Heat 1 (" truncated
+      /^Aux\s*Heat\s*1/i,                // Just "Aux Heat 1"
+      /aux.*heat/i,                      // Generic aux heat pattern
+    ]) || "Aux Heat 1 (sec)";
+
+    timeCol = findCol([/^Time$/i]) || "Time";
+    dateCol = findCol([/^Date$/i]) || "Date";
 
     logger.debug("Detected columns:", {
       outdoorTempCol,

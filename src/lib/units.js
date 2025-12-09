@@ -174,7 +174,7 @@ export function formatJoulesParts(joulesRaw) {
 //   const { unitSystem, setUnitSystem } = useUnitSystem();
 
 export function useUnitSystem() {
-  const [unitSystem, setUnitSystem] = useState(getInitialUnitSystem);
+  const [unitSystem, setUnitSystem] = useState(() => getInitialUnitSystem());
 
   useEffect(() => {
     saveUnitSystem(unitSystem);

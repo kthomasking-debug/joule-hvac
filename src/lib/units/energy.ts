@@ -83,3 +83,5 @@ export function jToKWh(joules: number): number {
   return joules / J_PER_KWH;
 }
 
+
+

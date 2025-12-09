@@ -137,8 +137,10 @@ export function computeHourlyPerformance(
   const buildingHeatLossBtu = btuLossPerDegreeF * tempDiff;
 
   const capacityFactor = getCapacityFactor(_outdoorTemp);
-  const heatpumpOutputBtu =
-    _tons * KW_PER_TON_OUTPUT * capacityFactor * BTU_PER_KWH;
+  // Correct formula: tons × 12,000 BTU/ton × capacity factor
+  // (NOT tons × 3.517 × capacityFactor × 3412 - that multiplies two conversion factors incorrectly)
+  const BTU_PER_TON = 12000;
+  const heatpumpOutputBtu = _tons * BTU_PER_TON * capacityFactor;
 
   const powerFactor = 1 / Math.max(0.7, capacityFactor || 0.7);
   const baseElectricalKw = _compressorPower * powerFactor;

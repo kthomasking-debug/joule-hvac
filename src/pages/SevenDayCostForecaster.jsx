@@ -933,14 +933,12 @@ const SevenDayCostForecaster = () => {
     // Priority 3: Calculated from Building Characteristics (DoE data)
     if (useCalculatedHeatLoss) {
       try {
-        const BASE_BTU_PER_SQFT_HEATING = 22.67; // empirical typical value
-        const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-        const designHeatLoss =
-          (squareFeet || 1500) *
-          BASE_BTU_PER_SQFT_HEATING *
-          (insulationLevel || 1.0) *
-          (homeShape || 1.0) *
-          ceilingMultiplier;
+        const designHeatLoss = heatUtils.calculateHeatLoss({
+          squareFeet: squareFeet || 1500,
+          insulationLevel: insulationLevel || 1.0,
+          homeShape: homeShape || 1.0,
+          ceilingHeight: ceilingHeight || 8,
+        });
         return designHeatLoss; // BTU/hr at ~70°F delta
       } catch (e) {
         console.warn("Calculated heat loss computation failed", e);
@@ -952,16 +950,14 @@ const SevenDayCostForecaster = () => {
       return heatLoss;
     }
     
-    // Final fallback: approximate design heat loss
+    // Final fallback: approximate design heat loss using centralized function
     try {
-      const BASE_BTU_PER_SQFT_HEATING = 22.67;
-      const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-      const designHeatLoss =
-        (squareFeet || 1500) *
-        BASE_BTU_PER_SQFT_HEATING *
-        (insulationLevel || 1.0) *
-        (homeShape || 1.0) *
-        ceilingMultiplier;
+      const designHeatLoss = heatUtils.calculateHeatLoss({
+        squareFeet: squareFeet || 1500,
+        insulationLevel: insulationLevel || 1.0,
+        homeShape: homeShape || 1.0,
+        ceilingHeight: ceilingHeight || 8,
+      });
       return designHeatLoss;
     } catch (e) {
       console.warn("Fallback heat loss computation failed", e);
@@ -1741,11 +1737,13 @@ const SevenDayCostForecaster = () => {
   }, [adjustedForecast, indoorTemp, getPerformanceAtTemp, utilityCost]);
 
   const savingsVsBaseline = useMemo(() => {
-    if (!baselineCost || !weeklyMetrics) return null;
+    if (!baselineCost || !weeklyMetrics || !Number.isFinite(baselineCost)) return null;
     const currentCost = energyMode === "cooling" 
       ? weeklyMetrics.totalCost 
       : (breakdownView === "withAux" ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost);
-    return baselineCost - currentCost;
+    if (!Number.isFinite(currentCost)) return null;
+    const savings = baselineCost - currentCost;
+    return Number.isFinite(savings) ? savings : null;
   }, [baselineCost, weeklyMetrics, energyMode, breakdownView]);
 
   // Determine thermostat mode for SeasonProvider
@@ -4065,6 +4063,52 @@ const SevenDayCostForecaster = () => {
                       <p className="text-sm text-[#A7B0BA]">
                         Total heat loss @ {formatTemperatureFromF(70, unitSystem, { decimals: 0, withUnit: false })}°{unitSystem === "intl" ? "C" : "F"} ΔT: <strong className="text-[#E8EDF3]">{formatCapacityFromKbtuh((effectiveHeatLoss || 0) / 1000, unitSystem, { decimals: 0 })}</strong>
                       </p>
+                      {(() => {
+                        const heatLossPerDegF = (effectiveHeatLoss || 0) / 70;
+                        const heatLossCoefficient = squareFeet > 0 ? heatLossPerDegF / squareFeet : 0;
+                        const heatLossPer1000SqFt = heatLossCoefficient * 1000;
+                        if (heatLossCoefficient > 0) {
+                          let context = "";
+                          let doeAlignment = "";
+                          // DOE ranges: well-insulated: 0.2-0.4, average existing: 0.4-0.6, poor: >0.6
+                          // Per 1000 sq ft: well-insulated: 200-400, average: 400-600, poor: >600
+                          if (heatLossCoefficient < 0.14) {
+                            context = "Passive House / Super-insulated (or school bus/RV)";
+                            doeAlignment = "Below DOE 'well-insulated' range (0.2-0.4). Verify square footage is actual heated floor area, not total surface area. For school buses/RVs, enter 200-400 sq ft actual floor space.";
+                          } else if (heatLossCoefficient < 0.2) {
+                            context = "Very well-insulated (below DOE typical)";
+                            const insulationMult = insulationLevel;
+                            let recommendation = "";
+                            if (insulationMult < 0.7) {
+                              recommendation = ` Your insulation multiplier (${insulationMult.toFixed(2)}×) is very aggressive. Values <0.70× may not account for real-world infiltration and window losses that DOE includes. Consider using 0.70-0.80× for typical well-insulated homes.`;
+                            }
+                            doeAlignment = `Below DOE 'well-insulated' range (0.2-0.4). This may indicate exceptional insulation, but could also indicate an input error.${recommendation} Verify square footage is actual heated floor area.`;
+                          } else if (heatLossCoefficient < 0.4) {
+                            context = "Well-insulated (DOE typical for new homes)";
+                            doeAlignment = "Within DOE 'well-insulated' range (0.2-0.4 BTU/(hr·ft²·°F)) for typical new construction.";
+                          } else if (heatLossCoefficient < 0.6) {
+                            context = "Average insulation (DOE typical for existing homes)";
+                            doeAlignment = "Within DOE 'average existing' range (0.4-0.6 BTU/(hr·ft²·°F)) for pre-2000s construction.";
+                          } else {
+                            context = "Poor insulation";
+                            doeAlignment = "Above DOE 'average existing' range (>0.6 BTU/(hr·ft²·°F)). Consider insulation upgrades.";
+                          }
+                          return (
+                            <div className="mt-2 p-2 bg-yellow-900/20 border border-yellow-700/50 rounded text-xs">
+                              <p className="text-yellow-300 mb-1">
+                                <strong>Heat Loss Coefficient:</strong> {heatLossCoefficient.toFixed(3)} BTU/(hr·ft²·°F) = {heatLossPer1000SqFt.toFixed(0)} BTU/hr/°F per 1,000 sq ft
+                              </p>
+                              <p className="text-yellow-300 mb-1">
+                                <strong>DOE Classification:</strong> {context}
+                              </p>
+                              <p className="text-yellow-400/80 text-[10px] italic">
+                                {doeAlignment} DOE ranges: Well-insulated new homes: 0.2-0.4. Average existing homes: 0.4-0.6. If &lt;0.2, verify square footage is actual heated floor area, not total surface area. For school buses/RVs, enter 200-400 sq ft actual floor space.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     
                     {/* Heat pump configuration */}
@@ -4147,11 +4191,22 @@ const SevenDayCostForecaster = () => {
 
                   {/* Building Heat Loss */}
                   <div>
-                    <h4 className="font-bold text-lg mb-3 text-white">Building Heat Loss</h4>
+                    <h4 className="font-bold text-lg mb-3 text-white">Building Heat Loss (DOE-Aligned)</h4>
                     <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
-                      Base BTU/sq ft: 22.67 BTU/hr/°F per sq ft<br />
+                      Base Coefficient: 22.67 BTU/(hr·ft²) @ 70°F ΔT = 0.324 BTU/(hr·ft²·°F)<br />
+                      <span className="text-gray-400 text-xs italic">
+                        (DOE baseline: Upper end of "average modern" range 0.21-0.36. After multipliers, your building: {(((effectiveHeatLoss || 0) / 70) / squareFeet).toFixed(3)} BTU/(hr·ft²·°F))
+                      </span><br />
                       Square Feet: {squareFeet.toLocaleString()} sq ft<br />
+                      <span className="text-gray-400 text-xs italic">
+                        (Note: This is heated floor area. For non-standard structures like school buses/RVs, enter actual conditioned floor space, typically 200-400 sq ft)
+                      </span><br />
                       Insulation Factor: {insulationLevel.toFixed(2)}x<br />
+                      {insulationLevel < 0.7 && (
+                        <span className="text-yellow-400 text-xs italic">
+                          ⚠️ Very aggressive multiplier. Values &lt;0.70× may not account for real-world infiltration (10-20% of load) and window losses that DOE includes. For typical well-insulated homes, 0.70-0.80× is more realistic.<br />
+                        </span>
+                      )}
                       {homeShape !== 1.0 && <>Home Shape Factor: {homeShape.toFixed(2)}x<br /></>}
                       Ceiling Height Multiplier: {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x<br />
                       <br />
@@ -4166,7 +4221,25 @@ const SevenDayCostForecaster = () => {
                         </>
                       )}
                       <br />
-                      BTU Loss per °F: <strong>{((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F</strong>
+                      Heat Loss Coefficient: <strong>{(((effectiveHeatLoss || 0) / 70) / squareFeet).toFixed(3)} BTU/(hr·ft²·°F)</strong><br />
+                      Total BTU Loss per °F: <strong>{((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F</strong><br />
+                      <span className="text-gray-400 text-xs italic">
+                        Calculation: {((effectiveHeatLoss || 0) / 70).toFixed(1)} = {(effectiveHeatLoss || 0).toLocaleString()} BTU/hr @ 70°F ÷ 70°F<br />
+                        This means: For each 1°F difference between indoor and outdoor temp, your home loses {((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU per hour.<br />
+                        Example: At 30°F outside with 70°F inside (40°F difference), heat loss = {((effectiveHeatLoss || 0) / 70).toFixed(1)} × 40 = {(((effectiveHeatLoss || 0) / 70) * 40).toFixed(0)} BTU/hr<br />
+                        <br />
+                        <strong>Context:</strong> For {squareFeet.toLocaleString()} sq ft, {((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F = {((((effectiveHeatLoss || 0) / 70) / squareFeet) * 1000).toFixed(0)} BTU/hr/°F per 1,000 sq ft. 
+                        {(() => {
+                          const coeff = ((effectiveHeatLoss || 0) / 70) / squareFeet;
+                          if (coeff < 0.2) {
+                            return `This indicates very well-insulated construction (below DOE typical range of 0.2-0.4). For comparison, an average 2000 sq ft home with typical insulation would be ~400-600 BTU/hr/°F.`;
+                          } else if (coeff < 0.4) {
+                            return `This is within DOE's "well-insulated" range (0.2-0.4 BTU/(hr·ft²·°F)) for new construction.`;
+                          } else {
+                            return `This is within DOE's typical range for existing homes.`;
+                          }
+                        })()}
+                      </span>
                     </code>
                   </div>
 
@@ -4202,17 +4275,27 @@ const SevenDayCostForecaster = () => {
                           if (exampleTemp < 17) capacityFactor = 0.70 - (17 - exampleTemp) * 0.0074;
                           capacityFactor = Math.max(0.3, capacityFactor);
                           // Calculate heat output
-                          const KW_PER_TON_OUTPUT = 3.517;
-                          const BTU_PER_KWH = 3412.14;
-                          const heatpumpOutputBtu = tons * KW_PER_TON_OUTPUT * capacityFactor * BTU_PER_KWH;
+                          // Correct formula: tons × 12,000 BTU/ton × capacity factor
+                          // (NOT tons × 3.517 × capacityFactor × 3412 - that multiplies two conversion factors incorrectly)
+                          const BTU_PER_TON = 12000;
+                          const heatpumpOutputBtu = tons * BTU_PER_TON * capacityFactor;
                           return (
                             <>
                               Capacity Factor: <strong>{capacityFactor.toFixed(3)}</strong><br />
                               Defrost Penalty: <strong>{(examplePerf.defrostPenalty || 1.0).toFixed(3)}</strong><br />
                               Electrical Power: <strong>{(examplePerf.electricalKw || 0).toFixed(2)} kW</strong><br />
+                              <span className="text-gray-400 text-xs">
+                                (Rated: {compressorPower.toFixed(2)} kW × Power Factor × Defrost Penalty)
+                              </span><br />
                               Heat Output: <strong>{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                              <span className="text-gray-400 text-xs">
+                                ({tons} tons × 12,000 BTU/ton × {capacityFactor.toFixed(3)})
+                              </span><br />
                               Building Heat Loss: <strong>{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
                               Runtime: <strong>{(examplePerf.runtime || 0).toFixed(1)}%</strong><br />
+                              <span className="text-gray-400 text-xs">
+                                ({((buildingHeatLossBtu / heatpumpOutputBtu) * 100).toFixed(1)}% = {buildingHeatLossBtu.toFixed(0)} ÷ {heatpumpOutputBtu.toFixed(0)})
+                              </span><br />
                               {examplePerf.auxKw > 0 && (
                                 <>
                                   Aux Heat: <strong>{(examplePerf.auxKw || 0).toFixed(2)} kW</strong><br />
@@ -4235,6 +4318,9 @@ const SevenDayCostForecaster = () => {
                       <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Total Cost (7 days): <strong>${weeklyMetrics.totalCost.toFixed(2)}</strong><br />
                         Total Energy (7 days): <strong>{weeklyMetrics.totalEnergy.toFixed(1)} kWh</strong><br />
+                        <span className="text-gray-400 text-xs">
+                          (Includes defrost penalty energy when applicable)
+                        </span><br />
                         Average Daily Cost: <strong>${(weeklyMetrics.totalCost / 7).toFixed(2)}</strong><br />
                         Average Daily Energy: <strong>{(weeklyMetrics.totalEnergy / 7).toFixed(1)} kWh</strong><br />
                         <br />

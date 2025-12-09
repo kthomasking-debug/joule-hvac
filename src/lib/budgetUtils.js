@@ -1,4 +1,5 @@
 // Helper utilities for annual and monthly budget estimates
+import * as heatUtils from './heatUtils';
 
 const BASE_COOLING_LOAD_FACTOR = 28.0; // BTU/(hr·ft²)
 const BASE_BTU_PER_SQFT = 22.67;
@@ -175,13 +176,13 @@ export function estimateMonthlyHeatingCostFromHDD({
   hspf = 10.0,
   electricityRate = 0.15,
 } = {}) {
-  const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-  const estimatedDesignHeatLoss =
-    squareFeet *
-    BASE_BTU_PER_SQFT *
-    insulationLevel *
-    homeShape *
-    ceilingMultiplier;
+  // Use centralized heat loss calculation function
+  const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+    squareFeet,
+    insulationLevel,
+    homeShape,
+    ceilingHeight,
+  });
   const btuLossPerDegF = estimatedDesignHeatLoss / 70; // consistent with planner's design temp diff
 
   // Convert monthly HDD (degree-days) to kWh equivalent using HSPF

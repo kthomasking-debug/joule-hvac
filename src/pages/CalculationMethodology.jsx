@@ -133,12 +133,15 @@ const CalculationMethodology = () => {
 
                   {/* Understanding the 22.67 Constant */}
                   <div className="bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 p-4">
-                    <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Understanding the Constants</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Understanding the Constants (DOE-Aligned)</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                      <strong>22.67 BTU/(hr·ft²):</strong> This is a baseline Heat Loss Factor used in simplified residential load calculations. It represents the heat loss per square foot for a typically constructed modern home (e.g., 2×4 walls with R-13 insulation, average window quality, and standard air tightness) assuming a 70°F temperature difference.
+                      <strong>22.67 BTU/(hr·ft²) @ 70°F ΔT:</strong> This represents ~0.32 BTU/(hr·ft²·°F) heat loss coefficient, which aligns with U.S. Department of Energy (DOE) guidelines for "average modern" code-built homes (2000s+ construction). This baseline assumes typical construction with R-13 wall insulation, average windows, and standard air tightness.
                     </p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                      Our calculator uses this as a starting point and then applies your specific insulation, home shape, and ceiling height as multipliers to create a more accurate, customized estimate for your building. This method is a common industry practice for providing quick and reliable estimates.
+                      <strong>DOE Typical Ranges:</strong> Well-insulated new homes: 0.2-0.4 BTU/(hr·ft²·°F). Average existing homes: 0.4-0.6 BTU/(hr·ft²·°F). Our calculator uses 0.32 as a starting point and then applies your specific insulation, home shape, and ceiling height multipliers to create a customized estimate. This follows DOE's UA × ΔT approach (where UA is total building envelope conductance).
+                    </p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      <strong>For Precise Values:</strong> DOE recommends using Manual J (ACCA Standard 8) or REScheck software for detailed load calculations. Our simplified approach provides quick estimates aligned with DOE Building America program guidelines.
                     </p>
                   </div>
 

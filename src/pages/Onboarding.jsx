@@ -101,6 +101,8 @@ export default function Onboarding() {
   // Building state (for custom mode)
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 1500);
   const [insulationLevel, setInsulationLevel] = useState(userSettings.insulationLevel || 1.0);
+  const [homeShape, setHomeShape] = useState(userSettings.homeShape || 1.0);
+  const [ceilingHeight, setCeilingHeight] = useState(userSettings.ceilingHeight || 8);
   const [primarySystem, setPrimarySystem] = useState(userSettings.primarySystem || "heatPump");
   // Heat pump size in tons (convert to kBTU: tons * 12)
   const defaultCapacity = userSettings.capacity || userSettings.coolingCapacity || 36; // 36 kBTU = 3 tons
@@ -135,12 +137,12 @@ export default function Onboarding() {
       return calculateHeatLoss({
         squareFeet,
         insulationLevel,
-        homeShape: userSettings.homeShape || 1.0,
-        ceilingHeight: userSettings.ceilingHeight || 8,
+        homeShape: homeShape || 1.0,
+        ceilingHeight: ceilingHeight || 8,
       });
     }
     return 0;
-  }, [squareFeet, insulationLevel, userSettings.homeShape, userSettings.ceilingHeight, heatLossSource]);
+  }, [squareFeet, insulationLevel, homeShape, ceilingHeight, heatLossSource]);
 
   // Check if analyzer data exists
   const hasAnalyzerData = useMemo(() => {
@@ -415,6 +417,8 @@ export default function Onboarding() {
       // Save building settings using unified settings manager (for Ask Joule access)
       setSetting("squareFeet", squareFeet, { source: "onboarding" });
       setSetting("insulationLevel", insulationLevel, { source: "onboarding" });
+      setSetting("homeShape", homeShape, { source: "onboarding" });
+      setSetting("ceilingHeight", ceilingHeight, { source: "onboarding" });
       setSetting("primarySystem", primarySystem, { source: "onboarding" });
       
       // Save heat loss source selection
@@ -438,6 +442,8 @@ export default function Onboarding() {
       if (setUserSetting) {
         setUserSetting("squareFeet", squareFeet);
         setUserSetting("insulationLevel", insulationLevel);
+        setUserSetting("homeShape", homeShape);
+        setUserSetting("ceilingHeight", ceilingHeight);
         setUserSetting("primarySystem", primarySystem);
         if (primarySystem === "heatPump") {
           const capacityKBTU = Math.round(heatPumpTons * 12);
@@ -458,6 +464,8 @@ export default function Onboarding() {
               name: numberOfThermostats === 1 ? "Main Zone" : i === 0 ? "Downstairs" : i === 1 ? "Upstairs" : `Zone ${i + 1}`,
               squareFeet: numberOfThermostats === 1 ? squareFeet : Math.round(squareFeet / numberOfThermostats),
               insulationLevel: insulationLevel,
+              homeShape: homeShape,
+              ceilingHeight: ceilingHeight,
               primarySystem: primarySystem,
               capacity: primarySystem === "heatPump" ? Math.round(heatPumpTons * 12) : null,
               hasCSV: false,
@@ -475,7 +483,7 @@ export default function Onboarding() {
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, ceilingHeight, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -697,6 +705,48 @@ export default function Onboarding() {
                   <option value={0.7}>Good (modern, well-sealed)</option>
                   <option value={0.5}>Excellent (energy star certified)</option>
                 </select>
+              </div>
+
+              {/* Building Shape */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Building Shape
+                </label>
+                <select
+                  value={homeShape}
+                  onChange={(e) => setHomeShape(Number(e.target.value))}
+                  className={selectClasses}
+                >
+                  <option value={0.9}>Two-Story (less exterior surface)</option>
+                  <option value={1.0}>Split-Level / Standard</option>
+                  <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
+                  <option value={1.15}>Manufactured Home</option>
+                  <option value={1.25}>Cabin / A-Frame</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Affects surface area exposure and heat loss.
+                </p>
+              </div>
+
+              {/* Ceiling Height */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Average Ceiling Height
+                </label>
+                <select
+                  value={ceilingHeight}
+                  onChange={(e) => setCeilingHeight(Number(e.target.value))}
+                  className={selectClasses}
+                >
+                  <option value={8}>8 feet (standard)</option>
+                  <option value={9}>9 feet</option>
+                  <option value={10}>10 feet</option>
+                  <option value={12}>12 feet (vaulted)</option>
+                  <option value={16}>16+ feet (cathedral)</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Higher ceilings increase heating volume and energy needs.
+                </p>
               </div>
 
               {/* Primary System */}
@@ -926,6 +976,16 @@ export default function Onboarding() {
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {insulationLevel >= 1.2 ? "Poor" : insulationLevel >= 0.9 ? "Average" : insulationLevel >= 0.6 ? "Good" : "Excellent"}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Building Shape</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    {homeShape <= 0.9 ? "Two-Story" : homeShape <= 1.0 ? "Split-Level" : homeShape <= 1.1 ? "Ranch" : homeShape <= 1.15 ? "Manufactured" : "Cabin/A-Frame"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Ceiling Height</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{ceilingHeight} ft</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Heating System</span>
