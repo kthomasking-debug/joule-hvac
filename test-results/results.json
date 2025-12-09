@@ -1,0 +1,3166 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\Thomas\\calculators\\Cursor\\engineering-tools\\playwright.config.js",
+    "rootDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 4
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 45000
+      },
+      {
+        "outputDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "chromium-mobile",
+        "name": "chromium-mobile",
+        "testDir": "C:/Users/Thomas/calculators/Cursor/engineering-tools/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.57.0",
+    "workers": 4,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:5173",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "stdout": "pipe",
+      "stderr": "pipe"
+    }
+  },
+  "suites": [
+    {
+      "title": "app.spec.js",
+      "file": "app.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Application Navigation",
+          "file": "app.spec.js",
+          "line": 98,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the home page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5135,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:14.768Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-d33d601e8cdd0f67d2bf",
+              "file": "app.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should navigate to all major pages",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16829,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:25.020Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-fa717a79045ed0ec3960",
+              "file": "app.spec.js",
+              "line": 120,
+              "column": 3
+            },
+            {
+              "title": "should load the home page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6058,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:51.501Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-7f4334b91bf1b22081e7",
+              "file": "app.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should navigate to all major pages",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 21546,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:11.805Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-03f9d92f25ab7efb3747",
+              "file": "app.spec.js",
+              "line": 120,
+              "column": 3
+            },
+            {
+              "title": "should load the home page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 4576,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:43.995Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-2d103677255f9767469a",
+              "file": "app.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should navigate to all major pages",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 17489,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:53.490Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-cc4b9d5a84669546c583",
+              "file": "app.spec.js",
+              "line": 120,
+              "column": 3
+            },
+            {
+              "title": "should load the home page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3778,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:16.662Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-0eec5a978bed63624358",
+              "file": "app.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should navigate to all major pages",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14262,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:24.181Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-41ddf5977548963c5672",
+              "file": "app.spec.js",
+              "line": 120,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Ask Joule",
+          "file": "app.spec.js",
+          "line": 157,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display Ask Joule interface",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4743,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:42.009Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-9b1bfd842afef0f2b706",
+              "file": "app.spec.js",
+              "line": 158,
+              "column": 3
+            },
+            {
+              "title": "should allow typing in Ask Joule input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3960,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:46.846Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-7c4a88e25269d95aa62c",
+              "file": "app.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "should display Ask Joule interface",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 3664,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:33.389Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-9bfe06852ed06c17e0d1",
+              "file": "app.spec.js",
+              "line": 158,
+              "column": 3
+            },
+            {
+              "title": "should allow typing in Ask Joule input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 3401,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:37.096Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-00a7988c17e729a3304d",
+              "file": "app.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "should display Ask Joule interface",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 4514,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:11.028Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-858f75fdd77cd7555446",
+              "file": "app.spec.js",
+              "line": 158,
+              "column": 3
+            },
+            {
+              "title": "should allow typing in Ask Joule input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 3925,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:15.591Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-9e0bcd12e90493a705bb",
+              "file": "app.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "should display Ask Joule interface",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4749,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:38.478Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-08e49cd50f4b18d618f8",
+              "file": "app.spec.js",
+              "line": 158,
+              "column": 3
+            },
+            {
+              "title": "should allow typing in Ask Joule input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5026,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:43.264Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-fdbbc5992616cffc4ecf",
+              "file": "app.spec.js",
+              "line": 200,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Settings Page",
+          "file": "app.spec.js",
+          "line": 232,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load settings page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 5365,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:14.655Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-f545cd34030a7a44dc33",
+              "file": "app.spec.js",
+              "line": 233,
+              "column": 3
+            },
+            {
+              "title": "should load settings page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8023,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:52.212Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-ae5e040630fb0d823558",
+              "file": "app.spec.js",
+              "line": 233,
+              "column": 3
+            },
+            {
+              "title": "should load settings page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6529,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:45.783Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-83ee42449f651c406435",
+              "file": "app.spec.js",
+              "line": 233,
+              "column": 3
+            },
+            {
+              "title": "should load settings page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4508,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:20.431Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-a7d39926f6ac94310fc0",
+              "file": "app.spec.js",
+              "line": 233,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "7-Day Cost Forecaster",
+          "file": "app.spec.js",
+          "line": 256,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load forecast page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4835,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:24.932Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-6d6dada9cc53ae4c7191",
+              "file": "app.spec.js",
+              "line": 257,
+              "column": 3
+            },
+            {
+              "title": "should load forecast page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4623,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:10.463Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-efa356710cea97222006",
+              "file": "app.spec.js",
+              "line": 257,
+              "column": 3
+            },
+            {
+              "title": "should load forecast page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3422,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:57.477Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-5bd29fbd454f63f4e91c",
+              "file": "app.spec.js",
+              "line": 257,
+              "column": 3
+            },
+            {
+              "title": "should load forecast page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 3766,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:29.048Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-4769297b0a9d64dab3e8",
+              "file": "app.spec.js",
+              "line": 257,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "System Performance Analyzer",
+          "file": "app.spec.js",
+          "line": 297,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load analyzer page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6132,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:29.825Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-7f8e949c993356041fa1",
+              "file": "app.spec.js",
+              "line": 298,
+              "column": 3
+            },
+            {
+              "title": "should load analyzer page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4059,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:15.127Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-3198bdc170fc7ae2e9ed",
+              "file": "app.spec.js",
+              "line": 298,
+              "column": 3
+            },
+            {
+              "title": "should load analyzer page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4059,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:00.938Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-8311c90477176deef80e",
+              "file": "app.spec.js",
+              "line": 298,
+              "column": 3
+            },
+            {
+              "title": "should load analyzer page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4493,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:32.855Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-09541506383d93197053",
+              "file": "app.spec.js",
+              "line": 298,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Energy Flow Page",
+          "file": "app.spec.js",
+          "line": 338,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load energy flow page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6251,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:36.091Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-5689057a80e74d9448bb",
+              "file": "app.spec.js",
+              "line": 339,
+              "column": 3
+            },
+            {
+              "title": "should load energy flow page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5692,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:19.227Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-5c56608ba2d2a84e340d",
+              "file": "app.spec.js",
+              "line": 339,
+              "column": 3
+            },
+            {
+              "title": "should load energy flow page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6716,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:05.039Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-5ba72544ac245996b129",
+              "file": "app.spec.js",
+              "line": 339,
+              "column": 3
+            },
+            {
+              "title": "should load energy flow page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 5360,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:37.400Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-1eb670b81467bce4821f",
+              "file": "app.spec.js",
+              "line": 339,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Monthly Budget Planner",
+          "file": "app.spec.js",
+          "line": 364,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load budget page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5588,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:15.001Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-a695da948879f4b24f74",
+              "file": "app.spec.js",
+              "line": 365,
+              "column": 3
+            },
+            {
+              "title": "should load budget page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 5483,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:54.057Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-4df284867a9a6730f53b",
+              "file": "app.spec.js",
+              "line": 365,
+              "column": 3
+            },
+            {
+              "title": "should load budget page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4513,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:46.201Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-c7b28262d59767379f46",
+              "file": "app.spec.js",
+              "line": 365,
+              "column": 3
+            },
+            {
+              "title": "should load budget page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4393,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:20.852Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-75b853383daa18af6c0d",
+              "file": "app.spec.js",
+              "line": 365,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Upgrade ROI Calculator",
+          "file": "app.spec.js",
+          "line": 407,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load upgrade page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5935,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:25.883Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-b81644e1fe34c556f45f",
+              "file": "app.spec.js",
+              "line": 408,
+              "column": 3
+            },
+            {
+              "title": "should load upgrade page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 4292,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:13.819Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-494f0c8790f0ee043088",
+              "file": "app.spec.js",
+              "line": 408,
+              "column": 3
+            },
+            {
+              "title": "should load upgrade page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4321,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:55.911Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-d250549f5a532c355991",
+              "file": "app.spec.js",
+              "line": 408,
+              "column": 3
+            },
+            {
+              "title": "should load upgrade page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4896,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:29.393Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-467d43e75c2b8694909c",
+              "file": "app.spec.js",
+              "line": 408,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Responsive Design",
+          "file": "app.spec.js",
+          "line": 434,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should work on mobile viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6131,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:31.882Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-74eebc6e34c300a98e7a",
+              "file": "app.spec.js",
+              "line": 435,
+              "column": 3
+            },
+            {
+              "title": "should work on tablet viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5416,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:38.095Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-6be59d2ce53e8ef2bbf6",
+              "file": "app.spec.js",
+              "line": 460,
+              "column": 3
+            },
+            {
+              "title": "should work on mobile viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 3777,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:18.173Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-865eecce5399df78053e",
+              "file": "app.spec.js",
+              "line": 435,
+              "column": 3
+            },
+            {
+              "title": "should work on tablet viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 3832,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:22.008Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-b87842d953ba8c3533b5",
+              "file": "app.spec.js",
+              "line": 460,
+              "column": 3
+            },
+            {
+              "title": "should work on mobile viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4526,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:00.270Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-330cd6cb7886005a3a14",
+              "file": "app.spec.js",
+              "line": 435,
+              "column": 3
+            },
+            {
+              "title": "should work on tablet viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4624,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:04.835Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-371d9efbbce10d77a592",
+              "file": "app.spec.js",
+              "line": 460,
+              "column": 3
+            },
+            {
+              "title": "should work on mobile viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5512,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:34.326Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-15127d57c2b0dd56f9d8",
+              "file": "app.spec.js",
+              "line": 435,
+              "column": 3
+            },
+            {
+              "title": "should work on tablet viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6409,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:39.882Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-1e05f29e6168c6dd7780",
+              "file": "app.spec.js",
+              "line": 460,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Dark Mode",
+          "file": "app.spec.js",
+          "line": 485,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should toggle dark mode if available",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 5680,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:14.815Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-8411b962a25c803048b4",
+              "file": "app.spec.js",
+              "line": 486,
+              "column": 3
+            },
+            {
+              "title": "should toggle dark mode if available",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4616,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:55.689Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-201bda0c5b7bb2e3fb4a",
+              "file": "app.spec.js",
+              "line": 486,
+              "column": 3
+            },
+            {
+              "title": "should toggle dark mode if available",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4392,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:51.931Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-5c54df9895cf420bb069",
+              "file": "app.spec.js",
+              "line": 486,
+              "column": 3
+            },
+            {
+              "title": "should toggle dark mode if available",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 5026,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:25.063Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a510cc93a867214a2ea0-58ac51a5ff9a0b23630a",
+              "file": "app.spec.js",
+              "line": 486,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "ask-joule-100-questions.spec.js",
+      "file": "ask-joule-100-questions.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Ask Joule Questions - 100 Questions Test",
+          "file": "ask-joule-100-questions.spec.js",
+          "line": 159,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should send 100 questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 7528,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 100 QUESTIONS TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 101 (91.8%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 6 (5.5%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (2.7%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY QUESTION TYPE:\n"
+                        },
+                        {
+                          "text": "   unknown: 101\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 6\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:25.894Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ec14951d47481501d8a-7b9252b93fca2c883f17",
+              "file": "ask-joule-100-questions.spec.js",
+              "line": 167,
+              "column": 3
+            },
+            {
+              "title": "should send 100 questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7205,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 100 QUESTIONS TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 101 (91.8%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 6 (5.5%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (2.7%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY QUESTION TYPE:\n"
+                        },
+                        {
+                          "text": "   unknown: 101\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 6\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:15.745Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ec14951d47481501d8a-7ce10cba868165a8c487",
+              "file": "ask-joule-100-questions.spec.js",
+              "line": 167,
+              "column": 3
+            },
+            {
+              "title": "should send 100 questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6742,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 100 QUESTIONS TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 101 (91.8%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 6 (5.5%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (2.7%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY QUESTION TYPE:\n"
+                        },
+                        {
+                          "text": "   unknown: 101\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 6\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:01.581Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ec14951d47481501d8a-586e26fe06cc6f8fc959",
+              "file": "ask-joule-100-questions.spec.js",
+              "line": 167,
+              "column": 3
+            },
+            {
+              "title": "should send 100 questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 8087,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 100 QUESTIONS TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 101 (91.8%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 6 (5.5%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (2.7%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY QUESTION TYPE:\n"
+                        },
+                        {
+                          "text": "   unknown: 101\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 6\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:34.316Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ec14951d47481501d8a-9407efbb68927a100c7f",
+              "file": "ask-joule-100-questions.spec.js",
+              "line": 167,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "ask-joule-commands.spec.js",
+      "file": "ask-joule-commands.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Ask Joule Command Parser - 100 Commands Test",
+          "file": "ask-joule-commands.spec.js",
+          "line": 176,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should recognize commands without LLM fallback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 7652,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
+                        },
+                        {
+                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
+                        },
+                        {
+                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
+                        },
+                        {
+                          "text": "   setWinterTemp: 14\n"
+                        },
+                        {
+                          "text": "   navigate: 10\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 8\n"
+                        },
+                        {
+                          "text": "   setMode: 7\n"
+                        },
+                        {
+                          "text": "   increaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   decreaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   showScore: 4\n"
+                        },
+                        {
+                          "text": "   funResponse: 4\n"
+                        },
+                        {
+                          "text": "   setSquareFeet: 3\n"
+                        },
+                        {
+                          "text": "   showSavings: 3\n"
+                        },
+                        {
+                          "text": "   setSummerTemp: 2\n"
+                        },
+                        {
+                          "text": "   presetSleep: 2\n"
+                        },
+                        {
+                          "text": "   presetAway: 2\n"
+                        },
+                        {
+                          "text": "   presetHome: 2\n"
+                        },
+                        {
+                          "text": "   help: 2\n"
+                        },
+                        {
+                          "text": "   educate: 2\n"
+                        },
+                        {
+                          "text": "   compareSystem: 2\n"
+                        },
+                        {
+                          "text": "   systemStatus: 1\n"
+                        },
+                        {
+                          "text": "   queryHvacStatus: 1\n"
+                        },
+                        {
+                          "text": "   setInsulationLevel: 1\n"
+                        },
+                        {
+                          "text": "   setHSPF: 1\n"
+                        },
+                        {
+                          "text": "   setSEER: 1\n"
+                        },
+                        {
+                          "text": "   setUtilityCost: 1\n"
+                        },
+                        {
+                          "text": "   savingsAnalysis: 1\n"
+                        },
+                        {
+                          "text": "   calculateHeatLoss: 1\n"
+                        },
+                        {
+                          "text": "   showDiagnostics: 1\n"
+                        },
+                        {
+                          "text": "   checkAuxHeat: 1\n"
+                        },
+                        {
+                          "text": "   setHeatDifferential: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:33.591Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "05aec621f66e62555ff4-2ff681d9c0a432b82dee",
+              "file": "ask-joule-commands.spec.js",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should recognize commands without LLM fallback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6531,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
+                        },
+                        {
+                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
+                        },
+                        {
+                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
+                        },
+                        {
+                          "text": "   setWinterTemp: 14\n"
+                        },
+                        {
+                          "text": "   navigate: 10\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 8\n"
+                        },
+                        {
+                          "text": "   setMode: 7\n"
+                        },
+                        {
+                          "text": "   increaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   decreaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   showScore: 4\n"
+                        },
+                        {
+                          "text": "   funResponse: 4\n"
+                        },
+                        {
+                          "text": "   setSquareFeet: 3\n"
+                        },
+                        {
+                          "text": "   showSavings: 3\n"
+                        },
+                        {
+                          "text": "   setSummerTemp: 2\n"
+                        },
+                        {
+                          "text": "   presetSleep: 2\n"
+                        },
+                        {
+                          "text": "   presetAway: 2\n"
+                        },
+                        {
+                          "text": "   presetHome: 2\n"
+                        },
+                        {
+                          "text": "   help: 2\n"
+                        },
+                        {
+                          "text": "   educate: 2\n"
+                        },
+                        {
+                          "text": "   compareSystem: 2\n"
+                        },
+                        {
+                          "text": "   systemStatus: 1\n"
+                        },
+                        {
+                          "text": "   queryHvacStatus: 1\n"
+                        },
+                        {
+                          "text": "   setInsulationLevel: 1\n"
+                        },
+                        {
+                          "text": "   setHSPF: 1\n"
+                        },
+                        {
+                          "text": "   setSEER: 1\n"
+                        },
+                        {
+                          "text": "   setUtilityCost: 1\n"
+                        },
+                        {
+                          "text": "   savingsAnalysis: 1\n"
+                        },
+                        {
+                          "text": "   calculateHeatLoss: 1\n"
+                        },
+                        {
+                          "text": "   showDiagnostics: 1\n"
+                        },
+                        {
+                          "text": "   checkAuxHeat: 1\n"
+                        },
+                        {
+                          "text": "   setHeatDifferential: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:23.059Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "05aec621f66e62555ff4-4dd3e26e5cb122c9dff3",
+              "file": "ask-joule-commands.spec.js",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should recognize commands without LLM fallback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 7182,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
+                        },
+                        {
+                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
+                        },
+                        {
+                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
+                        },
+                        {
+                          "text": "   setWinterTemp: 14\n"
+                        },
+                        {
+                          "text": "   navigate: 10\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 8\n"
+                        },
+                        {
+                          "text": "   setMode: 7\n"
+                        },
+                        {
+                          "text": "   increaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   decreaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   showScore: 4\n"
+                        },
+                        {
+                          "text": "   funResponse: 4\n"
+                        },
+                        {
+                          "text": "   setSquareFeet: 3\n"
+                        },
+                        {
+                          "text": "   showSavings: 3\n"
+                        },
+                        {
+                          "text": "   setSummerTemp: 2\n"
+                        },
+                        {
+                          "text": "   presetSleep: 2\n"
+                        },
+                        {
+                          "text": "   presetAway: 2\n"
+                        },
+                        {
+                          "text": "   presetHome: 2\n"
+                        },
+                        {
+                          "text": "   help: 2\n"
+                        },
+                        {
+                          "text": "   educate: 2\n"
+                        },
+                        {
+                          "text": "   compareSystem: 2\n"
+                        },
+                        {
+                          "text": "   systemStatus: 1\n"
+                        },
+                        {
+                          "text": "   queryHvacStatus: 1\n"
+                        },
+                        {
+                          "text": "   setInsulationLevel: 1\n"
+                        },
+                        {
+                          "text": "   setHSPF: 1\n"
+                        },
+                        {
+                          "text": "   setSEER: 1\n"
+                        },
+                        {
+                          "text": "   setUtilityCost: 1\n"
+                        },
+                        {
+                          "text": "   savingsAnalysis: 1\n"
+                        },
+                        {
+                          "text": "   calculateHeatLoss: 1\n"
+                        },
+                        {
+                          "text": "   showDiagnostics: 1\n"
+                        },
+                        {
+                          "text": "   checkAuxHeat: 1\n"
+                        },
+                        {
+                          "text": "   setHeatDifferential: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:08.418Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "05aec621f66e62555ff4-4088ad616a1c0501c95a",
+              "file": "ask-joule-commands.spec.js",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should recognize commands without LLM fallback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 6193,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
+                        },
+                        {
+                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
+                        },
+                        {
+                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
+                        },
+                        {
+                          "text": "   setWinterTemp: 14\n"
+                        },
+                        {
+                          "text": "   navigate: 10\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 8\n"
+                        },
+                        {
+                          "text": "   setMode: 7\n"
+                        },
+                        {
+                          "text": "   increaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   decreaseTemp: 5\n"
+                        },
+                        {
+                          "text": "   showScore: 4\n"
+                        },
+                        {
+                          "text": "   funResponse: 4\n"
+                        },
+                        {
+                          "text": "   setSquareFeet: 3\n"
+                        },
+                        {
+                          "text": "   showSavings: 3\n"
+                        },
+                        {
+                          "text": "   setSummerTemp: 2\n"
+                        },
+                        {
+                          "text": "   presetSleep: 2\n"
+                        },
+                        {
+                          "text": "   presetAway: 2\n"
+                        },
+                        {
+                          "text": "   presetHome: 2\n"
+                        },
+                        {
+                          "text": "   help: 2\n"
+                        },
+                        {
+                          "text": "   educate: 2\n"
+                        },
+                        {
+                          "text": "   compareSystem: 2\n"
+                        },
+                        {
+                          "text": "   systemStatus: 1\n"
+                        },
+                        {
+                          "text": "   queryHvacStatus: 1\n"
+                        },
+                        {
+                          "text": "   setInsulationLevel: 1\n"
+                        },
+                        {
+                          "text": "   setHSPF: 1\n"
+                        },
+                        {
+                          "text": "   setSEER: 1\n"
+                        },
+                        {
+                          "text": "   setUtilityCost: 1\n"
+                        },
+                        {
+                          "text": "   savingsAnalysis: 1\n"
+                        },
+                        {
+                          "text": "   calculateHeatLoss: 1\n"
+                        },
+                        {
+                          "text": "   showDiagnostics: 1\n"
+                        },
+                        {
+                          "text": "   checkAuxHeat: 1\n"
+                        },
+                        {
+                          "text": "   setHeatDifferential: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:42.644Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "05aec621f66e62555ff4-7e173e23ba85cfabfa8e",
+              "file": "ask-joule-commands.spec.js",
+              "line": 185,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "ask-joule-questions.spec.js",
+      "file": "ask-joule-questions.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Ask Joule Questions - LLM Fallback Test",
+          "file": "ask-joule-questions.spec.js",
+          "line": 91,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should send questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 7387,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 QUESTION TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 46 (92.0%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 1 (2.0%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (6.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN:\n"
+                        },
+                        {
+                          "text": "   unknown: 46\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:55:41.531Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7d801b40f34ddfef325e-d39586bff0ea7f9f5cd1",
+              "file": "ask-joule-questions.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should send questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7968,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 QUESTION TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 46 (92.0%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 1 (2.0%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (6.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN:\n"
+                        },
+                        {
+                          "text": "   unknown: 46\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:56:24.993Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7d801b40f34ddfef325e-598f1a020c21f984f514",
+              "file": "ask-joule-questions.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should send questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6349,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 QUESTION TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 46 (92.0%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 1 (2.0%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (6.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN:\n"
+                        },
+                        {
+                          "text": "   unknown: 46\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:09.539Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7d801b40f34ddfef325e-8b18be3b5867215c3e6e",
+              "file": "ask-joule-questions.spec.js",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "should send questions to LLM, not intercept as commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6790,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\n📊 QUESTION TEST SUMMARY:\n"
+                        },
+                        {
+                          "text": "   ✅ Questions sent to LLM: 46 (92.0%)\n"
+                        },
+                        {
+                          "text": "   ⚡ Offline answers (fast & free): 1 (2.0%)\n"
+                        },
+                        {
+                          "text": "   ❌ Commands (should be 0): 3 (6.0%)\n"
+                        },
+                        {
+                          "text": "   💥 Errors: 0 (0.0%)\n"
+                        },
+                        {
+                          "text": "\n⚠️  QUESTIONS INCORRECTLY INTERCEPTED AS COMMANDS:\n"
+                        },
+                        {
+                          "text": "   - \"can I switch to auto mode\" → setMode\n"
+                        },
+                        {
+                          "text": "   - \"can you show me the forecast\" → navigate\n"
+                        },
+                        {
+                          "text": "   - \"show me what\" → navigate\n"
+                        },
+                        {
+                          "text": "\n📈 BREAKDOWN:\n"
+                        },
+                        {
+                          "text": "   unknown: 46\n"
+                        },
+                        {
+                          "text": "   offlineAnswer: 1\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-09T03:57:42.876Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7d801b40f34ddfef325e-7dbbdbae0f4713aa274b",
+              "file": "ask-joule-questions.spec.js",
+              "line": 99,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-12-09T03:55:10.559Z",
+    "duration": 159398.048,
+    "expected": 64,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
