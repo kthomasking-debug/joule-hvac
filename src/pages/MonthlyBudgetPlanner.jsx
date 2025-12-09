@@ -1458,6 +1458,12 @@ const MonthlyBudgetPlanner = () => {
 
         {/* Page Header - Hero Level */}
         <div className="mb-16 animate-fade-in-up pt-6 pb-8">
+          {/* Description at the top */}
+          <p className="text-muted text-base leading-relaxed mb-4">
+            Estimate your typical{" "}
+            {energyMode === "cooling" ? "cooling" : "heating"} bill for any month
+            using 30-year historical climate data
+          </p>
           <div className="flex items-center gap-4 mb-4">
             <div className="icon-container icon-container-gradient">
               <Calendar className="w-6 h-6" />
@@ -1466,11 +1472,6 @@ const MonthlyBudgetPlanner = () => {
               <h1 className="heading-primary text-3xl md:text-4xl font-bold mb-2">
                 Monthly Budget Planner
               </h1>
-              <p className="text-muted text-base leading-relaxed">
-                Estimate your typical{" "}
-                {energyMode === "cooling" ? "cooling" : "heating"} bill for any month
-                using 30-year historical climate data
-              </p>
             </div>
           </div>
           {/* Subtle divider under header */}
