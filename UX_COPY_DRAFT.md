@@ -431,3 +431,5 @@ Calculate severity based on:
    - Accordion Technical Sections (cleanup)
    - Sticky Sidebar (nice-to-have)
 
+
+

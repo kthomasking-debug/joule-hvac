@@ -126,15 +126,15 @@ test.describe('Application Navigation', () => {
     });
     await acceptTermsIfPresent(page);
     
-    // Test navigation to key pages
+    // Test navigation to key pages (updated to match current route structure)
     const pages = [
-      { name: 'Home', path: '/' },
-      { name: 'Settings', path: '/settings' },
-      { name: '7-Day Forecast', path: '/forecast' },
-      { name: 'System Performance Analyzer', path: '/analyzer' },
+      { name: 'Home', path: '/home' },
+      { name: 'Settings', path: '/config' },
+      { name: '7-Day Forecast', path: '/analysis/forecast' },
+      { name: 'System Performance Analyzer', path: '/analysis/analyzer' },
       { name: 'Energy Flow', path: '/energy-flow' },
-      { name: 'Monthly Budget', path: '/budget' },
-      { name: 'Upgrade ROI', path: '/upgrade' },
+      { name: 'Monthly Budget', path: '/analysis/budget' },
+      { name: 'Upgrade ROI', path: '/upgrade-roi' },
     ];
 
     for (const { name, path } of pages) {
@@ -236,11 +236,11 @@ test.describe('Settings Page', () => {
     const waitUntil = browserName === 'firefox' ? 'domcontentloaded' : 'networkidle';
     
     try {
-      await page.goto('/settings', { waitUntil, timeout });
+      await page.goto('/config', { waitUntil, timeout });
     } catch (error) {
       if (browserName === 'firefox' && (error.message.includes('CONNECTION_REFUSED') || error.message.includes('NS_ERROR'))) {
         await new Promise(resolve => setTimeout(resolve, 2000));
-        await page.goto('/settings', { waitUntil, timeout });
+        await page.goto('/config', { waitUntil, timeout });
       } else {
         throw error;
       }
@@ -260,12 +260,12 @@ test.describe('7-Day Cost Forecaster', () => {
     const waitUntil = browserName === 'firefox' ? 'domcontentloaded' : 'networkidle';
     
     try {
-      await page.goto('/forecast', { waitUntil, timeout });
+      await page.goto('/analysis/forecast', { waitUntil, timeout });
     } catch (error) {
       if (browserName === 'firefox' && (error.message.includes('CONNECTION_REFUSED') || error.message.includes('NS_ERROR'))) {
         // Retry once for Firefox connection issues
         await new Promise(resolve => setTimeout(resolve, 2000));
-        await page.goto('/forecast', { waitUntil, timeout });
+        await page.goto('/analysis/forecast', { waitUntil, timeout });
       } else {
         throw error;
       }
@@ -301,12 +301,12 @@ test.describe('System Performance Analyzer', () => {
     const waitUntil = browserName === 'firefox' ? 'domcontentloaded' : 'networkidle';
     
     try {
-      await page.goto('/analyzer', { waitUntil, timeout });
+      await page.goto('/analysis/analyzer', { waitUntil, timeout });
     } catch (error) {
       if (browserName === 'firefox' && (error.message.includes('CONNECTION_REFUSED') || error.message.includes('NS_ERROR'))) {
         // Retry once for Firefox connection issues
         await new Promise(resolve => setTimeout(resolve, 2000));
-        await page.goto('/analyzer', { waitUntil, timeout });
+        await page.goto('/analysis/analyzer', { waitUntil, timeout });
       } else {
         throw error;
       }
@@ -368,13 +368,13 @@ test.describe('Monthly Budget Planner', () => {
     const waitUntil = browserName === 'firefox' ? 'domcontentloaded' : 'networkidle';
     
     try {
-      await page.goto('/budget', { waitUntil, timeout });
+      await page.goto('/analysis/budget', { waitUntil, timeout });
       await acceptTermsIfPresent(page);
     } catch (error) {
       if (browserName === 'firefox' && (error.message.includes('CONNECTION_REFUSED') || error.message.includes('NS_ERROR'))) {
         // Retry once for Firefox connection issues
         await new Promise(resolve => setTimeout(resolve, 2000));
-        await page.goto('/budget', { waitUntil, timeout });
+        await page.goto('/analysis/budget', { waitUntil, timeout });
         await acceptTermsIfPresent(page);
       } else {
         throw error;
@@ -406,7 +406,7 @@ test.describe('Monthly Budget Planner', () => {
 
 test.describe('Upgrade ROI Calculator', () => {
   test('should load upgrade page', async ({ page, browserName }) => {
-    await gotoWithFirefoxRetry(page, '/upgrade', browserName);
+    await gotoWithFirefoxRetry(page, '/upgrade-roi', browserName);
     await page.waitForLoadState('networkidle');
     
     // Verify page loaded
