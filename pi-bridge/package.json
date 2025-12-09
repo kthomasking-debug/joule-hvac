@@ -1,0 +1,22 @@
+{
+  "name": "joule-local-rag-bridge",
+  "version": "1.0.0",
+  "description": "Local RAG bridge for Joule HVAC assistant on Raspberry Pi 5",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "joule",
+    "hvac",
+    "rag",
+    "ollama",
+    "llama"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

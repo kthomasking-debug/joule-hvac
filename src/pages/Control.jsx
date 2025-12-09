@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Thermometer, 
-  Wind,
-  ChevronLeft,
-  ChevronRight
+  Wind
 } from 'lucide-react';
 import SmartThermostatDemo from './SmartThermostatDemo';
 import AirQualityHMI from './AirQualityHMI';
@@ -29,8 +27,8 @@ const Control = () => {
       navigate('/control/thermostat', { replace: true });
       return;
     }
-    const tab = getActiveTab();
-    setActiveTab(tab);
+    setActiveTab(getActiveTab());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, navigate]);
 
   const tabs = [
@@ -46,54 +44,26 @@ const Control = () => {
     navigate(`/control/${tabId}`);
   };
 
-  const handlePrevious = () => {
-    navigate('/analysis');
-  };
-
-  const handleNext = () => {
-    navigate('/config');
-  };
-
   return (
-    <div className="page-gradient-overlay min-h-screen">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        {/* Tab Navigation */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePrevious}
-                className="icon-container hover:opacity-80 transition-opacity"
-                aria-label="Previous"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h1 className="heading-primary">Control</h1>
-              <button
-                onClick={handleNext}
-                className="icon-container hover:opacity-80 transition-opacity"
-                aria-label="Next"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex gap-2 overflow-x-auto pb-2">
+    <div className="min-h-screen bg-[#050B10]">
+      <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-4">
+        {/* Tab Navigation - Integrated with page header */}
+        <div className="mb-3">
+          <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900/80 p-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
                     activeTab === tab.id
-                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg'
-                      : 'btn-glass text-high-contrast'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:bg-slate-800/60'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="font-medium">{tab.label}</span>
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}

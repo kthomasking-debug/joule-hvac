@@ -1,4 +1,5 @@
 import React from "react";
+import { X } from "lucide-react";
 import { useAskJoule } from "./AskJoule/useAskJoule";
 import { AskJouleInput } from "./AskJoule/AskJouleInput";
 import { AskJouleResponse } from "./AskJoule/AskJouleResponse";
@@ -6,7 +7,10 @@ import { AskJoulePanels } from "./AskJoule/AskJoulePanels";
 import "./AskJoule.css";
 
 const AskJoule = (props) => {
-  const state = useAskJoule(props);
+  const state = useAskJoule({
+    ...props,
+    pushAuditLog: props.pushAuditLog,
+  });
 
   return (
     <div className="w-full">
@@ -27,28 +31,39 @@ const AskJoule = (props) => {
         stopSpeaking={state.stopSpeaking}
       />
 
-      {/* Ask Joule Header - hidden if hideHeader prop is true */}
-      {!props.hideHeader && (
-        <div className="mb-4 space-y-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Ask Joule
-            </h3>
-            <span className="px-2 py-0.5 text-xs font-bold bg-orange-500 text-white rounded uppercase tracking-wide">
-              BETA
-            </span>
+      {/* Ask Joule Container - Clean Chat Style */}
+      <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-6 mb-8">
+        {/* Ask Joule Header - hidden if hideHeader prop is true */}
+        {!props.hideHeader && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-medium text-[#E8EDF3]">
+                  Ask Joule
+                </h3>
+                <span className="px-2 py-0.5 text-xs font-medium bg-[#B068FF] text-white rounded uppercase tracking-wide">
+                  BETA
+                </span>
+              </div>
+              {props.isModal && props.onClose && (
+                <button
+                  onClick={props.onClose}
+                  className="p-1.5 rounded-lg hover:bg-[#222A35] text-[#A7B0BA] hover:text-[#E8EDF3] transition-colors"
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+            <p className="text-sm text-[#A7B0BA] leading-relaxed">
+              Ask about your home's efficiency, comfort, or costs. Get answers about your HVAC system based on your settings and usage data.
+            </p>
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Ask about your home's efficiency, comfort, or costs. Get answers about your HVAC system based on your settings and usage data.
-          </p>
-          <div className="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-300">
-            ⚠️ Ask Joule is learning. Verify critical advice with a professional.
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Input Section */}
-      <AskJouleInput 
+          {/* Input Section */}
+          <AskJouleInput 
         value={state.value}
         setValue={state.setValue}
         onSubmit={state.handleSubmit}
@@ -65,6 +80,7 @@ const AskJoule = (props) => {
         disabled={props.disabled}
         recognitionSupported={state.recognitionSupported}
         setShowCommandHelp={state.setShowCommandHelp}
+        setShowQuestionHelp={state.setShowQuestionHelp}
         setShowAudit={state.setShowAudit}
         auditLog={props.auditLog}
         showPersonalization={state.showPersonalization}
@@ -75,20 +91,35 @@ const AskJoule = (props) => {
         isWakeWordListening={state.isWakeWordListening}
         wakeWordError={state.wakeWordError}
         salesMode={props.salesMode}
-      />
+        showCommandHelp={state.showCommandHelp}
+        showQuestionHelp={state.showQuestionHelp}
+        showAudit={state.showAudit}
+          />
 
-      {/* Panels Section */}
-      <AskJoulePanels 
+          {/* Panels Section */}
+          <AskJoulePanels 
         showPersonalization={state.showPersonalization}
         showCommandHelp={state.showCommandHelp}
+        showQuestionHelp={state.showQuestionHelp}
         showAudit={state.showAudit}
         auditLog={props.auditLog}
         onSuggestionClick={(text) => {
           state.setValue(text);
-          // Optionally submit automatically? Original didn't seemed to.
           state.inputRef.current?.focus();
+          // Automatically submit the question
+          setTimeout(() => {
+            state.handleSubmit(null, text);
+          }, 100);
         }}
-      />
+          />
+        
+        {/* Warning moved to bottom - small text */}
+        <div className="mt-6 pt-4 border-t border-[#222A35]">
+          <p className="text-xs text-[#7C8894]">
+            ⚠️ Joule is learning. Verify critical info with a professional.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

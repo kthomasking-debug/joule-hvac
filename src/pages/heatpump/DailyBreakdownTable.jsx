@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronUp, ChevronDown, HelpCircle, Home, Plane } from 'lucide-react';
+import { formatTemperatureFromF, formatEnergyFromKwh, UNIT_SYSTEMS } from '../../lib/units';
 
-const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux', awayModeDays = new Set(), onToggleAwayMode = null }) => {
+const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux', awayModeDays = new Set(), onToggleAwayMode = null, unitSystem = UNIT_SYSTEMS.US }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [tooltip, setTooltip] = useState(null);
@@ -109,7 +110,9 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                         style={{ width: `${percentage}%` }}
                     ></div>
                 </div>
-                <span className="text-sm font-semibold min-w-[60px] text-gray-900 dark:text-gray-100">{value.toFixed(1)} kWh</span>
+                <span className="text-sm font-semibold min-w-[60px] text-gray-900 dark:text-gray-100">
+                    {formatEnergyFromKwh(value, unitSystem, { decimals: 1 })}
+                </span>
             </div>
         );
     };
@@ -173,12 +176,16 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                     <span className="text-sm text-gray-600 dark:text-gray-400">Temp Range</span>
                                     <div className="flex items-center gap-2">
                                         <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-12"></div>
-                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{`${day.lowTemp.toFixed(0)} - ${day.highTemp.toFixed(0)}°F`}</span>
+                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                            {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })} - {formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-gray-600 dark:text-gray-400">Indoor Temp</span>
-                                    <span className={`text-sm font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>{displayIndoor.toFixed(1)}°F</span>
+                                    <span className={`text-sm font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                        {formatTemperatureFromF(displayIndoor, unitSystem, { decimals: 1 })}
+                                    </span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-gray-600 dark:text-gray-400">Avg Humidity</span>
@@ -341,7 +348,7 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                 </div>
                                 {tooltip === 'awayMode' && (
                                     <div className="absolute z-10 bg-gray-900 text-white text-xs rounded p-2 shadow-lg w-56 top-full right-0 mt-1">
-                                        Click to toggle away mode for this day. Away mode uses energy-saving temperatures (62°F heating, 85°F cooling).
+                                        Click to toggle away mode for this day. Away mode uses energy-saving temperatures ({formatTemperatureFromF(62, unitSystem, { decimals: 0 })} heating, {formatTemperatureFromF(85, unitSystem, { decimals: 0 })} cooling).
                                     </div>
                                 )}
                             </th>
@@ -367,10 +374,14 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                 <td className="p-3">
                                     <div className="flex items-center gap-2">
                                         <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-16"></div>
-                                        <span className="text-sm text-gray-900 dark:text-gray-100">{`${day.lowTemp.toFixed(0)} - ${day.highTemp.toFixed(0)}°F`}</span>
+                                        <span className="text-sm text-gray-900 dark:text-gray-100">
+                                            {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })} - {formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
+                                        </span>
                                     </div>
                                 </td>
-                                <td className={`p-3 font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>{displayIndoor.toFixed(1)}°F</td>
+                                <td className={`p-3 font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                    {formatTemperatureFromF(displayIndoor, unitSystem, { decimals: 1 })}
+                                </td>
                                 <td className="p-3 text-gray-900 dark:text-gray-100">{day.avgHumidity.toFixed(0)}%</td>
                                 <td className="p-3">
                                     <InlineBar value={day.energy} maxValue={maxEnergy} color="blue" />

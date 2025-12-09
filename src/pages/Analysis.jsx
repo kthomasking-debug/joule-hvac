@@ -1,17 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Calendar, 
   TrendingUp, 
   Search, 
-  BarChart2,
-  ChevronLeft,
-  ChevronRight
+  BarChart2
 } from 'lucide-react';
-import SevenDayCostForecaster from './SevenDayCostForecaster';
-import MonthlyBudgetPlanner from './MonthlyBudgetPlanner';
-import GasVsHeatPump from './GasVsHeatPump';
-import SystemPerformanceAnalyzer from './SystemPerformanceAnalyzer';
+
+// Lazy load components to isolate any import issues
+const SevenDayCostForecaster = lazy(() => import('./SevenDayCostForecaster'));
+const MonthlyBudgetPlanner = lazy(() => import('./MonthlyBudgetPlanner'));
+const GasVsHeatPump = lazy(() => import('./GasVsHeatPump'));
+const SystemPerformanceAnalyzer = lazy(() => import('./SystemPerformanceAnalyzer'));
 
 const Analysis = () => {
   const navigate = useNavigate();
@@ -42,8 +42,8 @@ const Analysis = () => {
       navigate('/analysis/forecast', { replace: true });
       return;
     }
-    const tab = getActiveTab();
-    setActiveTab(tab);
+    setActiveTab(getActiveTab());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, navigate]);
 
   const tabs = [
@@ -61,49 +61,27 @@ const Analysis = () => {
     navigate(`/analysis/${tabId}`);
   };
 
-  const handlePrevious = () => {
-    const currentIndex = tabs.findIndex(t => t.id === activeTab);
-    if (currentIndex > 0) {
-      handleTabChange(tabs[currentIndex - 1].id);
-    } else {
-      navigate('/home');
-    }
-  };
-
-  const handleNext = () => {
-    const currentIndex = tabs.findIndex(t => t.id === activeTab);
-    if (currentIndex < tabs.length - 1) {
-      handleTabChange(tabs[currentIndex + 1].id);
-    } else {
-      navigate('/control');
-    }
+  // Tab descriptions for context
+  const tabDescriptions = {
+    forecast: "See what you'll spend this week based on your schedule and weather.",
+    budget: "Plan your monthly energy budget and see how different strategies affect costs.",
+    compare: "Compare heat pump vs gas furnace costs for your home and climate.",
+    analyzer: "Upload ecobee CSV files to see how hard your system is working — and where it's wasting money.",
   };
 
   return (
-    <div className="page-gradient-overlay min-h-screen">
+    <div className="min-h-screen bg-[#0C0F14]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        {/* Page Header */}
+        <header className="mb-6">
+          <h1 className="text-2xl font-semibold text-white mb-1">Analysis</h1>
+          <p className="text-sm text-[#A7B0BA]">
+            Forecast costs, compare heat pump vs gas, and dig into raw thermostat data.
+          </p>
+        </header>
+
         {/* Tab Navigation */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePrevious}
-                className="icon-container hover:opacity-80 transition-opacity"
-                aria-label="Previous"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h1 className="heading-primary">Analysis</h1>
-              <button
-                onClick={handleNext}
-                className="icon-container hover:opacity-80 transition-opacity"
-                aria-label="Next"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          
           <div className="flex gap-2 overflow-x-auto pb-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -111,23 +89,38 @@ const Analysis = () => {
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
                     activeTab === tab.id
-                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg'
-                      : 'btn-glass text-high-contrast'
+                      ? 'bg-[#1E4CFF] text-white'
+                      : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="font-medium">{tab.label}</span>
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
           </div>
+          {/* Tab Description */}
+          {tabDescriptions[activeTab] && (
+            <p className="mt-3 text-sm text-[#A7B0BA]">
+              {tabDescriptions[activeTab]}
+            </p>
+          )}
         </div>
 
         {/* Active Tab Content */}
         <div className="animate-fade-in-up">
-          <ActiveComponent />
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-sm text-[#A7B0BA]">Loading...</p>
+              </div>
+            </div>
+          }>
+            <ActiveComponent />
+          </Suspense>
         </div>
       </div>
     </div>

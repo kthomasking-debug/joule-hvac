@@ -1022,6 +1022,51 @@ export const HVAC_KNOWLEDGE_BASE = {
           "Filter maintenance: change every 1-3 months for efficiency and IAQ",
         ],
       },
+      autoHeatCool: {
+        summary: "Auto Heat/Cool mode automatically switches between heating and cooling based on indoor temperature relative to the setpoint range.",
+        keyConcepts: [
+          "Auto Heat/Cool definition: A thermostat MODE (like 'Heat', 'Cool', 'Off') that automatically switches between heating and cooling to maintain temperature within a setpoint range - you select 'Auto' as the system mode on your thermostat",
+          "What 'Auto' means: When you set your thermostat mode to 'Auto', the system automatically chooses whether to heat or cool based on the current indoor temperature relative to your setpoint range - no manual switching needed",
+          "How it works: System heats when temperature drops below the heat setpoint, cools when temperature rises above the cool setpoint, maintains temperature in the 'dead band' between setpoints without running",
+          "Setpoint range: Requires both a heat setpoint (e.g., 68°F) and a cool setpoint (e.g., 72°F) with a minimum gap (typically 3-5°F) between them - this creates a comfort zone where neither heating nor cooling runs",
+          "Heat/Cool Min Delta: Minimum temperature gap between heat and cool setpoints (typically 3-5°F) to prevent rapid switching between modes - this is a threshold setting, not the actual setpoint gap",
+          "Example: Heat setpoint 70°F, Cool setpoint 74°F = 4°F gap - system heats if temp drops below 70°F, cools if temp rises above 74°F, does nothing between 70-74°F",
+          "Benefits: Convenient for climates with variable weather, maintains comfort automatically without manual mode switching, ideal for spring/fall when both heating and cooling may be needed",
+          "When to use: Best for climates with both heating and cooling needs throughout the day or season (like Georgia), or when you want hands-off operation without thinking about mode switching",
+          "When NOT to use: Not recommended for heat pumps in very cold climates where you want to control when aux heat engages, or when you prefer manual control, or when you want to minimize energy use by avoiding same-day heating and cooling",
+          "Energy considerations: Can be less efficient than manual mode switching if the setpoint range is too wide, as it may run heating and cooling on the same day - a 4°F gap is reasonable, but 6°F+ gaps waste energy",
+          "Heat pump behavior: In Auto mode, heat pump will heat when below heat setpoint and cool when above cool setpoint, with aux heat engaging based on outdoor temperature and lockout settings",
+          "Compressor lockout still applies: Even in Auto mode, compressor lockout temperature prevents compressor operation below the lockout temperature (e.g., 22°F), and aux heat will engage if available",
+          "Best practices: Set heat setpoint 2-3°F below desired temperature and cool setpoint 2-3°F above desired temperature, maintain 3-5°F gap between setpoints for optimal efficiency",
+          "Default setting: Auto Heat/Cool is typically DISABLED by default for safety, as it requires proper setpoint configuration to work effectively - you must enable it in threshold settings AND select Auto mode",
+          "How to enable: First enable 'Auto Heat/Cool' in Installation Settings → Thresholds, then select 'Auto' as your system mode on the main thermostat screen",
+          "Comfort settings: Auto mode uses the heat and cool setpoints from your active comfort setting (home, away, sleep) - each comfort setting can have different setpoints",
+          "Normal operation: Yes, Auto Heat/Cool is a normal and commonly used feature, especially in moderate climates like Georgia where both heating and cooling are needed throughout the year",
+        ],
+      },
+      compressorLockout: {
+        summary: "Compressor lockout temperature prevents compressor operation below a minimum outdoor temperature to protect equipment and ensure efficient operation.",
+        keyConcepts: [
+          "Compressor lockout definition: Minimum outdoor temperature below which the compressor (AC or heat pump) will not run",
+          "Purpose: Prevents compressor damage from low-temperature operation, reduces wear, and avoids inefficient operation",
+          "Typical range: 0-20°F for most systems, with 15-35°F being common settings",
+          "Heat pump cooling lockout: Typically 60-65°F minimum outdoor temperature to prevent compressor operation when cooling is not needed",
+          "Heat pump heating lockout: Typically 0-20°F minimum outdoor temperature to prevent operation when efficiency is too low",
+          "AC lockout: Typically 60-65°F minimum outdoor temperature, prevents AC operation when outdoor temp is below indoor setpoint",
+          "Safety consideration: Below 0°F, compressor oil becomes too viscous, refrigerant pressure issues, and risk of liquid slugging",
+          "Efficiency consideration: Below 20-30°F, heat pump COP drops below 2.0, making electric resistance heat more efficient",
+          "Balance point relationship: Compressor lockout should be set below the system's balance point to allow heat pump operation when it's efficient",
+          "Aux heat requirement: When compressor is locked out, auxiliary heat (electric strips or gas) must be available to maintain comfort",
+          "Manufacturer recommendations: Check equipment manual for specific lockout temperature recommendations (varies by model and refrigerant type)",
+          "Climate-dependent: Colder climates may use 0-10°F, moderate climates use 15-25°F, warmer climates may not need lockout",
+          "Default safe setting: 35°F is a conservative default that protects equipment but may reduce efficiency in moderate climates",
+          "Optimal setting: Set lockout 5-10°F below balance point to maximize heat pump efficiency while protecting equipment",
+          "Too high lockout: Setting above 40°F wastes heat pump efficiency and forces unnecessary aux heat usage",
+          "Too low lockout: Setting below 0°F risks compressor damage and may not provide adequate heating capacity",
+          "System type differences: Standard heat pumps typically 0-20°F, cold-climate heat pumps may operate down to -15°F or lower",
+          "Refrigerant type: R-410A systems typically lockout at 0-15°F, newer R-32 systems may operate to lower temperatures",
+        ],
+      },
       shortCycling: {
         summary:
           "Short cycling is excessive on/off cycling that damages equipment and reduces efficiency. Why it happens: System reaches setpoint too quickly, then shuts off before properly conditioning the space.",
@@ -1079,6 +1124,413 @@ export const HVAC_KNOWLEDGE_BASE = {
             "Electric Cost/BTU = Electric Rate ($/kWh) / 3,412 BTU/kWh",
         },
       },
+      heatCoolMinDelta: {
+        summary: "Heat/Cool Min Delta is the minimum temperature gap required between heat and cool setpoints in Auto Heat/Cool mode.",
+        keyConcepts: [
+          "Heat/Cool Min Delta definition: Minimum temperature difference between heat setpoint and cool setpoint in Auto mode",
+          "Purpose: Prevents rapid switching between heating and cooling modes, reducing energy waste and equipment wear",
+          "Typical range: 3-5°F is standard, with 5°F being a safe default",
+          "Too small: If gap is less than 3°F, system may rapidly switch between heating and cooling, wasting energy",
+          "Too large: If gap is more than 10°F, comfort zone becomes too wide and may cause discomfort",
+          "Recommended: 3-5°F for most homes, 5°F for homes with variable weather conditions",
+          "Example: Heat setpoint 68°F, Cool setpoint 73°F = 5°F delta (good)",
+          "Auto mode requirement: Auto Heat/Cool mode requires this minimum gap to function properly",
+          "Comfort settings: Each comfort setting (home, away, sleep) can have different setpoints, but delta must be maintained",
+        ],
+      },
+      heatDifferential: {
+        summary: "Heat Differential (also called dead band) is the temperature range where the heating system doesn't run.",
+        keyConcepts: [
+          "Heat Differential definition: Temperature difference between when heat turns on and when it turns off",
+          "Purpose: Prevents short cycling by creating a buffer zone around the setpoint",
+          "Typical range: 0.5-2.0°F, with 1.0°F being optimal for efficiency",
+          "Too small (0.5°F): System cycles frequently, wastes energy, reduces equipment life",
+          "Too large (>2°F): Temperature swings become noticeable, comfort issues",
+          "Recommended: 1.0-1.5°F for most systems, balances efficiency and comfort",
+          "Example: Setpoint 70°F, differential 1.0°F → Heat on at 69°F, off at 71°F",
+          "Efficiency benefit: Wider differential reduces short cycling, saves 5-10% on energy",
+          "Multi-stage systems: First stage may use tighter differential, second stage uses wider",
+        ],
+      },
+      coolDifferential: {
+        summary: "Cool Differential (also called dead band) is the temperature range where the cooling system doesn't run.",
+        keyConcepts: [
+          "Cool Differential definition: Temperature difference between when cooling turns on and when it turns off",
+          "Purpose: Prevents short cycling and allows proper dehumidification",
+          "Typical range: 0.5-2.0°F, with 1.0°F being optimal for efficiency",
+          "Too small (0.5°F): System cycles frequently, poor dehumidification, wastes energy",
+          "Too large (>2°F): Temperature swings become noticeable, comfort issues",
+          "Recommended: 1.0-1.5°F for most systems, balances efficiency and comfort",
+          "Example: Setpoint 74°F, differential 1.0°F → Cool on at 75°F, off at 73°F",
+          "Dehumidification: Wider differential allows longer run times, better humidity removal",
+          "Multi-stage systems: First stage may use tighter differential, second stage uses wider",
+        ],
+      },
+      minOnTime: {
+        summary: "Minimum On Time settings prevent short cycling by requiring equipment to run for a minimum duration once started.",
+        keyConcepts: [
+          "Min On Time definition: Minimum duration equipment must run once it starts, before it can turn off",
+          "Purpose: Prevents short cycling, protects equipment, improves efficiency and dehumidification",
+          "Heat Min On Time: Typically 3-10 minutes (180-600 seconds) for furnaces and heat pumps",
+          "Cool Min On Time: Typically 3-10 minutes (180-600 seconds) for air conditioners",
+          "Compressor Min On Time: Typically 5-10 minutes (300-600 seconds) for compressors",
+          "Aux Heat Min On Time: Typically 3-5 minutes (180-300 seconds) for auxiliary heat",
+          "Too short: Equipment cycles too frequently, wastes energy, damages equipment",
+          "Too long: System may run unnecessarily after reaching setpoint, wastes energy",
+          "Recommended: 5 minutes (300 seconds) is a safe default for most systems",
+          "Short cycling prevention: Ensures system runs long enough to properly condition space",
+          "Dehumidification: Longer min on time improves humidity removal in cooling mode",
+        ],
+      },
+      minCycleOffTime: {
+        summary: "Minimum Cycle Off Time (also called Compressor Min Cycle Off) prevents equipment from restarting too quickly after shutdown.",
+        keyConcepts: [
+          "Min Cycle Off Time definition: Minimum duration equipment must stay off between cycles",
+          "Purpose: Protects compressor from rapid cycling, allows pressure equalization, improves efficiency",
+          "Compressor Min Cycle Off: Typically 3-10 minutes (180-600 seconds), 5 minutes (300 seconds) is standard",
+          "Too short: Compressor restarts before pressure equalizes, risks damage, wastes energy",
+          "Too long: Slower recovery from temperature changes, may need aux heat",
+          "Recommended: 5 minutes (300 seconds) is a safe default for most compressors",
+          "Pressure equalization: Allows refrigerant pressures to stabilize before restart",
+          "Equipment protection: Prevents compressor damage from rapid cycling",
+          "Efficiency: Reduces startup energy waste from frequent cycling",
+        ],
+      },
+      dissipationTime: {
+        summary: "Dissipation Time allows the fan to continue running after heating or cooling stops to circulate remaining conditioned air.",
+        keyConcepts: [
+          "Dissipation Time definition: Fan runtime after heating or cooling cycle ends",
+          "Purpose: Circulates remaining conditioned air from ducts, improves efficiency and comfort",
+          "Heat Dissipation Time: Typically 30-60 seconds, allows residual heat to be distributed",
+          "Cool Dissipation Time: Typically 30-60 seconds, allows residual cool air to be distributed",
+          "Benefits: Scavenges 'free' conditioned air from ducts, improves efficiency by 2-5%",
+          "Too short: Wastes residual conditioned air, reduces efficiency",
+          "Too long: Fan runs unnecessarily, wastes energy",
+          "Recommended: 30-60 seconds for most systems, adjust based on duct length",
+          "Efficiency gain: Distributes residual air without running compressor, saves energy",
+        ],
+      },
+      auxHeatMaxOutdoorTemp: {
+        summary: "Aux Heat Max Outdoor Temperature prevents auxiliary heat from running above a specific outdoor temperature to maximize heat pump efficiency.",
+        keyConcepts: [
+          "Aux Heat Max Outdoor Temp definition: Maximum outdoor temperature above which auxiliary heat will not run",
+          "Purpose: Forces heat pump operation when it's efficient, prevents unnecessary aux heat usage",
+          "Typical range: 30-50°F, with 35-40°F being optimal for most systems",
+          "Too high (>50°F): Allows aux heat when heat pump is very efficient, wastes energy",
+          "Too low (<30°F): May prevent aux heat when needed for recovery or comfort",
+          "Recommended: 30-40°F for most heat pumps, balances efficiency and comfort",
+          "Efficiency benefit: Maximizes heat pump usage when COP is high (above 2.5-3.0)",
+          "Heat pump priority: Ensures heat pump is used when it can handle the load efficiently",
+          "Recovery: System may still use aux heat below this temperature for faster recovery from setbacks",
+        ],
+      },
+      acOvercoolMax: {
+        summary: "AC Overcool Max allows the air conditioner to run past the cool setpoint to reduce humidity.",
+        keyConcepts: [
+          "AC Overcool Max definition: Maximum temperature below cool setpoint that AC can overcool for dehumidification",
+          "Purpose: Improves humidity control by allowing AC to run longer for better dehumidification",
+          "Typical range: 0-5°F, with 2°F being a common setting",
+          "How it works: AC continues running up to X°F below setpoint to remove more moisture",
+          "Benefits: Better humidity control, improved comfort in humid climates",
+          "Trade-off: Slightly lower temperature than setpoint, but better humidity control",
+          "Recommended: 1-2°F for most systems, 2°F for very humid climates",
+          "Energy impact: Slight increase in cooling energy, but significant improvement in comfort",
+          "Dehumidification: Longer runtime allows more moisture removal from air",
+        ],
+      },
+      temperatureCorrection: {
+        summary: "Temperature Correction adjusts the temperature sensor reading for calibration accuracy.",
+        keyConcepts: [
+          "Temperature Correction definition: Offset applied to temperature sensor reading (+/- 5°F typically)",
+          "Purpose: Calibrates sensor if it consistently reads high or low compared to actual temperature",
+          "Range: Typically -5°F to +5°F, some systems allow up to +/- 10°F",
+          "When to use: Only if sensor consistently reads the same amount off (e.g., always 2°F high)",
+          "When NOT to use: If temperature difference varies, sensor may be faulty and should be replaced",
+          "Calibration: Use accurate thermometer to compare, adjust correction to match",
+          "Example: Sensor reads 72°F but actual is 70°F → Set correction to -2°F",
+          "Warning: Only adjust if difference is consistent, varying differences indicate sensor problems",
+        ],
+      },
+      humidityCorrection: {
+        summary: "Humidity Correction adjusts the humidity sensor reading for calibration accuracy.",
+        keyConcepts: [
+          "Humidity Correction definition: Offset applied to humidity sensor reading (+/- 10% typically)",
+          "Purpose: Calibrates sensor if it consistently reads high or low compared to actual humidity",
+          "Range: Typically -10% to +10% relative humidity",
+          "When to use: Only if sensor consistently reads the same amount off (e.g., always 5% high)",
+          "When NOT to use: If humidity difference varies, sensor may be faulty and should be replaced",
+          "Calibration: Use accurate hygrometer to compare, adjust correction to match",
+          "Example: Sensor reads 55% but actual is 50% → Set correction to -5%",
+          "Warning: Only adjust if difference is consistent, varying differences indicate sensor problems",
+        ],
+      },
+      thermalProtect: {
+        summary: "Thermal Protect ignores temperature readings from sensors that differ significantly from the main sensor.",
+        keyConcepts: [
+          "Thermal Protect definition: Maximum temperature difference between sensors before ignoring a reading",
+          "Purpose: Prevents bad sensor readings from affecting system operation",
+          "Typical range: 5-20°F, with 10°F being a common default",
+          "How it works: If a remote sensor reads more than X°F different from main sensor, it's ignored",
+          "Benefits: Prevents system from responding to faulty sensor readings",
+          "Too small (<5°F): May ignore valid sensors in rooms with different temperatures",
+          "Too large (>20°F): May allow bad sensors to affect system operation",
+          "Recommended: 10°F for most systems, allows for normal room-to-room variation",
+          "Sensor accuracy: Helps maintain system operation when sensors have issues",
+        ],
+      },
+      reverseStaging: {
+        summary: "Reverse Staging returns equipment to a lower stage near the setpoint for more efficient operation.",
+        keyConcepts: [
+          "Reverse Staging definition: Automatically reduces to lower stage as temperature approaches setpoint",
+          "Purpose: Improves efficiency by using lower stage for fine-tuning near setpoint",
+          "Compressor Reverse Staging: Returns to first stage near setpoint, more efficient than second stage",
+          "Heat Reverse Staging: Returns to first stage of furnace near setpoint",
+          "Aux Reverse Staging: Disengages aux heat near end of cycle to rely on heat pump",
+          "Benefits: More efficient operation, better comfort control, reduced energy use",
+          "How it works: System starts with higher stage for faster recovery, switches to lower stage near setpoint",
+          "Recommended: Enable for most multi-stage systems to maximize efficiency",
+          "Efficiency gain: Lower stages are more efficient for maintaining temperature vs. recovering",
+        ],
+      },
+      staging: {
+        summary: "Staging controls how multi-stage equipment operates, either automatically or manually configured.",
+        keyConcepts: [
+          "Automatic Staging: Thermostat uses algorithms to determine when to use each stage",
+          "Manual Staging: User configures specific thresholds for stage activation",
+          "Automatic benefits: Smart algorithms optimize for comfort and efficiency",
+          "Manual benefits: Fine-grained control over when stages activate",
+          "Aux Savings Optimization: In automatic mode with heat pumps, prioritizes savings, comfort, or balanced",
+          "Stage 2 Temperature Delta: Temperature difference that triggers second stage activation",
+          "Stage 1 Max Runtime: Maximum time first stage can run before second stage activates",
+          "Multi-stage systems: Two or more stages allow better load matching and efficiency",
+          "Recommended: Start with automatic staging, switch to manual only if needed for specific requirements",
+        ],
+      },
+    },
+  },
+
+  // Generic System Metadata & Specifications
+  genericSystemSpecs: {
+    title: "Generic Split System Heat Pump Specifications & Installation Data",
+    source: "Technical Support Manual - Generic Schema-Based Format",
+    topics: {
+      systemMetadata: {
+        summary:
+          "Generic split system heat pump metadata including equipment type, refrigerant, efficiency, and voltage specifications.",
+        keyConcepts: [
+          "Equipment Type: Split System Heat Pump",
+          "Refrigerant: R-410A",
+          "Efficiency: Standard Efficiency (13-14 SEER)",
+          "Voltage: 208/230V Single Phase",
+          "Safety Labeling: DANGER = immediate severe injury/death, WARNING = severe injury/death risk, CAUTION = minor injury/property damage, NOTE = enhancement suggestions",
+          "Model Number Nomenclature: Product Family + Refrigerant Type + Unit Type + Efficiency Rating + Nominal Capacity (BTUH) + Feature Set + Voltage + Series/Revision",
+          "Nominal Capacity codes: 18 = 1.5 Tons, 24 = 2.0 Tons, 30 = 2.5 Tons, 36 = 3.0 Tons, 42 = 3.5 Tons, 48 = 4.0 Tons, 60 = 5.0 Tons",
+        ],
+      },
+      r410aHandling: {
+        summary:
+          "R-410A refrigerant handling requirements including pressure, charging, and component specifications.",
+        keyConcepts: [
+          "Pressure: R-410A operates at 50-70% higher pressures than R-22",
+          "Tank Color: Rose",
+          "Tank Rating: DOT 4BA400 or DOT BW400 (400 psig)",
+          "Charging State: Charge with Liquid refrigerant only",
+          "Metering: Use commercial-type metering device when charging into suction line",
+          "Gauge Set: High-side 750 psig; Low-side 200 psig (520 retard). High-pressure hoses required",
+          "Lubricant: POE (Polyol Ester) oil only. Hydroscopic (absorbs moisture); limit atmospheric exposure",
+          "Filtration: Liquid line filter-drier required (Min 600 psig working pressure)",
+          "Evacuation: Pull vacuum to 500 microns. Break with dry nitrogen",
+          "Components: R-410A specific TXV required (Indoor)",
+        ],
+      },
+      electricalInstallation: {
+        summary:
+          "Standard electrical and installation requirements for split system heat pumps.",
+        keyConcepts: [
+          "Thermal Protection: Compressor and fan motor equipped with inherent protection",
+          "Codes: Install per N.E.C. and local codes",
+          "Control Circuit: Class 2, 24V circuit. Minimum 40 VA (60 VA with accessories)",
+          "Wiring: Copper conductors only (Min 75°C rating)",
+          "Grounding: Grounded secondary transformers must connect to board Common ('C')",
+          "Hard Start Kits: Start thermistor (PTC) must be removed if Start Capacitor/Relay are installed",
+          "Anti-Short Cycle: Compressor requires 3-minute off time to equalize pressures",
+          "Service Valves: Must be open before operation",
+        ],
+      },
+      r410aChargingChart: {
+        summary:
+          "R-410A charging chart showing required liquid line temperature based on pressure and target subcooling.",
+        keyConcepts: [
+          "Charging Method: Subcooling method for R-410A systems",
+          "Subcooling Targets: 6°F, 8°F, 10°F, 12°F, 14°F, 16°F",
+          "Liquid Pressure Range: 251-474 psig",
+          "Temperature Range: 68-124°F liquid line temperature",
+          "Example: At 326 psig, target 10°F subcooling requires 92°F liquid line temperature",
+          "Higher pressure = higher liquid line temperature required",
+          "Higher subcooling target = lower liquid line temperature required",
+        ],
+        formulas: {
+          chargingChart:
+            "Liquid Line Temp = f(Liquid Pressure, Target Subcooling) - see charging chart table",
+        },
+        chargingChartData: {
+          "251": { "6": 78, "8": 76, "10": 74, "12": 72, "14": 70, "16": 68 },
+          "274": { "6": 84, "8": 82, "10": 80, "12": 78, "14": 76, "16": 74 },
+          "299": { "6": 90, "8": 88, "10": 86, "12": 84, "14": 82, "16": 80 },
+          "326": { "6": 96, "8": 94, "10": 92, "12": 90, "14": 88, "16": 86 },
+          "364": { "6": 104, "8": 102, "10": 100, "12": 98, "14": 96, "16": 94 },
+          "406": { "6": 112, "8": 110, "10": 108, "12": 106, "14": 104, "16": 102 },
+          "450": { "6": 120, "8": 118, "10": 116, "12": 114, "14": 112, "16": 110 },
+          "474": { "6": 124, "8": 122, "10": 120, "12": 118, "14": 116, "16": 114 },
+        },
+      },
+      componentSpecsByTonnage: {
+        summary:
+          "Component specifications grouped by unit capacity (tonnage) for replacement parts.",
+        keyConcepts: [
+          "1.5 Ton: Compressor (Scroll, R-410A, 1.5T), Condenser Motor (1/12 HP, 1100 RPM, 208-230V), Capacitor (370V 5+30 MFD), Metering Device (Piston .040 Chatleff)",
+          "2.0 Ton: Compressor (Scroll, R-410A, 2.0T), Condenser Motor (1/10 HP, 1100 RPM, 208-230V), Capacitor (370V 5+40 MFD), Metering Device (Piston .046 Chatleff)",
+          "2.5 Ton: Compressor (Scroll, R-410A, 2.5T), Condenser Motor (1/5 HP, 810 RPM, 208-230V), Capacitor (370V 5+45 MFD), Metering Device (Piston .055)",
+          "3.0 Ton: Compressor (Scroll, R-410A, 3.0T), Condenser Motor (1/5 HP, 810 RPM, 208-230V), Capacitor (370V 5+45 MFD), Metering Device (Piston .057 Chatleff)",
+          "3.5 Ton: Compressor (Scroll, R-410A, 3.5T), Condenser Motor (1/10 HP, 208-230V), Capacitor (370V 5+45 MFD), Metering Device (Piston .065 Chatleff)",
+          "4.0 Ton: Compressor (Scroll, R-410A, 4.0T), Condenser Motor (1/4 HP, 825 RPM, 208-230V), Capacitor (370V 7.5+70 MFD), Metering Device (Piston .065 Chatleff)",
+          "5.0 Ton: Compressor (Scroll, R-410A, 5.0T), Condenser Motor (1/4 HP, 825 RPM, 208-230V), Capacitor (370V 7.5+70 Series A or 7.5+80 Series G), Metering Device (Piston .076 Chatleff)",
+          "Universal Parts (All Sizes): Contactor (1P 30A 24V, except 5.0 Ton uses 40A), Defrost Control Board, Defrost Sensor, High Pressure Switch, Low Pressure Switch, Reversing Valve Coil (24V)",
+        ],
+      },
+      performanceData: {
+        summary:
+          "Cooling performance metrics at reference conditions (95°F Outdoor Ambient / 63°F Indoor Wet Bulb).",
+        keyConcepts: [
+          "1.5 Ton: Total Capacity 17.63 MBh, S/T Ratio 0.74, System Amps 6.01, High Pressure 314 psig, Low Pressure 134 psig",
+          "2.0 Ton: Total Capacity 21.98 MBh, S/T Ratio 0.74, System Amps 7.89, High Pressure 323 psig, Low Pressure 131 psig",
+          "2.5 Ton: Total Capacity 28.70 MBh, S/T Ratio 0.74, System Amps 10.45, High Pressure 321 psig, Low Pressure 131 psig",
+          "3.0 Ton: Total Capacity 32.69 MBh, S/T Ratio 0.75, System Amps 11.81, High Pressure 321 psig, Low Pressure 126 psig",
+          "3.5 Ton: Total Capacity 39.39 MBh, S/T Ratio 0.73, System Amps 14.29, High Pressure 340 psig, Low Pressure 132 psig",
+          "4.0 Ton: Total Capacity 45.07 MBh, S/T Ratio 0.73, System Amps 16.27, High Pressure 322 psig, Low Pressure 133 psig",
+          "5.0 Ton: Total Capacity 57.68 MBh, S/T Ratio 0.72, System Amps 21.17, High Pressure 331 psig, Low Pressure 133 psig",
+          "S/T Ratio: Sensible/Total ratio indicates temperature cooling vs humidity removal (0.72-0.75 typical)",
+        ],
+        performanceTable: {
+          "1.5": {
+            totalCapacity: 17.63,
+            stRatio: 0.74,
+            systemAmps: 6.01,
+            highPressure: 314,
+            lowPressure: 134,
+          },
+          "2.0": {
+            totalCapacity: 21.98,
+            stRatio: 0.74,
+            systemAmps: 7.89,
+            highPressure: 323,
+            lowPressure: 131,
+          },
+          "2.5": {
+            totalCapacity: 28.70,
+            stRatio: 0.74,
+            systemAmps: 10.45,
+            highPressure: 321,
+            lowPressure: 131,
+          },
+          "3.0": {
+            totalCapacity: 32.69,
+            stRatio: 0.75,
+            systemAmps: 11.81,
+            highPressure: 321,
+            lowPressure: 126,
+          },
+          "3.5": {
+            totalCapacity: 39.39,
+            stRatio: 0.73,
+            systemAmps: 14.29,
+            highPressure: 340,
+            lowPressure: 132,
+          },
+          "4.0": {
+            totalCapacity: 45.07,
+            stRatio: 0.73,
+            systemAmps: 16.27,
+            highPressure: 322,
+            lowPressure: 133,
+          },
+          "5.0": {
+            totalCapacity: 57.68,
+            stRatio: 0.72,
+            systemAmps: 21.17,
+            highPressure: 331,
+            lowPressure: 133,
+          },
+        },
+      },
+      systemMultiplyingFactors: {
+        summary:
+          "Adjustment multipliers for Capacity and Amperage when matching outdoor unit with various indoor coils or furnaces.",
+        keyConcepts: [
+          "Base: 1.0 = Standard matched AHRI system",
+          "Usage: Multiply base rating by the factor shown to get system specific performance",
+          "1.5 Ton Factors: Standard Match (1.00 all), High Efficiency Coil A (1.00 all), Standard Coil B (0.94/1.00/0.98/0.98), Standard Coil C (0.92/0.98/0.99/0.99), Multi-Pos Coil D (0.96/1.00/0.98/0.98), ECM Motor Furnace Match (0.94/1.03/0.93/0.99)",
+          "2.0 Ton Factors: Standard Match (1.00 all), Coil Match A (1.02/1.01/0.98/0.98), Coil Match B (1.01/1.01/0.98/0.98), Variable Speed Indoor (0.96/1.01/0.93/0.98), Standard Furnace Match (0.98/1.03/0.93/0.99)",
+          "2.5 Ton Factors: Standard Match (1.00 all), Coil Match A (1.00/1.00/1.02/1.00), Coil Match B (0.98/1.00/1.01/0.99), Coil Match C (1.00/1.00/1.01/0.99), Variable Speed Indoor (1.00/1.00/0.93/0.98)",
+          "3.0 Ton Factors: Standard Match (1.00 all), Coil Match A (1.01/1.01/1.01/1.04), Coil Match B (1.02/1.01/1.00/0.99), Coil Match C (1.03/1.01/1.02/1.01), Variable Speed Indoor (0.96/1.00/0.94/0.99)",
+          "3.5 Ton Factors: Standard Match (1.00 all), Coil Match A (0.99/1.00/0.99/1.00), Coil Match B (0.99/1.00/0.97/0.98), Coil Match C (0.99/1.00/0.99/0.98), Variable Speed Indoor (0.96/1.00/0.95/0.99)",
+          "4.0 Ton Factors: Standard Match (1.00 all), Coil Match A (0.98/1.00/0.98/0.99), Coil Match B (0.98/1.00/0.99/0.99), Coil Match C (0.98/1.00/0.99/0.99), Variable Speed Indoor (0.96/1.00/0.95/0.99)",
+          "5.0 Ton Factors: Standard Match (1.00 all), Coil Match A (0.97/0.99/0.98/0.99), Coil Match B (0.97/0.99/0.98/0.99), Variable Speed Indoor (0.97/0.99/1.01/0.99)",
+          "Factor Order: Cooling Amps / Cooling Capacity / Heating Amps / Heating Capacity",
+          "Variable Speed Indoor: Typically reduces amperage (0.93-0.97) but maintains or slightly increases capacity (0.98-1.01)",
+        ],
+        multiplyingFactors: {
+          "1.5": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            highEfficiencyCoilA: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            standardCoilB: { coolingAmps: 0.94, coolingCapacity: 1.0, heatingAmps: 0.98, heatingCapacity: 0.98 },
+            standardCoilC: { coolingAmps: 0.92, coolingCapacity: 0.98, heatingAmps: 0.99, heatingCapacity: 0.99 },
+            multiPosCoilD: { coolingAmps: 0.96, coolingCapacity: 1.0, heatingAmps: 0.98, heatingCapacity: 0.98 },
+            ecmMotorFurnace: { coolingAmps: 0.94, coolingCapacity: 1.03, heatingAmps: 0.93, heatingCapacity: 0.99 },
+          },
+          "2.0": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 1.02, coolingCapacity: 1.01, heatingAmps: 0.98, heatingCapacity: 0.98 },
+            coilMatchB: { coolingAmps: 1.01, coolingCapacity: 1.01, heatingAmps: 0.98, heatingCapacity: 0.98 },
+            variableSpeedIndoor: { coolingAmps: 0.96, coolingCapacity: 1.01, heatingAmps: 0.93, heatingCapacity: 0.98 },
+            standardFurnaceMatch: { coolingAmps: 0.98, coolingCapacity: 1.03, heatingAmps: 0.93, heatingCapacity: 0.99 },
+          },
+          "2.5": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.02, heatingCapacity: 1.0 },
+            coilMatchB: { coolingAmps: 0.98, coolingCapacity: 1.0, heatingAmps: 1.01, heatingCapacity: 0.99 },
+            coilMatchC: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.01, heatingCapacity: 0.99 },
+            variableSpeedIndoor: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 0.93, heatingCapacity: 0.98 },
+          },
+          "3.0": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 1.01, coolingCapacity: 1.01, heatingAmps: 1.01, heatingCapacity: 1.04 },
+            coilMatchB: { coolingAmps: 1.02, coolingCapacity: 1.01, heatingAmps: 1.0, heatingCapacity: 0.99 },
+            coilMatchC: { coolingAmps: 1.03, coolingCapacity: 1.01, heatingAmps: 1.02, heatingCapacity: 1.01 },
+            variableSpeedIndoor: { coolingAmps: 0.96, coolingCapacity: 1.0, heatingAmps: 0.94, heatingCapacity: 0.99 },
+          },
+          "3.5": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 0.99, coolingCapacity: 1.0, heatingAmps: 0.99, heatingCapacity: 1.0 },
+            coilMatchB: { coolingAmps: 0.99, coolingCapacity: 1.0, heatingAmps: 0.97, heatingCapacity: 0.98 },
+            coilMatchC: { coolingAmps: 0.99, coolingCapacity: 1.0, heatingAmps: 0.99, heatingCapacity: 0.98 },
+            variableSpeedIndoor: { coolingAmps: 0.96, coolingCapacity: 1.0, heatingAmps: 0.95, heatingCapacity: 0.99 },
+          },
+          "4.0": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 0.98, coolingCapacity: 1.0, heatingAmps: 0.98, heatingCapacity: 0.99 },
+            coilMatchB: { coolingAmps: 0.98, coolingCapacity: 1.0, heatingAmps: 0.99, heatingCapacity: 0.99 },
+            coilMatchC: { coolingAmps: 0.98, coolingCapacity: 1.0, heatingAmps: 0.99, heatingCapacity: 0.99 },
+            variableSpeedIndoor: { coolingAmps: 0.96, coolingCapacity: 1.0, heatingAmps: 0.95, heatingCapacity: 0.99 },
+          },
+          "5.0": {
+            standardMatch: { coolingAmps: 1.0, coolingCapacity: 1.0, heatingAmps: 1.0, heatingCapacity: 1.0 },
+            coilMatchA: { coolingAmps: 0.97, coolingCapacity: 0.99, heatingAmps: 0.98, heatingCapacity: 0.99 },
+            coilMatchB: { coolingAmps: 0.97, coolingCapacity: 0.99, heatingAmps: 0.98, heatingCapacity: 0.99 },
+            variableSpeedIndoor: { coolingAmps: 0.97, coolingCapacity: 0.99, heatingAmps: 1.01, heatingCapacity: 0.99 },
+          },
+        },
+      },
     },
   },
 };
@@ -1102,7 +1554,9 @@ export function searchKnowledgeBase(query) {
   const modelMatch = lowerQuery.match(
     /(?:model|unit)\s+([a-z0-9-]+)|([a-z]+)\s+([a-z0-9-]+)/i
   );
-  const manufacturerMatch = lowerQuery.match(
+
+  // Single brand/manufacturer regex (reused everywhere)
+  const brandMatch = lowerQuery.match(
     /(carrier|trane|lennox|daikin|mitsubishi|fujitsu|lg|samsung|bosch|gree|midea|rheem|ruud|york|goodman|amana|bryant|american\s+standard|nordyne|payne|heil|tempstar|comfortmaker|arcoaire|keeprite)/i
   );
 
@@ -1110,12 +1564,23 @@ export function searchKnowledgeBase(query) {
   const faultCodeMatch = lowerQuery.match(
     /(?:fault\s+code|error\s+code|code)\s*([a-z0-9]+|[\d]+\s+flashes?)/i
   );
-  const brandMatch = lowerQuery.match(
-    /(carrier|trane|lennox|daikin|mitsubishi|fujitsu|lg|samsung|bosch|gree|midea|rheem|ruud|york|goodman|amana|bryant|american\s+standard|nordyne|payne|heil|tempstar|comfortmaker|arcoaire|keeprite)/i
-  );
 
-  // Search equipment specifications if model/manufacturer mentioned
-  if (modelMatch || manufacturerMatch) {
+  // Search equipment specifications ONLY if explicitly asking about a specific model
+  // Require explicit model query (not just brand mention) to prevent hallucination
+  const isExplicitModelQuery = modelMatch || (
+    brandMatch && (
+      lowerQuery.includes("model") || 
+      lowerQuery.includes("spec") || 
+      lowerQuery.includes("rating") ||
+      lowerQuery.includes("seer") ||
+      lowerQuery.includes("hspf") ||
+      lowerQuery.includes("cop") ||
+      lowerQuery.includes("capacity") ||
+      /[a-z0-9-]{6,}/i.test(lowerQuery) // Model number pattern (6+ alphanumeric/dash)
+    )
+  );
+  
+  if (isExplicitModelQuery) {
     const equipmentSpecs = HVAC_KNOWLEDGE_BASE.equipmentSpecs;
     if (equipmentSpecs?.exampleModels) {
       for (const [, modelData] of Object.entries(
@@ -1123,12 +1588,31 @@ export function searchKnowledgeBase(query) {
       )) {
         const modelName =
           `${modelData.manufacturer} ${modelData.model}`.toLowerCase();
-        if (
-          modelName.includes(lowerQuery) ||
-          lowerQuery.includes(modelData.manufacturer?.toLowerCase())
-        ) {
-          // Format model specifications
-          let specText = `${modelData.manufacturer} ${modelData.model} (${modelData.type}):\n`;
+        
+        // Improved token-based model matching
+        const normalizedName = modelName.replace(/\s+/g, " ").trim();
+        const normalizedQuery = lowerQuery.replace(/\s+/g, " ").trim();
+        const allQueryTokens = normalizedQuery.split(/\s+/).filter(t => t.length > 1);
+        const modelTokens = normalizedName.split(/\s+/).filter(t => t.length > 1);
+        
+        // Count matching tokens (fuzzy: token contains or is contained)
+        const tokenMatchScore = allQueryTokens.filter(queryToken =>
+          modelTokens.some(modelToken => 
+            modelToken.includes(queryToken) || queryToken.includes(modelToken)
+          )
+        ).length;
+        
+        // Match if: exact string match, or 2+ tokens match, or brand + model query
+        const isMatch = 
+          normalizedName.includes(normalizedQuery) ||
+          normalizedQuery.includes(normalizedName) ||
+          tokenMatchScore >= 2 ||
+          (brandMatch && modelMatch); // Require BOTH brand AND model mention
+        
+        if (isMatch) {
+          // Format model specifications with clear disclaimer
+          let specText = `EXAMPLE MODEL SPECIFICATIONS (NOT YOUR SYSTEM):\n`;
+          specText += `${modelData.manufacturer} ${modelData.model} (${modelData.type}):\n`;
           if (modelData.seer2) specText += `SEER2: ${modelData.seer2}\n`;
           if (modelData.hspf2) specText += `HSPF2: ${modelData.hspf2}\n`;
           if (modelData.cop) {
@@ -1152,12 +1636,13 @@ export function searchKnowledgeBase(query) {
           }
           specText += `Source: ${
             modelData.source || "Manufacturer Data Sheet"
-          }`;
+          }\n`;
+          specText += `\nNOTE: This is an example model for reference only. Use your actual system specs from Settings.`;
 
           results.push({
             section: "equipmentSpecs",
             topic: "modelSpecifications",
-            title: `${modelData.manufacturer} ${modelData.model} Specifications`,
+            title: `Example: ${modelData.manufacturer} ${modelData.model} Specifications`,
             source: modelData.source || "Manufacturer Data Sheet",
             summary: specText,
             keyConcepts: [specText],
@@ -1172,8 +1657,9 @@ export function searchKnowledgeBase(query) {
   if (faultCodeMatch) {
     const troubleshooting = HVAC_KNOWLEDGE_BASE.troubleshooting;
     if (troubleshooting?.exampleFaultCodes) {
-      const code =
-        faultCodeMatch[1]?.toLowerCase() || faultCodeMatch[0]?.toLowerCase();
+      // Normalize fault code (remove spaces, lowercase)
+      const rawCode = faultCodeMatch[1]?.toLowerCase() || faultCodeMatch[0]?.toLowerCase();
+      const normalizedCode = rawCode.replace(/\s+/g, "").replace(/[^\w]/g, "");
       const brand = brandMatch ? brandMatch[1]?.toLowerCase() : null;
 
       // Search all brands if no specific brand mentioned, or specific brand if mentioned
@@ -1185,9 +1671,14 @@ export function searchKnowledgeBase(query) {
         const brandCodes = troubleshooting.exampleFaultCodes[brandName];
         if (brandCodes) {
           for (const [codeKey, codeData] of Object.entries(brandCodes)) {
+            // Normalize stored code key for comparison
+            const normalizedKey = codeKey.replace(/\s+/g, "").replace(/[^\w]/g, "").toLowerCase();
+            
+            // Match if normalized codes overlap
             if (
-              codeKey.toLowerCase().includes(code) ||
-              code.includes(codeKey.toLowerCase())
+              normalizedKey.includes(normalizedCode) ||
+              normalizedCode.includes(normalizedKey) ||
+              normalizedKey === normalizedCode
             ) {
               let faultText = `${
                 brandName.charAt(0).toUpperCase() + brandName.slice(1)
@@ -1261,20 +1752,26 @@ export function searchKnowledgeBase(query) {
         keywordMatches.length > 0 ||
         queryContainsTopicKeyWords
       ) {
+        // Improved relevance scoring: upweight exact topic matches, cap keyword contribution
+        const kwScore = Math.min(keywordMatches.length, 5); // Cap at 5
+        const exactTopicMatch = queryContainsTopicKeyWords ? 5 : 0; // Upweight from 3 to 5
+        
         results.push({
           section: sectionKey,
           topic: topicKey,
+          id: `${sectionKey}.${topicKey}`, // ID for future embedding hooks
           title: `${section.title} - ${topicKey}`,
           source: section.source,
           summary: topic.summary,
           keyConcepts: topic.keyConcepts || [],
           formulas: topic.formulas || {},
           recommendations: topic.recommendations || {},
+          tags: topicKeyWords, // Tags for future embedding hooks
           relevanceScore:
             (sectionMatch ? 3 : 0) +
             (topicMatch ? 2 : 0) +
-            (queryContainsTopicKeyWords ? 3 : 0) +
-            keywordMatches.length,
+            exactTopicMatch +
+            kwScore,
         });
       }
     }
@@ -1299,21 +1796,31 @@ export function formatKnowledgeForLLM(results) {
   let formatted = "RELEVANT HVAC ENGINEERING KNOWLEDGE:\n\n";
 
   for (const result of results) {
-    formatted += `[${result.source}] ${result.title}\n`;
-    formatted += `${result.summary}\n\n`;
+    // Add section label for structure (e.g., "[ACCA Manual J / heatLoss]")
+    const sectionLabel = result.section && result.topic 
+      ? `[${result.section} / ${result.topic}]`
+      : `[${result.source}]`;
+    
+    formatted += `${sectionLabel} ${result.title}\n`;
+    formatted += `Summary: ${result.summary}\n\n`;
 
+    // Truncate keyConcepts to top 5 to keep context compact
     if (result.keyConcepts && result.keyConcepts.length > 0) {
+      const concepts = result.keyConcepts.slice(0, 5);
       formatted += "Key Concepts:\n";
-      result.keyConcepts.forEach((concept, idx) => {
+      concepts.forEach((concept, idx) => {
         formatted += `  ${idx + 1}. ${concept}\n`;
       });
+      if (result.keyConcepts.length > 5) {
+        formatted += `  ... (${result.keyConcepts.length - 5} more concepts)\n`;
+      }
       formatted += "\n";
     }
 
     if (result.formulas && Object.keys(result.formulas).length > 0) {
       formatted += "Formulas:\n";
       for (const [name, formula] of Object.entries(result.formulas)) {
-        formatted += `  ${name}: ${formula}\n`;
+        formatted += `  • ${name}: ${formula}\n`;
       }
       formatted += "\n";
     }
@@ -1324,7 +1831,7 @@ export function formatKnowledgeForLLM(results) {
     ) {
       formatted += "Recommendations:\n";
       for (const [key, value] of Object.entries(result.recommendations)) {
-        formatted += `  ${key}: ${value}\n`;
+        formatted += `  • ${key}: ${value}\n`;
       }
       formatted += "\n";
     }

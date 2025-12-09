@@ -21,24 +21,48 @@ function getBridgeUrl() {
 }
 
 /**
+ * Custom error for connection failures (Bridge not available)
+ */
+export class BridgeConnectionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BridgeConnectionError";
+    this.isConnectionError = true;
+  }
+}
+
+/**
  * Make API request to Joule Bridge
  */
 async function bridgeRequest(endpoint, options = {}) {
   const url = getBridgeUrl();
-  const response = await fetch(`${url}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+  try {
+    const response = await fetch(`${url}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Joule Bridge error: ${response.status} ${error}`);
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Joule Bridge error: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    // Check if it's a connection refused error (Bridge not available)
+    if (
+      error instanceof TypeError &&
+      (error.message.includes("Failed to fetch") ||
+        error.message.includes("ERR_CONNECTION_REFUSED") ||
+        error.message.includes("NetworkError"))
+    ) {
+      throw new BridgeConnectionError("Joule Bridge is not available");
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 /**
@@ -133,7 +157,10 @@ export async function getThermostatStatus(deviceId = null) {
 
     return data;
   } catch (error) {
-    console.error("Error getting thermostat status:", error);
+    // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+    if (!(error instanceof BridgeConnectionError)) {
+      console.error("Error getting thermostat status:", error);
+    }
     throw error;
   }
 }
@@ -227,7 +254,10 @@ export async function getRelayStatus() {
     const data = await bridgeRequest("/api/relay/status");
     return data;
   } catch (error) {
-    console.error("Error getting relay status:", error);
+    // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+    if (!(error instanceof BridgeConnectionError)) {
+      console.error("Error getting relay status:", error);
+    }
     throw error;
   }
 }
@@ -292,7 +322,10 @@ export async function getBlueairStatus(deviceIndex = 0) {
     );
     return data;
   } catch (error) {
-    console.error("Error getting Blueair status:", error);
+    // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+    if (!(error instanceof BridgeConnectionError)) {
+      console.error("Error getting Blueair status:", error);
+    }
     throw error;
   }
 }

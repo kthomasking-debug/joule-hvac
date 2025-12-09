@@ -245,7 +245,7 @@ export function formatSetbackResponse(results) {
 - Away (8 hrs): Set back ${winterSetback + 2}°F
 - Home: Normal temperature
 
-Smart thermostats can automate this - ROI typically under 1 year!`;
+Joule can automate this with intelligent scheduling - optimize your HVAC system for maximum savings!`;
 }
 
 /**

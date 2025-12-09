@@ -48,6 +48,16 @@ export const DEFAULT_SETTINGS = {
   // UI settings
   useDetailedAnnualEstimate: false,
 
+  // Advanced Equipment Profile (Elite Tier - Custom COP Curve)
+  // For users who know what a COP curve is - upload NEEP data or manually enter
+  useCustomEquipmentProfile: false,
+  capacity47: null, // BTU/hr at 47°F (rated capacity)
+  capacity17: null, // BTU/hr at 17°F (cold climate)
+  capacity5: null, // BTU/hr at 5°F (very cold) - optional
+  cop47: null, // COP at 47°F
+  cop17: null, // COP at 17°F
+  cop5: null, // COP at 5°F - optional
+
   // Location (stored separately but managed here)
   // location: null, // city/state string
 };
@@ -305,6 +315,100 @@ export const SETTING_VALIDATORS = {
       return {
         valid: false,
         error: "Manual heat loss must be between 10 and 10,000 BTU/hr/°F",
+      };
+    }
+    return { valid: true };
+  },
+
+  useCustomEquipmentProfile: (value) => {
+    if (typeof value !== "boolean") {
+      return {
+        valid: false,
+        error: "Use custom equipment profile must be true or false",
+      };
+    }
+    return { valid: true };
+  },
+
+  capacity47: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0 || num > 200000) {
+      return {
+        valid: false,
+        error: "Capacity at 47°F must be a positive number up to 200,000 BTU/hr",
+      };
+    }
+    return { valid: true };
+  },
+
+  capacity17: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0 || num > 200000) {
+      return {
+        valid: false,
+        error: "Capacity at 17°F must be a positive number up to 200,000 BTU/hr",
+      };
+    }
+    return { valid: true };
+  },
+
+  capacity5: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0 || num > 200000) {
+      return {
+        valid: false,
+        error: "Capacity at 5°F must be a positive number up to 200,000 BTU/hr",
+      };
+    }
+    return { valid: true };
+  },
+
+  cop47: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1.0 || num > 6.0) {
+      return {
+        valid: false,
+        error: "COP at 47°F must be between 1.0 and 6.0",
+      };
+    }
+    return { valid: true };
+  },
+
+  cop17: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1.0 || num > 6.0) {
+      return {
+        valid: false,
+        error: "COP at 17°F must be between 1.0 and 6.0",
+      };
+    }
+    return { valid: true };
+  },
+
+  cop5: (value) => {
+    if (value === null || value === undefined) {
+      return { valid: true };
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1.0 || num > 6.0) {
+      return {
+        valid: false,
+        error: "COP at 5°F must be between 1.0 and 6.0",
       };
     }
     return { valid: true };

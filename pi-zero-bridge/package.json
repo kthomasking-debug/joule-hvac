@@ -1,0 +1,22 @@
+{
+  "name": "joule-groq-rag-bridge",
+  "version": "1.0.0",
+  "description": "Groq-powered RAG bridge for Joule on Raspberry Pi Zero 2 W",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "joule",
+    "hvac",
+    "rag",
+    "groq",
+    "pi-zero"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

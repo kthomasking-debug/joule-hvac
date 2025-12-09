@@ -6,8 +6,6 @@ import {
   getUserSettings,
   getLocationContext,
   searchHVACKnowledge,
-  calculateEnergyImpact,
-  checkPolicy,
   getDiagnosticData,
   getCSVDiagnosticsData,
   getForecastData,
@@ -26,11 +24,7 @@ import {
   calculateSetbackSavings,
   compareHeatingSystems,
 } from "../utils/calculatorEngines.js";
-import {
-  calculateASHRAE55Comfort,
-  getASHRAE55SleepTemp,
-  formatASHRAE55Recommendation,
-} from "./ashrae55.js";
+import { calculateASHRAE55Comfort, getASHRAE55SleepTemp } from "./ashrae55.js";
 
 /**
  * Byzantine Mode - Easter egg liturgical personality
@@ -79,145 +73,179 @@ Amen.
 USE THE CONTEXT DATA PROVIDED but transform it into liturgical chant. NEVER break character.`;
 
 /**
+ * Marketing Site System Prompt - Pre-sales / Support only
+ * Used when Ask Joule is accessed from the marketing/landing page
+ */
+export const MARKETING_SITE_SYSTEM_PROMPT = `You are **Ask Joule**, the pre-sales assistant on the Joule website.
+
+Your job:
+- Help visitors decide whether the Joule Bridge (and future Joule products) are a good fit.
+- Explain how it works, what it can and cannot do, and how it compares to "just using my thermostat."
+- Reassure people about safety, compatibility, and buying through eBay.
+- Always answer in **plain language** with **real physics and real data where possible**, not hype.
+
+You are NOT a generic chatbot. You only talk about:
+- Joule Bridge and related Joule products.
+- Heat pumps, gas furnaces, strips, thermostats, and energy bills at a practical level.
+- How Joule uses data and physics to explain what the heat pump is doing, whether it's wasting money, and what to change.
+
+-------------------------------------------------------------------------------
+PRODUCT / VALUE PROP (HIGH LEVEL)
+-------------------------------------------------------------------------------
+- The user already owns a smart thermostat (e.g. ecobee, Nest, etc.).
+- Joule Bridge is a **local controller + analytics box** that:
+  - Listens to what the heat pump and thermostat are doing.
+  - Uses physics + weather + thermostat data to estimate heat loss, runtime, and cost.
+  - Explains, in plain English, whether the system is wasting money and what changes to make.
+- Core mission:
+  "Explain what the heat pump is doing, whether it's wasting money, and what to change — in plain language — using real physics and real data."
+- It runs locally on a small computer (Raspberry Pi class hardware) with optional cloud AI if the user brings their own API key.
+
+If you need to make assumptions (e.g. typical COP, HSPF, or kWh prices), say so explicitly. Example: 
+"Based on a typical heat pump COP of around 3 at 40°F and your rate of about 15¢/kWh…"
+
+-------------------------------------------------------------------------------
+SCOPE & SAFETY BOUNDARIES
+-------------------------------------------------------------------------------
+You MUST stay within these boundaries:
+
+1. **No detailed wiring instructions.**
+   - You can describe install difficulty at a high level (e.g. "similar to installing a smart thermostat").
+   - You **must NOT** give step-by-step electrical wiring directions, tell people which wires to move where, or encourage opening equipment beyond manufacturer instructions.
+   - For anything in that territory, say something like:
+     "That's getting into wiring specifics — for safety, follow the official install guide or have an HVAC/electrical pro double-check."
+
+2. **No guarantee of bill outcomes.**
+   - You can talk about typical savings ranges and back-of-the-envelope math.
+   - Always qualify with language like "estimate", "ballpark", or "based on typical conditions".
+   - Never promise specific savings or a guaranteed payback.
+
+3. **No pretending to see private data.**
+   - On the marketing site you do NOT see their actual thermostat, home, or eBay orders.
+   - If they ask "What did my heat pump do last night?" answer:
+     "I don't see your real data here on the website. Inside the Joule app, we'd use your actual thermostat history to answer that very specifically."
+
+4. **No order-management powers.**
+   - You can't see or modify eBay orders, shipping status, refunds, etc.
+   - If asked, say:
+     "I can't see your order details from here. You can check order status, returns, and buyer protection directly in your eBay account for this item."
+
+5. **Respect brand boundaries.**
+   - You can say that Joule works *with* popular thermostats, but do not claim official partnership unless explicitly stated.
+   - If asked "Is this made by Ecobee?" say clearly:
+     "No — Joule is a separate product that works *with* smart thermostats like ecobee."
+
+-------------------------------------------------------------------------------
+TONE & STYLE
+-------------------------------------------------------------------------------
+- Sound like a calm, smart friend who is good at physics but hates jargon.
+- Use **short paragraphs**, minimal fluff.
+- Prefer concrete numbers and comparisons: "about the cost of a streaming subscription per month" is better than "cheap".
+- When explaining math, keep it approachable. Show the key numbers, not full derivations.
+- Never pressure the user to buy. It's always okay to say "If this doesn't sound worth it for your home, it might not be."
+
+Examples of tone:
+- "Short answer: yes, it should work, with one caveat…"
+- "Here's the simple way to think about it…"
+- "Rough ballpark: somewhere between $X and $Y per month under typical winter weather."
+
+-------------------------------------------------------------------------------
+WHAT YOU *CAN* HELP WITH (FOCUS AREAS)
+-------------------------------------------------------------------------------
+Emphasize clear, helpful answers to questions like:
+
+- Compatibility:
+  - "Will this work with my current thermostat / heat pump / gas furnace?"
+  - "I have electric strips — is that okay?"
+  - "What if I replace my thermostat later?"
+- Installation effort:
+  - "Can I install this myself or do I need a pro?"
+  - "What tools do I need?"
+  - Answer in terms of difficulty level, time, and who should do it, NOT step-by-step wiring.
+- Value & savings:
+  - "How much money could this realistically save me?"
+  - "Is it worth it if my house is only 800 sq ft?"
+  - Give ballpark ranges and how Joule actually estimates bills (weather, runtime, rates).
+- Data & privacy:
+  - "Does this run locally?"
+  - "Do you upload my thermostat data to the cloud?"
+  - Explain that the Bridge can work locally and that cloud use is optional / user-controlled.
+- Product tiers:
+  - Explain differences between "Bridge" and future "Sovereign / AI Core" tier in clear practical terms.
+- eBay checkout:
+  - Why they're sent to eBay.
+  - Reassure with buyer protection, secure payment, easy returns.
+
+-------------------------------------------------------------------------------
+HANDLING UNCERTAINTY
+-------------------------------------------------------------------------------
+When you aren't sure, or the answer depends on details you don't have:
+
+1. Say that you're making a guess: 
+   "I don't know your exact system, but typically…"
+2. Offer what additional info would make the answer better:
+   "If you know the model number of your thermostat or heat pump, that can confirm compatibility."
+3. It's fine to say "I don't know" and point to:
+   - The official install guide.
+   - Their local HVAC contractor or electrician.
+   - The specific eBay listing details (for shipping/returns).
+
+-------------------------------------------------------------------------------
+RESPONSE SHAPE (GOOD DEFAULT)
+-------------------------------------------------------------------------------
+By default, try to structure answers like this:
+
+1. **One-sentence answer first.**
+2. **1–3 short paragraphs** with detail and, if relevant, simple math.
+3. **One concrete next step** if it's helpful (e.g. "Based on what you said, I'd start by…").
+
+-------------------------------------------------------------------------------
+EXAMPLE ANSWERS (STYLE GUIDES)
+-------------------------------------------------------------------------------
+If user asks: "Will this work with my existing ecobee and heat pump?"
+
+- Good answer:
+  "Very likely yes. Joule is designed to sit alongside smart thermostats like ecobee and watch how your heat pump runs. As long as your system is a standard heat pump with electric strips or a gas furnace (no ultra-exotic commercial setup), it should be compatible. The one thing we always recommend is checking the install guide and, if anything about the wiring feels spooky, having an HVAC tech confirm it."
+
+If user asks: "How much could this actually save me?"
+
+- Good answer:
+  "Joule doesn't magically change physics — it helps you stop wasting money. For a typical 800–1500 sq ft house running a heat pump, the realistic range we see is roughly 5–20% off the heating portion of the bill, mostly by cutting unnecessary strip heat and bad schedules. If your system is already very well-tuned, the savings might be smaller; if your thermostat is doing a lot of dumb things at night, it can be bigger."
+
+If user asks: "Why does the 'Buy Now' button send me to eBay?"
+
+- Good answer:
+  "We use eBay for secure checkout and shipping. That way your payment goes through eBay's system, you get their buyer protection and return process, and we don't have to store your card or build our own checkout. Once you complete the purchase there, it's shipped just like any other eBay item."
+
+-------------------------------------------------------------------------------
+ABSOLUTE RULES
+-------------------------------------------------------------------------------
+- Be honest about what Joule can and cannot do.
+- Do not fabricate partnerships, certifications, or savings numbers.
+- Do not give detailed electrical wiring instructions.
+- Do not claim to see the user's real-world data or orders while on the marketing site.
+- Always favor clarity and safety over cleverness.`;
+
+/**
  * System prompt with personality - Joule is a friendly, knowledgeable HVAC expert
  * Intelligence comes from tools, but personality makes it approachable
  */
-const MINIMAL_SYSTEM_PROMPT = `You are Joule, an HVAC analytics engine. Be concise. Do not use filler phrases like 'Sure thing,' 'Certainly,' 'Here is the answer,' 'Great question,' or 'Let me break that down.' Start directly with the data or the solution.
-
-STYLE GUIDE - CRITICAL:
-- Length: Maximum 3 sentences per concept. Total response under 100 words unless asked for a deep dive.
-- Format: Use bullet points for lists. No intro fluff ("Based on the knowledge base..."). No outro fluff ("By understanding this...").
-- Tone: Direct, technical, authoritative. Like a senior engineer speaking to a junior engineer.
-- Crucial: If you cite a number, just cite it. Don't narrate the citation.
-- FORBIDDEN: Verbose explanations, repetitive statements, technical vagueness, filler phrases
-
-RESPONSE PROCESS - MANDATORY (CRITICAL - NEVER SKIP):
-STEP 1: Generate your full answer with all technical details (DO NOT OUTPUT THIS)
-STEP 2: Summarize that answer to a maximum of 3 sentences OR 100 words
-STEP 3: Output ONLY the summary - DO NOT output the full answer
+const MINIMAL_SYSTEM_PROMPT = `You are Joule, an HVAC analytics engine. Be direct and technical. Maximum 250 words or 300 tokens. Use paragraph form only—no bullets, lists, or dashes. Start with the answer, not filler phrases.
 
 CRITICAL RULES:
-- Maximum 3 sentences OR 100 words - whichever is shorter
-- Output ONLY the summary - the full answer is for your internal thinking only
-- If your response exceeds 100 words, you have FAILED - delete and try again
-- The summary must capture the core information concisely
-- This summary is the ONLY thing the user will read and hear
-- Be direct, technical, and authoritative - no fluff, no pleasantries
-- Count your words before outputting - if over 100, shorten it
+- NEVER invent model numbers, SEER2, HSPF2, or capacity—only use values from CONTEXT
+- NEVER say "go to Settings page"—display data directly from context
+- NEVER claim you executed commands—you only answer questions
+- Use measured data from CSV analyzer over calculated estimates
+- For balance point questions, use the value from context (calculated or estimated)
+- When discussing sizing, reference actual capacity: "Your 3.5 ton system should be 2.8-3.0 tons"
+- Aux Heat Max Outdoor Temp means aux heat engages AT OR BELOW that temp
+- If you don't know something, explain what data/sensor is missing, suggest alternatives
+- Safety: NEVER help bypass safety switches—respond firmly and recommend a licensed tech
 
-EXAMPLE - BAD vs GOOD:
+PERSONALITY: Direct, technical, authoritative. Show value through numbers ("$200/year savings"). Be empathetic but brief. Forbidden phrases: "Sure thing", "Certainly", "Great question", "According to", "Based on the knowledge base".
 
-User: "How does dew point affect efficiency?"
-
-BAD AI: "Well, according to the DOE and ASHRAE standards, dew point is a critical factor in heat pump efficiency. When the outdoor temperature drops below the dew point, moisture in the air condenses on the outdoor coil, forming frost. This frost buildup reduces heat transfer efficiency and forces the system to enter defrost mode, which consumes additional energy. By understanding these principles, you can optimize your system's performance."
-
-GOOD AI: "High dew point accelerates frost formation on the outdoor coil. This forces frequent defrost cycles (running in AC mode to melt ice), which destroys efficiency. Since your balance point is 21°F, moisture below 30°F is your biggest efficiency killer."
-
-You are a knowledgeable HVAC energy assistant - approachable, enthusiastic about energy efficiency, and genuinely interested in helping homeowners save money and stay comfortable.
-
-CRITICAL SAFETY RULES - NEVER VIOLATE:
-- ❌ NEVER assist with bypassing, disabling, or removing safety switches (high limit, pressure switches, flame sensors, rollout switches, etc.)
-- ❌ NEVER help with dangerous modifications that could cause fire, equipment damage, carbon monoxide, or injury
-- ✅ If asked about bypassing safety equipment, respond FIRMLY: "I cannot assist with that. Bypassing safety switches is dangerous and can cause fire or equipment destruction. Please call a licensed technician immediately."
-- ✅ Safety switches are critical life-safety protection devices - they cannot be bypassed safely under any circumstances
-- ✅ Always err on the side of safety - when in doubt, recommend calling a licensed professional
-
-YOUR PERSONALITY:
-- Direct, technical, authoritative - like a senior engineer speaking to a junior engineer
-- Enthusiastic about energy efficiency, but express it through data, not words
-- Patient with technical questions, but answer concisely
-- Honest about what you know and don't know - say "I don't know" if you don't know
-- Be direct: Start with the answer, not filler phrases
-- Show value through numbers: "$200/year savings" not "That upgrade could save you money!"
-- Be empathetic but brief: "High bills are frustrating. Your heat loss factor is 850 BTU/hr/°F - that's high."
-- Be firm about safety: When safety is at risk, be direct and clear - no exceptions
-- FORBIDDEN PHRASES: "Sure thing", "Certainly", "Here's what I found", "Great question", "Let me break that down", "Here is the answer", "Based on the knowledge base", "By understanding this", "According to", "Well, according to"
-
-CRITICAL: ALWAYS FETCH DATA AND DISPLAY IT IN CHAT - NEVER SUGGEST NAVIGATION
-- ❌ NEVER say "go to Settings page" or "check the dashboard" or "visit the page"
-- ✅ ALWAYS use the CONTEXT data provided below to answer questions directly
-- ✅ ALWAYS display actual numbers, values, and data in your response
-- ✅ The context already contains all available data - use it directly
-
-IMPORTANT: The CONTEXT section below contains ACTUAL DATA from the user's system. Use the exact values provided - do NOT use placeholders like "[insert system type]" or "[insert location]". The context shows real data like:
-- System type (heat pump, gas, etc.)
-- Location (city, state)
-- Settings (HSPF, SEER, capacity, thermostat temps)
-- Balance point (if calculated)
-- Current thermostat state (if available)
-
-You get intelligence from TOOLS (but context already includes the data):
-- getCurrentState() → live thermostat data
-- getUserSettings() → system specs, preferences  
-- getLocationContext() → climate info
-- searchHVACKnowledge(query) → fetch HVAC docs on demand
-- calculateEnergyImpact(params) → estimate savings/costs
-- checkPolicy(action, params) → validate safety constraints
-- getDiagnosticData(query) → advanced sensor data (if available)
-- calculateASHRAE55Comfort(params) → ASHRAE Standard 55 thermal comfort recommendations
-
-RESPONSE FORMAT:
-- When asked about data, FETCH it from context and DISPLAY it in chat with personality
-- Example: "Looking at your setup, you've got a heat pump with HSPF2: 9 and SEER2: 16, rated at 36k BTU. You're in Blairsville, GA at 2200ft elevation - that mountain air can be chilly!"
-- Example: "Your thermostat is set to 78°F for winter and 82°F for summer. Your balance point is 35°F, which means your heat pump should handle most of your heating needs."
-- NEVER say "check the Settings page" - instead say "Your settings show..." or "Based on your current setup..."
-
-CRITICAL: YOU CANNOT EXECUTE COMMANDS - ONLY ANSWER QUESTIONS
-- ❌ NEVER say "I've set your temperature to X" or "I've updated your setting" or "Done! I've changed..."
-- ❌ NEVER claim you executed a command or changed a setting
-- ✅ If the user asks you to change a setting, explain that commands like "set temperature to 72" are handled automatically by the system
-- ✅ If you see a command that should have been executed but wasn't, say: "I can't execute commands directly, but the system should have handled that. If it didn't work, try saying the command more directly, like 'set temperature to 72'"
-- ✅ For questions about settings, use the context data to answer - don't claim to have changed anything
-
-- CRITICAL: When asked about balance point, you MUST use the balancePoint tool - NEVER calculate or estimate it yourself
-- The balancePoint tool returns the EXACT calculated value - use that exact number, do not round or estimate
-- If the tool returns 42.9°F, say "42.9°F" or "about 43°F" - do NOT say "33 degrees" or any other number
-- The context may include a balance point value, but ALWAYS call the balancePoint tool to get the most current and accurate value
-- The tool calculation is authoritative - trust the tool result over any context value
-
-CRITICAL: ALWAYS PRIORITIZE MEASURED DATA FROM ANALYZER OVER CALCULATED ESTIMATES
-- If the context includes "CSV ANALYSIS DATA" or "REAL MEASURED DATA" with heat loss factor or balance point, USE THOSE VALUES
-- Measured data from thermostat CSV uploads is MORE ACCURATE than calculated estimates
-- When answering "is my home efficient" or "what's my heat loss", ALWAYS check for measured data first
-- Format: "Based on your actual thermostat data, your measured heat loss factor is X BTU/hr per °F"
-- Only use calculated estimates if no measured data is available
-- The measured heat loss factor from the analyzer is the EXACT BTU/hr per °F from your real system performance
-
-CRITICAL RULES FOR "I DON'T KNOW" RESPONSES:
-1. If asked about data you don't have, EXPLAIN WHY with empathy:
-   - "I'd love to help with that, but I don't have access to [specific sensor/data]" 
-   - "That's a great question! Unfortunately, I'd need [specific sensor/equipment] to measure that, which I don't currently have"
-   - "I can't measure [metric] because [reason], but here's what I can tell you..."
-   
-2. Be specific about what's missing:
-   - ❌ Bad: "I don't know"
-   - ✅ Good: "I don't have a supply air temperature sensor, so I can't measure the delta between supply and return air. That would be really useful data though!"
-   - ✅ Good: "I don't have real-time watt monitoring, so I can't show you the current strip heat power draw. But I can estimate it based on your system specs!"
-   
-3. Suggest alternatives when possible:
-   - "I don't have that sensor, but I can tell you [related info I do have]"
-   - "I can't measure that directly, but based on [available data], I can estimate..."
-   - "While I can't see that exact metric, here's what I know about your system..."
-
-4. For expert diagnostic questions:
-   - Acknowledge the question is valid and important: "That's a really insightful question!"
-   - Clearly state what sensors/data would be needed
-   - Explain what you CAN provide instead (if anything)
-   - Show enthusiasm: "If you had [sensor], I could give you exact numbers on that!"
-
-General Rules:
-1. Be conversational and concise (2-4 sentences for simple questions, 4-6 for complex)
-2. If you need to provide detailed information, structure it with clear sections or bullet points
-3. Don't ramble - get to the point quickly while being helpful
-2. Fetch knowledge docs when needed (search first, then answer)
-3. Use specific numbers when available - display actual data from context with enthusiasm
-4. Show personality for fun questions - be playful but still helpful
-5. For technical questions, be precise and honest about limitations, but explain things clearly
-6. ALWAYS answer in chat - never suggest navigating away
-7. When helping save money, show genuine excitement: "That's fantastic!" "You're going to love this!"
-8. Use natural transitions: "Here's the thing..." "So here's what's happening..." "The good news is..."
-
-When you don't know something, search for it. Don't make things up. If you can't find it, be honest and friendly about it.`;
+CONTEXT contains real system data—use exact values. If context shows "HSPF2: 9", use exactly that. If no model number in context, say "your heat pump" or "your system"—never invent one.`;
 
 /**
  * Unified Agent: Answer user question using minimal prompt + tools
@@ -239,6 +267,7 @@ export async function answerWithAgent(
     maxRetries = 2,
     onProgress = null,
     model = null, // Allow model override
+    systemPromptOverride = null, // Allow system prompt override (e.g. for marketing site)
   } = options;
 
   // Advanced mode: use planning system
@@ -348,14 +377,16 @@ export async function answerWithAgent(
       );
     }
   }
-  const systemPrompt = byzantineMode
+  const systemPrompt = systemPromptOverride
+    ? systemPromptOverride
+    : byzantineMode
     ? BYZANTINE_SYSTEM_PROMPT
     : MINIMAL_SYSTEM_PROMPT;
 
   // Build messages array
   const userContent = byzantineMode
     ? `${context}\n\n[REMEMBER: Respond ONLY in Byzantine liturgical chant style. Start with "Oh" and include "Rejoice, Oh Coil Unfrosted!" refrains.]\n\nUser question: ${userQuestion}`
-    : `${context}\n\nUser question: ${userQuestion}\n\nREMINDER: You MUST summarize your answer to 3 sentences or 100 words maximum. Generate your full answer internally, then output ONLY the summary.`;
+    : `${context}\n\nUser question: ${userQuestion}\n\nCRITICAL: Keep your response under 300 tokens (approximately 250 words). Be concise and direct.`;
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -387,7 +418,7 @@ export async function answerWithAgent(
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
     let storedModel = localStorage.getItem("groqModel");
-    
+
     // If no stored model or using default, try to get best model dynamically
     if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
       try {
@@ -401,10 +432,13 @@ export async function answerWithAgent(
           }
         }
       } catch (error) {
-        console.warn("[groqAgent] Failed to get best model, using default:", error);
+        console.warn(
+          "[groqAgent] Failed to get best model, using default:",
+          error
+        );
       }
     }
-    
+
     storedModel = storedModel || "llama-3.3-70b-versatile";
     // Import dynamically to avoid circular dependencies
     const { getCurrentModel } = await import("./groqModelFallback.js");
@@ -466,22 +500,35 @@ export async function answerWithAgent(
 
       // Handle rate limiting with automatic fallback
       if (response.status === 429) {
-        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const { handleRateLimitFallback } = await import(
+          "./groqModelFallback.js"
+        );
         const fallbackModel = handleRateLimitFallback(modelName);
-        
+
         // If we switched models, retry the request with fallback model
         if (fallbackModel !== modelName) {
-          console.log(`[groqAgent] Retrying with fallback model: ${fallbackModel}`);
+          console.log(
+            `[groqAgent] Retrying with fallback model: ${fallbackModel}`
+          );
           // Retry with fallback model (recursive call with updated model)
-          return await callGroqAPI(apiKey, messages, {
-            ...options,
-            model: fallbackModel,
-          });
+          return await answerWithAgent(
+            userQuestion,
+            apiKey,
+            thermostatData,
+            userSettings,
+            userLocation,
+            conversationHistory,
+            {
+              ...options,
+              model: fallbackModel,
+            }
+          );
         }
-        
+
         return {
           error: true,
-          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
+          message:
+            "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
 
@@ -498,12 +545,13 @@ export async function answerWithAgent(
       if (response.status === 400) {
         const errorMessage =
           errorData.error?.message || errorData.message || "Invalid request";
-        
+
         // Check if it's an API key issue
-        const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
-                             errorMessage.toLowerCase().includes("authentication") ||
-                             errorMessage.toLowerCase().includes("unauthorized");
-        
+        const isApiKeyError =
+          errorMessage.toLowerCase().includes("api key") ||
+          errorMessage.toLowerCase().includes("authentication") ||
+          errorMessage.toLowerCase().includes("unauthorized");
+
         if (isApiKeyError) {
           return {
             error: true,
@@ -511,7 +559,7 @@ export async function answerWithAgent(
             needsApiKey: true,
           };
         }
-        
+
         return {
           error: true,
           message: `Invalid request to Groq API: ${errorMessage}. Check your model name and request format.`,
@@ -521,11 +569,13 @@ export async function answerWithAgent(
       }
 
       // Check error message for API key issues even if status isn't 401
-      const errorMessage = errorData.error?.message || errorData.message || response.statusText;
-      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
-                           errorMessage.toLowerCase().includes("invalid api key") ||
-                           errorMessage.toLowerCase().includes("authentication");
-      
+      const errorMessage =
+        errorData.error?.message || errorData.message || response.statusText;
+      const isApiKeyError =
+        errorMessage.toLowerCase().includes("api key") ||
+        errorMessage.toLowerCase().includes("invalid api key") ||
+        errorMessage.toLowerCase().includes("authentication");
+
       if (isApiKeyError) {
         return {
           error: true,
@@ -570,11 +620,15 @@ export async function answerWithAgent(
         "\n\n[Response was truncated due to length limit. Please ask a more specific question for a complete answer.]";
     }
 
+    // Post-process: truncate if >100 words, strip banned phrases
+    const processedAnswer = postProcessAnswer(finalAnswer);
+
     const result = {
       success: true,
-      message: finalAnswer,
+      message: processedAnswer,
       tokensUsed: data.usage?.total_tokens,
-      wasTruncated: finishReason === "length",
+      wasTruncated:
+        finishReason === "length" || processedAnswer !== finalAnswer,
     };
 
     // Save to conversation memory
@@ -628,7 +682,7 @@ async function answerWithPlanning(
   conversationHistory,
   options
 ) {
-  const { enableProactive, maxRetries, onProgress, model = null } = options;
+  const { onProgress, model = null } = options;
 
   // Initialize calculator tools
   const tools = {
@@ -811,7 +865,7 @@ async function answerWithPlanning(
     ...enrichedHistory,
     {
       role: "user",
-      content: `${context}\n\nTOOL RESULTS:\n${toolResultsSummary}\n\nUser question: ${userQuestion}\n\nProvide a helpful response based on the tool results above.\n\nCRITICAL: Summarize to 3 sentences or 100 words maximum. Output ONLY the summary.`,
+      content: `${context}\n\nTOOL RESULTS:\n${toolResultsSummary}\n\nUser question: ${userQuestion}\n\nProvide a helpful response based on the tool results above.\n\nCRITICAL: Keep response under 300 tokens (approximately 250 words). Be concise and direct. Count your words before outputting. Output ONLY the summary.`,
     },
   ];
 
@@ -820,7 +874,7 @@ async function answerWithPlanning(
   let modelName = model;
   if (!modelName && typeof window !== "undefined") {
     let storedModel = localStorage.getItem("groqModel");
-    
+
     // If no stored model or using default, try to get best model dynamically
     if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
       try {
@@ -834,10 +888,13 @@ async function answerWithPlanning(
           }
         }
       } catch (error) {
-        console.warn("[groqAgent] Failed to get best model, using default:", error);
+        console.warn(
+          "[groqAgent] Failed to get best model, using default:",
+          error
+        );
       }
     }
-    
+
     storedModel = storedModel || "llama-3.3-70b-versatile";
     const { getCurrentModel } = await import("./groqModelFallback.js");
     modelName = getCurrentModel(storedModel);
@@ -870,26 +927,38 @@ async function answerWithPlanning(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
-        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const { handleRateLimitFallback } = await import(
+          "./groqModelFallback.js"
+        );
         const fallbackModel = handleRateLimitFallback(modelName);
-        
+
         // If we switched models, retry the request with fallback model
         if (fallbackModel !== modelName) {
-          console.log(`[groqAgent] Retrying streaming with fallback model: ${fallbackModel}`);
-          // Retry with fallback model
-          return await callGroqAPIStreaming(apiKey, messages, {
-            ...options,
-            model: fallbackModel,
-            onChunk,
-          });
+          console.log(
+            `[groqAgent] Retrying with fallback model: ${fallbackModel}`
+          );
+          // Retry with fallback model (recursive call with updated model)
+          return await answerWithPlanning(
+            userQuestion,
+            apiKey,
+            thermostatData,
+            userSettings,
+            userLocation,
+            conversationHistory,
+            {
+              ...options,
+              model: fallbackModel,
+            }
+          );
         }
-        
+
         return {
           error: true,
-          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
+          message:
+            "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
-      
+
       // Handle 401 Unauthorized - Invalid API Key
       if (response.status === 401) {
         return {
@@ -898,13 +967,14 @@ async function answerWithPlanning(
           needsApiKey: true,
         };
       }
-      
+
       // Check error message for API key issues
       const errorMessage = errorData.error?.message || response.statusText;
-      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
-                           errorMessage.toLowerCase().includes("invalid api key") ||
-                           errorMessage.toLowerCase().includes("authentication");
-      
+      const isApiKeyError =
+        errorMessage.toLowerCase().includes("api key") ||
+        errorMessage.toLowerCase().includes("invalid api key") ||
+        errorMessage.toLowerCase().includes("authentication");
+
       if (isApiKeyError) {
         return {
           error: true,
@@ -912,7 +982,7 @@ async function answerWithPlanning(
           needsApiKey: true,
         };
       }
-      
+
       return {
         error: true,
         message: `Groq request failed: ${errorMessage}`,
@@ -957,7 +1027,7 @@ async function answerWithPlanning(
 /**
  * Analyze query to understand intent and extract entities
  */
-function analyzeQuery(query, userSettings, history) {
+function analyzeQuery(query, userSettings) {
   const queryLower = query.toLowerCase();
   const intent = detectIntent(queryLower);
   const entities = extractEntities(queryLower);
@@ -1042,7 +1112,7 @@ function calculateConfidence(queryLower, intent, entities, missingData) {
 /**
  * Create execution plan based on reasoning
  */
-function createExecutionPlan(reasoning, tools) {
+function createExecutionPlan(reasoning) {
   const { intent, entities, missingData } = reasoning;
   const steps = [];
 
@@ -1279,39 +1349,27 @@ async function buildMinimalContext(
     }
   }
 
-  // Also check for short cycling, system performance, or efficiency questions
-  const isShortCyclingQuestion =
+  // Only include heavy CSV analysis block for explicit efficiency/performance questions
+  // Gate behind stricter keyword checks to avoid token bloat
+  const needsCSVAnalysis =
     lowerQuestion.includes("short cycling") ||
     lowerQuestion.includes("short cycle") ||
-    lowerQuestion.includes("cycling") ||
-    lowerQuestion.includes("system performance") ||
-    (lowerQuestion.includes("bill") &&
-      (lowerQuestion.includes("high") || lowerQuestion.includes("expensive")));
-
-  // Check for efficiency/home performance questions
-  const isEfficiencyQuestion =
-    lowerQuestion.includes("efficiency") ||
-    lowerQuestion.includes("home efficiency") ||
-    lowerQuestion.includes("energy efficiency") ||
-    lowerQuestion.includes("hers") ||
-    lowerQuestion.includes("energy rating") ||
-    lowerQuestion.includes("home performance") ||
-    lowerQuestion.includes("building performance") ||
-    lowerQuestion.includes("thermal performance") ||
+    lowerQuestion.includes("heat loss factor") ||
+    lowerQuestion.includes("heat loss") ||
+    lowerQuestion.includes("system sizing") ||
+    lowerQuestion.includes("oversized") ||
+    lowerQuestion.includes("undersized") ||
     /is.*my.*home.*efficient/i.test(lowerQuestion) ||
-    /how.*efficient/i.test(lowerQuestion) ||
     /what.*my.*heat.*loss/i.test(lowerQuestion) ||
-    /heat.*loss.*factor/i.test(lowerQuestion);
+    (lowerQuestion.includes("efficiency") &&
+      (lowerQuestion.includes("home") ||
+        lowerQuestion.includes("building") ||
+        lowerQuestion.includes("house")));
 
-  if (isShortCyclingQuestion || isEfficiencyQuestion) {
+  if (needsCSVAnalysis) {
     const csvDiagnostics = getCSVDiagnosticsData();
     if (csvDiagnostics && csvDiagnostics.hasData) {
-      context += `\n\n═══════════════════════════════════════════════════════════════\n`;
-      context += `CSV ANALYSIS DATA (from System Performance Analyzer - REAL MEASURED DATA)\n`;
-      context += `═══════════════════════════════════════════════════════════════\n`;
-      context += `⚠️ CRITICAL: This is ACTUAL MEASURED DATA from your thermostat CSV upload.\n`;
-      context += `⚠️ ALWAYS USE THESE VALUES over any calculated estimates when answering efficiency questions.\n`;
-      context += `⚠️ These are the EXACT measured values from your real system performance.\n`;
+      context += `\nCSV ANALYSIS DATA (from System Performance Analyzer - REAL MEASURED DATA):\n`;
       if (csvDiagnostics.latestAnalysis) {
         const analysis = csvDiagnostics.latestAnalysis;
         context += `Latest analysis results:\n`;
@@ -1319,8 +1377,13 @@ async function buildMinimalContext(
           context += `- Heat Loss Factor (MEASURED): ${analysis.heatLossFactor.toLocaleString()} BTU/hr per °F\n`;
           context += `  This is the actual measured heat loss from your thermostat data, not a calculation.\n`;
         }
-        if (analysis.balancePoint !== undefined && analysis.balancePoint !== -99) {
-          context += `- Balance Point (MEASURED): ${analysis.balancePoint.toFixed(1)}°F\n`;
+        if (
+          analysis.balancePoint !== undefined &&
+          analysis.balancePoint !== -99
+        ) {
+          context += `- Balance Point (MEASURED): ${analysis.balancePoint.toFixed(
+            1
+          )}°F\n`;
           context += `  This is the actual outdoor temperature where aux heat first engaged in your data.\n`;
         }
         if (analysis.shortCycling !== undefined) {
@@ -1368,8 +1431,12 @@ async function buildMinimalContext(
     lowerQuestion.includes("tomorrow") ||
     lowerQuestion.includes("day after") ||
     /in\s+\d+\s+days?/i.test(lowerQuestion) ||
-    /(?:this|next)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/i.test(lowerQuestion) ||
-    /(?:what'?s?|what is|tell me|show me).*(?:high|low|temp).*(?:for|on|next|tomorrow|tuesday|wednesday|thursday|friday|saturday|sunday|monday)/i.test(lowerQuestion) ||
+    /(?:this|next)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/i.test(
+      lowerQuestion
+    ) ||
+    /(?:what'?s?|what is|tell me|show me).*(?:high|low|temp).*(?:for|on|next|tomorrow|tuesday|wednesday|thursday|friday|saturday|sunday|monday)/i.test(
+      lowerQuestion
+    ) ||
     /(?:coldest|warmest).*(?:low|high|temp|day)/i.test(lowerQuestion);
 
   if (isForecastQuestion) {
@@ -1378,7 +1445,11 @@ async function buildMinimalContext(
     if (forecastData && forecastData.error) {
       context += `\n\n7-Day Forecast Data Error: ${forecastData.error}\n`;
       context += `Please run a new forecast on the 7-Day Cost Forecaster page.\n`;
-    } else if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length > 0) {
+    } else if (
+      forecastData &&
+      forecastData.dailySummary &&
+      forecastData.dailySummary.length > 0
+    ) {
       context += `\n\n═══════════════════════════════════════════════════════════════\n`;
       context += `7-DAY COST FORECAST DATA\n`;
       context += `═══════════════════════════════════════════════════════════════\n`;
@@ -1388,13 +1459,16 @@ async function buildMinimalContext(
       }
       context += `Daily Forecast Summary:\n`;
       forecastData.dailySummary.forEach((day) => {
-        context += `- ${day.day}: Low ${day.lowTemp.toFixed(1)}°F, High ${day.highTemp.toFixed(1)}°F`;
+        context += `- ${day.day}: Low ${day.lowTemp.toFixed(
+          1
+        )}°F, High ${day.highTemp.toFixed(1)}°F`;
         if (day.avgHumidity) {
           context += `, Avg Humidity ${day.avgHumidity.toFixed(0)}%`;
         }
         // Enhanced cost breakdown context
         if (day.cost !== null || day.costWithAux !== null) {
-          const costToShow = day.costWithAux !== null ? day.costWithAux : day.cost;
+          const costToShow =
+            day.costWithAux !== null ? day.costWithAux : day.cost;
           context += `, Cost $${costToShow.toFixed(2)}`;
         }
         // Include energy usage context
@@ -1413,7 +1487,11 @@ async function buildMinimalContext(
         context += `\n⚠️ IMPORTANT: If the user asks about current or upcoming weather, remind them this forecast is ${forecastData.ageInDays} days old and they should run a new forecast for accurate data.\n`;
       }
       context += `═══════════════════════════════════════════════════════════════\n`;
-    } else if (forecastData && forecastData.dailySummary && forecastData.dailySummary.length === 0) {
+    } else if (
+      forecastData &&
+      forecastData.dailySummary &&
+      forecastData.dailySummary.length === 0
+    ) {
       context += `\n\n7-Day Forecast Data: Available but contains no daily data. The forecast may be incomplete. Run a new forecast on the 7-Day Cost Forecaster page.\n`;
     } else {
       context += `\n\n7-Day Forecast Data: Not available. Run a forecast on the 7-Day Cost Forecaster page to see temperature predictions.\n`;
@@ -1422,19 +1500,53 @@ async function buildMinimalContext(
   }
 
   // Only include system state if question is about current conditions
-  if (
-    !isDiagnostic &&
-    (lowerQuestion.includes("temp") ||
-      lowerQuestion.includes("mode") ||
-      lowerQuestion.includes("running") ||
-      lowerQuestion.includes("status"))
-  ) {
+  // Also fetch outdoor temp for questions about outdoor temperature, weather, or aux heat
+  const needsOutdoorTemp =
+    lowerQuestion.includes("temp") ||
+    lowerQuestion.includes("mode") ||
+    lowerQuestion.includes("running") ||
+    lowerQuestion.includes("status") ||
+    lowerQuestion.includes("outdoor") ||
+    lowerQuestion.includes("outside") ||
+    lowerQuestion.includes("weather") ||
+    lowerQuestion.includes("aux") ||
+    lowerQuestion.includes("auxiliary");
+
+  if (!isDiagnostic && needsOutdoorTemp) {
     const state = getCurrentState(thermostatData);
+    let outdoorTemp = state.outdoorTemp;
+
+    // If outdoor temp not in thermostat data, try to fetch from NWS API
+    if (!outdoorTemp) {
+      try {
+        const { getCurrentOutdoorTemp } = await import("./agentTools.js");
+        const location = getLocationContext(userLocation, userSettings);
+        if (location && !location.error && (location.lat || location.lon)) {
+          const lat = location.lat;
+          const lon = location.lon;
+          if (lat && lon) {
+            const tempResult = await getCurrentOutdoorTemp(lat, lon);
+            if (tempResult && tempResult.success) {
+              outdoorTemp = tempResult.temperature;
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors - outdoor temp is optional
+        console.warn("[groqAgent] Failed to fetch outdoor temp:", e);
+      }
+    }
+
     if (state.indoorTemp) {
       context += `\nCurrent: ${state.indoorTemp}°F indoor, target ${state.targetTemp}°F, mode: ${state.mode}`;
-      if (state.outdoorTemp) context += `, ${state.outdoorTemp}°F outdoor`;
+      if (outdoorTemp) context += `, ${outdoorTemp}°F outdoor`;
     } else {
-      context += "\nNo live thermostat data available";
+      // Even if no indoor temp, include outdoor temp if available
+      if (outdoorTemp) {
+        context += `\nCurrent outdoor temperature: ${outdoorTemp}°F`;
+      } else {
+        context += "\nNo live thermostat data available";
+      }
     }
   }
 
@@ -1471,9 +1583,16 @@ async function buildMinimalContext(
     }
 
     // Include utility rates when discussing costs
-    if (lowerQuestion.includes("cost") || lowerQuestion.includes("bill") || lowerQuestion.includes("expense") || lowerQuestion.includes("savings")) {
+    if (
+      lowerQuestion.includes("cost") ||
+      lowerQuestion.includes("bill") ||
+      lowerQuestion.includes("expense") ||
+      lowerQuestion.includes("savings")
+    ) {
       if (settings.utilityCost) {
-        context += `\nElectricity rate: $${settings.utilityCost.toFixed(3)}/kWh`;
+        context += `\nElectricity rate: $${settings.utilityCost.toFixed(
+          3
+        )}/kWh`;
       }
       if (settings.gasCost) {
         context += `, Gas rate: $${settings.gasCost.toFixed(3)}/therm`;
@@ -1520,7 +1639,7 @@ async function buildMinimalContext(
         if (t.coolDissipationTime !== undefined)
           context += `, Cool Dissipation Time: ${t.coolDissipationTime}s`;
       }
-    } catch (e) {
+    } catch {
       // Ignore errors loading thermostat settings - module may not be available in all contexts
     }
 
@@ -1532,86 +1651,337 @@ async function buildMinimalContext(
     context += `\nSystem: Settings not available - user should configure system details in Settings page`;
   }
 
-  // Include balance point if question is about balance point, aux heat, or switchover
+  // Include balance point if question is about balance point, aux heat, switchover, or compressor lockout
   // NOTE: This is for context only - Groq should use the balancePoint tool for the actual value
-  if (
+  const isBalancePointQuestion =
     lowerQuestion.includes("balance point") ||
     lowerQuestion.includes("balancepoint") ||
     lowerQuestion.includes("aux") ||
     lowerQuestion.includes("switchover") ||
-    lowerQuestion.includes("auxiliary")
-  ) {
+    lowerQuestion.includes("auxiliary") ||
+    lowerQuestion.includes("lockout") ||
+    (lowerQuestion.includes("compressor") &&
+      (lowerQuestion.includes("lockout") ||
+        lowerQuestion.includes("temperature") ||
+        lowerQuestion.includes("temp")));
+
+  if (isBalancePointQuestion) {
     try {
-      // Always calculate balance point - use defaults if userSettings is missing
-      const settingsForCalc = {
-        // Defaults first
-        squareFeet: 2000,
-        ceilingHeight: 8,
-        insulationLevel: 1.0,
-        hspf2: 9,
-        tons: 3,
-        targetIndoorTemp: 68,
-        designOutdoorTemp: 20,
-        // Then override with user settings if available
-        ...(userSettings || {}),
-      };
+      // Simple location-based balance point estimate
+      // This provides a reasonable estimate without requiring all building parameters
+      let estimatedBalancePoint = null;
+      let locationName = "";
 
-      // Convert capacity (kBTU) to tons if needed: 12 kBTU = 1 ton
-      if (settingsForCalc.capacity && !settingsForCalc.tons) {
-        settingsForCalc.tons = settingsForCalc.capacity / 12.0;
+      // Get location from localStorage (set during onboarding)
+      try {
+        const raw = localStorage.getItem("userLocation");
+        if (raw) {
+          const loc = JSON.parse(raw);
+          locationName = loc.foundLocationName || loc.city || "";
+          const lat = Number(loc.latitude ?? loc.lat);
+
+          if (!isNaN(lat)) {
+            // Estimate balance point based on climate zone (latitude-based)
+            // Typical balance points for standard heat pumps in different climates:
+            // - Warm climates (30-35°F): 25-30°F balance point
+            // - Moderate climates (20-30°F): 30-35°F balance point
+            // - Cool climates (10-20°F): 35-40°F balance point
+            // - Cold climates (0-10°F): 40-45°F balance point
+            // - Very cold (<0°F): 45-50°F balance point
+
+            if (lat < 28) {
+              // South Florida, Hawaii - very warm
+              estimatedBalancePoint = 25;
+            } else if (lat < 32) {
+              // Gulf Coast / Coastal South - warm
+              estimatedBalancePoint = 30;
+            } else if (lat < 36) {
+              // Mid-South / Mid-Atlantic (e.g., Blairsville, GA ~34.8°N) - moderate
+              estimatedBalancePoint = 32;
+            } else if (lat < 40) {
+              // Interior Mid-Atlantic / Lower Midwest - moderate-cool
+              estimatedBalancePoint = 35;
+            } else if (lat < 44) {
+              // Upper Midwest / New England south - cool
+              estimatedBalancePoint = 38;
+            } else if (lat < 48) {
+              // Northern tier / Northern New England - cold
+              estimatedBalancePoint = 42;
+            } else {
+              // Far north / Alaska - very cold
+              estimatedBalancePoint = 45;
+            }
+          }
+        }
+      } catch {
+        // Ignore parse errors
       }
 
-      // Use winter thermostat as targetIndoorTemp if available
-      if (
-        settingsForCalc.winterThermostat &&
-        !settingsForCalc.targetIndoorTemp
-      ) {
-        settingsForCalc.targetIndoorTemp = settingsForCalc.winterThermostat;
+      // Also check if we have a stored balance point from energy-flow page (preferred if available)
+      let storedBalancePoint = null;
+      try {
+        const stored = localStorage.getItem("energyFlowBalancePoint");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          if (
+            parsed.timestamp &&
+            parsed.timestamp > oneHourAgo &&
+            parsed.balancePoint !== null &&
+            isFinite(parsed.balancePoint)
+          ) {
+            storedBalancePoint = parsed;
+          }
+        }
+      } catch {
+        // Ignore parse errors
       }
 
-      const balancePointResult = calculateBalancePoint(settingsForCalc);
-      if (balancePointResult && balancePointResult.balancePoint) {
-        context += `\nBalance point (context - use tool for exact value): ${balancePointResult.balancePoint}°F`;
-        context += `\n⚠️ IMPORTANT: When stating the balance point, you MUST call the balancePoint tool to get the exact current value. Do NOT use this context value - always call the tool.`;
-        if (balancePointResult.heatLossFactor) {
-          context += ` (Heat loss: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F)`;
+      // Use stored balance point if available, otherwise use location-based estimate
+      const balancePoint =
+        storedBalancePoint?.balancePoint ?? estimatedBalancePoint;
+
+      if (balancePoint !== null && isFinite(balancePoint)) {
+        const source = storedBalancePoint
+          ? "Energy Flow page"
+          : `location-based estimate for ${
+              locationName || "your climate zone"
+            }`;
+        context += `\nBalance Point: ${balancePoint.toFixed(1)}°F (${source})`;
+
+        if (storedBalancePoint) {
+          // Include additional details if available from energy-flow page
+          if (storedBalancePoint.btuLossPerDegF) {
+            context += `\nHeat Loss Factor: ${storedBalancePoint.btuLossPerDegF.toLocaleString(
+              undefined,
+              { maximumFractionDigits: 1 }
+            )} BTU/hr per °F`;
+          }
+          if (storedBalancePoint.capacity) {
+            context += `\nSystem: ${storedBalancePoint.capacity}k BTU, HSPF2: ${
+              storedBalancePoint.hspf?.toFixed(1) || "N/A"
+            }`;
+          }
+        } else {
+          context += `\nNote: This is a climate-based estimate. For a precise balance point, visit the Energy Flow page and enter your system details.`;
+        }
+
+        if (
+          lowerQuestion.includes("compressor") &&
+          lowerQuestion.includes("lockout")
+        ) {
+          // Recommend lockout 5-10°F below balance point, with 15°F minimum for standard heat pumps
+          const idealLockout = Math.round(balancePoint - 7.5); // Middle of 5-10°F range
+          const minLockout = Math.round(balancePoint - 10);
+          const maxLockout = Math.round(balancePoint - 5);
+
+          // Safety minimum: 15°F for standard heat pumps
+          const MIN_SAFE_LOCKOUT = 15;
+          let recommendedLockout = Math.max(MIN_SAFE_LOCKOUT, idealLockout);
+          let finalMinLockout = Math.max(MIN_SAFE_LOCKOUT, minLockout);
+          let finalMaxLockout = Math.max(MIN_SAFE_LOCKOUT, maxLockout);
+
+          if (
+            recommendedLockout === MIN_SAFE_LOCKOUT &&
+            idealLockout < MIN_SAFE_LOCKOUT
+          ) {
+            context += `\nRecommended Compressor Lockout: ${recommendedLockout}°F (minimum safe temperature for standard heat pumps). Your estimated balance point of ${balancePoint.toFixed(
+              1
+            )}°F suggests the system could operate lower, but ${MIN_SAFE_LOCKOUT}°F protects the compressor. Range: ${finalMinLockout}-${finalMaxLockout}°F.`;
+          } else {
+            context += `\nRecommended Compressor Lockout: ${recommendedLockout}°F (range: ${finalMinLockout}-${finalMaxLockout}°F, which is 5-10°F below balance point for optimal efficiency)`;
+          }
         }
       } else {
-        // Balance point calculation returned null - provide diagnostic info
-        const usingDefaults = [];
-        if (!userSettings?.capacity && !userSettings?.tons)
-          usingDefaults.push("capacity (using default: 3 tons)");
-        if (!userSettings?.hspf2)
-          usingDefaults.push("HSPF2 (using default: 9)");
-        if (!userSettings?.squareFeet)
-          usingDefaults.push("square footage (using default: 2000 sq ft)");
+        // Fallback: Calculate balance point if not available from energy-flow page
+        // Always calculate balance point - use defaults if userSettings is missing
+        // IMPORTANT: Include all fields that HeatPumpEnergyFlow page uses for consistency
+        // Match HeatPumpEnergyFlow page data sources: userSettings -> outletContext -> localStorage -> defaults
+        let mergedSettings = {};
 
-        if (usingDefaults.length > 0) {
-          context += `\nBalance point: Calculation returned null. Using defaults for ${usingDefaults.join(
-            ", "
-          )}. Set your actual values in Settings for accurate calculation. Current values: capacity=${
-            settingsForCalc.capacity || settingsForCalc.tons * 12
-          }k BTU, HSPF2=${settingsForCalc.hspf2}, squareFeet=${
-            settingsForCalc.squareFeet
-          } sq ft.`;
-        } else {
-          // All data present but still null - system may be extremely oversized/undersized
-          context += `\nBalance point: Calculation returned null. Your system may be extremely oversized (balance point well below 20°F) or undersized (balance point well above 60°F). Current settings: ${
-            settingsForCalc.capacity || settingsForCalc.tons * 12
-          }k BTU, HSPF2: ${settingsForCalc.hspf2}, ${
-            settingsForCalc.squareFeet
-          } sq ft. The calculator will attempt to extrapolate.`;
+        // First, try to get from unified settings manager (same source as App.jsx uses)
+        // Note: buildMinimalContext is async, so we can use dynamic import
+        try {
+          // Use dynamic import to avoid circular dependencies
+          const unifiedSettingsModule = await import(
+            "./unifiedSettingsManager.js"
+          );
+          if (unifiedSettingsModule && unifiedSettingsModule.getAllSettings) {
+            const allSettings = unifiedSettingsModule.getAllSettings();
+            if (allSettings) {
+              mergedSettings = { ...allSettings };
+            }
+          }
+        } catch {
+          // Fallback to localStorage if unified manager not available
+          try {
+            const stored = localStorage.getItem("userSettings");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              mergedSettings = { ...parsed };
+            }
+          } catch {
+            // Ignore parse errors
+          }
         }
 
-        // Still include the result even if balance point is null - it has other useful info
-        if (balancePointResult) {
-          if (balancePointResult.heatLossFactor) {
-            context += ` Heat loss factor: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F.`;
+        // Then override with userSettings prop (if provided - this takes precedence)
+        if (userSettings) {
+          mergedSettings = { ...mergedSettings, ...userSettings };
+        }
+
+        // Build settings with defaults, then override with merged settings
+        const settingsForCalc = {
+          // Defaults first
+          squareFeet: 2000,
+          ceilingHeight: 8,
+          insulationLevel: 1.0,
+          homeShape: 1.0, // Critical: HeatPumpEnergyFlow includes this in heat loss calculation
+          hspf2: 9,
+          tons: 3,
+          capacity: 36, // Default capacity in kBTU
+          targetIndoorTemp: 68,
+          designOutdoorTemp: 20,
+          // Then override with merged settings (unified manager/localStorage + userSettings prop)
+          ...mergedSettings,
+        };
+
+        // Ensure capacity is converted to tons if needed (matches HeatPumpEnergyFlow page)
+        if (settingsForCalc.capacity && !settingsForCalc.tons) {
+          // HeatPumpEnergyFlow uses a capacities map: 24k = 2 tons, 36k = 3 tons, etc.
+          const capacities = {
+            18: 1.5,
+            24: 2.0,
+            30: 2.5,
+            36: 3.0,
+            42: 3.5,
+            48: 4.0,
+            60: 5.0,
+          };
+          settingsForCalc.tons =
+            capacities[settingsForCalc.capacity] ||
+            settingsForCalc.capacity / 12.0;
+        }
+
+        // Use winter thermostat as targetIndoorTemp if available
+        if (
+          settingsForCalc.winterThermostat &&
+          !settingsForCalc.targetIndoorTemp
+        ) {
+          settingsForCalc.targetIndoorTemp = settingsForCalc.winterThermostat;
+        }
+
+        const balancePointResult = calculateBalancePoint(settingsForCalc);
+        if (
+          balancePointResult &&
+          balancePointResult.balancePoint !== null &&
+          balancePointResult.balancePoint !== undefined
+        ) {
+          const balancePoint = balancePointResult.balancePoint;
+          context += `\nBalance Point: ${balancePoint.toFixed(1)}°F`;
+
+          // Add warning if balance point is unusually low or high
+          if (balancePoint < 20) {
+            context += ` ⚠️ WARNING: This balance point is unusually low (<20°F), suggesting an oversized system or very efficient home. Verify your system capacity (${
+              settingsForCalc.capacity || settingsForCalc.tons * 12
+            }k BTU), square footage (${
+              settingsForCalc.squareFeet
+            } sq ft), and insulation level in Settings.`;
+          } else if (balancePoint > 50) {
+            context += ` ⚠️ WARNING: This balance point is unusually high (>50°F), suggesting an undersized system or inefficient home. Verify your system capacity and home details in Settings.`;
           }
-          if (balancePointResult.diagnostic) {
-            context += ` Diagnostic: ${JSON.stringify(
-              balancePointResult.diagnostic
-            )}.`;
+
+          if (balancePointResult.heatLossFactor) {
+            context += ` (Heat loss: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F)`;
+          }
+          // For compressor lockout questions, provide recommendation with safety minimum
+          if (
+            lowerQuestion.includes("compressor") &&
+            lowerQuestion.includes("lockout")
+          ) {
+            // Calculate ideal lockout (5-10°F below balance point)
+            const idealLockout = Math.round(balancePoint - 7.5); // Middle of 5-10°F range
+            const minIdealLockout = Math.round(balancePoint - 10);
+            const maxIdealLockout = Math.round(balancePoint - 5);
+
+            // Safety minimum: 15°F to protect compressor from very cold operation
+            // Only go below 15°F if balance point is very low AND user has a cold-climate heat pump
+            const MIN_SAFE_LOCKOUT = 15;
+            const isColdClimateHP =
+              settingsForCalc.hspf2 >= 10 && balancePoint < 25;
+
+            let recommendedLockout, minLockout, maxLockout;
+            if (idealLockout < MIN_SAFE_LOCKOUT && !isColdClimateHP) {
+              // Balance point is very low, but we should still protect the compressor
+              recommendedLockout = MIN_SAFE_LOCKOUT;
+              minLockout = MIN_SAFE_LOCKOUT;
+              maxLockout = Math.max(MIN_SAFE_LOCKOUT, maxIdealLockout);
+              context += `\nRecommended Compressor Lockout: ${recommendedLockout}°F (minimum safe temperature for standard heat pumps). Your balance point of ${balancePoint.toFixed(
+                1
+              )}°F suggests the system could operate lower, but ${MIN_SAFE_LOCKOUT}°F protects the compressor from cold-weather damage. For cold-climate heat pumps (HSPF2≥10), you may be able to go lower.`;
+            } else {
+              recommendedLockout = Math.max(MIN_SAFE_LOCKOUT, idealLockout);
+              minLockout = Math.max(MIN_SAFE_LOCKOUT, minIdealLockout);
+              maxLockout = Math.max(MIN_SAFE_LOCKOUT, maxIdealLockout);
+              context += `\nRecommended Compressor Lockout: ${recommendedLockout}°F (range: ${minLockout}-${maxLockout}°F, which is 5-10°F below balance point for optimal efficiency)`;
+            }
+          }
+        } else {
+          // Balance point calculation returned null - provide diagnostic info
+          const usingDefaults = [];
+          if (!userSettings?.capacity && !userSettings?.tons)
+            usingDefaults.push("capacity (using default: 3 tons)");
+          if (!userSettings?.hspf2)
+            usingDefaults.push("HSPF2 (using default: 9)");
+          if (!userSettings?.squareFeet)
+            usingDefaults.push("square footage (using default: 2000 sq ft)");
+
+          // For compressor lockout questions, still provide a recommendation based on defaults
+          if (
+            lowerQuestion.includes("compressor") &&
+            lowerQuestion.includes("lockout")
+          ) {
+            // Estimate balance point from defaults if available
+            const estimatedBalancePoint =
+              settingsForCalc.hspf2 >= 10
+                ? 25
+                : settingsForCalc.hspf2 >= 9
+                ? 30
+                : 35;
+            const recommendedLockout = Math.max(
+              0,
+              Math.round(estimatedBalancePoint - 7.5)
+            );
+            context += `\nBalance Point: Not calculated (missing system data). Estimated balance point: ~${estimatedBalancePoint}°F based on HSPF2=${settingsForCalc.hspf2}. Recommended Compressor Lockout: ${recommendedLockout}°F (5-10°F below estimated balance point). Set your system capacity, HSPF2, and square footage in Settings for an accurate calculation.`;
+          } else {
+            if (usingDefaults.length > 0) {
+              context += `\nBalance point: Calculation returned null. Using defaults for ${usingDefaults.join(
+                ", "
+              )}. Set your actual values in Settings for accurate calculation. Current values: capacity=${
+                settingsForCalc.capacity || settingsForCalc.tons * 12
+              }k BTU, HSPF2=${settingsForCalc.hspf2}, squareFeet=${
+                settingsForCalc.squareFeet
+              } sq ft.`;
+            } else {
+              // All data present but still null - system may be extremely oversized/undersized
+              context += `\nBalance point: Calculation returned null. Your system may be extremely oversized (balance point well below 20°F) or undersized (balance point well above 60°F). Current settings: ${
+                settingsForCalc.capacity || settingsForCalc.tons * 12
+              }k BTU, HSPF2: ${settingsForCalc.hspf2}, ${
+                settingsForCalc.squareFeet
+              } sq ft. The calculator will attempt to extrapolate.`;
+            }
+          }
+
+          // Still include the result even if balance point is null - it has other useful info
+          if (balancePointResult) {
+            if (balancePointResult.heatLossFactor) {
+              context += ` Heat loss factor: ${balancePointResult.heatLossFactor.toLocaleString()} BTU/hr per °F.`;
+            }
+            if (balancePointResult.diagnostic) {
+              context += ` Diagnostic: ${JSON.stringify(
+                balancePointResult.diagnostic
+              )}.`;
+            }
           }
         }
       }
@@ -1677,7 +2047,7 @@ async function buildMinimalContext(
       context += `\nAcceptable range: ${ashraeResult.tempRange.min}°F - ${ashraeResult.tempRange.max}°F`;
       context += `\nSleep/unoccupied: ${getASHRAE55SleepTemp(season)}°F`;
       context += `\n${ashraeResult.explanation}`;
-    } catch (e) {
+    } catch {
       // Ignore errors in ASHRAE calculation
     }
   }
@@ -1685,113 +2055,6 @@ async function buildMinimalContext(
   // Auto-fetch RAG knowledge for ALL questions (not just technical)
   // RAG provides HVAC knowledge base that improves all answers
   // Always attempt RAG - it's non-blocking if it fails
-  const isTechnicalQuestion =
-    lowerQuestion.includes("manual j") ||
-    lowerQuestion.includes("manual s") ||
-    lowerQuestion.includes("manual d") ||
-    lowerQuestion.includes("ashrae") ||
-    lowerQuestion.includes("heat loss") ||
-    lowerQuestion.includes("load calculation") ||
-    lowerQuestion.includes("sizing") ||
-    lowerQuestion.includes("oversized") ||
-    lowerQuestion.includes("undersized") ||
-    lowerQuestion.includes("duct") ||
-    lowerQuestion.includes("airflow") ||
-    lowerQuestion.includes("ventilation") ||
-    lowerQuestion.includes("thermal comfort") ||
-    lowerQuestion.includes("comfort zone") ||
-    lowerQuestion.includes("heat pump") ||
-    lowerQuestion.includes("aux") ||
-    lowerQuestion.includes("strip") ||
-    lowerQuestion.includes("defrost") ||
-    lowerQuestion.includes("recovery") ||
-    lowerQuestion.includes("lockout") ||
-    lowerQuestion.includes("threshold") ||
-    lowerQuestion.includes("efficiency") ||
-    lowerQuestion.includes("hspf") ||
-    lowerQuestion.includes("seer") ||
-    lowerQuestion.includes("cop") ||
-    lowerQuestion.includes("balance point") ||
-    lowerQuestion.includes("doe") ||
-    lowerQuestion.includes("nrel") ||
-    lowerQuestion.includes("tmy3") ||
-    lowerQuestion.includes("short cycling") ||
-    lowerQuestion.includes("short cycle") ||
-    lowerQuestion.includes("nema") ||
-    lowerQuestion.includes("heat dissipation") ||
-    lowerQuestion.includes("dissipation time") ||
-    lowerQuestion.includes("free heat") ||
-    lowerQuestion.includes("economic balance") ||
-    lowerQuestion.includes("close vent") ||
-    lowerQuestion.includes("closing vent") ||
-    lowerQuestion.includes("bill") ||
-    lowerQuestion.includes("predicted") ||
-    lowerQuestion.includes("forecast") ||
-    lowerQuestion.includes("save") ||
-    lowerQuestion.includes("savings") ||
-    lowerQuestion.includes("direction") ||
-    lowerQuestion.includes("faces") ||
-    lowerQuestion.includes("roof color") ||
-    lowerQuestion.includes("dark roof") ||
-    lowerQuestion.includes("sol-air") ||
-    lowerQuestion.includes("altitude") ||
-    lowerQuestion.includes("elevation") ||
-    lowerQuestion.includes("derate") ||
-    lowerQuestion.includes("hepa") ||
-    lowerQuestion.includes("merv") ||
-    lowerQuestion.includes("flex duct") ||
-    lowerQuestion.includes("draft") ||
-    lowerQuestion.includes("window") ||
-    lowerQuestion.includes("radiant") ||
-    lowerQuestion.includes("co2") ||
-    lowerQuestion.includes("carbon dioxide") ||
-    lowerQuestion.includes("thermal decay") ||
-    lowerQuestion.includes("newton") ||
-    lowerQuestion.includes("cooling law") ||
-    lowerQuestion.includes("hspf2") ||
-    lowerQuestion.includes("seer2") ||
-    lowerQuestion.includes("cop") ||
-    lowerQuestion.includes("eer") ||
-    lowerQuestion.includes("model") ||
-    lowerQuestion.includes("specification") ||
-    lowerQuestion.includes("capacity") ||
-    lowerQuestion.includes("cfm") ||
-    lowerQuestion.includes("airflow") ||
-    lowerQuestion.includes("refrigerant") ||
-    lowerQuestion.includes("r-410a") ||
-    lowerQuestion.includes("r-454b") ||
-    lowerQuestion.includes("r-32") ||
-    lowerQuestion.includes("clearance") ||
-    lowerQuestion.includes("line set") ||
-    lowerQuestion.includes("lineset") ||
-    lowerQuestion.includes("electrical") ||
-    lowerQuestion.includes("mca") ||
-    lowerQuestion.includes("mop") ||
-    lowerQuestion.includes("gas line") ||
-    lowerQuestion.includes("dual fuel") ||
-    lowerQuestion.includes("drain pan") ||
-    lowerQuestion.includes("fault code") ||
-    lowerQuestion.includes("error code") ||
-    lowerQuestion.includes("troubleshoot") ||
-    lowerQuestion.includes("diagnostic") ||
-    lowerQuestion.includes("flame sensor") ||
-    lowerQuestion.includes("inducer") ||
-    lowerQuestion.includes("pressure switch") ||
-    lowerQuestion.includes("ahri") ||
-    lowerQuestion.includes("matching") ||
-    lowerQuestion.includes("compatible") ||
-    lowerQuestion.includes("approved") ||
-    lowerQuestion.includes("combination") ||
-    lowerQuestion.includes("tax credit") ||
-    lowerQuestion.includes("25c") ||
-    lowerQuestion.includes("energy star") ||
-    lowerQuestion.includes("rebate") ||
-    lowerQuestion.includes("part number") ||
-    lowerQuestion.includes("replacement") ||
-    lowerQuestion.includes("supersede") ||
-    lowerQuestion.includes("obsolete");
-
-  // Always attempt RAG for all questions - it provides HVAC knowledge base
   // RAG is non-blocking - if it fails, we continue without it
   try {
     // Import and use RAG query
@@ -1799,16 +2062,32 @@ async function buildMinimalContext(
     const ragResult = await queryHVACKnowledge(question);
 
     if (ragResult.success && ragResult.content) {
-      // Truncate to avoid token limits (keep first 2000 chars)
-      const knowledgeSnippet = ragResult.content.substring(0, 2000);
-      context += `\n\n═══════════════════════════════════════════════════
-⚠️ CRITICAL: USE THIS KNOWLEDGE BASE CONTENT TO ANSWER THE QUESTION ⚠️
-═══════════════════════════════════════════════════\n\n${knowledgeSnippet}\n\n═══════════════════════════════════════════════════
-IMPORTANT: Base your answer on the knowledge above. Cite specific standards, causes, symptoms, and solutions from the knowledge base.
-═══════════════════════════════════════════════════\n`;
-      if (ragResult.content.length > 2000) {
-        context +=
-          "\n[Note: Additional knowledge base content was truncated for length]";
+      // Only add heavy RAG banner for technical questions (Manual J/S/D, standards, etc.)
+      const isTechnicalQuestion =
+        lowerQuestion.includes("manual j") ||
+        lowerQuestion.includes("manual s") ||
+        lowerQuestion.includes("manual d") ||
+        lowerQuestion.includes("ashrae") ||
+        lowerQuestion.includes("doe") ||
+        lowerQuestion.includes("nrel") ||
+        lowerQuestion.includes("acca");
+
+      // Truncate to avoid token limits (keep first 1500 chars)
+      const knowledgeSnippet = ragResult.content.substring(0, 1500);
+
+      if (isTechnicalQuestion) {
+        // Full banner for technical questions
+        context += `\n\nRELEVANT KNOWLEDGE BASE:\n${knowledgeSnippet}\n`;
+      } else {
+        // Lightweight for general questions
+        context += `\n\nRelevant knowledge: ${knowledgeSnippet.substring(
+          0,
+          500
+        )}\n`;
+      }
+
+      if (ragResult.content.length > 1500) {
+        context += "\n[Additional knowledge truncated]";
       }
     }
   } catch (error) {
@@ -1835,7 +2114,18 @@ export async function answerWithRAG(
   let fetchedKnowledge = null;
 
   // Auto-fetch relevant knowledge based on question
+  // Check for Auto Heat/Cool queries FIRST (before generic "setting" queries)
   if (
+    (lowerQuestion.includes("auto") &&
+      (lowerQuestion.includes("heat") ||
+        lowerQuestion.includes("cool") ||
+        lowerQuestion.includes("mode"))) ||
+    lowerQuestion.includes("auto heat/cool") ||
+    lowerQuestion.includes("auto heat cool") ||
+    (lowerQuestion.includes("heat/cool") && lowerQuestion.includes("setting"))
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("auto heat cool");
+  } else if (
     lowerQuestion.includes("supply air") ||
     lowerQuestion.includes("return air") ||
     lowerQuestion.includes("cfm") ||
@@ -1844,6 +2134,11 @@ export async function answerWithRAG(
     lowerQuestion.includes("diagnostic")
   ) {
     fetchedKnowledge = await searchHVACKnowledge("diagnostic");
+  } else if (
+    lowerQuestion.includes("compressor") &&
+    lowerQuestion.includes("lockout")
+  ) {
+    fetchedKnowledge = await searchHVACKnowledge("compressor lockout");
   } else if (
     lowerQuestion.includes("lockout") ||
     lowerQuestion.includes("threshold") ||
@@ -1911,7 +2206,7 @@ export async function answerWithRAG(
   let modelName = "llama-3.3-70b-versatile";
   if (typeof window !== "undefined") {
     let storedModel = localStorage.getItem("groqModel");
-    
+
     // If no stored model or using default, try to get best model dynamically
     if (!storedModel || storedModel === "llama-3.3-70b-versatile") {
       try {
@@ -1925,10 +2220,13 @@ export async function answerWithRAG(
           }
         }
       } catch (error) {
-        console.warn("[groqAgent] Failed to get best model, using default:", error);
+        console.warn(
+          "[groqAgent] Failed to get best model, using default:",
+          error
+        );
       }
     }
-    
+
     storedModel = storedModel || "llama-3.3-70b-versatile";
     const { getCurrentModel } = await import("./groqModelFallback.js");
     modelName = getCurrentModel(storedModel);
@@ -1955,25 +2253,33 @@ export async function answerWithRAG(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 429) {
-        const { handleRateLimitFallback } = await import("./groqModelFallback.js");
+        const { handleRateLimitFallback } = await import(
+          "./groqModelFallback.js"
+        );
         const fallbackModel = handleRateLimitFallback(modelName);
-        
+
         // If we switched models, retry the request with fallback model
         if (fallbackModel !== modelName) {
-          console.log(`[groqAgent] Retrying RAG query with fallback model: ${fallbackModel}`);
-          // Retry with fallback model
-          return await searchHVACKnowledge(query, {
-            ...options,
-            model: fallbackModel,
-          });
+          console.log(
+            `[groqAgent] Retrying RAG query with fallback model: ${fallbackModel}`
+          );
+          // Retry with fallback model (recursive call)
+          return await answerWithRAG(
+            userQuestion,
+            apiKey,
+            thermostatData,
+            userSettings,
+            userLocation
+          );
         }
-        
+
         return {
           error: true,
-          message: "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
+          message:
+            "Rate limit exceeded. Switched to faster model. Please wait a moment and try again.",
         };
       }
-      
+
       // Handle 401 Unauthorized - Invalid API Key
       if (response.status === 401) {
         return {
@@ -1982,13 +2288,14 @@ export async function answerWithRAG(
           needsApiKey: true,
         };
       }
-      
+
       // Check error message for API key issues
       const errorMessage = errorData.error?.message || response.statusText;
-      const isApiKeyError = errorMessage.toLowerCase().includes("api key") || 
-                           errorMessage.toLowerCase().includes("invalid api key") ||
-                           errorMessage.toLowerCase().includes("authentication");
-      
+      const isApiKeyError =
+        errorMessage.toLowerCase().includes("api key") ||
+        errorMessage.toLowerCase().includes("invalid api key") ||
+        errorMessage.toLowerCase().includes("authentication");
+
       if (isApiKeyError) {
         return {
           error: true,
@@ -1996,7 +2303,7 @@ export async function answerWithRAG(
           needsApiKey: true,
         };
       }
-      
+
       return {
         error: true,
         message: `Groq request failed: ${errorMessage}`,
@@ -2024,12 +2331,16 @@ export async function answerWithRAG(
         "\n\n[Response was truncated. Please ask a more specific question for a complete answer.]";
     }
 
+    // Post-process: truncate if >100 words, strip banned phrases
+    const processedAnswer = postProcessAnswer(finalAnswer);
+
     return {
       success: true,
-      message: finalAnswer,
+      message: processedAnswer,
       tokensUsed: data.usage?.total_tokens,
       usedRAG: !!fetchedKnowledge?.success,
-      wasTruncated: finishReason === "length",
+      wasTruncated:
+        finishReason === "length" || processedAnswer !== finalAnswer,
     };
   } catch (error) {
     return { error: true, message: `Request failed: ${error.message}` };
@@ -2040,10 +2351,7 @@ export async function answerWithRAG(
  * Proactive monitoring - checks system health and alerts user
  * Call this periodically (e.g., every hour) to detect issues
  */
-export async function checkProactiveAlerts(
-  thermostatData = null,
-  userSettings = null
-) {
+export async function checkProactiveAlerts() {
   const alerts = new ProactiveAlerts();
   const issues = await alerts.checkSystem();
 
@@ -2076,10 +2384,8 @@ export async function generateDailyBriefing() {
 export async function askJouleFallback(
   prompt,
   apiKey = "",
-  modelOverride = null,
   thermostatData = null,
   conversationHistory = [],
-  annualEstimate = null,
   userSettings = null,
   userLocation = null
 ) {
@@ -2135,4 +2441,57 @@ function formatBriefingMessage(summary) {
   }
 
   return message;
+}
+
+/**
+ * Post-process LLM answer: truncate >100 words, strip banned phrases
+ * Code enforces what the prompt used to beg for
+ */
+function postProcessAnswer(answer) {
+  if (!answer) return answer;
+
+  // Strip banned filler phrases
+  const bannedPhrases = [
+    /sure thing/gi,
+    /certainly/gi,
+    /here's what i found/gi,
+    /great question/gi,
+    /let me break that down/gi,
+    /here is the answer/gi,
+    /based on the knowledge base/gi,
+    /by understanding this/gi,
+    /well, according to/gi,
+    /according to/gi,
+  ];
+
+  let processed = answer;
+  for (const phrase of bannedPhrases) {
+    processed = processed.replace(phrase, "");
+  }
+
+  // Clean up double spaces
+  processed = processed.replace(/\s+/g, " ").trim();
+
+  // Truncate if >250 words (count words, not chars)
+  const words = processed.split(/\s+/);
+  if (words.length > 250) {
+    // Find last sentence boundary before 250 words
+    let truncated = words.slice(0, 250).join(" ");
+    const lastSentenceEnd = Math.max(
+      truncated.lastIndexOf("."),
+      truncated.lastIndexOf("!"),
+      truncated.lastIndexOf("?")
+    );
+
+    if (lastSentenceEnd > truncated.length - 50) {
+      truncated = truncated.substring(0, lastSentenceEnd + 1);
+    } else {
+      // No sentence boundary found, just truncate at word boundary
+      truncated = truncated.trim();
+    }
+
+    processed = truncated;
+  }
+
+  return processed;
 }

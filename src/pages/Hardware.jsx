@@ -4,10 +4,36 @@ import {
   Server, 
   Zap,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ExternalLink
 } from 'lucide-react';
-import Upgrades from './Upgrades';
 import DocumentationSetupGuides from './DocumentationSetupGuides';
+import { EBAY_STORE_URL } from '../utils/rag/salesFAQ';
+
+// Simple Shop component that links directly to eBay
+const Shop = () => {
+  return (
+    <div className="glass-card p-glass animate-fade-in-up">
+      <div className="text-center py-12">
+        <Zap className="w-16 h-16 text-violet-400 mx-auto mb-6" />
+        <h2 className="text-3xl font-bold mb-4 text-high-contrast">Joule Products</h2>
+        <p className="text-muted mb-8 max-w-2xl mx-auto">
+          Purchase Joule Monitor, Bridge, and other products directly from our eBay store.
+          All transactions are protected by eBay's Money Back Guarantee.
+        </p>
+        <a
+          href={EBAY_STORE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg font-bold text-lg transition-all shadow-lg hover:shadow-xl"
+        >
+          Visit eBay Store
+          <ExternalLink className="w-5 h-5" />
+        </a>
+      </div>
+    </div>
+  );
+};
 
 const Hardware = () => {
   const navigate = useNavigate();
@@ -16,7 +42,7 @@ const Hardware = () => {
 
   const tabs = [
     { id: 'bridge', label: 'Bridge', icon: Server, component: DocumentationSetupGuides },
-    { id: 'shop', label: 'Shop', icon: Zap, component: Upgrades },
+    { id: 'shop', label: 'Shop', icon: Zap, component: Shop },
   ];
 
   const activeTabData = tabs.find(t => t.id === activeTab);

@@ -23,7 +23,7 @@ function extractResponseText(response) {
   return "";
 }
 
-export const AskJouleResponse = ({
+export const AskJouleResponse = React.memo(({
   answer,
   agenticResponse,
   error,
@@ -249,30 +249,24 @@ export const AskJouleResponse = ({
         </div>
       )}
 
-      {/* Groq Fallback Prompt - show when no response and not loading */}
-      {showGroqPrompt && !isLoadingGroq && !hasContent && !error && !loadingMessage && (
-        <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 rounded" data-testid="fallback-prompt">
-          <p className="text-sm mb-2 text-gray-700 dark:text-gray-300">
-            I didn't understand that command. Send to AI assistant for a better answer?
-          </p>
-          <div className="flex gap-2">
-            <button
-              className="btn btn-primary px-3 py-1 text-xs"
-              onClick={onRetryGroq}
-              data-testid="send-to-ai-btn"
-            >
-              Send to AI
-            </button>
-            <button
-              className="btn btn-outline px-3 py-1 text-xs"
-              onClick={onCancelGroq}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Removed: Groq Fallback Prompt - AI is now automatically called as fallback */}
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison function for better memoization
+  // Only re-render if these specific props change
+  return (
+    prevProps.answer === nextProps.answer &&
+    prevProps.agenticResponse === nextProps.agenticResponse &&
+    prevProps.error === nextProps.error &&
+    prevProps.outputStatus === nextProps.outputStatus &&
+    prevProps.loadingMessage === nextProps.loadingMessage &&
+    prevProps.showGroqPrompt === nextProps.showGroqPrompt &&
+    prevProps.isLoadingGroq === nextProps.isLoadingGroq &&
+    prevProps.transcript === nextProps.transcript &&
+    prevProps.isListening === nextProps.isListening &&
+    prevProps.isSpeaking === nextProps.isSpeaking &&
+    prevProps.stopSpeaking === nextProps.stopSpeaking
+  );
+});
 

@@ -5,8 +5,14 @@
   "type": "module",
   "scripts": {
     "prepare": "husky install",
+    "kill-port": "powershell -ExecutionPolicy ByPass -File scripts/kill-port.ps1",
+    "kill-port:5173": "powershell -ExecutionPolicy ByPass -File scripts/kill-port.ps1 5173",
     "dev": "vite",
+    "dev:clean": "powershell -ExecutionPolicy ByPass -File scripts/kill-port.ps1 5173 && npm run dev",
     "test": "vitest --run",
+    "test:parser": "vitest --run src/utils/__tests__/askJouleParser.test.js",
+    "test:parser:watch": "vitest src/utils/__tests__/askJouleParser.test.js",
+    "test:sales": "node scripts/test-sales-questions.js",
     "test:stable": "vitest --run --pool=threads --maxWorkers=1",
     "test:verbose": "vitest --run --reporter=verbose",
     "test:speech": "vitest --run src/hooks/__tests__/useSpeechSynthesis.test.jsx",
@@ -17,6 +23,10 @@
     "test:ci": "vitest --run --environment=jsdom --pool=threads --maxWorkers=1",
     "test:ci:node": "vitest --run --environment=node",
     "test:dom": "vitest --run --environment=jsdom",
+    "test:visual": "playwright test",
+    "test:visual:ui": "playwright test --ui",
+    "test:visual:debug": "playwright test --debug",
+    "test:visual:screenshots": "playwright test --project=chromium",
     "build": "vite build",
     "build:gh-pages": "cross-env VITE_BASE_PATH=/engineering-tools/ vite build",
     "build:netlify": "cross-env VITE_BASE_PATH=/ vite build",
@@ -39,7 +49,8 @@
     "generate-icons": "node scripts/generate-icons.cjs",
     "relay-server": "node scripts/relay-server.js",
     "temp-server": "node server/temperature-server.js",
-    "nest:convert": "node scripts/convert-nest-takeout.js"
+    "nest:convert": "node scripts/convert-nest-takeout.js",
+    "generate:tts": "node scripts/generate-tts-responses.js"
   },
   "dependencies": {
     "@ai-sdk/groq": "^2.0.29",
@@ -50,6 +61,7 @@
     "@testing-library/dom": "^10.4.1",
     "ai": "^5.0.93",
     "cors": "^2.8.5",
+    "dexie": "^4.2.1",
     "express": "^4.18.2",
     "framer-motion": "^11.18.2",
     "html2canvas": "^1.4.1",
@@ -72,6 +84,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

@@ -43,18 +43,22 @@ const SETTINGS_GUIDES = {
 };
 
 // Typical/recommended values for settings (when CSV analysis isn't available)
+// Based on Building Science, NEMA Standards, and Comfort Psychology
 const TYPICAL_VALUES = {
-  "thresholds.heatDifferential": 1.0,
-  "thresholds.coolDifferential": 1.0,
-  "thresholds.compressorMinCycleOff": 600,
-  "thresholds.heatMinOnTime": 600,
-  "thresholds.coolMinOnTime": 600,
-  "thresholds.compressorMinOutdoorTemp": 30,
-  "thresholds.auxHeatMaxOutdoorTemp": 35,
-  "thresholds.heatDissipationTime": 60,
-  "thresholds.coolDissipationTime": 45,
-  "thresholds.acOvercoolMax": 2.0,
-  "thresholds.heatCoolMinDelta": 3,
+  "thresholds.heatDifferential": 1.0, // 0.5°F causes rapid cycling (6+ cycles/hr). 1.0°F reduces cycles by ~40% with no noticeable comfort loss.
+  "thresholds.coolDifferential": 1.0, // Same as heat - prevents short cycling
+  "thresholds.compressorMinCycleOff": 600, // 10 min - NEMA MG-1: Motors overheat on startup. Extending rest period allows refrigerant pressures to equalize.
+  "thresholds.heatMinOnTime": 300, // 5 min - Oil return. Oil migrates into lines, takes ~3-5 minutes to push back to crankcase.
+  "thresholds.coolMinOnTime": 300, // 5 min - Same oil return requirement
+  "thresholds.compressorMinOutdoorTemp": 20, // Set to Balance Point. Below balance point, heat pumps run continuously but lose ground.
+  "thresholds.auxHeatMaxOutdoorTemp": 35, // Electric strips cost 3x more than heat pumps. Never use above freezing unless emergency.
+  "thresholds.heatDissipationTime": 60, // 60s for Electric/HP, 30s for Gas. Heat exchanger still hot when fire stops - scavenge "free" heat.
+  "thresholds.coolDissipationTime": 45, // Coil still wet and cold. 45s evaporates water (cooling air) and raises Sensible Heat Ratio.
+  "thresholds.acOvercoolMax": 2.5, // 2-3°F. Allows AC to act as dehumidifier. Cold & Dry feels better than Warm & Wet.
+  "thresholds.heatCoolMinDelta": 5, // 4-5°F. Prevents "mode fighting." If set to 2°F, AC might overshoot and trigger heat immediately.
+  "thresholds.temperatureCorrection": 0, // No correction unless sensor is inaccurate
+  "thresholds.humidityCorrection": 0, // No correction unless sensor is inaccurate
+  "thresholds.thermalProtect": 10, // Max difference before ignoring sensor (protects against bad readings)
 };
 
 // Comprehensive CSV analysis function
@@ -226,14 +230,18 @@ const analyzeCSVData = () => {
     }
     
     // Differential recommendation based on cycles per hour
-    if (analysis.cyclesPerHour !== null) {
+    // Fix: When cycles are LOW (< 3), use tight comfort (0.5°F)
+    // When cycles are HIGH (> 6), use wider differential (1.5°F) to reduce cycling
+    if (analysis.cyclesPerHour !== null && !isNaN(analysis.cyclesPerHour) && isFinite(analysis.cyclesPerHour)) {
       if (analysis.cyclesPerHour < 3) {
-        analysis.heatDifferential = analysis.heatDifferential || 0.5;
+        // Low cycles = system is efficient, use tight comfort
+        analysis.heatDifferential = 0.5;
       } else if (analysis.cyclesPerHour <= 4) {
         analysis.heatDifferential = 0.75;
       } else if (analysis.cyclesPerHour <= 6) {
         analysis.heatDifferential = 1.0;
       } else {
+        // High cycles = system is short cycling, use wider differential
         analysis.heatDifferential = 1.5;
       }
     }
@@ -909,6 +917,7 @@ export default function ThermostatSettingsPanel() {
                   min={1}
                   max={10}
                   helpKey="thresholds.heatCoolMinDelta"
+                  settingKey="thresholds.heatCoolMinDelta"
                 />
                 <div>
                   <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
@@ -959,6 +968,7 @@ export default function ThermostatSettingsPanel() {
                   min={-20}
                   max={60}
                   helpKey="thresholds.compressorMinOutdoorTemp"
+                  settingKey="thresholds.compressorMinOutdoorTemp"
                 />
                 <SettingInput
                   label="AC Overcool Max (°F)"
@@ -971,6 +981,7 @@ export default function ThermostatSettingsPanel() {
                   max={5}
                   step={0.5}
                   helpKey="thresholds.acOvercoolMax"
+                  settingKey="thresholds.acOvercoolMax"
                 />
                 <SettingInput
                   label="Aux Heat Max Outdoor Temp (°F)"
@@ -982,6 +993,7 @@ export default function ThermostatSettingsPanel() {
                   min={20}
                   max={60}
                   helpKey="thresholds.auxHeatMaxOutdoorTemp"
+                  settingKey="thresholds.auxHeatMaxOutdoorTemp"
                 />
                 <SettingInput
                   label="Heat Differential (°F)"
@@ -1006,6 +1018,7 @@ export default function ThermostatSettingsPanel() {
                   min={0}
                   max={600}
                   helpKey="thresholds.heatDissipationTime"
+                  settingKey="thresholds.heatDissipationTime"
                 />
                 <SettingInput
                   label="Heat Min On Time (sec)"
@@ -1017,6 +1030,7 @@ export default function ThermostatSettingsPanel() {
                   min={60}
                   max={1800}
                   helpKey="thresholds.heatMinOnTime"
+                  settingKey="thresholds.heatMinOnTime"
                 />
                 <SettingInput
                   label="Cool Differential (°F)"
@@ -1041,6 +1055,7 @@ export default function ThermostatSettingsPanel() {
                   min={0}
                   max={600}
                   helpKey="thresholds.coolDissipationTime"
+                  settingKey="thresholds.coolDissipationTime"
                 />
                 <SettingInput
                   label="Cool Min On Time (sec)"
@@ -1052,6 +1067,7 @@ export default function ThermostatSettingsPanel() {
                   min={60}
                   max={1800}
                   helpKey="thresholds.coolMinOnTime"
+                  settingKey="thresholds.coolMinOnTime"
                 />
                 <SettingInput
                   label="Temperature Correction (°F)"
@@ -1064,6 +1080,7 @@ export default function ThermostatSettingsPanel() {
                   max={5}
                   step={0.5}
                   helpKey="thresholds.temperatureCorrection"
+                  settingKey="thresholds.temperatureCorrection"
                 />
                 <SettingInput
                   label="Compressor Reverse Staging"
@@ -1085,6 +1102,7 @@ export default function ThermostatSettingsPanel() {
                   max={10}
                   step={1}
                   helpKey="thresholds.humidityCorrection"
+                  settingKey="thresholds.humidityCorrection"
                 />
                 <SettingInput
                   label="Thermal Protect (°F)"
@@ -1097,6 +1115,7 @@ export default function ThermostatSettingsPanel() {
                   max={20}
                   step={1}
                   helpKey="thresholds.thermalProtect"
+                  settingKey="thresholds.thermalProtect"
                 />
               </div>
             </div>
@@ -1448,67 +1467,124 @@ function SettingInput({
     let message = "";
     
     if (analysis) {
-      // Use CSV analysis if available
+      // Use CSV analysis if available, but still provide reference manual explanations
       switch (settingKey) {
         case "thresholds.heatDifferential":
           recommendedValue = analysis.heatDifferential || TYPICAL_VALUES[settingKey];
           message = analysis.cyclesPerHour !== null 
-            ? `Auto-set to ${recommendedValue}°F based on ${analysis.cyclesPerHour.toFixed(1)} cycles/hour. ${analysis.shortCycles > 0 ? `Warning: ${analysis.shortCycles} short cycles detected.` : 'No short cycling detected.'}`
-            : `Auto-set to ${recommendedValue}°F (typical recommendation).`;
+            ? `Auto-set to ${recommendedValue}°F. Default 0.5°F causes rapid cycling (6+ cycles/hr). ${recommendedValue}°F reduces cycles by ~40% with no noticeable comfort loss. Your data shows ${analysis.cyclesPerHour.toFixed(1)} cycles/hour.`
+            : `Auto-set to ${recommendedValue}°F. Default 0.5°F causes rapid cycling (6+ cycles/hr). ${recommendedValue}°F reduces cycles by ~40% with no noticeable comfort loss.`;
           break;
         case "thresholds.coolDifferential":
           recommendedValue = analysis.heatDifferential || TYPICAL_VALUES[settingKey]; // Use same logic as heat
-          message = `Auto-set to ${recommendedValue}°F (typical recommendation).`;
+          message = `Auto-set to ${recommendedValue}°F. Default 0.5°F causes rapid cycling (6+ cycles/hr). ${recommendedValue}°F reduces cycles by ~40% with no noticeable comfort loss.`;
           break;
         case "thresholds.compressorMinCycleOff":
           recommendedValue = analysis.compressorMinCycleOff || TYPICAL_VALUES[settingKey];
-          message = analysis.shortCycles > 0
-            ? `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) to prevent ${analysis.shortCycles} short cycles detected.`
-            : `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - no short cycling detected, safe minimum.`;
+          message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). NEMA MG-1: Motors overheat on startup. Extending the rest period allows refrigerant pressures to equalize, reducing startup torque and amp draw. Default 300s (5 min) is too short.`;
           break;
         case "thresholds.heatMinOnTime":
           recommendedValue = analysis.heatMinOnTime || TYPICAL_VALUES[settingKey];
-          message = analysis.avgRuntime 
-            ? `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Average runtime: ${Math.round(analysis.avgRuntime)}s.`
-            : `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - typical recommendation.`;
+          message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Oil return: The oil in the compressor migrates into the lines. It takes ~3-5 minutes of runtime to push it back to the crankcase. Short runs starve the compressor of oil.`;
           break;
         case "thresholds.coolMinOnTime":
           recommendedValue = TYPICAL_VALUES[settingKey];
-          message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min) - typical recommendation.`;
+          message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Oil return: Same requirement as heat - oil needs time to return to compressor crankcase.`;
           break;
         case "thresholds.compressorMinOutdoorTemp":
           recommendedValue = analysis.compressorMinOutdoorTemp || TYPICAL_VALUES[settingKey];
           message = analysis.compressorMinOutdoorTemp
-            ? `Auto-set to ${recommendedValue}°F. Compressor ran at ${recommendedValue - 2}°F - protect it by locking out below ${recommendedValue}°F.`
-            : `Auto-set to ${recommendedValue}°F - typical recommendation.`;
+            ? `Auto-set to ${recommendedValue}°F (Balance Point). Below balance point, heat pumps run continuously but lose ground. Running a compressor at very low temps (unless cold-climate rated) risks oil thickening and mechanical stress for very little heat.`
+            : `Auto-set to ${recommendedValue}°F (Balance Point). Below balance point, heat pumps run continuously but lose ground. Set to your system's balance point temperature.`;
           break;
         case "thresholds.auxHeatMaxOutdoorTemp":
           recommendedValue = analysis.auxHeatMaxOutdoorTemp || TYPICAL_VALUES[settingKey];
-          message = analysis.auxHeatMaxOutdoorTemp === 50
-            ? `Auto-set to ${recommendedValue}°F. Aux heat never ran - can safely raise threshold.`
-            : `Auto-set to ${recommendedValue}°F - prevents wasteful aux heat above this temp.`;
+          message = `Auto-set to ${recommendedValue}°F. Electric strips cost 3x more than heat pumps. Never use them above freezing unless it's an emergency. This is the "Bank Account" defender.`;
           break;
         case "thresholds.heatDissipationTime":
           recommendedValue = analysis.heatDissipationTime || TYPICAL_VALUES[settingKey];
-          message = analysis.heatDissipationTime
-            ? `Auto-set to ${recommendedValue}s. Coast-up detected - capture free heat from ducts!`
-            : `Auto-set to ${recommendedValue}s - typical recommendation to capture residual heat.`;
+          message = `Auto-set to ${recommendedValue}s. The heat exchanger is still hot when the fire stops. ${recommendedValue}s of fan scavenges that "free" heat into the room. (Gas furnaces may need shorter time to avoid blowing cold air at the end).`;
           break;
         case "thresholds.coolDissipationTime":
           recommendedValue = TYPICAL_VALUES[settingKey];
-          message = `Auto-set to ${recommendedValue}s - typical recommendation for summer.`;
+          message = `Auto-set to ${recommendedValue}s. The coil is still wet and cold. ${recommendedValue}s evaporates the water (cooling the air) and raises the Sensible Heat Ratio for the next run.`;
+          break;
+        case "thresholds.acOvercoolMax":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}°F. Allows the AC to act as a "Dehumidifier." If humidity > target, keep cooling. Cold & Dry feels better than Warm & Wet. Default 0°F disables this feature.`;
+          break;
+        case "thresholds.heatCoolMinDelta":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}°F. Prevents "mode fighting." If set to 2°F, the AC might overshoot and trigger the heat immediately. Range: 4-5°F recommended.`;
+          break;
+        case "thresholds.temperatureCorrection":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}°F (no correction). Use this if your thermostat reads accurately. Adjust if you notice a consistent offset between your thermostat and a calibrated thermometer.`;
+          break;
+        case "thresholds.humidityCorrection":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}% (no correction). Use this if your humidity sensor reads accurately. Adjust if you notice a consistent offset between your sensor and a calibrated hygrometer.`;
+          break;
+        case "thresholds.thermalProtect":
+          recommendedValue = TYPICAL_VALUES[settingKey];
+          message = `Auto-set to ${recommendedValue}°F. Maximum difference between the thermostat's temperature reading and remote sensors. If a sensor reads wildly different, it may be ignored. Helps avoid using bad sensors.`;
           break;
         default:
           recommendedValue = TYPICAL_VALUES[settingKey];
           message = recommendedValue 
-            ? `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : ''} (typical recommendation).`
+            ? `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : settingKey.includes('Correction') ? (settingKey.includes('Temperature') ? '°F' : '%') : ''} (typical recommendation).`
             : "No recommendation available for this setting.";
       }
     } else {
-      // No CSV data - use typical values
+      // No CSV data - use typical values with reference manual explanations
       recommendedValue = TYPICAL_VALUES[settingKey];
-      if (recommendedValue) {
-        message = `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : ''} (typical recommendation). Upload CSV data in System Performance Analyzer for data-driven optimization.`;
+      if (recommendedValue !== undefined && recommendedValue !== null) {
+        switch (settingKey) {
+          case "thresholds.heatDifferential":
+            message = `Auto-set to ${recommendedValue}°F. Default 0.5°F causes rapid cycling (6+ cycles/hr). ${recommendedValue}°F reduces cycles by ~40% with no noticeable comfort loss.`;
+            break;
+          case "thresholds.coolDifferential":
+            message = `Auto-set to ${recommendedValue}°F. Default 0.5°F causes rapid cycling (6+ cycles/hr). ${recommendedValue}°F reduces cycles by ~40% with no noticeable comfort loss.`;
+            break;
+          case "thresholds.compressorMinCycleOff":
+            message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). NEMA MG-1: Motors overheat on startup. Extending the rest period allows refrigerant pressures to equalize, reducing startup torque and amp draw. Default 300s (5 min) is too short.`;
+            break;
+          case "thresholds.heatMinOnTime":
+            message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Oil return: The oil in the compressor migrates into the lines. It takes ~3-5 minutes of runtime to push it back to the crankcase. Short runs starve the compressor of oil.`;
+            break;
+          case "thresholds.coolMinOnTime":
+            message = `Auto-set to ${recommendedValue}s (${recommendedValue/60} min). Oil return: Same requirement as heat - oil needs time to return to compressor crankcase.`;
+            break;
+          case "thresholds.compressorMinOutdoorTemp":
+            message = `Auto-set to ${recommendedValue}°F (Balance Point). Below balance point, heat pumps run continuously but lose ground. Running a compressor at very low temps (unless cold-climate rated) risks oil thickening and mechanical stress for very little heat.`;
+            break;
+          case "thresholds.auxHeatMaxOutdoorTemp":
+            message = `Auto-set to ${recommendedValue}°F. Electric strips cost 3x more than heat pumps. Never use them above freezing unless it's an emergency. This is the "Bank Account" defender.`;
+            break;
+          case "thresholds.heatDissipationTime":
+            message = `Auto-set to ${recommendedValue}s. The heat exchanger is still hot when the fire stops. ${recommendedValue}s of fan scavenges that "free" heat into the room. (Gas furnaces may need shorter time to avoid blowing cold air at the end).`;
+            break;
+          case "thresholds.coolDissipationTime":
+            message = `Auto-set to ${recommendedValue}s. The coil is still wet and cold. ${recommendedValue}s evaporates the water (cooling the air) and raises the Sensible Heat Ratio for the next run.`;
+            break;
+          case "thresholds.acOvercoolMax":
+            message = `Auto-set to ${recommendedValue}°F. Allows the AC to act as a "Dehumidifier." If humidity > target, keep cooling. Cold & Dry feels better than Warm & Wet. Default 0°F disables this feature.`;
+            break;
+          case "thresholds.heatCoolMinDelta":
+            message = `Auto-set to ${recommendedValue}°F. Prevents "mode fighting." If set to 2°F, the AC might overshoot and trigger the heat immediately. Range: 4-5°F recommended.`;
+            break;
+          case "thresholds.temperatureCorrection":
+            message = `Auto-set to ${recommendedValue}°F (no correction). Use this if your thermostat reads accurately. Adjust if you notice a consistent offset between your thermostat and a calibrated thermometer.`;
+            break;
+          case "thresholds.humidityCorrection":
+            message = `Auto-set to ${recommendedValue}% (no correction). Use this if your humidity sensor reads accurately. Adjust if you notice a consistent offset between your sensor and a calibrated hygrometer.`;
+            break;
+          case "thresholds.thermalProtect":
+            message = `Auto-set to ${recommendedValue}°F. Maximum difference between the thermostat's temperature reading and remote sensors. If a sensor reads wildly different, it may be ignored. Helps avoid using bad sensors.`;
+            break;
+          default:
+            message = `Auto-set to ${recommendedValue}${settingKey.includes('Temp') ? '°F' : settingKey.includes('Time') ? 's' : ''} (typical recommendation). Upload CSV data in System Performance Analyzer for data-driven optimization.`;
+        }
       } else {
         alert("No CSV data available and no typical value for this setting. Please upload thermostat data in the System Performance Analyzer first.");
         return;
@@ -1533,7 +1609,10 @@ function SettingInput({
     settingKey === "thresholds.heatDissipationTime" ||
     settingKey === "thresholds.coolDissipationTime" ||
     settingKey === "thresholds.acOvercoolMax" ||
-    settingKey === "thresholds.heatCoolMinDelta"
+    settingKey === "thresholds.heatCoolMinDelta" ||
+    settingKey === "thresholds.temperatureCorrection" ||
+    settingKey === "thresholds.humidityCorrection" ||
+    settingKey === "thresholds.thermalProtect"
   );
 
   if (type === "checkbox") {

@@ -2,6 +2,7 @@ import React from 'react';
 import { useTemperature } from '../hooks/useTemperature';
 import { celsiusToFahrenheit } from '../hooks/useCpuTemperature';
 import { Thermometer, Cpu, AlertCircle, CheckCircle, XCircle, Wifi } from 'lucide-react';
+import { useUnitSystem, formatTemperatureFromF } from '../lib/units';
 
 /**
  * Display temperature for thermostat bench testing
@@ -9,6 +10,7 @@ import { Thermometer, Cpu, AlertCircle, CheckCircle, XCircle, Wifi } from 'lucid
  */
 export default function TemperatureDisplay({ compact = false, className = '' }) {
   const { temperature, loading, error, isConnected, source, setSource } = useTemperature('cpu', 2000);
+  const { unitSystem } = useUnitSystem();
 
   if (loading) {
     return (
@@ -66,9 +68,11 @@ export default function TemperatureDisplay({ compact = false, className = '' }) 
         <CheckCircle className="w-4 h-4 text-green-500" />
         {isEcobee ? <Wifi className="w-4 h-4 text-indigo-500" /> : <Cpu className="w-4 h-4 text-blue-500" />}
         <span data-testid="temperature-value" className="text-sm font-medium">
-          {mainTempF?.toFixed(1)}°F
+          {formatTemperatureFromF(mainTempF, unitSystem, { decimals: 1 })}
         </span>
-        {!isEcobee && <span className="text-xs text-gray-500">({mainTempC?.toFixed(1)}°C)</span>}
+        {!isEcobee && unitSystem === 'us' && (
+          <span className="text-xs text-gray-500">({mainTempC?.toFixed(1)}°C)</span>
+        )}
         {humidity && <span className="text-xs text-gray-500 ml-2">{humidity}% RH</span>}
       </div>
     );
@@ -101,9 +105,9 @@ export default function TemperatureDisplay({ compact = false, className = '' }) 
             {isEcobee ? 'Temperature' : 'Main Temp'}
           </div>
           <div data-testid="temperature-value" className="text-2xl font-bold text-gray-900 dark:text-white">
-            {mainTempF?.toFixed(1)}°F
+            {formatTemperatureFromF(mainTempF, unitSystem, { decimals: 1 })}
           </div>
-          {!isEcobee && (
+          {!isEcobee && unitSystem === 'us' && (
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {mainTempC?.toFixed(1)}°C
             </div>
@@ -114,11 +118,13 @@ export default function TemperatureDisplay({ compact = false, className = '' }) 
           <div className="bg-white/50 dark:bg-gray-900/30 p-3 rounded-lg">
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Max Temp</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {maxTempF?.toFixed(1)}°F
+              {formatTemperatureFromF(maxTempF, unitSystem, { decimals: 1 })}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {maxTempC?.toFixed(1)}°C
-            </div>
+            {unitSystem === 'us' && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {maxTempC?.toFixed(1)}°C
+              </div>
+            )}
           </div>
         )}
 

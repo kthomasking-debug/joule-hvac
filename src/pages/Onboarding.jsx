@@ -17,6 +17,9 @@ import { US_STATES } from "../lib/usStates";
 import needsCommaBetweenCityAndState from "../utils/validateLocation";
 import { WELCOME_THEMES, getWelcomeTheme } from "../data/welcomeThemes";
 import { setSetting, getAllSettings } from "../lib/unifiedSettingsManager";
+import { calculateHeatLoss } from "../lib/heatUtils";
+import UnitSystemToggle from "../components/UnitSystemToggle";
+import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
 
 // Build public path helper
 function buildPublicPath(path) {
@@ -46,12 +49,27 @@ export default function Onboarding() {
   const isRerun = searchParams.get("rerun") === "true";
 
   // Check if onboarding is already completed (but allow re-running if rerun param is set)
+  // Also verify that required data actually exists - don't trust the flag alone
   const hasCompletedOnboarding = useMemo(() => {
     if (isRerun) {
       return false; // Force show onboarding flow if rerun parameter is present
     }
     try {
-      return localStorage.getItem("hasCompletedOnboarding") === "true";
+      const flag = localStorage.getItem("hasCompletedOnboarding") === "true";
+      if (!flag) return false;
+      
+      // Verify that required onboarding data actually exists
+      const userLocation = localStorage.getItem("userLocation");
+      const settings = getAllSettings();
+      
+      // Check if we have location data
+      const hasLocation = userLocation && JSON.parse(userLocation)?.city && JSON.parse(userLocation)?.state;
+      
+      // Check if we have basic building data
+      const hasBuildingData = settings?.squareFeet && settings?.squareFeet > 0;
+      
+      // Only consider onboarding complete if we have both location and building data
+      return hasLocation && hasBuildingData;
     } catch {
       return false;
     }
@@ -59,7 +77,6 @@ export default function Onboarding() {
 
   // Onboarding state
   const [step, setStep] = useState(STEPS.WELCOME);
-  const [mode, setMode] = useState("quick"); // 'quick' | 'custom'
   const [welcomeTheme, setWelcomeTheme] = useState(() => {
     try {
       return localStorage.getItem("welcomeTheme") || "winter";
@@ -77,6 +94,9 @@ export default function Onboarding() {
   
   // Building validation errors
   const [buildingError, setBuildingError] = useState(null);
+
+  // Unit system
+  const { unitSystem } = useUnitSystem();
 
   // Building state (for custom mode)
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 1500);
@@ -96,6 +116,41 @@ export default function Onboarding() {
       return 1;
     }
   });
+
+  // Heat Loss Source
+  const [heatLossSource, setHeatLossSource] = useState(() => {
+    try {
+      const settings = getAllSettings();
+      if (settings.useAnalyzerHeatLoss) return "analyzer";
+      if (settings.useManualHeatLoss) return "manual";
+      return "calculated"; // Default
+    } catch {
+      return "calculated";
+    }
+  });
+
+  // Memoize calculated heat loss for display
+  const calculatedHeatLoss = useMemo(() => {
+    if (heatLossSource === "calculated" && squareFeet && insulationLevel) {
+      return calculateHeatLoss({
+        squareFeet,
+        insulationLevel,
+        homeShape: userSettings.homeShape || 1.0,
+        ceilingHeight: userSettings.ceilingHeight || 8,
+      });
+    }
+    return 0;
+  }, [squareFeet, insulationLevel, userSettings.homeShape, userSettings.ceilingHeight, heatLossSource]);
+
+  // Check if analyzer data exists
+  const hasAnalyzerData = useMemo(() => {
+    try {
+      const settings = getAllSettings();
+      return !!(settings.useAnalyzerHeatLoss && settings.analyzerHeatLoss && settings.analyzerHeatLoss > 0);
+    } catch {
+      return false;
+    }
+  }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
   const totalSteps = 4; // Always 4 steps: Welcome, Location, Building, Confirmation
@@ -240,27 +295,33 @@ export default function Onboarding() {
 
       if (bestResult) {
         const locationName = `${bestResult.name}, ${bestResult.admin1 || bestResult.country}`;
+        // Convert elevation from meters to feet (geocoding APIs typically return meters)
+        const elevationInFeet = bestResult.elevation 
+          ? Math.round(bestResult.elevation * 3.28084)
+          : 0;
         setFoundLocation(locationName);
-        setLocationElevation(bestResult.elevation || 0);
+        setLocationElevation(elevationInFeet);
 
-        // Save to localStorage
+        // Save to localStorage (include both lat/lon and latitude/longitude for backwards compatibility)
         const locationData = {
           city: bestResult.name,
           state: bestResult.admin1,
           country: bestResult.country,
           lat: bestResult.latitude,
           lon: bestResult.longitude,
-          elevation: bestResult.elevation || 0,
+          latitude: bestResult.latitude,
+          longitude: bestResult.longitude,
+          elevation: elevationInFeet,
         };
         localStorage.setItem("userLocation", JSON.stringify(locationData));
         
         // Update userSettings using unified settings manager (for Ask Joule access)
-        setSetting("homeElevation", bestResult.elevation || 0, { source: "onboarding" });
+        setSetting("homeElevation", elevationInFeet, { source: "onboarding" });
         
         // Also update via outlet context if available (for backwards compatibility)
         if (setUserSetting) {
           setUserSetting("cityName", locationName);
-          setUserSetting("homeElevation", bestResult.elevation || 0);
+          setUserSetting("homeElevation", elevationInFeet);
         }
         
         // Dispatch custom event to notify App.jsx to reload location
@@ -273,6 +334,53 @@ export default function Onboarding() {
 
     setLocationLoading(false);
   }, [cityInput, setUserSetting]);
+
+  // Complete onboarding - defined before handleNext since handleNext references it
+  const completeOnboarding = useCallback(() => {
+    try {
+      // Ensure building details are saved (should already be saved in BUILDING step)
+      if (setUserSetting) {
+        // Double-check required settings are set
+        if (!userSettings.squareFeet) {
+          setUserSetting("squareFeet", squareFeet || 1500);
+        }
+        if (!userSettings.insulationLevel) {
+          setUserSetting("insulationLevel", insulationLevel || 1.0);
+        }
+        if (!userSettings.primarySystem) {
+          setUserSetting("primarySystem", primarySystem || "heatPump");
+        }
+        // Set capacity if missing
+        if (!userSettings.capacity && primarySystem === "heatPump") {
+          const capacityKBTU = Math.round((heatPumpTons || 3) * 12);
+          setSetting("capacity", capacityKBTU, { source: "onboarding" });
+          setSetting("coolingCapacity", capacityKBTU, { source: "onboarding" });
+          if (setUserSetting) {
+            setUserSetting("capacity", capacityKBTU);
+            setUserSetting("coolingCapacity", capacityKBTU);
+          }
+        }
+      }
+      // Also save using unified settings manager for final completion
+      const currentSettings = getAllSettings();
+      if (!currentSettings.squareFeet || currentSettings.squareFeet === 800) {
+        setSetting("squareFeet", squareFeet || 1500, { source: "onboarding" });
+      }
+      if (!currentSettings.insulationLevel || currentSettings.insulationLevel === 0.65) {
+        setSetting("insulationLevel", insulationLevel || 1.0, { source: "onboarding" });
+      }
+      localStorage.setItem("hasCompletedOnboarding", "true");
+      
+      // Dispatch event to notify App.jsx to refresh settings and location
+      window.dispatchEvent(new CustomEvent("userSettingsUpdated", {
+        detail: { key: null, value: null, updates: null } // Full refresh
+      }));
+      window.dispatchEvent(new Event("userLocationUpdated"));
+    } catch {
+      // ignore
+    }
+    navigate("/app");
+  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
   const handleNext = useCallback(() => {
@@ -287,8 +395,8 @@ export default function Onboarding() {
       setStep(STEPS.BUILDING);
     } else if (step === STEPS.BUILDING) {
       // Validate required fields for Ask Joule
-      if (!squareFeet || squareFeet < 100 || squareFeet > 50000) {
-        setBuildingError("Please enter a valid home size between 100 and 50,000 sq ft");
+      if (!squareFeet || squareFeet < 100 || squareFeet > 20000) {
+        setBuildingError("Please enter a valid home size between 100 and 20,000 sq ft");
         return;
       }
       if (!insulationLevel || insulationLevel <= 0) {
@@ -299,11 +407,26 @@ export default function Onboarding() {
         setBuildingError("Please select the number of thermostats");
         return;
       }
+      if (!heatLossSource) {
+        setBuildingError("Please select a heat loss source");
+        return;
+      }
       
       // Save building settings using unified settings manager (for Ask Joule access)
       setSetting("squareFeet", squareFeet, { source: "onboarding" });
       setSetting("insulationLevel", insulationLevel, { source: "onboarding" });
       setSetting("primarySystem", primarySystem, { source: "onboarding" });
+      
+      // Save heat loss source selection
+      setSetting("useCalculatedHeatLoss", heatLossSource === "calculated", { source: "onboarding" });
+      setSetting("useManualHeatLoss", heatLossSource === "manual", { source: "onboarding" });
+      setSetting("useAnalyzerHeatLoss", heatLossSource === "analyzer", { source: "onboarding" });
+      
+      // If calculated, compute and save the heat loss value
+      if (heatLossSource === "calculated") {
+        const heatLossFactor = Math.round(calculatedHeatLoss / 70);
+        setSetting("heatLossFactor", heatLossFactor, { source: "onboarding" });
+      }
       // Convert tons to kBTU (capacity): 1 ton = 12 kBTU
       if (primarySystem === "heatPump") {
         const capacityKBTU = Math.round(heatPumpTons * 12);
@@ -352,76 +475,9 @@ export default function Onboarding() {
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, mode, foundLocation, squareFeet, insulationLevel, primarySystem, heatPumpTons, numberOfThermostats, setUserSetting]);
+  }, [step, foundLocation, squareFeet, insulationLevel, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
 
-  // Complete onboarding
-  const completeOnboarding = useCallback(() => {
-    try {
-      // Ensure building details are saved (should already be saved in BUILDING step)
-      if (setUserSetting) {
-        // Double-check required settings are set
-        if (!userSettings.squareFeet) {
-          setUserSetting("squareFeet", squareFeet || 1500);
-        }
-        if (!userSettings.insulationLevel) {
-          setUserSetting("insulationLevel", insulationLevel || 1.0);
-        }
-        if (!userSettings.primarySystem) {
-          setUserSetting("primarySystem", primarySystem || "heatPump");
-        }
-        // Set capacity if missing
-        if (!userSettings.capacity && primarySystem === "heatPump") {
-          const capacityKBTU = Math.round((heatPumpTons || 3) * 12);
-          setSetting("capacity", capacityKBTU, { source: "onboarding" });
-          setSetting("coolingCapacity", capacityKBTU, { source: "onboarding" });
-          if (setUserSetting) {
-            setUserSetting("capacity", capacityKBTU);
-            setUserSetting("coolingCapacity", capacityKBTU);
-          }
-        }
-      }
-      // Also save using unified settings manager for final completion
-      const currentSettings = getAllSettings();
-      if (!currentSettings.squareFeet || currentSettings.squareFeet === 800) {
-        setSetting("squareFeet", squareFeet || 1500, { source: "onboarding" });
-      }
-      if (!currentSettings.insulationLevel || currentSettings.insulationLevel === 0.65) {
-        setSetting("insulationLevel", insulationLevel || 1.0, { source: "onboarding" });
-      }
-      localStorage.setItem("hasCompletedOnboarding", "true");
-      
-      // Dispatch event to notify App.jsx to refresh settings and location
-      window.dispatchEvent(new CustomEvent("userSettingsUpdated", {
-        detail: { key: null, value: null, updates: null } // Full refresh
-      }));
-      window.dispatchEvent(new Event("userLocationUpdated"));
-    } catch {
-      // ignore
-    }
-    navigate("/app");
-  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
-
-  // Skip onboarding - REMOVED: Users must complete building details for Ask Joule to work
-  // If skip is needed for testing, it should still set minimum required fields
-  const handleSkip = useCallback(() => {
-    // Set minimum required fields for Ask Joule even when skipping
-    if (setUserSetting) {
-      setUserSetting("squareFeet", squareFeet || 1500);
-      setUserSetting("insulationLevel", insulationLevel || 1.0);
-      setUserSetting("primarySystem", primarySystem || "heatPump");
-      if (primarySystem === "heatPump" || !primarySystem) {
-        const capacityKBTU = Math.round((heatPumpTons || 3) * 12);
-        setUserSetting("capacity", capacityKBTU);
-        setUserSetting("coolingCapacity", capacityKBTU);
-      }
-    }
-    try {
-      localStorage.setItem("hasCompletedOnboarding", "true");
-    } catch {
-      // ignore
-    }
-    navigate("/app");
-  }, [navigate, setUserSetting, squareFeet, insulationLevel, primarySystem, heatPumpTons]);
+  // Skip onboarding removed - users must complete building details for Ask Joule to work
 
   const themeData = getWelcomeTheme(welcomeTheme);
 
@@ -497,38 +553,9 @@ export default function Onboarding() {
               to understanding your energy costs.
             </p>
 
-            {/* Quick vs Custom toggle - Both modes now collect building details for Ask Joule */}
-            <div className="mb-6">
-              <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
-                <button
-                  onClick={() => setMode("quick")}
-                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                    mode === "quick"
-                      ? "bg-emerald-600 text-white"
-                      : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  }`}
-                >
-                  Quick Setup
-                </button>
-                <button
-                  onClick={() => setMode("custom")}
-                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                    mode === "custom"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  }`}
-                >
-                  Custom Setup
-                </button>
-              </div>
-              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {mode === "quick" ? (
-                  <span>Uses sensible defaults. You'll still confirm your home details for accurate estimates.</span>
-                ) : (
-                  <span>Walk through all building and system inputs for best accuracy.</span>
-                )}
-              </div>
-            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+              Uses sensible defaults. You'll still confirm your home details for accurate estimates.
+            </p>
 
             <button onClick={handleNext} className="btn btn-primary px-8 py-3 text-lg">
               Let's Begin
@@ -735,6 +762,121 @@ export default function Onboarding() {
                   )}
                 </p>
               </div>
+
+              {/* Heat Loss Source Selection Card */}
+              <div className="mt-6 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-sm">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+                  Heat Loss Source
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+                  Select which method to use for heat loss calculations. Only one option can be active at a time.
+                </p>
+
+                <div className="space-y-3">
+                  {/* Calculated Option */}
+                  <label className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
+                    style={{ borderColor: heatLossSource === "calculated" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "calculated" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input
+                      type="radio"
+                      name="heatLossSource"
+                      value="calculated"
+                      checked={heatLossSource === "calculated"}
+                      onChange={(e) => setHeatLossSource(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          Calculated (DOE Data)
+                        </span>
+                        <span className="px-2 py-0.5 text-xs font-bold bg-emerald-500 text-white rounded uppercase">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                        Most accurate for typical homes. Based on square footage, insulation, home shape, and ceiling height.
+                      </p>
+                      {heatLossSource === "calculated" && calculatedHeatLoss > 0 && (
+                        <p className="text-xs font-mono text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
+                          Current value: {Math.round(calculatedHeatLoss / 70)} BTU/hr/°F ({calculatedHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT)
+                        </p>
+                      )}
+                    </div>
+                  </label>
+
+                  {/* Manual Entry Option */}
+                  <label className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
+                    style={{ borderColor: heatLossSource === "manual" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "manual" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input
+                      type="radio"
+                      name="heatLossSource"
+                      value="manual"
+                      checked={heatLossSource === "manual"}
+                      onChange={(e) => setHeatLossSource(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white block mb-1">
+                        Manual Entry
+                      </span>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        For users with professional energy audits. Enter exact heat loss in BTU/hr/°F.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* CSV Analyzer Option */}
+                  <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all ${
+                    hasAnalyzerData 
+                      ? "cursor-pointer hover:bg-white/50 dark:hover:bg-white/5" 
+                      : "cursor-not-allowed opacity-60"
+                  }`}
+                    style={{ borderColor: heatLossSource === "analyzer" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "analyzer" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input
+                      type="radio"
+                      name="heatLossSource"
+                      value="analyzer"
+                      checked={heatLossSource === "analyzer"}
+                      onChange={(e) => hasAnalyzerData && setHeatLossSource(e.target.value)}
+                      disabled={!hasAnalyzerData}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white block mb-1">
+                        From CSV Analyzer
+                      </span>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                        Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
+                      </p>
+                      {hasAnalyzerData ? (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                          ✓ Using analyzer-based heat loss ({userSettings.analyzerHeatLoss?.toFixed(1) || "N/A"} BTU/hr/°F)
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 italic">
+                          No analyzer data available. Upload CSV in <Link to="/performance-analyzer" className="underline font-semibold">System Performance Analyzer</Link> →
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Unit System Selection */}
+              <div className="mt-6 p-5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-800 shadow-sm">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+                  Display Preferences
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+                  Choose your preferred unit system for temperatures, energy, and capacity.
+                </p>
+                <div className="flex items-center justify-center">
+                  <UnitSystemToggle />
+                </div>
+                <p className="mt-3 text-xs text-gray-600 dark:text-gray-400 text-center">
+                  US mode: °F, kBTU/h, BTU/hr/°F, kWh. International mode: °C, kW, W/K, Joules (with kWh in parentheses).
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-3 justify-center mt-8">
@@ -803,6 +945,12 @@ export default function Onboarding() {
                   <span className="text-gray-600 dark:text-gray-400">Thermostats/Zones</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {numberOfThermostats} {numberOfThermostats === 1 ? "zone" : "zones"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Unit System</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    {unitSystem === UNIT_SYSTEMS.INTL ? "International" : "US"}
                   </span>
                 </div>
               </div>

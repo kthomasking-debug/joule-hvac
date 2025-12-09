@@ -1,0 +1,4 @@
+# This directory will contain pre-generated ElevenLabs audio files
+# Run: node scripts/generate-tts-responses.js
+# to generate the audio files and mapping.json
+

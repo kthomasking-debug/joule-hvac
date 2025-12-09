@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { Info, Home, Snowflake, Clock, Mountain, BarChart3, Flame, ThermometerSun } from 'lucide-react';
 import { DashboardLink } from '../components/DashboardLink';
-import { getDefrostPenalty } from '../lib/heatUtils';
+import { getDefrostPenalty, calculateHeatLoss } from '../lib/heatUtils';
 
 const CalculationMethodology = () => {
   const [showMath, setShowMath] = useState(false);
@@ -42,7 +42,13 @@ const CalculationMethodology = () => {
   const tons = outletContext?.tons || userSettings?.capacity || 2.0;
   const compressorPower = outletContext?.compressorPower || (tons * 1.0 * (15 / (Number(userSettings?.efficiency) || 15)));
   const utilityCost = Number(userSettings?.utilityCost) || outletContext?.utilityCost || 0.15;
-  const heatLoss = outletContext?.heatLoss || userSettings?.heatLoss || 22000;
+  // Calculate heat loss from building parameters if not provided
+  const heatLoss = outletContext?.heatLoss || userSettings?.heatLoss || calculateHeatLoss({
+    squareFeet,
+    insulationLevel,
+    homeShape,
+    ceilingHeight,
+  });
   const energyMode = userSettings?.energyMode || outletContext?.energyMode || 'heating';
   const setEnergyMode = (v) => setUserSetting ? setUserSetting('energyMode', v) : (outletContext?.setEnergyMode || (() => { }))(v);
   const efficiency = Number(userSettings?.efficiency) || outletContext?.efficiency || 15;
@@ -59,13 +65,15 @@ const CalculationMethodology = () => {
     const powerFactor = 1 / Math.max(0.7, capacityFactor);
     const defrostPenalty = getDefrostPenalty(manualTemp, manualHumidity);
     const electricalKw = (compressorPower * powerFactor) * defrostPenalty;
-    const hpOutputBtu = (tons * 3.517 * capacityFactor) * 3412.14;
+    // Heat pump output: 1 ton = 12,000 BTU/hr at 47°F, adjusted by capacity factor
+    const hpOutputBtu = tons * 12000 * capacityFactor;
     const runtime = (buildingHeatLoss / hpOutputBtu) * 100;
     const energyForHour = electricalKw * (Math.min(100, Math.max(0, runtime)) / 100);
     const costForHour = energyForHour * utilityCost;
     return {
       designHeatLoss: heatLoss, btuLossPerDegreeF, buildingHeatLoss, electricalKw, hpOutputBtu,
       runtime, energyForHour, costForHour, ceilingMultiplier,
+      capacityFactor, powerFactor, defrostPenalty, compressorPower,
     };
   }, [
     squareFeet, insulationLevel, homeShape, ceilingHeight, indoorTemp, manualTemp,
@@ -137,20 +145,20 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the home's total design heat loss by combining all building factors.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Design_Heat_Loss = <VarLink to="/energy-flow" field="squareFeet">{squareFeet} sq ft</VarLink> * 22.67 * <VarLink to="/energy-flow" field="insulationLevel">{insulationLevel}</VarLink> * <VarLink to="/energy-flow" field="homeShape">{homeShape}</VarLink> * <VarLink to="/energy-flow" field="ceilingHeight">{methodologyCalcs.ceilingMultiplier.toFixed(1)}</VarLink> = <strong>{(methodologyCalcs.designHeatLoss / 1000).toFixed(2)} kBTU/hr</strong>
                       </code>
-                      <code className="block mt-2 p-2 bg-gray-100 dark:bg-gray-900 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-2 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Ceiling multiplier = 1 + (<VarLink to="/energy-flow" field="ceilingHeight">{ceilingHeight} ft</VarLink> - 8) × 0.1 = <strong>{methodologyCalcs.ceilingMultiplier.toFixed(1)}</strong>
                       </code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Determines how many BTUs the house loses for every one-degree drop in temperature.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">BTU_Loss_Per_Degree_F = {(methodologyCalcs.designHeatLoss / 1000).toFixed(2)} kBTU/hr / 70 °F = <strong>{methodologyCalcs.btuLossPerDegreeF.toFixed(1)} BTU/(hr*°F)</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>BTU_Loss_Per_Degree_F = {(methodologyCalcs.designHeatLoss / 1000).toFixed(2)} kBTU/hr / 70 °F = <strong>{methodologyCalcs.btuLossPerDegreeF.toFixed(1)} BTU/(hr*°F)</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Finds the specific heat loss for the current outdoor temperature.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Building_Heat_Loss = {methodologyCalcs.btuLossPerDegreeF.toFixed(1)} * (<VarLink to="/cost-forecaster" field="indoorTemp">{indoorTemp} °F</VarLink> - <VarLink to="/cost-forecaster" field="manualTemp">{manualTemp} °F</VarLink>) = <strong>{(methodologyCalcs.buildingHeatLoss / 1000).toFixed(2)} kBTU/hr</strong>
                       </code>
                     </div>
@@ -163,11 +171,16 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the electricity draw, including penalties for cold and humidity.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Electrical_kW = <strong>{methodologyCalcs.electricalKw.toFixed(2)} kW</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        Electrical_kW = Compressor_Power × Power_Factor × Defrost_Penalty<br/>
+                        = {methodologyCalcs.compressorPower.toFixed(2)} kW × {methodologyCalcs.powerFactor.toFixed(2)} × {methodologyCalcs.defrostPenalty.toFixed(2)} = <strong>{methodologyCalcs.electricalKw.toFixed(2)} kW</strong>
+                      </code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the actual heat output at the given temperature.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">HP_Output_BTU = <strong>{(methodologyCalcs.hpOutputBtu / 1000).toFixed(2)} kBTU/hr</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        HP_Output_BTU = <VarLink to="/energy-flow" field="capacity">{tons} tons</VarLink> × 12,000 BTU/ton × Capacity_Factor({manualTemp}°F) = {tons} × 12,000 × {methodologyCalcs.capacityFactor.toFixed(3)} = <strong>{(methodologyCalcs.hpOutputBtu / 1000).toFixed(2)} kBTU/hr</strong>
+                      </code>
                     </div>
                   </div>
                 </div>
@@ -178,15 +191,15 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the percentage of time the heat pump must run.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Runtime = ({methodologyCalcs.buildingHeatLoss.toFixed(0)} / {methodologyCalcs.hpOutputBtu.toFixed(0)}) * 100 = <strong>{methodologyCalcs.runtime.toFixed(1)}%</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Runtime = ({methodologyCalcs.buildingHeatLoss.toFixed(0)} / {methodologyCalcs.hpOutputBtu.toFixed(0)}) * 100 = <strong>{methodologyCalcs.runtime.toFixed(1)}%</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Determines the energy consumed in one hour.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Energy_For_Hour = {methodologyCalcs.electricalKw.toFixed(2)} kW * ({methodologyCalcs.runtime.toFixed(1)}% / 100) = <strong>{methodologyCalcs.energyForHour.toFixed(2)} kWh</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Energy_For_Hour = {methodologyCalcs.electricalKw.toFixed(2)} kW * ({methodologyCalcs.runtime.toFixed(1)}% / 100) = <strong>{methodologyCalcs.energyForHour.toFixed(2)} kWh</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the final cost for one hour of operation.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Cost_For_Hour = {methodologyCalcs.energyForHour.toFixed(2)} kWh * <VarLink to="/cost-forecaster" field="utilityCost">${utilityCost.toFixed(3)}/kWh</VarLink> = <strong>${methodologyCalcs.costForHour.toFixed(2)}</strong>
                       </code>
                     </div>
@@ -215,20 +228,20 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the home's total design heat gain by combining all building factors.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Design_Heat_Gain = <VarLink to="/energy-flow" field="squareFeet">{squareFeet} sq ft</VarLink> * 25.0 * <VarLink to="/energy-flow" field="insulationLevel">{insulationLevel}</VarLink> * <VarLink to="/energy-flow" field="homeShape">{homeShape}</VarLink> * <VarLink to="/energy-flow" field="ceilingHeight">{methodologyCalcs.ceilingMultiplier.toFixed(1)}</VarLink> = <strong>{(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 1000).toFixed(2)} kBTU/hr</strong>
                       </code>
-                      <code className="block mt-2 p-2 bg-gray-100 dark:bg-gray-900 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-2 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Ceiling multiplier = 1 + (<VarLink to="/energy-flow" field="ceilingHeight">{ceilingHeight} ft</VarLink> - 8) × 0.1 = <strong>{methodologyCalcs.ceilingMultiplier.toFixed(1)}</strong>
                       </code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Determines how many BTUs the house gains for every one-degree rise in temperature.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">BTU_Gain_Per_Degree_F = {(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 1000).toFixed(2)} kBTU/hr / 20 °F = <strong>{(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20).toFixed(1)} BTU/(hr*°F)</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>BTU_Gain_Per_Degree_F = {(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 1000).toFixed(2)} kBTU/hr / 20 °F = <strong>{(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20).toFixed(1)} BTU/(hr*°F)</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Finds the specific heat gain for the current outdoor temperature, including solar exposure.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Building_Heat_Gain = {(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20).toFixed(1)} * (<VarLink to="/cost-forecaster" field="manualTemp">{manualTemp} °F</VarLink> - <VarLink to="/cost-forecaster" field="indoorTemp">{indoorTemp} °F</VarLink>) * <VarLink to="/settings" field="solarExposure">{solarExposure}</VarLink> = <strong>{(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / 1000).toFixed(2)} kBTU/hr</strong>
                       </code>
                     </div>
@@ -241,15 +254,15 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the nominal cooling capacity in BTU/hr.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Nominal_Capacity_BTU = <strong>{(tons * 12000).toLocaleString()} BTU/hr</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Nominal_Capacity_BTU = <strong>{(tons * 12000).toLocaleString()} BTU/hr</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the electrical efficiency (SEER2 rating).</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">SEER2_Efficiency = <strong>{efficiency} BTU/Wh</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>SEER2_Efficiency = <strong>{efficiency} BTU/Wh</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the electrical power draw in kW.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Electrical_kW = {(tons * 12000).toLocaleString()} BTU/hr / ({efficiency} BTU/Wh * 1000) = <strong>{((tons * 12000) / (efficiency * 1000)).toFixed(2)} kW</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Electrical_kW = {(tons * 12000).toLocaleString()} BTU/hr / ({efficiency} BTU/Wh * 1000) = <strong>{((tons * 12000) / (efficiency * 1000)).toFixed(2)} kW</strong></code>
                     </div>
                   </div>
                 </div>
@@ -260,15 +273,15 @@ const CalculationMethodology = () => {
                   <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-600 space-y-4">
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the percentage of time the A/C must run to meet the cooling load.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Runtime = ({(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure).toFixed(0)} / {(tons * 12000).toFixed(0)}) * 100 = <strong>{Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100).toFixed(1)}%</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Runtime = ({(methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure).toFixed(0)} / {(tons * 12000).toFixed(0)}) * 100 = <strong>{Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100).toFixed(1)}%</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Determines the energy consumed in one hour.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Energy_For_Hour = {((tons * 12000) / (efficiency * 1000)).toFixed(2)} kW * ({Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100).toFixed(1)}% / 100) = <strong>{(((tons * 12000) / (efficiency * 1000)) * Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100) / 100).toFixed(2)} kWh</strong></code>
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Energy_For_Hour = {((tons * 12000) / (efficiency * 1000)).toFixed(2)} kW * ({Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100).toFixed(1)}% / 100) = <strong>{(((tons * 12000) / (efficiency * 1000)) * Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100) / 100).toFixed(2)} kWh</strong></code>
                     </div>
                     <div>
                       <p className="italic text-gray-600 dark:text-gray-400 font-sans font-normal">Calculates the final cost for one hour of operation.</p>
-                      <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">
+                      <code className="block mt-1 p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                         Cost_For_Hour = {(((tons * 12000) / (efficiency * 1000)) * Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100) / 100).toFixed(2)} kWh * <VarLink to="/cost-forecaster" field="utilityCost">${utilityCost.toFixed(3)}/kWh</VarLink> = <strong>${((((tons * 12000) / (efficiency * 1000)) * Math.min(100, (methodologyCalcs.designHeatLoss * 25.0 / 22.67 / 20 * (manualTemp - indoorTemp) * solarExposure / (tons * 12000)) * 100) / 100) * utilityCost).toFixed(2)}</strong>
                       </code>
                     </div>
@@ -297,18 +310,18 @@ const CalculationMethodology = () => {
                 </div>
                 <div>
                   <p className="italic text-gray-600 dark:text-gray-400"><strong>Step 1: Calculate the Humidity-Adjusted Lapse Rate</strong></p>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Lapse_Rate = SALR + (DALR - SALR) * (1 - Humidity_Ratio)</code>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Lapse_Rate = 2.7 + (5.4 - 2.7) * (1 - 0.65) = <strong>3.65 °F per 1,000 ft</strong></code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Lapse_Rate = SALR + (DALR - SALR) * (1 - Humidity_Ratio)</code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Lapse_Rate = 2.7 + (5.4 - 2.7) * (1 - 0.65) = <strong>3.65 °F per 1,000 ft</strong></code>
                 </div>
                 <div>
                   <p className="italic text-gray-600 dark:text-gray-400"><strong>Step 2: Calculate the Total Temperature Adjustment</strong></p>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Temp_Adjustment = ((Home_Elevation - Station_Elevation) / 1000) * Lapse_Rate</code>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Temp_Adjustment = ((3,500ft - 500ft) / 1000) * 3.65 = <strong>10.95 °F</strong></code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Temp_Adjustment = ((Home_Elevation - Station_Elevation) / 1000) * Lapse_Rate</code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Temp_Adjustment = ((3,500ft - 500ft) / 1000) * 3.65 = <strong>10.95 °F</strong></code>
                 </div>
                 <div>
                   <p className="italic text-gray-600 dark:text-gray-400"><strong>Step 3: Determine the Final Adjusted Temperature</strong></p>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Adjusted_Temp = Station_Temp - Temp_Adjustment</code>
-                  <code className="block mt-1 p-2 bg-gray-200 dark:bg-gray-800 dark:text-gray-100 rounded text-xs overflow-x-auto whitespace-nowrap">Adjusted_Temp = 32°F - 10.95°F = <strong>21.05 °F</strong></code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Adjusted_Temp = Station_Temp - Temp_Adjustment</code>
+                  <code className="block mt-1 p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto whitespace-nowrap border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>Adjusted_Temp = 32°F - 10.95°F = <strong>21.05 °F</strong></code>
                 </div>
                 <div>
                   <p className="italic text-gray-600 dark:text-gray-400">

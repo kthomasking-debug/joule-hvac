@@ -4,6 +4,7 @@ import {
   controlBlueairFan,
   controlBlueairLED,
   startDustKickerCycle,
+  BridgeConnectionError,
 } from "../lib/jouleBridgeApi";
 
 /**
@@ -40,7 +41,10 @@ export function useBlueair(deviceIndex = 0, pollInterval = 10000) {
       setLoading(false);
       return null;
     } catch (err) {
-      console.error("Error fetching Blueair status:", err);
+      // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+      if (!(err instanceof BridgeConnectionError)) {
+        console.error("Error fetching Blueair status:", err);
+      }
       setError(err.message);
       setConnected(false);
       setLoading(false);

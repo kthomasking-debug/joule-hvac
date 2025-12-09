@@ -17,7 +17,7 @@ const SALES_PLACEHOLDER_SUGGESTIONS = [
   "What's included in the box?",
 ];
 
-export const AskJouleInput = ({
+export const AskJouleInput = React.memo(({
   value,
   setValue,
   onSubmit,
@@ -34,6 +34,7 @@ export const AskJouleInput = ({
   disabled,
   recognitionSupported,
   setShowCommandHelp,
+  setShowQuestionHelp,
   setShowAudit,
   auditLog,
   showPersonalization,
@@ -43,18 +44,95 @@ export const AskJouleInput = ({
   wakeWordSupported,
   isWakeWordListening,
   wakeWordError,
-  salesMode = false
+  salesMode = false,
+  showCommandHelp = false,
+  showQuestionHelp = false,
+  showAudit = false
 }) => {
   // Static placeholder text - use sales placeholders if in sales mode
   const displayPlaceholder = salesMode ? SALES_PLACEHOLDER_SUGGESTIONS[0] : PLACEHOLDER_SUGGESTIONS[0];
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Tabs above input */}
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            showCommandHelp
+              ? "border-blue-500 text-blue-600 dark:text-blue-400" 
+              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+          }`}
+          onClick={() => {
+            // Toggle command help panel
+            setShowCommandHelp((s) => !s);
+            // Close question help if open
+            if (showQuestionHelp) {
+              setShowQuestionHelp(false);
+            }
+            // Close audit if open
+            if (showAudit) {
+              setShowAudit(false);
+            }
+          }}
+          title="Show sample commands"
+        >
+          Commands
+        </button>
+
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            showQuestionHelp
+              ? "border-blue-500 text-blue-600 dark:text-blue-400" 
+              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+          }`}
+          onClick={() => {
+            // Toggle question help panel
+            setShowQuestionHelp((s) => !s);
+            // Close command help if open
+            if (showCommandHelp) {
+              setShowCommandHelp(false);
+            }
+            // Close audit if open
+            if (showAudit) {
+              setShowAudit(false);
+            }
+          }}
+          title="Click to show suggested questions"
+        >
+          Questions
+        </button>
+
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            showAudit
+              ? "border-blue-500 text-blue-600 dark:text-blue-400" 
+              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+          }`}
+          onClick={() => {
+            setShowAudit((s) => !s);
+            // Close other panels if open
+            if (showCommandHelp) {
+              setShowCommandHelp(false);
+            }
+            if (showQuestionHelp) {
+              setShowQuestionHelp(false);
+            }
+          }}
+          title="View command history"
+        >
+          History{auditLog && auditLog.length > 0 ? ` (${auditLog.length})` : ""}
+        </button>
+      </div>
+
+      {/* Input Box - On its own row */}
       <form
         onSubmit={onSubmit}
-        className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-2"
+        className="w-full"
       >
-        <div className="flex-1 relative w-full">
+        <div className="relative w-full">
           <input
             ref={inputRef}
             type="text"
@@ -73,10 +151,22 @@ export const AskJouleInput = ({
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setValue(suggestion);
                     setShowSuggestions(false);
-                    inputRef.current?.focus();
+                    // Auto-submit the command immediately with the suggestion value
+                    // Use a synthetic event that includes the suggestion text
+                    setTimeout(() => {
+                      if (onSubmit) {
+                        const syntheticEvent = {
+                          preventDefault: () => {},
+                          target: { value: suggestion }
+                        };
+                        onSubmit(syntheticEvent, suggestion);
+                      }
+                    }, 50);
                   }}
                   className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-900 text-sm sm:text-base text-gray-700 dark:text-gray-200 border-b border-gray-100 dark:border-gray-700 last:border-0"
                 >
@@ -87,12 +177,12 @@ export const AskJouleInput = ({
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Action Buttons - Inside form so submit works */}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
           <button
             type="submit"
             className="btn btn-primary px-4 py-2.5 text-sm font-semibold min-w-[80px]"
-            disabled={disabled}
+            disabled={disabled || !value.trim()}
           >
             Ask
           </button>
@@ -136,23 +226,6 @@ export const AskJouleInput = ({
               </button>
             </>
           )}
-
-          <div className="flex items-center gap-1.5 border-l border-gray-300 dark:border-gray-600 pl-1.5 ml-0.5">
-            <button
-              type="button"
-              className="btn btn-outline px-2 py-2 text-xs font-medium"
-              onClick={() => setShowCommandHelp((s) => !s)}
-            >
-              Commands
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline px-2 py-2 text-xs font-medium"
-              onClick={() => setShowAudit((s) => !s)}
-            >
-              History{auditLog && auditLog.length > 0 ? ` (${auditLog.length})` : ""}
-            </button>
-          </div>
         </div>
       </form>
 
@@ -209,5 +282,5 @@ export const AskJouleInput = ({
       )}
     </div>
   );
-};
+});
 

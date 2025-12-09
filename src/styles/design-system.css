@@ -3,7 +3,12 @@
    Glassmorphic cards, gradients, consistent spacing
    ============================================ */
 
-/* Design Tokens */
+/* ============================================
+   PRODUCTION-GRADE DESIGN SYSTEM
+   Flat surfaces, minimal shadows, clean contrast
+   ============================================ */
+
+/* Design Tokens - 8px Grid System */
 :root {
   /* Spacing Scale (8px base) */
   --space-xs: 0.5rem;    /* 8px */
@@ -14,7 +19,7 @@
   --space-2xl: 3rem;     /* 48px */
   --space-3xl: 4rem;     /* 64px */
 
-  /* Border Radius */
+  /* Border Radius - Consistent 12px */
   --radius-sm: 0.5rem;   /* 8px */
   --radius-md: 0.75rem;  /* 12px */
   --radius-lg: 1rem;     /* 16px */
@@ -22,64 +27,74 @@
   --radius-2xl: 2rem;    /* 32px */
   --radius-full: 9999px;
 
-  /* Glassmorphism */
-  --glass-bg-light: rgba(255, 255, 255, 0.1);
-  --glass-bg-dark: rgba(15, 23, 42, 0.4);
-  --glass-border-light: rgba(255, 255, 255, 0.2);
-  --glass-border-dark: rgba(255, 255, 255, 0.1);
-  --glass-blur: blur(16px);
-  --glass-blur-strong: blur(24px);
+  /* Color System - Production Dark Mode */
+  --bg-layer-0: #0C0F14;      /* Background */
+  --bg-layer-1: #151A21;       /* Cards */
+  --bg-layer-2: #1D232C;       /* Highlighted Panels */
+  --border-color: #222A35;     /* Borders */
+  
+  /* CTA Colors */
+  --cta-blue: #1E4CFF;
+  --cta-purple: #B068FF;
+  --warning: #D5A13A;
+  
+  /* Text Colors */
+  --text-primary: #FFFFFF;
+  --text-secondary: #E8EDF3;
+  --text-body: #A7B0BA;
+  --text-label: #7C8894;
 
-  /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  --gradient-accent: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  --gradient-success: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-  --gradient-warning: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-  --gradient-info: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
-  --gradient-dark: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
-  --gradient-light: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  /* Typography Scale */
+  --font-page-title: 28px;
+  --font-section-header: 20px;
+  --font-card-title: 18px;
+  --font-body: 14px;
+  --font-data-number: 36px;
+  --font-label: 12px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
-  --shadow-glow-strong: 0 0 40px rgba(99, 102, 241, 0.5);
+  /* Minimal Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 8px 0 rgba(0, 0, 0, 0.4);
 }
 
 html.dark {
-  --glass-bg-light: rgba(15, 23, 42, 0.4);
-  --glass-bg-dark: rgba(0, 0, 0, 0.3);
-  --glass-border-light: rgba(255, 255, 255, 0.1);
-  --glass-border-dark: rgba(255, 255, 255, 0.05);
+  /* Dark mode uses same colors */
+  --glass-bg-light: var(--bg-layer-1);
+  --glass-bg-dark: var(--bg-layer-2);
+  --glass-border-light: var(--border-color);
+  --glass-border-dark: var(--border-color);
+}
+
+html.dark {
+  --glass-bg-light: rgba(15, 23, 42, 0.95);
+  --glass-bg-dark: rgba(15, 23, 42, 0.98);
+  --glass-border-light: rgba(255, 255, 255, 0.2);
+  --glass-border-dark: rgba(255, 255, 255, 0.15);
 }
 
 /* ============================================
-   GLASSMORPHIC CARDS
+   FLAT CARDS (Production Design)
    ============================================ */
 
 .glass-card {
-  background: var(--glass-bg-light);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border-light);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--bg-layer-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); /* 12px consistent */
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
 
 html.dark .glass-card {
-  background: var(--glass-bg-dark);
-  border-color: var(--glass-border-dark);
+  background: var(--bg-layer-1);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-2xl), var(--shadow-glow);
-  border-color: rgba(99, 102, 241, 0.4);
+  background: var(--bg-layer-2);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-md);
 }
 
 .glass-card-strong {
@@ -90,8 +105,8 @@ html.dark .glass-card {
 }
 
 html.dark .glass-card-strong {
-  background: rgba(0, 0, 0, 0.4);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.9);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Glass card with gradient accent */
@@ -176,7 +191,7 @@ html.dark .glass-card-gradient {
 }
 
 html.dark .page-gradient-overlay::before {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.9) 100%);
 }
 
 .page-gradient-overlay > * {
@@ -240,7 +255,7 @@ html.dark .page-gradient-overlay::before {
 }
 
 html.dark .text-high-contrast {
-  color: #f8fafc;
+  color: #ffffff;
 }
 
 .text-muted {
@@ -248,7 +263,7 @@ html.dark .text-high-contrast {
 }
 
 html.dark .text-muted {
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 .text-subtle {
@@ -259,39 +274,44 @@ html.dark .text-subtle {
   color: #64748b;
 }
 
-/* Heading styles with better contrast */
+/* Typography System - Production Scale */
 .heading-primary {
-  font-size: 2.25rem;
-  font-weight: 800;
+  font-size: var(--font-page-title); /* 28px */
+  font-weight: 600;
   line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: #0f172a;
-}
-
-html.dark .heading-primary {
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .heading-secondary {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: var(--font-section-header); /* 20px */
+  font-weight: 500;
   line-height: 1.3;
-  color: #1e293b;
-}
-
-html.dark .heading-secondary {
-  color: #e2e8f0;
+  color: var(--text-secondary);
 }
 
 .heading-tertiary {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: var(--font-card-title); /* 18px */
+  font-weight: 500;
   line-height: 1.4;
-  color: #334155;
+  color: var(--text-secondary);
 }
 
-html.dark .heading-tertiary {
-  color: #cbd5e1;
+.text-data-number {
+  font-size: var(--font-data-number); /* 36px */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.text-body {
+  font-size: var(--font-body); /* 14px */
+  font-weight: 400;
+  color: var(--text-body);
+}
+
+.text-label {
+  font-size: var(--font-label); /* 12px */
+  font-weight: 400;
+  color: var(--text-label);
 }
 
 /* ============================================
@@ -499,7 +519,8 @@ body {
 }
 
 html.dark body {
-  background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+  background: #0C0F14; /* Layer 0 */
+  color: #FFFFFF; /* Primary text */
 }
 
 /* ============================================
@@ -522,5 +543,67 @@ html.dark body {
   .heading-secondary {
     font-size: 1.25rem;
   }
+}
+
+/* ============================================
+   ANIMATED BLOB EFFECTS (Glassmorphic)
+   ============================================ */
+
+@keyframes blob {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+}
+
+.animate-blob {
+  animation: blob 20s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* ============================================
+   ADVANCED GLASSMORPHISM EFFECTS
+   ============================================ */
+
+/* Grainy frost texture drift animation */
+@keyframes drift {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(1px, 1px);
+  }
+}
+
+.animate-drift {
+  animation: drift 40s linear infinite;
+}
+
+/* Breathing glow effect */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.02);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 8s ease-in-out infinite;
 }
 

@@ -41,14 +41,14 @@ You have **5 overlapping LLM/Agent systems** that need consolidation:
 ```
 User Query
     ↓
-1. Try explicit commands (parseAskJoule)
+1. Try explicit commands (parseAskJoule) - UNIFIED PARSER
     ↓
-2. Try thermostat NLP (parseThermostatCommand)
+2. If agenticMode ON → useJouleAgent.askAgent() (JouleAgentCore)
     ↓
-3. If agenticMode ON → useJouleAgent.askAgent() (JouleAgentCore)
-    ↓
-4. Otherwise → answerWithAgent() (groqAgent.js)
+3. Otherwise → answerWithAgent() (groqAgent.js)
 ```
+
+**Note:** `parseThermostatCommand` from `commandParser.js` has been removed. All parsing is now handled by the unified `askJouleParser.js`.
 
 ## Consolidation Plan
 

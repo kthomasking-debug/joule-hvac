@@ -5,6 +5,7 @@ import {
   setMode as bridgeSetMode,
   getPrimaryDeviceId,
   checkBridgeHealth,
+  BridgeConnectionError,
 } from "../lib/jouleBridgeApi";
 
 /**
@@ -77,7 +78,10 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
       setLoading(false);
       return null;
     } catch (err) {
-      console.error("Error fetching Joule Bridge data:", err);
+      // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+      if (!(err instanceof BridgeConnectionError)) {
+        console.error("Error fetching Joule Bridge data:", err);
+      }
       setError(err.message);
       setConnected(false);
       setLoading(false);

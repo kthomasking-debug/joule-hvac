@@ -31,6 +31,8 @@ const DocumentationSetupGuides = lazy(() => import("./pages/DocumentationSetupGu
 const Analysis = lazy(() => import("./pages/Analysis"));
 const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const SummerACIssues = lazy(() => import("./pages/SummerACIssues"));
 
 import {
   Home as HomeIcon,
@@ -47,6 +49,7 @@ import {
   Box,
   Wind,
   Server,
+  ShoppingCart,
 } from "lucide-react";
 
 export const routes = [
@@ -161,6 +164,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Dehumidifier and air purifier control",
+  },
+  {
+    path: "/summer/ac-issues",
+    name: "SummerACIssues",
+    label: "AC Troubleshooting",
+    icon: Wind,
+    Component: SummerACIssues,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Summer AC troubleshooting - sticky house, high humidity, short cycling",
   },
   {
     path: "/hardware",
@@ -446,6 +460,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Joule Monitor & Bridge products - moved to /hardware",
+  },
+  {
+    path: "/checkout",
+    name: "Checkout",
+    label: "Checkout",
+    icon: ShoppingCart,
+    Component: Checkout,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Checkout page with sales questions",
   },
 ];
 

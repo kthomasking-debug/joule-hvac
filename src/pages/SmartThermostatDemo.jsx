@@ -34,14 +34,20 @@ import {
   Search,
   RotateCcw,
   MessageSquare,
+  Volume2,
+  VolumeX,
+  ChevronDown,
 } from "lucide-react";
 import AskJoule from "../components/AskJoule";
+import { getCached, getCachedBatch } from "../utils/cachedStorage";
+import { useUnitSystem, formatTemperatureFromF } from "../lib/units";
 
 const SmartThermostatDemo = () => {
   const navigate = useNavigate();
   const outlet = useOutletContext() || {};
   const userSettings = outlet.userSettings || {};
   const setUserSetting = outlet.setUserSetting;
+  const { unitSystem } = useUnitSystem();
   
   // Route guard: Redirect to onboarding if not completed
   useEffect(() => {
@@ -56,6 +62,24 @@ const SmartThermostatDemo = () => {
     try {
       const raw = localStorage.getItem("userLocation");
       return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Load analyzer results to get balance point
+  const latestAnalysis = useMemo(() => {
+    try {
+      const activeZoneId = getCached("activeZoneId", "zone1");
+      const zoneKey = `spa_resultsHistory_${activeZoneId}`;
+      const batch = getCachedBatch([zoneKey, "spa_resultsHistory"]);
+      const zoneHistory = batch[zoneKey];
+      const resultsHistory = (zoneHistory && Array.isArray(zoneHistory) && zoneHistory.length > 0)
+        ? zoneHistory
+        : (batch["spa_resultsHistory"] || []);
+      return resultsHistory && resultsHistory.length > 0
+        ? resultsHistory[resultsHistory.length - 1]
+        : null;
     } catch {
       return null;
     }
@@ -178,6 +202,18 @@ const SmartThermostatDemo = () => {
   const useJouleIntegration = bridgeAvailable && jouleBridge.connected;
   const activeIntegration = useJouleIntegration ? jouleBridge : (useEcobeeIntegration ? ecobee : null);
   
+  // Expose activeIntegration to window for AskJoule command handlers
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.activeIntegration = activeIntegration;
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.activeIntegration = null;
+      }
+    };
+  }, [activeIntegration]);
+  
   // Use Joule Bridge or Ecobee data if available, otherwise use simulated
   const currentTemp = activeIntegration && activeIntegration.temperature !== null 
     ? activeIntegration.temperature 
@@ -238,6 +274,56 @@ const SmartThermostatDemo = () => {
       }
     }
   }, [activeIntegration, mode]);
+
+  // Listen for HVAC mode changes from Ask Joule commands
+  useEffect(() => {
+    const handleHvacModeChange = (event) => {
+      const newMode = event.detail?.mode;
+      if (newMode && ["heat", "cool", "auto", "off"].includes(newMode)) {
+        handleSetMode(newMode);
+      }
+    };
+
+    window.addEventListener("hvacModeChanged", handleHvacModeChange);
+    return () => {
+      window.removeEventListener("hvacModeChanged", handleHvacModeChange);
+    };
+  }, [handleSetMode]);
+
+  // Listen for target temperature changes from Ask Joule commands
+  useEffect(() => {
+    const handleTargetTempChange = (event) => {
+      if (import.meta.env.DEV) {
+        console.log("[SmartThermostatDemo] Received targetTempChanged event:", event.detail);
+      }
+      // Support both 'temp' and 'temperature' for backward compatibility
+      const newTemp = event.detail?.temp || event.detail?.temperature;
+      if (import.meta.env.DEV) {
+        console.log("[SmartThermostatDemo] Extracted temperature:", newTemp, "Type:", typeof newTemp);
+      }
+      if (typeof newTemp === "number" && newTemp >= 50 && newTemp <= 90) {
+        if (import.meta.env.DEV) {
+          console.log("[SmartThermostatDemo] Setting target temperature to:", newTemp);
+        }
+        setTargetTemp(newTemp);
+        // Also update thermostat if connected
+        if (activeIntegration && activeIntegration.setTemperature) {
+          const heatTemp = mode === 'heat' || mode === 'auto' ? newTemp : (activeIntegration.targetHeatTemp || newTemp);
+          const coolTemp = mode === 'cool' || mode === 'auto' ? newTemp : (activeIntegration.targetCoolTemp || newTemp);
+          activeIntegration.setTemperature(heatTemp, coolTemp).catch(err => {
+            console.error('Failed to update thermostat temperature:', err);
+          });
+        }
+      } else if (import.meta.env.DEV) {
+        console.warn("[SmartThermostatDemo] Invalid temperature value:", newTemp, "Type:", typeof newTemp);
+      }
+    };
+
+    window.addEventListener("targetTempChanged", handleTargetTempChange);
+    return () => {
+      window.removeEventListener("targetTempChanged", handleTargetTempChange);
+    };
+  }, [activeIntegration, mode, setTargetTemp]);
   
   // Dehumidifier state tracking for minOnTime/minOffTime enforcement
   const [dehumidifierState, setDehumidifierState] = useState({
@@ -846,309 +932,285 @@ const SmartThermostatDemo = () => {
     }
   }, [activeIntegration, mode, setUserSetting]);
 
+
+  // Calculate estimated cost per hour (simplified)
+  const estimatedCostPerHour = useMemo(() => {
+    if (thermostatState.status === "Satisfied" || thermostatState.status === "Off") {
+      return 0.0;
+    }
+    // Rough estimate: $0.50-1.50/hr when actively heating/cooling
+    const baseCost = mode === "heat" ? 0.70 : mode === "cool" ? 0.85 : 0.60;
+    return baseCost;
+  }, [thermostatState.status, mode]);
+
+
   return (
-    <div className="page-gradient-overlay min-h-screen">
+    <div className="min-h-screen bg-[#050B10]">
       <style>{`
         @keyframes pulse-subtle {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
         }
         .pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
+        
+        /* Enhanced slider styling for better affordance */
+        input[type="range"] {
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+          cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-track {
+          height: 8px;
+          border-radius: 4px;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
+          transition: all 0.2s;
+          margin-top: -6px;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+          transform: scale(1.1);
+        }
+        
+        input[type="range"]::-moz-range-track {
+          height: 8px;
+          border-radius: 4px;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
+          transition: all 0.2s;
+        }
+        
+        input[type="range"]::-moz-range-thumb:hover {
+          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+          transform: scale(1.1);
+        }
       `}</style>
 
-      {/* Main Content */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        {/* Page Header */}
-        <div className="mb-8 animate-fade-in-up">
-          <div className="flex items-center gap-4 mb-3">
-            <div className="icon-container icon-container-gradient">
-              <Thermometer className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="heading-primary">
-                Smart Thermostat Control
-              </h1>
-              <p className="text-muted mt-1">
-                Monitor and control your home's temperature and humidity
-              </p>
-            </div>
+      {/* Main Content - Desktop Console Layout - Wider & Centered */}
+      <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-6">
+        {/* Page Header Row - Tighter */}
+        <header className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-white">Thermostat Control</h1>
+            <p className="mt-0.5 text-sm text-slate-400">
+              Monitor and control your home's temperature and humidity.
+            </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-glass">
-          
-          {/* Left: Temperature Control */}
-          <div className="glass-card p-glass-lg animate-fade-in-up">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="heading-tertiary">Manual Control</h2>
-              <div className="flex items-center gap-2">
-                {speechEnabled ? (
-                  <>
-                    <Mic className="w-4 h-4 text-cyan-500" />
-                    <span className="text-xs text-cyan-500">Voice enabled</span>
-                  </>
-                ) : (
-                  <MicOff className="w-4 h-4 text-muted" title="Voice disabled" />
-                )}
+          {/* Right side: Single source of truth for mode */}
+          <div className="flex items-center gap-3 text-xs">
+            {useJouleIntegration && jouleBridge.connected && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-slate-300 border border-slate-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                Joule Bridge Online
+              </span>
+            )}
+            {useEcobeeIntegration && ecobee.connected && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-slate-300 border border-slate-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                Ecobee Connected
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-slate-300 border border-slate-700">
+              {formatTemperatureFromF(currentTemp, unitSystem, { decimals: 0 })} · {mode.charAt(0).toUpperCase() + mode.slice(1)} · {thermostatState.status === "Satisfied" ? "Active" : thermostatState.status}
+            </span>
+          </div>
+        </header>
+
+        {/* Main Console Card - Two Column Split */}
+        <section className="rounded-2xl bg-[#0C1118] border border-slate-800 shadow-lg p-6 lg:p-7 mb-6">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+            {/* Left: Thermostat Tile - Primary Focus */}
+            <div className="flex flex-col h-full">
+              {/* Mode Selector - Segmented Control */}
+              <div className="mb-4 inline-flex rounded-lg bg-slate-900/80 border border-slate-700 p-1 gap-1">
+                {["heat", "cool", "auto", "off"].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => handleSetMode(m)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      mode === m
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-300 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Temperature Block */}
+              <div className="flex-1 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 px-6 py-5 flex flex-col justify-between mb-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-400 mb-2">
+                    Current Temperature
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-bold text-white">
+                      {formatTemperatureFromF(currentTemp, unitSystem, { decimals: 0, withUnit: false })}
+                    </span>
+                    <span className="text-2xl text-slate-300">
+                      {unitSystem === "intl" ? "°C" : "°F"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Target <span className="font-semibold text-slate-100">
+                      {formatTemperatureFromF(isAway ? effectiveTarget : targetTemp, unitSystem, { decimals: 0 })}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Slider + Quick Metrics - Tighter spacing, bigger slider */}
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-2 font-medium">Setpoint</label>
+                    <input
+                      type="range"
+                      className="w-full h-4 accent-blue-500 cursor-pointer"
+                      min={60}
+                      max={80}
+                      value={isAway ? effectiveTarget : targetTemp}
+                      onChange={(e) => handleTargetTempChange(parseInt(e.target.value))}
+                      style={{
+                        background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((isAway ? effectiveTarget : targetTemp) - 60) / 20 * 100}%, #1e293b ${((isAway ? effectiveTarget : targetTemp) - 60) / 20 * 100}%, #1e293b 100%)`
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                      <p className="text-slate-400 mb-1">Humidity</p>
+                      <p className="text-sm font-semibold text-slate-50">
+                        {currentHumidity}% <span className={`text-[10px] ml-1 ${Math.abs(currentHumidity - humiditySetpoint) <= 5 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {Math.abs(currentHumidity - humiditySetpoint) <= 5 ? 'On target' : 'Off target'}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                      <p className="text-slate-400 mb-1">Est. Cost</p>
+                      <p className="text-sm font-semibold text-slate-50">${estimatedCostPerHour.toFixed(2)} / hr</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Actions */}
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <button
+                  onClick={() => navigate('/config#schedule')}
+                  className="col-span-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 transition-colors"
+                >
+                  Open Schedule
+                </button>
+                <button
+                  onClick={() => handleSetAway(!isAway)}
+                  className={`rounded-lg border transition-colors ${
+                    isAway
+                      ? "bg-slate-900 border-blue-500 text-blue-400"
+                      : "bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  Away Mode
+                </button>
               </div>
             </div>
-            
-            <div className="text-center mb-8">
-              <div className="text-7xl font-bold mb-2 text-high-contrast">{currentTemp}°F</div>
-              <div className="text-muted text-sm">CURRENT TEMPERATURE</div>
-              <div className="text-muted text-xs mt-1">Target: {isAway ? effectiveTarget : targetTemp}°F</div>
-            </div>
-            
-            <div className="space-y-6">
-              {/* Temperature Slider */}
-              <div>
-                <div className="flex justify-between text-xs text-muted mb-2">
-                  <span>60°F</span>
-                  <span>80°F</span>
+
+            {/* Right: Ask Joule Panel - Secondary */}
+            <div className="flex flex-col h-full rounded-2xl bg-slate-950/70 border border-slate-800 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-100">Ask Joule</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Control your thermostat with natural language.
+                  </p>
                 </div>
-                <input 
-                  type="range" 
-                  min="60" 
-                  max="80" 
-                  value={isAway ? effectiveTarget : targetTemp}
-                  onChange={(e) => handleTargetTempChange(parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-700 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-                />
+                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400 border border-slate-700">
+                  Beta
+                </span>
               </div>
               
-              {/* Humidity and Mode Cards */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="glass-card p-glass-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Droplets className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-muted">HUMIDITY</span>
-                  </div>
-                  <div className="text-2xl font-bold text-high-contrast">{currentHumidity}%</div>
-                  <div className="text-xs text-muted">Target: {humiditySetpoint}%</div>
-                </div>
-                
-                <div className="glass-card p-glass-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Wind className="w-4 h-4 text-orange-500" />
-                    <span className="text-xs text-muted">MODE</span>
-                  </div>
-                  <div className="text-2xl font-bold capitalize text-high-contrast">{mode}</div>
-                  <div className={`text-xs ${
-                    thermostatState.statusColor === 'text-green-600' ? 'text-green-500' : 
-                    thermostatState.statusColor === 'text-orange-600' ? 'text-orange-500' : 
-                    thermostatState.statusColor === 'text-cyan-600' ? 'text-cyan-500' : 
-                    'text-muted'
-                  }`}>
-                    {thermostatState.status === "Satisfied" && "✓ Satisfied"}
-                    {thermostatState.status === "Heating" && "Heating"}
-                    {thermostatState.status === "Cooling" && "Cooling"}
-                    {thermostatState.status === "Dehumidifying" && "Dehumidifying"}
-                    {thermostatState.status === "Off" && "Off"}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Target Humidity Slider */}
-              <div>
-                <label className="text-xs text-muted mb-2 block">Target Humidity: {humiditySetpoint}%</label>
-                <div className="flex justify-between text-xs text-muted mb-2">
-                  <span>30%</span>
-                  <span>80%</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="30" 
-                  max="80" 
-                  value={humiditySetpoint}
-                  onChange={(e) => {
-                    const newHumidity = Number(e.target.value);
-                    try {
-                      const thermostatSettings = loadThermostatSettings();
-                      const currentComfort = isAway ? "away" : "home";
-                      
-                      if (!thermostatSettings.comfortSettings) {
-                        thermostatSettings.comfortSettings = {};
-                      }
-                      if (!thermostatSettings.comfortSettings[currentComfort]) {
-                        thermostatSettings.comfortSettings[currentComfort] = {};
-                      }
-                      thermostatSettings.comfortSettings[currentComfort].humiditySetPoint = newHumidity;
-                      
-                      saveThermostatSettings(thermostatSettings);
-                      
-                      window.dispatchEvent(new CustomEvent("thermostatSettingsUpdated", {
-                        detail: {
-                          comfortSettings: thermostatSettings.comfortSettings
-                        }
-                      }));
-                      
-                      setSettingsVersion(prev => prev + 1);
-                    } catch (err) {
-                      console.error("Failed to update humidity setpoint:", err);
+              <div className="border-t border-slate-800 mb-4"></div>
+
+              <div className="flex-1 min-h-[400px]">
+                <AskJoule
+                  hasLocation={!!(userSettings?.location || userLocation)}
+                  userLocation={userLocation || (userSettings?.location ? { city: userSettings.location, state: userSettings.state || "GA" } : null)}
+                  userSettings={{
+                    ...userSettings,
+                    ...(latestAnalysis?.balancePoint != null && Number.isFinite(latestAnalysis.balancePoint) 
+                      ? { analyzerBalancePoint: latestAnalysis.balancePoint } 
+                      : {})
+                  }}
+                  annualEstimate={null}
+                  recommendations={[]}
+                  onNavigate={(path) => {
+                    if (path) navigate(path);
+                  }}
+                  onSettingChange={(key, value, meta = {}) => {
+                    if (typeof setUserSetting === "function") {
+                      setUserSetting(key, value, {
+                        ...meta,
+                        source: meta?.source || "AskJoule",
+                      });
                     }
                   }}
-                  className="w-full h-2 bg-slate-700 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  auditLog={outlet.auditLog}
+                  onUndo={(id) => outlet.undoChange && outlet.undoChange(id)}
+                  hideHeader={true}
                 />
               </div>
-              
-              {/* Away Mode Button */}
-              <button
-                onClick={() => handleSetAway(!isAway)}
-                className={`w-full p-3 rounded-lg transition-all ${
-                  isAway
-                    ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg"
-                    : "btn-glass text-high-contrast"
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Home className={`w-4 h-4 ${isAway ? 'opacity-0' : ''}`} />
-                  <span className="text-sm font-medium">
-                    {isAway ? "Away Mode Active" : "Activate Away Mode"}
-                  </span>
-                </div>
-              </button>
-              
-              {/* Schedule Button */}
-              <button
-                onClick={() => navigate('/config#schedule')}
-                className="btn-glass w-full flex items-center justify-center gap-2"
-              >
-                <Clock className="w-4 h-4" />
-                <span className="text-sm font-medium">Schedule</span>
-              </button>
-              
-              {/* ASHRAE Standards Button */}
-              <button
-                onClick={() => {
-                  // ASHRAE Standard 55 recommendations (50% RH):
-                  // Winter heating: 68.5-74.5°F (use 70°F as middle) for day, 68°F for night
-                  // Summer cooling: 73-79°F (use 76°F as middle) for day, 78°F for night
-                  const thermostatSettings = loadThermostatSettings();
-                  if (thermostatSettings?.comfortSettings) {
-                    // Update home comfort setting (daytime)
-                    if (!thermostatSettings.comfortSettings.home) {
-                      thermostatSettings.comfortSettings.home = {
-                        heatSetPoint: 70,
-                        coolSetPoint: 76,
-                        humiditySetPoint: 50,
-                        fanMode: "auto",
-                        sensors: ["main"],
-                      };
-                    } else {
-                      thermostatSettings.comfortSettings.home.heatSetPoint = 70;
-                      thermostatSettings.comfortSettings.home.coolSetPoint = 76;
-                    }
-                    
-                    // Update sleep comfort setting (nighttime)
-                    if (!thermostatSettings.comfortSettings.sleep) {
-                      thermostatSettings.comfortSettings.sleep = {
-                        heatSetPoint: 68,
-                        coolSetPoint: 78,
-                        humiditySetPoint: 50,
-                        fanMode: "auto",
-                        sensors: ["main"],
-                      };
-                    } else {
-                      thermostatSettings.comfortSettings.sleep.heatSetPoint = 68;
-                      thermostatSettings.comfortSettings.sleep.coolSetPoint = 78;
-                    }
-                    
-                    saveThermostatSettings(thermostatSettings);
-                    window.dispatchEvent(new Event("thermostatSettingsChanged"));
-                    
-                    // Also update userSettings if available
-                    if (setUserSetting) {
-                      setUserSetting("winterThermostat", 70);
-                      setUserSetting("winterThermostatDay", 70);
-                      setUserSetting("winterThermostatNight", 68);
-                      setUserSetting("summerThermostat", 76);
-                      setUserSetting("summerThermostatNight", 78);
-                    }
-                  }
-                }}
-                className="btn-glass w-full flex items-center justify-center gap-2 mt-2"
-                title="Apply ASHRAE Standard 55 thermal comfort recommendations"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span className="text-sm font-medium">ASHRAE 55</span>
-              </button>
             </div>
           </div>
-          
-          {/* Center: AI Assistant */}
-          <div className="lg:col-span-2 glass-card p-glass-lg flex flex-col animate-fade-in-up">
-            <div className="mb-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="icon-container icon-container-gradient">
-                  <MessageSquare className="w-6 h-6" />
-                </div>
-                <div>
-                  <h2 className="heading-secondary">Ask Joule</h2>
-                  <p className="text-sm text-muted">Voice assistant</p>
-                </div>
-              </div>
-              
-              <p className="text-muted text-sm mb-3">
-                Ask about your home's efficiency, comfort, or costs. Get answers based on your settings and usage data.
+        </section>
+        
+        {/* Secondary Row: System Status / Hardware - Aligned with main grid */}
+        <section className="mt-6 grid grid-cols-3 gap-4 text-xs">
+          <div className="rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3">
+            <p className="text-slate-400 mb-1">Location</p>
+            <p className="text-slate-100 font-medium">{locationDisplay}</p>
+          </div>
+          <div className="rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3">
+            <p className="text-slate-400 mb-1">AI Model</p>
+            <p className="text-slate-100 font-medium">{groqModel} · {useJouleIntegration || useEcobeeIntegration ? "Joule Active" : "Manual"}</p>
+          </div>
+          <div className="rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-slate-400 mb-1">Bridge</p>
+              <p className="text-slate-100 font-medium">
+                {useJouleIntegration && jouleBridge.connected 
+                  ? "Connected" 
+                  : useEcobeeIntegration && ecobee.connected
+                  ? "Ecobee Connected"
+                  : "Offline"}
               </p>
             </div>
-            
-            {/* Ask Joule Component */}
-            <div className="flex-1 min-h-[400px]">
-              <AskJoule
-                hasLocation={!!(userSettings?.location || userLocation)}
-                userLocation={userLocation || (userSettings?.location ? { city: userSettings.location, state: userSettings.state || "GA" } : null)}
-                userSettings={userSettings}
-                annualEstimate={null}
-                recommendations={[]}
-                onNavigate={(path) => {
-                  if (path) navigate(path);
-                }}
-                onSettingChange={(key, value, meta = {}) => {
-                  if (typeof setUserSetting === "function") {
-                    setUserSetting(key, value, {
-                      ...meta,
-                      source: meta?.source || "AskJoule",
-                    });
-                  }
-                }}
-              />
-            </div>
+            <span className={`h-2 w-2 rounded-full ${
+              (useJouleIntegration && jouleBridge.connected) || (useEcobeeIntegration && ecobee.connected)
+                ? "bg-emerald-400"
+                : "bg-slate-500"
+            }`} />
           </div>
-        </div>
-        
-        {/* Status Bar */}
-        <div className="mt-6 glass-card p-glass animate-fade-in-up">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-6">
-              <span className="text-muted">Location: <span className="text-high-contrast">{locationDisplay}</span></span>
-              <span className="text-muted">AI Model: <span className="text-cyan-500">{groqModel}</span></span>
-              <span className="text-green-500">● AI Mode Active</span>
-              {useJouleIntegration && (
-                <span className="text-muted">
-                  Bridge: <span className={jouleBridge.connected ? "text-green-500" : "text-red-500"}>
-                    {jouleBridge.connected ? "Connected" : "Disconnected"}
-                  </span>
-                </span>
-              )}
-              {useEcobeeIntegration && !useJouleIntegration && (
-                <span className="text-muted">
-                  Ecobee: <span className={ecobee.connected ? "text-green-500" : "text-red-500"}>
-                    {ecobee.connected ? "Connected" : "Disconnected"}
-                  </span>
-                </span>
-              )}
-              {!useJouleIntegration && !useEcobeeIntegration && (
-                <span className="text-muted">Mode: <span className="text-high-contrast">Manual</span></span>
-              )}
-            </div>
-            <div className="text-muted text-xs">
-              CPU Temp: <span className="text-red-500">Offline</span>
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
-
     </div>
   );
 };

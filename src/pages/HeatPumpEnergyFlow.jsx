@@ -22,6 +22,10 @@ import {
   ChevronRight,
   BarChart3,
   Flame,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+  Printer,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
@@ -31,6 +35,12 @@ import { getAnnualHDD } from "../lib/hddData";
 const CustomTooltip = ({ active, payload, label, mode = "heatPump", afue }) => {
   if (active && payload && payload.length) {
     const d = payload[0].payload;
+    // Helper function to safely format numbers
+    const formatNumber = (value, options = { maximumFractionDigits: 0 }) => {
+      if (value == null || !Number.isFinite(value)) return "N/A";
+      return value.toLocaleString(undefined, options);
+    };
+    
     return (
       <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm p-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl dark:text-gray-100">
         <p className="font-bold text-gray-800 dark:text-gray-100 mb-2">
@@ -39,31 +49,25 @@ const CustomTooltip = ({ active, payload, label, mode = "heatPump", afue }) => {
         {mode === "gasFurnace" ? (
           <p className="text-sm text-blue-600 font-semibold">
             Furnace Output:{" "}
-            {d.thermalOutputBtu.toLocaleString(undefined, {
-              maximumFractionDigits: 0,
-            })}{" "}
+            {formatNumber(d.thermalOutputBtu)}{" "}
             BTU/hr
           </p>
         ) : (
           <p className="text-sm text-blue-600 font-semibold">
             HP Output:{" "}
-            {d.thermalOutputBtu.toLocaleString(undefined, {
-              maximumFractionDigits: 0,
-            })}{" "}
+            {formatNumber(d.thermalOutputBtu)}{" "}
             BTU/hr
           </p>
         )}
         <p className="text-sm text-red-600 font-semibold">
           Building Heat Loss:{" "}
-          {d.buildingHeatLossBtu.toLocaleString(undefined, {
-            maximumFractionDigits: 0,
-          })}{" "}
+          {formatNumber(d.buildingHeatLossBtu)}{" "}
           BTU/hr
         </p>
         <hr className="my-2" />
         <p className="text-sm text-orange-600 font-semibold">
           Aux Heat Needed:{" "}
-          {d.auxHeatBtu.toLocaleString(undefined, { maximumFractionDigits: 0 })}{" "}
+          {formatNumber(d.auxHeatBtu)}{" "}
           BTU/hr
         </p>
         {mode === "gasFurnace" ? (
@@ -77,7 +81,7 @@ const CustomTooltip = ({ active, payload, label, mode = "heatPump", afue }) => {
           <>
             <hr className="my-2" />
             <p className="text-sm text-green-600 font-semibold">
-              Efficiency (COP): {d.cop.toFixed(2)}
+              Efficiency (COP): {d.cop != null && Number.isFinite(d.cop) ? d.cop.toFixed(2) : "N/A"}
             </p>
           </>
         )}
@@ -87,14 +91,146 @@ const CustomTooltip = ({ active, payload, label, mode = "heatPump", afue }) => {
   return null;
 };
 
+// Data Sources Dropdown Component
+const DataSourcesDropdown = ({ chartName, dataSources }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const renderDataSource = (key, source) => {
+    if (!source || !source.source || source.source === "Not applicable" || source.source.includes("Not shown")) {
+      return null;
+    }
+
+    return (
+      <div key={key} className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-b-0 last:pb-0 last:mb-0">
+        <div className="font-semibold text-sm text-gray-800 dark:text-gray-200 mb-2">
+          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+        </div>
+        <div className="text-sm text-gray-700 dark:text-gray-300">
+          <div className="mb-1">
+            <span className="font-medium">Source: </span>
+            <span className="text-blue-600 dark:text-blue-400">{source.source}</span>
+          </div>
+          {source.formula && (
+            <div className="mb-1 mt-2">
+              <span className="font-medium">Formula: </span>
+              <code className="text-xs bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded">{source.formula}</code>
+            </div>
+          )}
+          {source.value && (
+            <div className="mb-1 mt-2">
+              <span className="font-medium">Value: </span>
+              <span className="text-green-600 dark:text-green-400">{source.value}</span>
+            </div>
+          )}
+          {source.inputs && (
+            <div className="mt-2 ml-4 space-y-1">
+              {Object.entries(source.inputs).map(([inputKey, inputValue]) => (
+                <div key={inputKey} className="text-xs">
+                  <span className="text-gray-600 dark:text-gray-400">{inputKey}: </span>
+                  <span className="text-gray-800 dark:text-gray-200">{inputValue}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {source.constants && (
+            <div className="mt-2 ml-4 space-y-1">
+              <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Constants:</div>
+              {Object.entries(source.constants).map(([constKey, constValue]) => (
+                <div key={constKey} className="text-xs ml-2">
+                  <span className="text-gray-600 dark:text-gray-400">{constKey}: </span>
+                  <span className="text-gray-800 dark:text-gray-200">{constValue}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {source.method && (
+            <div className="mb-1 mt-2">
+              <span className="font-medium">Method: </span>
+              <span className="text-gray-600 dark:text-gray-400">{source.method}</span>
+            </div>
+          )}
+          {source.example && (
+            <div className="mb-1 mt-2">
+              <span className="font-medium">Example Calculation: </span>
+              <code className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-2 py-1 rounded">{source.example}</code>
+            </div>
+          )}
+          {source.note && (
+            <div className="mt-2 text-xs italic text-gray-500 dark:text-gray-400">
+              Note: {source.note}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Calculator size={16} />
+          Data Sources for "{chartName}"
+        </span>
+        {isOpen ? (
+          <ChevronUp size={16} />
+        ) : (
+          <ChevronDown size={16} />
+        )}
+      </button>
+      {isOpen && (
+        <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            This chart uses the following data sources and calculations:
+          </div>
+          <div className="space-y-0">
+            {Object.entries(dataSources).map(([key, source]) => renderDataSource(key, source))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const HeatPumpEnergyFlow = () => {
   // --- Context and State ---
   const outletContext = useOutletContext() || {};
   const { userSettings, setUserSetting } = outletContext;
   const [searchParams, setSearchParams] = useSearchParams();
-  const [useAnalyzerData, setUseAnalyzerData] = useState(false);
+  
+  // Get heat loss factor from multiple sources: outlet context, then latest analysis results
   const contextHeatLossFactor = outletContext?.heatLossFactor;
+  const latestAnalysisHeatLossFactor = useMemo(() => {
+    try {
+      // Check for latest analyzer results in localStorage
+      const activeZoneId = localStorage.getItem("activeZoneId") || "zone1";
+      const zoneKey = `spa_resultsHistory_${activeZoneId}`;
+      const zoneHistory = JSON.parse(localStorage.getItem(zoneKey) || "null");
+      const legacyHistory = JSON.parse(localStorage.getItem("spa_resultsHistory") || "null");
+      const resultsHistory = (zoneHistory && Array.isArray(zoneHistory) && zoneHistory.length > 0) 
+        ? zoneHistory 
+        : (legacyHistory && Array.isArray(legacyHistory) && legacyHistory.length > 0) 
+          ? legacyHistory 
+          : [];
+      const latestAnalysis = resultsHistory.length > 0 ? resultsHistory[resultsHistory.length - 1] : null;
+      return latestAnalysis?.heatLossFactor || null;
+    } catch {
+      return null;
+    }
+  }, []);
+  
+  // Use outlet context first, then fall back to latest analysis
+  const effectiveHeatLossFactor = contextHeatLossFactor || latestAnalysisHeatLossFactor;
   const contextBalancePoint = outletContext?.balancePoint;
+  
+  // Default to using analyzer data if available
+  const [useAnalyzerData, setUseAnalyzerData] = useState(() => {
+    // Check if analyzer data is available in context or localStorage
+    return Boolean(effectiveHeatLossFactor);
+  });
   const primarySystem =
     userSettings?.primarySystem || outletContext.primarySystem || "heatPump";
   const afue = Number(userSettings?.afue) || outletContext?.afue || 0.95;
@@ -171,6 +307,15 @@ const HeatPumpEnergyFlow = () => {
     setHspf(contextHspf);
   }, [contextHspf]);
 
+  // Auto-enable analyzer data if available (only on initial load, not if user has toggled it off)
+  useEffect(() => {
+    if (effectiveHeatLossFactor) {
+      setUseAnalyzerData(true);
+    }
+    // Only run when effectiveHeatLossFactor becomes available
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveHeatLossFactor]);
+
   // Auto-select design temperature based on onboarding / forecast location saved in localStorage
   useEffect(() => {
     if (!autoDesignFromLocation) return; // user already picked
@@ -178,7 +323,7 @@ const HeatPumpEnergyFlow = () => {
       const raw = localStorage.getItem("userLocation");
       if (!raw) return;
       const loc = JSON.parse(raw);
-      const lat = Number(loc.latitude);
+      const lat = Number(loc.latitude ?? loc.lat);
       if (isNaN(lat)) return;
       // Simple latitude band heuristic for 99% design dry-bulb (approximate)
       const bands = [
@@ -212,7 +357,11 @@ const HeatPumpEnergyFlow = () => {
     }
   }); // 'with', 'without', 'both'
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
-  const [showImportOption, setShowImportOption] = useState(false);
+  // Show the analyzer data option by default if analyzer data is available
+  const [showImportOption, setShowImportOption] = useState(() => {
+    return Boolean(effectiveHeatLossFactor);
+  });
+  const [showCalculations, setShowCalculations] = useState(false);
 
   // persist selection
   useEffect(() => {
@@ -271,14 +420,35 @@ const HeatPumpEnergyFlow = () => {
     48: 4.0,
     60: 5.0,
   };
-  const tons = capacities[capacity];
+  // Ensure capacity is a number and get tons
+  const capacityNum = Number(capacity);
+  let tons = capacities[capacityNum];
+  
+  // Safety check: if tons is undefined, use fallback
+  if (tons === undefined || !Number.isFinite(tons)) {
+    // Fallback: assume 1 ton per 12k BTU (standard conversion)
+    const fallbackTons = capacityNum / 12;
+    if (fallbackTons > 0 && Number.isFinite(fallbackTons)) {
+      console.warn(`Capacity ${capacity} (${typeof capacity}) not in map. Using fallback: ${capacityNum}k BTU = ${fallbackTons.toFixed(2)} tons`);
+      tons = fallbackTons;
+    } else {
+      console.error(`Cannot calculate tons from capacity ${capacity} (${typeof capacity}). Using 1.5 tons as emergency default.`);
+      tons = 1.5; // Emergency fallback
+    }
+  }
+  
+  // Final validation
+  if (!Number.isFinite(tons) || tons <= 0) {
+    console.error(`CRITICAL: Invalid tons value ${tons} for capacity ${capacity}. Using 1.5 tons.`);
+    tons = 1.5;
+  }
 
   /**
    * Single source of truth for the building's heat loss characteristic.
    */
   const btuLossPerDegF = useMemo(() => {
-    if (useAnalyzerData && contextHeatLossFactor) {
-      return contextHeatLossFactor;
+    if (useAnalyzerData && effectiveHeatLossFactor) {
+      return effectiveHeatLossFactor;
     }
     const designTempDiff = Math.max(
       10,
@@ -299,7 +469,7 @@ const HeatPumpEnergyFlow = () => {
     ceilingHeight,
     designOutdoorTemp,
     useAnalyzerData,
-    contextHeatLossFactor,
+    effectiveHeatLossFactor,
     CONSTANTS.BASE_BTU_PER_SQFT,
     CONSTANTS.DESIGN_INDOOR_TEMP,
   ]);
@@ -326,17 +496,82 @@ const HeatPumpEnergyFlow = () => {
           furnaceInput * 1000 * Math.max(0.5, Math.min(0.99, afue))
         );
       } else {
-        // Heat pump derating curve
-        let capacityFactor;
-        if (tempOut >= 47) capacityFactor = 1.0;
-        else if (tempOut >= 17) capacityFactor = 1.0 - (47 - tempOut) * 0.012;
-        else capacityFactor = 0.64 - (17 - tempOut) * 0.01;
-        capacityFactor = Math.max(
-          CONSTANTS.MIN_CAPACITY_FACTOR,
-          capacityFactor
-        );
-        thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
-        thermalOutputBtu = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+        // Check if custom equipment profile is enabled
+        const useCustomProfile = userSettings?.useCustomEquipmentProfile && 
+          userSettings?.capacity47 && 
+          userSettings?.capacity17 && 
+          userSettings?.cop47 && 
+          userSettings?.cop17;
+
+        let thermalOutputBtu;
+        if (useCustomProfile) {
+          // Use custom capacity curve with linear interpolation
+          const interpolate = (x, x1, y1, x2, y2) => {
+            if (x2 === x1) return y1;
+            return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1);
+          };
+
+          if (tempOut >= 47) {
+            thermalOutputBtu = userSettings.capacity47;
+          } else if (tempOut <= 17) {
+            if (userSettings.capacity5) {
+              thermalOutputBtu = interpolate(tempOut, 17, userSettings.capacity17, 5, userSettings.capacity5);
+            } else {
+              const slope = (userSettings.capacity17 - userSettings.capacity47) / (17 - 47);
+              thermalOutputBtu = Math.max(0, userSettings.capacity17 + slope * (tempOut - 17));
+            }
+          } else {
+            thermalOutputBtu = interpolate(tempOut, 47, userSettings.capacity47, 17, userSettings.capacity17);
+          }
+          // Convert BTU/hr to kW (thermal output)
+          thermalOutputKw = thermalOutputBtu / 3412;
+        } else {
+          // Generic heat pump derating curve
+          // Standard curve: 100% at 47°F+, linear derate to 64% at 17°F, then 0.01 per °F below 17°F
+          // Minimum capacity factor ensures system never goes to zero (maintains at least 30% capacity)
+          let capacityFactor;
+          if (tempOut >= 47) {
+            capacityFactor = 1.0;
+          } else if (tempOut >= 17) {
+            // Linear derate from 100% @ 47°F to 64% @ 17°F
+            // Slope = (1.0 - 0.64) / (47 - 17) = 0.36 / 30 = 0.012 per °F
+            capacityFactor = 1.0 - (47 - tempOut) * 0.012;
+          } else {
+            // Below 17°F: continue derating at 0.01 per °F below 17°F
+            // At 17°F: 0.64, at 5°F: 0.64 - (17-5)*0.01 = 0.64 - 0.12 = 0.52
+            capacityFactor = 0.64 - (17 - tempOut) * 0.01;
+          }
+          // Ensure minimum capacity (system never completely shuts off)
+          capacityFactor = Math.max(
+            CONSTANTS.MIN_CAPACITY_FACTOR,
+            capacityFactor
+          );
+          // Safety check: ensure tons is valid (use the tons calculated above, with fallback)
+          const safeTons = (tons !== undefined && Number.isFinite(tons) && tons > 0) 
+            ? tons 
+            : (capacityNum / 12); // Fallback: 12k BTU = 1 ton
+          
+          if (!Number.isFinite(safeTons) || safeTons <= 0) {
+            console.error(`Cannot calculate output at ${tempOut}°F: invalid tons (${safeTons}) from capacity ${capacity} (${typeof capacity}). Using 1.5 tons as emergency fallback.`);
+            thermalOutputKw = 1.5 * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+          } else {
+            thermalOutputKw = safeTons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+          }
+          
+          thermalOutputBtu = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+          
+          // Safety check: ensure output is never zero or negative
+          if (!Number.isFinite(thermalOutputBtu) || thermalOutputBtu <= 0) {
+            console.warn(`Invalid thermal output at ${tempOut}°F: ${thermalOutputBtu}, tons: ${safeTons}, capacity: ${capacity}, capacityFactor: ${capacityFactor}. Using minimum.`);
+            const emergencyTons = safeTons > 0 ? safeTons : 1.5;
+            thermalOutputBtu = emergencyTons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.MIN_CAPACITY_FACTOR * CONSTANTS.BTU_PER_KWH;
+          }
+          
+          // Final validation - this should never be 0 if we have valid inputs
+          if (!Number.isFinite(thermalOutputBtu) || thermalOutputBtu <= 0) {
+            console.error(`CRITICAL: Still invalid output at ${tempOut}°F after all fixes: ${thermalOutputBtu}. Capacity: ${capacity}, Tons: ${safeTons}, Factor: ${capacityFactor}`);
+          }
+        }
       }
 
       // 2. Calculate Building's heat loss at this temperature.
@@ -351,9 +586,12 @@ const HeatPumpEnergyFlow = () => {
       const totalHeatSuppliedBtu = thermalOutputBtu + auxHeatBtu;
 
       // 5. Calculate the final steady-state indoor temperature the system can maintain.
-      //    T_ss = T_outdoor + (Total Heat Supplied / Heat Loss per Degree)
+      //    T_ss = T_outdoor + (Available Heat Output / Heat Loss per Degree)
+      //    NOTE: This uses ACTUAL available heat (thermalOutputBtu), not totalHeatSuppliedBtu
+      //    because totalHeatSuppliedBtu includes aux heat which may not be available.
+      //    The steady state is what the system can maintain WITHOUT aux heat.
       const steadyStateIndoorTemp =
-        tempOut + totalHeatSuppliedBtu / Math.max(0.1, btuLossPerDegF);
+        tempOut + thermalOutputBtu / Math.max(0.1, btuLossPerDegF);
 
       // 6. Calculate the time-evolved temperature after `hoursElapsed`.
       const H = btuLossPerDegF;
@@ -367,16 +605,46 @@ const HeatPumpEnergyFlow = () => {
       let electricalKw = 0;
       let actualCOP = 0;
       if (primarySystem !== "gasFurnace") {
-        // Rough mapping of electrical input for HP mode
-        const powerFactor =
-          1.2 -
-          Math.max(
-            CONSTANTS.MIN_CAPACITY_FACTOR,
-            thermalOutputKw / (tons * CONSTANTS.KW_PER_TON_OUTPUT)
-          ) *
-            0.5;
-        electricalKw = compressorPower * powerFactor;
-        actualCOP = thermalOutputKw / Math.max(0.001, electricalKw);
+        // Check if custom equipment profile is enabled
+        const useCustomProfile = userSettings?.useCustomEquipmentProfile && 
+          userSettings?.capacity47 && 
+          userSettings?.capacity17 && 
+          userSettings?.cop47 && 
+          userSettings?.cop17;
+
+        if (useCustomProfile) {
+          // Use custom COP curve with linear interpolation
+          const interpolate = (x, x1, y1, x2, y2) => {
+            if (x2 === x1) return y1;
+            return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1);
+          };
+
+          if (tempOut >= 47) {
+            actualCOP = userSettings.cop47;
+          } else if (tempOut <= 17) {
+            if (userSettings.cop5) {
+              actualCOP = interpolate(tempOut, 17, userSettings.cop17, 5, userSettings.cop5);
+            } else {
+              const slope = (userSettings.cop17 - userSettings.cop47) / (17 - 47);
+              actualCOP = Math.max(1.0, userSettings.cop17 + slope * (tempOut - 17));
+            }
+          } else {
+            actualCOP = interpolate(tempOut, 47, userSettings.cop47, 17, userSettings.cop17);
+          }
+          // Calculate electrical input from COP: COP = thermalOutput / electricalInput
+          electricalKw = thermalOutputKw / Math.max(0.001, actualCOP);
+        } else {
+          // Generic calculation: rough mapping of electrical input for HP mode
+          const powerFactor =
+            1.2 -
+            Math.max(
+              CONSTANTS.MIN_CAPACITY_FACTOR,
+              thermalOutputKw / (tons * CONSTANTS.KW_PER_TON_OUTPUT)
+            ) *
+              0.5;
+          electricalKw = compressorPower * powerFactor;
+          actualCOP = thermalOutputKw / Math.max(0.001, electricalKw);
+        }
       }
 
       result.push({
@@ -404,6 +672,7 @@ const HeatPumpEnergyFlow = () => {
     CONSTANTS.BTU_PER_KWH,
     CONSTANTS.KW_PER_TON_OUTPUT,
     CONSTANTS.MIN_CAPACITY_FACTOR,
+    userSettings,
   ]);
 
   // Indoor temperature vs time at the current outdoor temperature (using same corrected logic)
@@ -419,15 +688,24 @@ const HeatPumpEnergyFlow = () => {
         furnaceInput * 1000 * Math.max(0.5, Math.min(0.99, afue))
       );
     } else {
+      // Use same derating curve as main data calculation
       let capacityFactor;
-      if (currentOutdoor >= 47) capacityFactor = 1.0;
-      else if (currentOutdoor >= 17)
+      if (currentOutdoor >= 47) {
+        capacityFactor = 1.0;
+      } else if (currentOutdoor >= 17) {
         capacityFactor = 1.0 - (47 - currentOutdoor) * 0.012;
-      else capacityFactor = 0.64 - (17 - currentOutdoor) * 0.01;
+      } else {
+        capacityFactor = 0.64 - (17 - currentOutdoor) * 0.01;
+      }
       capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
       const thermalOutputKw_now =
         tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
       thermalOutputBtu_now = thermalOutputKw_now * CONSTANTS.BTU_PER_KWH;
+      
+      // Safety check: ensure output is never zero
+      if (!Number.isFinite(thermalOutputBtu_now) || thermalOutputBtu_now <= 0) {
+        thermalOutputBtu_now = tons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.MIN_CAPACITY_FACTOR * CONSTANTS.BTU_PER_KWH;
+      }
     }
 
     // Thermal capacitance (BTU/°F)
@@ -475,27 +753,157 @@ const HeatPumpEnergyFlow = () => {
   // Find the balance point where HP output equals building heat loss.
   const balancePoint = useMemo(() => {
     if (useAnalyzerData && contextBalancePoint) return contextBalancePoint;
+    
+    // First, check if system has any output at all
+    const hasOutput = data.some(d => d.thermalOutputBtu > 0);
+    if (!hasOutput) {
+      // System has no output - balance point is undefined (system can't handle any load)
+      return null;
+    }
+    
+    // Find where output transitions from meeting load to not meeting load
     for (let i = 0; i < data.length - 1; i++) {
       const curr = data[i];
       const next = data[i + 1];
+      
+      // Skip if either point has invalid output
+      if (!Number.isFinite(curr.thermalOutputBtu) || !Number.isFinite(next.thermalOutputBtu)) {
+        continue;
+      }
+      
       const surplusCurr = curr.thermalOutputBtu - curr.buildingHeatLossBtu;
       const surplusNext = next.thermalOutputBtu - next.buildingHeatLossBtu;
+      
+      // Find the crossing point where we go from surplus to deficit
       if (surplusCurr >= 0 && surplusNext < 0) {
         const t = surplusCurr / (surplusCurr - surplusNext);
-        return curr.outdoorTemp + t * (next.outdoorTemp - curr.outdoorTemp);
+        const balanceTemp = curr.outdoorTemp + t * (next.outdoorTemp - curr.outdoorTemp);
+        return balanceTemp;
       }
     }
+    
+    // If we never cross (system always has surplus or always has deficit)
+    // Check if system can handle design temp
+    const designPoint = data.find(d => d.outdoorTemp === designOutdoorTemp);
+    if (designPoint && designPoint.thermalOutputBtu >= designPoint.buildingHeatLossBtu) {
+      // System can handle design temp - balance point is below design temp
+      return designOutdoorTemp - 1;
+    }
+    
+    // System cannot handle design temp - no valid balance point
     return null;
-  }, [data, useAnalyzerData, contextBalancePoint]);
+  }, [data, useAnalyzerData, contextBalancePoint, designOutdoorTemp]);
+
+  // Store balance point in localStorage for Ask Joule to access
+  useEffect(() => {
+    if (balancePoint !== null && isFinite(balancePoint) && primarySystem === "heatPump") {
+      try {
+        localStorage.setItem("energyFlowBalancePoint", JSON.stringify({
+          balancePoint,
+          btuLossPerDegF,
+          squareFeet,
+          ceilingHeight,
+          insulationLevel,
+          homeShape,
+          capacity,
+          hspf,
+          indoorTemp,
+          designOutdoorTemp,
+          timestamp: Date.now(),
+        }));
+      } catch (e) {
+        console.warn("Failed to store balance point:", e);
+      }
+    }
+  }, [balancePoint, btuLossPerDegF, squareFeet, ceilingHeight, insulationLevel, homeShape, capacity, hspf, indoorTemp, designOutdoorTemp, primarySystem]);
 
   // Calculate summary statistics for the dashboard
   const summaryStats = useMemo(() => {
-    const maxOutput = Math.max(...data.map((d) => d.thermalOutputBtu));
-    const atDesign =
-      data.find((d) => d.outdoorTemp === designOutdoorTemp) || data[0];
-    const shortfallAtDesign = atDesign?.auxHeatBtu ?? 0;
-    const copAtDesign =
-      data.find((d) => d.outdoorTemp === designOutdoorTemp)?.cop || 0;
+    // Safely calculate maxOutput - handle empty data or invalid values
+    const validOutputs = data
+      .map((d) => d.thermalOutputBtu)
+      .filter((val) => val != null && Number.isFinite(val) && val > 0);
+    let maxOutput = validOutputs.length > 0 ? Math.max(...validOutputs) : 0;
+    
+    // Fallback: if maxOutput is 0, calculate it directly (peak performance at 47°F+)
+    if (maxOutput === 0 && primarySystem !== "gasFurnace" && tons > 0) {
+      // At 47°F or higher, capacity factor is 1.0 (100% capacity)
+      const peakOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * 1.0;
+      maxOutput = peakOutputKw * CONSTANTS.BTU_PER_KWH;
+    }
+    
+    // Find design temperature point - try exact match first, then closest
+    let atDesign = data.find((d) => d.outdoorTemp === designOutdoorTemp);
+    if (!atDesign && data.length > 0) {
+      // Find closest temperature point
+      atDesign = data.reduce((closest, current) => {
+        const closestDiff = Math.abs(closest.outdoorTemp - designOutdoorTemp);
+        const currentDiff = Math.abs(current.outdoorTemp - designOutdoorTemp);
+        return currentDiff < closestDiff ? current : closest;
+      });
+    }
+    
+    // Calculate shortfall: building heat loss - system output
+    // If auxHeatBtu is available, use it; otherwise calculate directly
+    let shortfallAtDesign = 0;
+    let systemOutputAtDesign = 0;
+    if (atDesign) {
+      // Get system output at design temp
+      systemOutputAtDesign = atDesign.thermalOutputBtu != null && Number.isFinite(atDesign.thermalOutputBtu) 
+        ? atDesign.thermalOutputBtu 
+        : 0;
+      
+      // Fallback: calculate system output at design temp if not available in data
+      if (systemOutputAtDesign === 0 && primarySystem !== "gasFurnace" && tons > 0) {
+        // Calculate capacity factor at design temp
+        let capacityFactor = 0;
+        if (designOutdoorTemp >= 47) {
+          capacityFactor = 1.0;
+        } else if (designOutdoorTemp >= 17) {
+          capacityFactor = 1.0 - (47 - designOutdoorTemp) * 0.012;
+        } else {
+          capacityFactor = 0.64 - (17 - designOutdoorTemp) * 0.01;
+        }
+        capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+        const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+        systemOutputAtDesign = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+      }
+      
+      if (atDesign.auxHeatBtu != null && Number.isFinite(atDesign.auxHeatBtu)) {
+        shortfallAtDesign = Math.max(0, atDesign.auxHeatBtu);
+      } else {
+        // Calculate directly: shortfall = heat loss - output
+        const heatLoss = atDesign.buildingHeatLossBtu != null && Number.isFinite(atDesign.buildingHeatLossBtu)
+          ? atDesign.buildingHeatLossBtu
+          : btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+        shortfallAtDesign = Math.max(0, heatLoss - systemOutputAtDesign);
+      }
+    } else {
+      // Fallback: calculate from known values
+      // Calculate system output at design temp if not available in data
+      if (primarySystem !== "gasFurnace" && tons > 0) {
+        // Calculate capacity factor at design temp
+        let capacityFactor = 0;
+        if (designOutdoorTemp >= 47) {
+          capacityFactor = 1.0;
+        } else if (designOutdoorTemp >= 17) {
+          capacityFactor = 1.0 - (47 - designOutdoorTemp) * 0.012;
+        } else {
+          capacityFactor = 0.64 - (17 - designOutdoorTemp) * 0.01;
+        }
+        capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+        const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+        systemOutputAtDesign = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+      }
+      const heatLoss = btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+      shortfallAtDesign = Math.max(0, heatLoss - systemOutputAtDesign);
+    }
+    
+    const designDataPoint = atDesign || data.find((d) => d.outdoorTemp === designOutdoorTemp);
+    const copAtDesign = 
+      (designDataPoint?.cop != null && Number.isFinite(designDataPoint.cop))
+        ? designDataPoint.cop
+        : 0;
 
     // Calculate annual aux heat hours based on location HDD data
     let annualAuxHours = 0;
@@ -539,14 +947,45 @@ const HeatPumpEnergyFlow = () => {
       annualAuxHours,
       annualAuxDays,
     };
-  }, [data, designOutdoorTemp, balancePoint]);
+  }, [data, designOutdoorTemp, balancePoint, primarySystem, tons, indoorTemp, btuLossPerDegF]);
+
+  // Get design temperature data point for live calculations
+  const designDataPoint = useMemo(() => {
+    return data.find((d) => d.outdoorTemp === designOutdoorTemp) || data[0] || null;
+  }, [data, designOutdoorTemp]);
+
+  // Calculate building heat loss at design temp
+  const buildingHeatLossAtDesign = useMemo(() => {
+    if (!designDataPoint) return 0;
+    return designDataPoint.buildingHeatLossBtu || btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+  }, [designDataPoint, btuLossPerDegF, indoorTemp, designOutdoorTemp]);
+
+  // Calculate system output at design temp
+  const systemOutputAtDesign = useMemo(() => {
+    if (!designDataPoint) return 0;
+    return designDataPoint.thermalOutputBtu || 0;
+  }, [designDataPoint]);
+
+  // Calculate aux heat at design temp
+  const auxHeatAtDesign = useMemo(() => {
+    if (!designDataPoint) return 0;
+    return designDataPoint.auxHeatBtu || Math.max(0, buildingHeatLossAtDesign - systemOutputAtDesign);
+  }, [designDataPoint, buildingHeatLossAtDesign, systemOutputAtDesign]);
 
   return (
-    <div className="heat-pump-energy-flow pb-20">
-      <div className="detailed-view">
-        <div className="flex justify-end mb-4">
-          <DashboardLink />
-        </div>
+      <div className="heat-pump-energy-flow pb-20">
+        <div className="detailed-view">
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all no-print"
+              title="Print to PDF (Ctrl+P)"
+            >
+              <Printer size={18} />
+              <span>Print to PDF</span>
+            </button>
+            <DashboardLink />
+          </div>
 
         <div className="text-center mb-8">
           {primarySystem === "gasFurnace" ? (
@@ -577,7 +1016,7 @@ const HeatPumpEnergyFlow = () => {
           )}
         </div>
 
-        {!showImportOption && contextHeatLossFactor && (
+        {!showImportOption && effectiveHeatLossFactor && (
           <div className="mb-6 text-center">
             <button
               onClick={() => setShowImportOption(true)}
@@ -599,13 +1038,13 @@ const HeatPumpEnergyFlow = () => {
                 id="useAnalyzerData"
                 checked={useAnalyzerData}
                 onChange={(e) => setUseAnalyzerData(e.target.checked)}
-                disabled={!contextHeatLossFactor}
+                disabled={!effectiveHeatLossFactor}
                 className="w-5 h-5 accent-blue-600"
               />
               Use my real-world Heat Loss Factor from the Performance Analyzer
               tool
             </label>
-            {!contextHeatLossFactor && (
+            {!effectiveHeatLossFactor && (
               <p className="text-xs text-gray-500 dark:text-gray-400 ml-7">
                 No data available. Run the "System Performance Analyzer" first
                 to enable this.
@@ -877,23 +1316,6 @@ const HeatPumpEnergyFlow = () => {
                   );
                 })()}
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                  Simulation Time (hours)
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="48"
-                  step="1"
-                  value={hoursElapsed}
-                  onChange={(e) => setHoursElapsed(Number(e.target.value))}
-                  className={fullInputClasses}
-                />
-                <span className="font-bold text-gray-900 dark:text-gray-100">
-                  {hoursElapsed} hrs
-                </span>
-              </div>
             </div>
             {primarySystem === "gasFurnace" ? (
               <div className="mt-6 p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
@@ -962,7 +1384,9 @@ const HeatPumpEnergyFlow = () => {
                         °F (the coldest expected outdoor temperature for your
                         area), the shortfall is approximately{" "}
                         <strong className="text-indigo-600 dark:text-indigo-300">
-                          {(summaryStats.shortfallAtDesign / 1000).toFixed(1)}k
+                          {summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign)
+                            ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k"
+                            : "0"}
                           BTU/hr
                         </strong>
                         .
@@ -1020,35 +1444,345 @@ const HeatPumpEnergyFlow = () => {
                         temperature. At {designOutdoorTemp}°F, the system
                         shortfall is approximately{" "}
                         <strong className="text-orange-600 dark:text-orange-400">
-                          {(summaryStats.shortfallAtDesign / 1000).toFixed(1)}k
+                          {summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign)
+                            ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k"
+                            : "0"}
                           BTU/hr
                         </strong>
                         .
                       </p>
                     </div>
                   </>
-                ) : (
-                  <div className="bg-green-50 dark:bg-green-950 rounded-xl p-8 border-4 border-green-400 dark:border-green-800">
-                    <p className="text-3xl font-bold text-green-700 dark:text-green-400 mb-3">
-                      No Auxiliary Heat Needed
-                    </p>
-                    <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">
-                      Your system can handle all temperatures down to{" "}
-                      {designOutdoorTemp}°F without auxiliary heat.
-                    </p>
-                    <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-700 text-sm text-gray-600 dark:text-gray-400">
-                      <p>
-                        <strong>What this means:</strong> The balance point
-                        (where system output equals building heat loss) is at or
-                        below your design temperature of {designOutdoorTemp}°F.
-                        This is the coldest expected temperature for your
-                        climate zone, so your heat pump can meet the full
-                        heating load year-round.
-                      </p>
-                    </div>
-                  </div>
-                )}
+                ) : (() => {
+                  // Check if system can actually handle design temp before saying "No Aux Needed"
+                  const designPoint = data.find(d => d.outdoorTemp === designOutdoorTemp);
+                  
+                  // Calculate current values using latest btuLossPerDegF (may have changed if analyzer data was enabled)
+                  let outputValue = designPoint?.thermalOutputBtu != null && Number.isFinite(designPoint.thermalOutputBtu)
+                    ? designPoint.thermalOutputBtu
+                    : 0;
+                  
+                  // Fallback: calculate system output at design temp if not available in data
+                  if (outputValue === 0 && primarySystem !== "gasFurnace" && tons > 0) {
+                    // Calculate capacity factor at design temp
+                    let capacityFactor = 0;
+                    if (designOutdoorTemp >= 47) {
+                      capacityFactor = 1.0;
+                    } else if (designOutdoorTemp >= 17) {
+                      capacityFactor = 1.0 - (47 - designOutdoorTemp) * 0.012;
+                    } else {
+                      capacityFactor = 0.64 - (17 - designOutdoorTemp) * 0.01;
+                    }
+                    capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+                    const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+                    outputValue = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+                  }
+                  
+                  // Calculate current heat loss using latest btuLossPerDegF
+                  const heatLossValue = btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+                  
+                  // System can handle design temp if output >= heat loss
+                  const canHandleDesignTemp = outputValue > 0 && outputValue >= heatLossValue;
+                  
+                  if (canHandleDesignTemp) {
+                    return (
+                      <div className="bg-green-50 dark:bg-green-950 rounded-xl p-8 border-4 border-green-400 dark:border-green-800">
+                        <p className="text-3xl font-bold text-green-700 dark:text-green-400 mb-3">
+                          No Auxiliary Heat Needed
+                        </p>
+                        <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">
+                          Your system can handle all temperatures down to{" "}
+                          {designOutdoorTemp}°F without auxiliary heat.
+                        </p>
+                        <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-700 text-sm text-gray-600 dark:text-gray-400">
+                          <p>
+                            <strong>What this means:</strong> The balance point
+                            (where system output equals building heat loss) is at or
+                            below your design temperature of {designOutdoorTemp}°F.
+                            This is the coldest expected temperature for your
+                            climate zone, so your heat pump can meet the full
+                            heating load year-round.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    // System cannot handle design temp - show warning
+                    return (
+                      <div className="bg-red-50 dark:bg-red-950 rounded-xl p-8 border-4 border-red-400 dark:border-red-800">
+                        <p className="text-3xl font-bold text-red-700 dark:text-red-400 mb-3">
+                          ⚠️ System Cannot Handle Design Temperature
+                        </p>
+                        {(() => {
+                          // Always recalculate values using current settings to ensure accuracy
+                          // (data array may have stale values if analyzer data was enabled after initial calculation)
+                          let outputValue = 0;
+                          
+                          if (primarySystem === "gasFurnace") {
+                            // Furnace output: input * AFUE
+                            outputValue = Math.max(
+                              10000,
+                              furnaceInput * 1000 * Math.max(0.5, Math.min(0.99, afue))
+                            );
+                          } else if (tons > 0) {
+                            // Heat pump: calculate capacity factor and output
+                            let capacityFactor = 0;
+                            if (designOutdoorTemp >= 47) {
+                              capacityFactor = 1.0;
+                            } else if (designOutdoorTemp >= 17) {
+                              capacityFactor = 1.0 - (47 - designOutdoorTemp) * 0.012;
+                            } else {
+                              capacityFactor = 0.64 - (17 - designOutdoorTemp) * 0.01;
+                            }
+                            capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+                            const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+                            outputValue = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+                          }
+                          
+                          // Always use current btuLossPerDegF to ensure we have the latest value (may have changed if analyzer data was enabled)
+                          const heatLossValue = btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+                          const shortfallValue = Math.max(0, heatLossValue - outputValue);
+                          
+                          return (
+                            <>
+                              {shortfallValue > 0 ? (
+                                <>
+                                  <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">
+                                    At {designOutdoorTemp}°F, your system output ({outputValue > 0 ? (outputValue / 1000).toFixed(1) + "k" : "0"} BTU/hr) is insufficient to meet building heat loss ({(heatLossValue / 1000).toFixed(1)}k BTU/hr).
+                                  </p>
+                                  <div className="mt-4 pt-4 border-t border-red-200 dark:border-red-700 text-sm text-gray-600 dark:text-gray-400">
+                                    <p>
+                                      <strong>Action Required:</strong> You need auxiliary heat or a larger system to maintain {indoorTemp}°F at {designOutdoorTemp}°F. The shortfall is approximately{" "}
+                                      <strong className="text-red-600 dark:text-red-400">
+                                        {(shortfallValue / 1000).toFixed(1)}k BTU/hr
+                                      </strong>
+                                      .
+                                    </p>
+                                  </div>
+                                </>
+                              ) : (
+                                <p className="text-xl text-gray-700 dark:text-gray-300 mb-4">
+                                  At {designOutdoorTemp}°F, your system output ({outputValue > 0 ? (outputValue / 1000).toFixed(1) + "k" : "0"} BTU/hr) meets or exceeds building heat loss ({(heatLossValue / 1000).toFixed(1)}k BTU/hr). No auxiliary heat needed.
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    );
+                  }
+                })()}
               </div>
+            </div>
+
+            {/* Detailed Math Breakdown - Debug Output Calculation */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-purple-200 dark:border-purple-800 overflow-hidden mt-8">
+              <button
+                onClick={() => setShowCalculations(!showCalculations)}
+                className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                    <Calculator size={24} className="text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Debug: System Output Calculation at {designOutdoorTemp}°F</h3>
+                </div>
+                {showCalculations ? (
+                  <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                )}
+              </button>
+
+              {showCalculations && (
+                <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                  {(() => {
+                    // Get design point data
+                    const designPoint = data.find(d => d.outdoorTemp === designOutdoorTemp);
+                    
+                    // Calculate all intermediate values for display
+                    const capacityNum = Number(capacity);
+                    const tonsFromMap = capacities[capacityNum];
+                    const tonsValue = (tonsFromMap !== undefined && Number.isFinite(tonsFromMap)) 
+                      ? tonsFromMap 
+                      : (capacityNum / 12);
+                    
+                    // Calculate capacity factor at design temp
+                    let capacityFactorCalc = 0;
+                    let capacityFactorExplanation = "";
+                    if (designOutdoorTemp >= 47) {
+                      capacityFactorCalc = 1.0;
+                      capacityFactorExplanation = `≥ 47°F: Capacity Factor = 1.0 (100% capacity)`;
+                    } else if (designOutdoorTemp >= 17) {
+                      capacityFactorCalc = 1.0 - (47 - designOutdoorTemp) * 0.012;
+                      capacityFactorExplanation = `17°F ≤ T < 47°F: Capacity Factor = 1.0 - (47 - ${designOutdoorTemp}) × 0.012 = 1.0 - ${(47 - designOutdoorTemp).toFixed(1)} × 0.012 = ${capacityFactorCalc.toFixed(4)}`;
+                    } else {
+                      capacityFactorCalc = 0.64 - (17 - designOutdoorTemp) * 0.01;
+                      capacityFactorExplanation = `T < 17°F: Capacity Factor = 0.64 - (17 - ${designOutdoorTemp}) × 0.01 = 0.64 - ${(17 - designOutdoorTemp).toFixed(1)} × 0.01 = ${capacityFactorCalc.toFixed(4)}`;
+                    }
+                    
+                    // Apply minimum
+                    const capacityFactorBeforeMin = capacityFactorCalc;
+                    capacityFactorCalc = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactorCalc);
+                    const minApplied = capacityFactorBeforeMin < CONSTANTS.MIN_CAPACITY_FACTOR;
+                    
+                    // Calculate thermal output
+                    const thermalOutputKwCalc = tonsValue * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactorCalc;
+                    const thermalOutputBtuCalc = thermalOutputKwCalc * CONSTANTS.BTU_PER_KWH;
+                    
+                    // Get actual values from data point
+                    const actualOutput = designPoint?.thermalOutputBtu ?? thermalOutputBtuCalc;
+                    const actualHeatLoss = designPoint?.buildingHeatLossBtu ?? (btuLossPerDegF * (indoorTemp - designOutdoorTemp));
+                    const actualShortfall = Math.max(0, actualHeatLoss - actualOutput);
+                    
+                    return (
+                      <div className="space-y-6">
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 1: Capacity to Tons Conversion</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Input:</strong> HP Capacity = <strong className="text-green-400">{capacity}k BTU</strong> (from user selection)
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Lookup:</strong> capacities[{capacityNum}] = <strong className="text-green-400">{tonsFromMap !== undefined ? tonsFromMap.toFixed(1) : "undefined"}</strong> tons
+                            </div>
+                            {tonsFromMap === undefined && (
+                              <div className="mb-2 text-orange-400">
+                                ⚠️ <strong>Fallback:</strong> Capacity not in map! Using: {capacityNum} ÷ 12 = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-yellow-400">Result:</strong> Tons = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 2: Capacity Factor at {designOutdoorTemp}°F</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Temperature:</strong> {designOutdoorTemp}°F (Design Outdoor Temp)
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong> {capacityFactorExplanation}
+                            </div>
+                            {minApplied && (
+                              <div className="mb-2 text-orange-400">
+                                ⚠️ <strong>Minimum Applied:</strong> Calculated factor ({capacityFactorBeforeMin.toFixed(4)}) &lt; MIN_CAPACITY_FACTOR ({CONSTANTS.MIN_CAPACITY_FACTOR})
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-yellow-400">Result:</strong> Capacity Factor = <strong className="text-green-400">{capacityFactorCalc.toFixed(4)}</strong> ({Math.round(capacityFactorCalc * 100)}% of rated capacity)
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 3: Thermal Output Calculation</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Step 3a: Thermal Output (kW):</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Thermal Output (kW) = Tons × KW_PER_TON_OUTPUT × Capacity Factor
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons × <strong className="text-green-400">{CONSTANTS.KW_PER_TON_OUTPUT}</strong> kW/ton × <strong className="text-green-400">{capacityFactorCalc.toFixed(4)}</strong>
+                            </div>
+                            <div className="ml-4 mb-4">
+                              = <strong className="text-green-400">{thermalOutputKwCalc.toFixed(2)}</strong> kW
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Step 3b: Thermal Output (BTU/hr):</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Thermal Output (BTU/hr) = Thermal Output (kW) × BTU_PER_KWH
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{thermalOutputKwCalc.toFixed(2)}</strong> kW × <strong className="text-green-400">{CONSTANTS.BTU_PER_KWH.toFixed(2)}</strong> BTU/kWh
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-green-400">{thermalOutputBtuCalc.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            {actualOutput !== thermalOutputBtuCalc && (
+                              <div className="mt-2 text-orange-400">
+                                ⚠️ <strong>Note:</strong> Actual output from data array: <strong>{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr (may differ due to safety checks)
+                              </div>
+                            )}
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 4: Building Heat Loss at {designOutdoorTemp}°F</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Heat Loss Factor:</strong> <strong className="text-green-400">{btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong> BTU/hr/°F
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Temperature Difference:</strong> {indoorTemp}°F (Indoor) - {designOutdoorTemp}°F (Outdoor) = <strong className="text-green-400">{indoorTemp - designOutdoorTemp}</strong>°F
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Building Heat Loss = Heat Loss Factor × Temperature Difference
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong> BTU/hr/°F × <strong className="text-green-400">{indoorTemp - designOutdoorTemp}</strong>°F
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-green-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 5: Shortfall Calculation</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">System Output:</strong> <strong className="text-green-400">{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Building Heat Loss:</strong> <strong className="text-red-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Shortfall = max(0, Building Heat Loss - System Output)
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = max(0, <strong className="text-red-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> - <strong className="text-green-400">{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>)
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-orange-400">{actualShortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr = <strong className="text-orange-400">{(actualShortfall / 1000).toFixed(1)}k</strong> BTU/hr
+                            </div>
+                            {actualOutput === 0 && (
+                              <div className="mt-4 p-3 bg-red-900/30 border border-red-600 rounded text-red-300">
+                                <strong>⚠️ PROBLEM DETECTED:</strong> System output is 0 BTU/hr!<br />
+                                Possible causes:<br />
+                                1. Capacity ({capacity}) not found in capacities map → Tons = {tonsValue.toFixed(2)}<br />
+                                2. Capacity Factor = {capacityFactorCalc.toFixed(4)} (should be &gt; 0)<br />
+                                3. Thermal Output (kW) = {thermalOutputKwCalc.toFixed(2)} kW<br />
+                                4. Check console for error messages
+                              </div>
+                            )}
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Constants Used</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div>KW_PER_TON_OUTPUT = <strong className="text-green-400">{CONSTANTS.KW_PER_TON_OUTPUT}</strong> kW/ton (industry standard)</div>
+                            <div>BTU_PER_KWH = <strong className="text-green-400">{CONSTANTS.BTU_PER_KWH.toFixed(2)}</strong> BTU/kWh (energy conversion)</div>
+                            <div>MIN_CAPACITY_FACTOR = <strong className="text-green-400">{CONSTANTS.MIN_CAPACITY_FACTOR}</strong> (30% minimum capacity)</div>
+                          </code>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Key Metrics Grid */}
@@ -1058,7 +1792,9 @@ const HeatPumpEnergyFlow = () => {
                   Max System Output
                 </h3>
                 <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-2">
-                  {(summaryStats.maxOutput / 1000).toFixed(1)}k
+                  {summaryStats.maxOutput > 0 && Number.isFinite(summaryStats.maxOutput)
+                    ? (summaryStats.maxOutput / 1000).toFixed(1) + "k"
+                    : "0"}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
                   BTU/hr at peak performance
@@ -1070,7 +1806,7 @@ const HeatPumpEnergyFlow = () => {
                   Shortfall @ {designOutdoorTemp}°F
                 </h3>
                 <div className="text-4xl font-bold text-orange-600 dark:text-orange-400 mb-2">
-                  {summaryStats.shortfallAtDesign > 0
+                  {summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign)
                     ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k"
                     : "0"}
                 </div>
@@ -1163,18 +1899,275 @@ const HeatPumpEnergyFlow = () => {
                       cannot meet the load below this point.
                     </p>
                   </>
-                ) : (
-                  <>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400 mb-3">
-                      No Auxiliary Heat Needed
-                    </p>
-                    <p className="text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
-                      Your system can handle all temperatures down to{" "}
-                      {designOutdoorTemp}°F without auxiliary heat.
-                    </p>
-                  </>
-                )}
+                ) : (() => {
+                  // Always recalculate values using current settings to ensure accuracy
+                  // (data array may have stale values if analyzer data was enabled after initial calculation)
+                  let outputValue = 0;
+                  
+                  if (primarySystem === "gasFurnace") {
+                    // Furnace output: input * AFUE
+                    outputValue = Math.max(
+                      10000,
+                      furnaceInput * 1000 * Math.max(0.5, Math.min(0.99, afue))
+                    );
+                  } else if (tons > 0) {
+                    // Heat pump: calculate capacity factor and output
+                    let capacityFactor = 0;
+                    if (designOutdoorTemp >= 47) {
+                      capacityFactor = 1.0;
+                    } else if (designOutdoorTemp >= 17) {
+                      capacityFactor = 1.0 - (47 - designOutdoorTemp) * 0.012;
+                    } else {
+                      capacityFactor = 0.64 - (17 - designOutdoorTemp) * 0.01;
+                    }
+                    capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+                    const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+                    outputValue = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+                  }
+                  
+                  // Always use current btuLossPerDegF to ensure we have the latest value
+                  const heatLossValue = btuLossPerDegF * (indoorTemp - designOutdoorTemp);
+                  const shortfallValue = Math.max(0, heatLossValue - outputValue);
+                  
+                  // System can handle design temp if output >= heat loss
+                  const canHandleDesignTemp = outputValue > 0 && outputValue >= heatLossValue;
+                  
+                  if (canHandleDesignTemp) {
+                    return (
+                      <>
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400 mb-3">
+                          No Auxiliary Heat Needed
+                        </p>
+                        <p className="text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
+                          Your system can handle all temperatures down to{" "}
+                          {designOutdoorTemp}°F without auxiliary heat.
+                        </p>
+                      </>
+                    );
+                  } else {
+                    return (
+                      <>
+                        <p className="text-2xl font-bold text-red-600 dark:text-red-400 mb-3">
+                          ⚠️ System Cannot Handle Design Temperature
+                        </p>
+                        <p className="text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
+                          At {designOutdoorTemp}°F, system output ({outputValue > 0 ? (outputValue / 1000).toFixed(1) + "k" : "0"} BTU/hr) is insufficient to meet building heat loss ({(heatLossValue / 1000).toFixed(1)}k BTU/hr). Shortfall: {(shortfallValue / 1000).toFixed(1)}k BTU/hr. Auxiliary heat required.
+                        </p>
+                      </>
+                    );
+                  }
+                })()}
               </div>
+            </div>
+
+            {/* Detailed Math Breakdown - Debug Output Calculation (Detailed View) */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-purple-200 dark:border-purple-800 overflow-hidden mt-8 mb-8">
+              <button
+                onClick={() => setShowCalculations(!showCalculations)}
+                className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                    <Calculator size={24} className="text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Debug: System Output Calculation at {designOutdoorTemp}°F</h3>
+                </div>
+                {showCalculations ? (
+                  <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                )}
+              </button>
+
+              {showCalculations && (
+                <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                  {(() => {
+                    // Get design point data
+                    const designPoint = data.find(d => d.outdoorTemp === designOutdoorTemp);
+                    
+                    // Calculate all intermediate values for display
+                    const capacityNum = Number(capacity);
+                    const tonsFromMap = capacities[capacityNum];
+                    const tonsValue = (tonsFromMap !== undefined && Number.isFinite(tonsFromMap)) 
+                      ? tonsFromMap 
+                      : (capacityNum / 12);
+                    
+                    // Calculate capacity factor at design temp
+                    let capacityFactorCalc = 0;
+                    let capacityFactorExplanation = "";
+                    if (designOutdoorTemp >= 47) {
+                      capacityFactorCalc = 1.0;
+                      capacityFactorExplanation = `≥ 47°F: Capacity Factor = 1.0 (100% capacity)`;
+                    } else if (designOutdoorTemp >= 17) {
+                      capacityFactorCalc = 1.0 - (47 - designOutdoorTemp) * 0.012;
+                      capacityFactorExplanation = `17°F ≤ T < 47°F: Capacity Factor = 1.0 - (47 - ${designOutdoorTemp}) × 0.012 = 1.0 - ${(47 - designOutdoorTemp).toFixed(1)} × 0.012 = ${capacityFactorCalc.toFixed(4)}`;
+                    } else {
+                      capacityFactorCalc = 0.64 - (17 - designOutdoorTemp) * 0.01;
+                      capacityFactorExplanation = `T < 17°F: Capacity Factor = 0.64 - (17 - ${designOutdoorTemp}) × 0.01 = 0.64 - ${(17 - designOutdoorTemp).toFixed(1)} × 0.01 = ${capacityFactorCalc.toFixed(4)}`;
+                    }
+                    
+                    // Apply minimum
+                    const capacityFactorBeforeMin = capacityFactorCalc;
+                    capacityFactorCalc = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactorCalc);
+                    const minApplied = capacityFactorBeforeMin < CONSTANTS.MIN_CAPACITY_FACTOR;
+                    
+                    // Calculate thermal output
+                    const thermalOutputKwCalc = tonsValue * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactorCalc;
+                    const thermalOutputBtuCalc = thermalOutputKwCalc * CONSTANTS.BTU_PER_KWH;
+                    
+                    // Get actual values from data point
+                    const actualOutput = designPoint?.thermalOutputBtu ?? thermalOutputBtuCalc;
+                    const actualHeatLoss = designPoint?.buildingHeatLossBtu ?? (btuLossPerDegF * (indoorTemp - designOutdoorTemp));
+                    const actualShortfall = Math.max(0, actualHeatLoss - actualOutput);
+                    
+                    return (
+                      <div className="space-y-6">
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 1: Capacity to Tons Conversion</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Input:</strong> HP Capacity = <strong className="text-green-400">{capacity}k BTU</strong> (from user selection)
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Lookup:</strong> capacities[{capacityNum}] = <strong className="text-green-400">{tonsFromMap !== undefined ? tonsFromMap.toFixed(1) : "undefined"}</strong> tons
+                            </div>
+                            {tonsFromMap === undefined && (
+                              <div className="mb-2 text-orange-400">
+                                ⚠️ <strong>Fallback:</strong> Capacity not in map! Using: {capacityNum} ÷ 12 = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-yellow-400">Result:</strong> Tons = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 2: Capacity Factor at {designOutdoorTemp}°F</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Temperature:</strong> {designOutdoorTemp}°F (Design Outdoor Temp)
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong> {capacityFactorExplanation}
+                            </div>
+                            {minApplied && (
+                              <div className="mb-2 text-orange-400">
+                                ⚠️ <strong>Minimum Applied:</strong> Calculated factor ({capacityFactorBeforeMin.toFixed(4)}) &lt; MIN_CAPACITY_FACTOR ({CONSTANTS.MIN_CAPACITY_FACTOR})
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-yellow-400">Result:</strong> Capacity Factor = <strong className="text-green-400">{capacityFactorCalc.toFixed(4)}</strong> ({Math.round(capacityFactorCalc * 100)}% of rated capacity)
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 3: Thermal Output Calculation</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Step 3a: Thermal Output (kW):</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Thermal Output (kW) = Tons × KW_PER_TON_OUTPUT × Capacity Factor
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{tonsValue.toFixed(2)}</strong> tons × <strong className="text-green-400">{CONSTANTS.KW_PER_TON_OUTPUT}</strong> kW/ton × <strong className="text-green-400">{capacityFactorCalc.toFixed(4)}</strong>
+                            </div>
+                            <div className="ml-4 mb-4">
+                              = <strong className="text-green-400">{thermalOutputKwCalc.toFixed(2)}</strong> kW
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Step 3b: Thermal Output (BTU/hr):</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Thermal Output (BTU/hr) = Thermal Output (kW) × BTU_PER_KWH
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{thermalOutputKwCalc.toFixed(2)}</strong> kW × <strong className="text-green-400">{CONSTANTS.BTU_PER_KWH.toFixed(2)}</strong> BTU/kWh
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-green-400">{thermalOutputBtuCalc.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            {actualOutput !== thermalOutputBtuCalc && (
+                              <div className="mt-2 text-orange-400">
+                                ⚠️ <strong>Note:</strong> Actual output from data array: <strong>{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr (may differ due to safety checks)
+                              </div>
+                            )}
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 4: Building Heat Loss at {designOutdoorTemp}°F</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Heat Loss Factor:</strong> <strong className="text-green-400">{btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong> BTU/hr/°F
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Temperature Difference:</strong> {indoorTemp}°F (Indoor) - {designOutdoorTemp}°F (Outdoor) = <strong className="text-green-400">{indoorTemp - designOutdoorTemp}</strong>°F
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Building Heat Loss = Heat Loss Factor × Temperature Difference
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = <strong className="text-green-400">{btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong> BTU/hr/°F × <strong className="text-green-400">{indoorTemp - designOutdoorTemp}</strong>°F
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-green-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Step 5: Shortfall Calculation</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">System Output:</strong> <strong className="text-green-400">{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Building Heat Loss:</strong> <strong className="text-red-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-yellow-400">Calculation:</strong>
+                            </div>
+                            <div className="ml-4 mb-2">
+                              Shortfall = max(0, Building Heat Loss - System Output)
+                            </div>
+                            <div className="ml-4 mb-2">
+                              = max(0, <strong className="text-red-400">{actualHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> - <strong className="text-green-400">{actualOutput.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>)
+                            </div>
+                            <div className="ml-4">
+                              = <strong className="text-orange-400">{actualShortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> BTU/hr = <strong className="text-orange-400">{(actualShortfall / 1000).toFixed(1)}k</strong> BTU/hr
+                            </div>
+                            {actualOutput === 0 && (
+                              <div className="mt-4 p-3 bg-red-900/30 border border-red-600 rounded text-red-300">
+                                <strong>⚠️ PROBLEM DETECTED:</strong> System output is 0 BTU/hr!<br />
+                                Possible causes:<br />
+                                1. Capacity ({capacity}) not found in capacities map → Tons = {tonsValue.toFixed(2)}<br />
+                                2. Capacity Factor = {capacityFactorCalc.toFixed(4)} (should be &gt; 0)<br />
+                                3. Thermal Output (kW) = {thermalOutputKwCalc.toFixed(2)} kW<br />
+                                4. Check console for error messages
+                              </div>
+                            )}
+                          </code>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Constants Used</h4>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            <div>KW_PER_TON_OUTPUT = <strong className="text-green-400">{CONSTANTS.KW_PER_TON_OUTPUT}</strong> kW/ton (industry standard)</div>
+                            <div>BTU_PER_KWH = <strong className="text-green-400">{CONSTANTS.BTU_PER_KWH.toFixed(2)}</strong> BTU/kWh (energy conversion)</div>
+                            <div>MIN_CAPACITY_FACTOR = <strong className="text-green-400">{CONSTANTS.MIN_CAPACITY_FACTOR}</strong> (30% minimum capacity)</div>
+                          </code>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -1334,6 +2327,70 @@ const HeatPumpEnergyFlow = () => {
                   AFUE). Where blue falls below red is the temperature where the
                   system alone can't meet the load.
                 </div>
+                <DataSourcesDropdown
+                  chartName="Heat Loss vs. System Output"
+                  dataSources={{
+                    buildingHeatLoss: useAnalyzerData && effectiveHeatLossFactor
+                      ? { 
+                          source: "System Performance Analyzer", 
+                          value: `${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        }
+                      : {
+                          source: "Calculated from building characteristics",
+                          formula: `(Square Feet × ${CONSTANTS.BASE_BTU_PER_SQFT} BTU/sqft × Insulation × Home Shape × Ceiling Multiplier) / Design Temp Diff`,
+                          inputs: {
+                            squareFeet: `${squareFeet.toLocaleString()} sq ft`,
+                            insulationLevel: `${insulationLevel.toFixed(2)} (${insulationLevel === 1.4 ? 'Poor' : insulationLevel === 1.0 ? 'Average' : 'Good'})`,
+                            homeShape: `${homeShape.toFixed(2)}`,
+                            ceilingHeight: `${ceilingHeight} ft (multiplier: ${(1 + (ceilingHeight - 8) * 0.1).toFixed(2)})`,
+                            designTempDiff: `${Math.max(10, Math.abs(70 - designOutdoorTemp))}°F`,
+                            baseConstant: `${CONSTANTS.BASE_BTU_PER_SQFT} BTU/sqft (industry standard)`
+                          },
+                          example: `Heat Loss Factor: ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F. At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        },
+                    systemOutput: primarySystem === "gasFurnace"
+                      ? {
+                          source: "Furnace input × AFUE",
+                          inputs: {
+                            furnaceInput: `${furnaceInput}k BTU/hr`,
+                            afue: `${Math.round(afue * 100)}%`,
+                            output: `${(furnaceInput * 1000 * afue).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`
+                          },
+                          example: `Constant output at all temperatures: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${furnaceInput}k BTU/hr × ${Math.round(afue * 100)}% AFUE`
+                        }
+                      : (userSettings?.useCustomEquipmentProfile && userSettings?.capacity47 && userSettings?.capacity17)
+                        ? {
+                            source: "Custom equipment profile",
+                            inputs: {
+                              capacity47: `${userSettings.capacity47.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr @ 47°F`,
+                              capacity17: `${userSettings.capacity17.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr @ 17°F`,
+                              cop47: `COP: ${userSettings.cop47?.toFixed(2) || 'N/A'} @ 47°F`,
+                              cop17: `COP: ${userSettings.cop17?.toFixed(2) || 'N/A'} @ 17°F`,
+                              interpolation: "Linear interpolation between data points"
+                            },
+                            example: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr (interpolated from ${userSettings.capacity47.toLocaleString(undefined, { maximumFractionDigits: 0 })} @ 47°F and ${userSettings.capacity17.toLocaleString(undefined, { maximumFractionDigits: 0 })} @ 17°F)`
+                          }
+                        : {
+                            source: "Generic heat pump derating curve",
+                            inputs: {
+                              capacity: `${capacity}k BTU (${tons.toFixed(1)} tons)`,
+                              hspf2: `${hspf.toFixed(1)}`,
+                              deratingFormula: "Capacity factor = 1.0 @ 47°F+, linear derate to 0.64 @ 17°F, then 0.01 per °F below 17°F",
+                              baseConstant: `${CONSTANTS.KW_PER_TON_OUTPUT} kW/ton output, ${CONSTANTS.BTU_PER_KWH.toFixed(2)} BTU/kWh`
+                            },
+                            example: `At 47°F: ~${(tons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr. At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr (derated)`
+                          },
+                    balancePoint: balancePoint !== null && isFinite(balancePoint)
+                      ? {
+                          source: "Calculated intersection point",
+                          value: `${balancePoint.toFixed(1)}°F`,
+                          method: "Where system output equals building heat loss",
+                          example: `At ${balancePoint.toFixed(1)}°F, system output = building heat loss = ${(btuLossPerDegF * (indoorTemp - balancePoint)).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`
+                        }
+                      : { source: "Not applicable (system covers all temps)" }
+                  }}
+                />
               </div>
 
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border dark:border-gray-700">
@@ -1477,6 +2534,38 @@ const HeatPumpEnergyFlow = () => {
                   outdoor temperature. For heat pumps this is auxiliary heat;
                   for furnaces it represents undersizing shortfall.
                 </div>
+                <DataSourcesDropdown
+                  chartName="Auxiliary Heat Required"
+                  dataSources={{
+                    auxHeat: {
+                      source: "Calculated as max(0, Building Heat Loss - System Output)",
+                      formula: `Aux Heat = Building Heat Loss - System Output (when positive)`,
+                      example: `At ${designOutdoorTemp}°F: ${auxHeatAtDesign > 0 ? auxHeatAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"} BTU/hr = ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr - ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`
+                    },
+                    buildingHeatLoss: useAnalyzerData && effectiveHeatLossFactor
+                      ? { 
+                          source: "System Performance Analyzer", 
+                          value: `${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        }
+                      : {
+                          source: "Calculated from building characteristics",
+                          formula: `Heat Loss = ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (Indoor Temp - Outdoor Temp)`,
+                          example: `At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        },
+                    systemOutput: primarySystem === "gasFurnace"
+                      ? { 
+                          source: "Furnace input × AFUE", 
+                          value: `${(furnaceInput * 1000 * afue).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr constant`,
+                          example: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${furnaceInput}k BTU/hr × ${Math.round(afue * 100)}% AFUE`
+                        }
+                      : { 
+                          source: "Heat pump output (derates with temperature)",
+                          value: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`,
+                          note: `Output varies with temperature. At 47°F: ~${(tons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr, at ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`
+                        }
+                  }}
+                />
               </div>
             </div>
 
@@ -1654,78 +2743,173 @@ const HeatPumpEnergyFlow = () => {
                       )}). Heat pumps deliver more thermal energy than electrical input due to COP.`
                     : `For gas furnaces, output is input × AFUE and electrical input is not shown.`}
                 </div>
+                <DataSourcesDropdown
+                  chartName="Energy Flow vs. Outdoor Temperature"
+                  dataSources={{
+                    thermalOutput: primarySystem === "gasFurnace"
+                      ? {
+                          source: "Furnace output",
+                          formula: "Input × AFUE",
+                          value: `${(furnaceInput * 1000 * afue).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`,
+                          example: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${furnaceInput}k BTU/hr × ${Math.round(afue * 100)}% AFUE (constant at all temps)`
+                        }
+                      : (userSettings?.useCustomEquipmentProfile && userSettings?.capacity47)
+                        ? {
+                            source: "Custom equipment profile (interpolated)",
+                            note: "See Heat Loss vs. System Output chart for capacity details",
+                            example: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr thermal output`
+                          }
+                        : {
+                            source: "Heat pump thermal output",
+                            formula: "Tons × Capacity Factor × 3.517 kW/ton × 3412.14 BTU/kWh",
+                            constants: {
+                              kwPerTon: `${CONSTANTS.KW_PER_TON_OUTPUT} kW/ton`,
+                              btuPerKwh: `${CONSTANTS.BTU_PER_KWH.toFixed(2)} BTU/kWh (standard conversion)`
+                            },
+                            example: `At ${designOutdoorTemp}°F: ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr thermal output (derated from ${(tons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr @ 47°F)`
+                          },
+                    electricalInput: primarySystem === "gasFurnace"
+                      ? { source: "Not shown for gas furnaces" }
+                      : (userSettings?.useCustomEquipmentProfile && userSettings?.cop47)
+                        ? {
+                            source: "Calculated from custom COP profile",
+                            formula: "Electrical Input = Thermal Output / COP",
+                            note: "COP interpolated from custom profile data points",
+                            example: designDataPoint && designDataPoint.electricalKw ? `At ${designOutdoorTemp}°F: ${(designDataPoint.electricalKw * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${systemOutputAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr ÷ ${designDataPoint.cop?.toFixed(2) || 'N/A'} COP` : `At ${designOutdoorTemp}°F: See chart for electrical input values`
+                          }
+                        : {
+                            source: "Estimated from HSPF2 and capacity",
+                            formula: "Electrical Input ≈ Compressor Power × Power Factor",
+                            inputs: {
+                              compressorPower: `${compressorPower.toFixed(2)} kW (from HSPF2: ${hspf.toFixed(1)})`,
+                              powerFactor: "Varies with capacity factor (1.2 - 0.5 × capacity_factor)"
+                            },
+                            example: designDataPoint && designDataPoint.electricalKw ? `At ${designOutdoorTemp}°F: ${(designDataPoint.electricalKw * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr electrical input (${designDataPoint.electricalKw.toFixed(2)} kW)` : `At ${designOutdoorTemp}°F: See chart for electrical input values`
+                          },
+                    buildingHeatLoss: useAnalyzerData && effectiveHeatLossFactor
+                      ? { 
+                          source: "System Performance Analyzer", 
+                          value: `${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        }
+                      : {
+                          source: "Calculated from building characteristics",
+                          value: `${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `At ${designOutdoorTemp}°F: ${buildingHeatLossAtDesign.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr = ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F × (${indoorTemp}°F - ${designOutdoorTemp}°F)`
+                        }
+                  }}
+                />
               </div>
 
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border dark:border-gray-700">
-                <div className="flex items-start justify-between mb-3">
-                  <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                {/* Header */}
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-4">
                     Indoor Temperature vs Time (Current Outdoor)
                   </h2>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Show
-                    </span>
-                    <div className="inline-flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setIndoorAuxMode("both")}
-                        className={`px-3 py-1 text-sm rounded ${
-                          indoorAuxMode === "both"
-                            ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
-                        }`}
-                      >
-                        Both
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIndoorAuxMode("with")}
-                        className={`px-3 py-1 text-sm rounded ${
-                          indoorAuxMode === "with"
-                            ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
-                        }`}
-                      >
-                        With Aux
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIndoorAuxMode("without")}
-                        className={`px-3 py-1 text-sm rounded ${
-                          indoorAuxMode === "without"
-                            ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
-                        }`}
-                      >
-                        Without Aux
-                      </button>
+                  
+                  {/* Controls Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                    {/* Simulation Time Control */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Simulation Time
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min="0"
+                          max="48"
+                          step="1"
+                          value={hoursElapsed}
+                          onChange={(e) => setHoursElapsed(Number(e.target.value))}
+                          className="flex-1"
+                        />
+                        <span className="font-bold text-gray-900 dark:text-gray-100 min-w-[4rem] text-right">
+                          {hoursElapsed} hrs
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs">
-                      Choose which series to display: "With Aux" shows an
-                      idealized auxiliary-heated response; "Without Aux" shows
-                      heat-pump-only response; "Both" overlays them.
+
+                    {/* Current Outdoor Temp Control */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Current Outdoor Temperature
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min="-10"
+                          max="70"
+                          value={currentOutdoor}
+                          onChange={(e) => setCurrentOutdoor(Number(e.target.value))}
+                          className="flex-1"
+                        />
+                        <span className="font-bold text-gray-900 dark:text-gray-100 min-w-[4rem] text-right">
+                          {currentOutdoor}°F
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4 mb-3">
-                  <label className="text-sm font-semibold">
-                    Current Outdoor Temp
-                  </label>
-                  <input
-                    type="range"
-                    min="-10"
-                    max="70"
-                    value={currentOutdoor}
-                    onChange={(e) => setCurrentOutdoor(Number(e.target.value))}
-                    className="w-48"
-                  />
-                  <span className="font-bold">{currentOutdoor}°F</span>
-                  {indoorAuxMode !== "both" && (
-                    <span className="ml-4 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200">
-                      Showing:{" "}
-                      {indoorAuxMode === "with" ? "With Aux" : "Without Aux"}
-                    </span>
-                  )}
+
+                  {/* Display Options */}
+                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Display:
+                        </span>
+                        <div className="inline-flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setIndoorAuxMode("both")}
+                            className={`px-4 py-2 text-sm rounded transition-all ${
+                              indoorAuxMode === "both"
+                                ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
+                            }`}
+                          >
+                            Both
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIndoorAuxMode("with")}
+                            className={`px-4 py-2 text-sm rounded transition-all ${
+                              indoorAuxMode === "with"
+                                ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
+                            }`}
+                          >
+                            With Aux
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIndoorAuxMode("without")}
+                            className={`px-4 py-2 text-sm rounded transition-all ${
+                              indoorAuxMode === "without"
+                                ? "bg-white dark:bg-gray-600 shadow-sm font-semibold text-gray-900 dark:text-gray-100"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-600/50"
+                            }`}
+                          >
+                            Without Aux
+                          </button>
+                        </div>
+                        {indoorAuxMode !== "both" && (
+                          <span className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm text-blue-700 dark:text-blue-300 font-medium">
+                            Showing: {indoorAuxMode === "with" ? "With Aux" : "Without Aux"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                        <strong className="text-gray-700 dark:text-gray-300">Display Options:</strong>{" "}
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">"With Aux"</span> shows an idealized auxiliary-heated response that maintains target temperature.{" "}
+                        <span className="text-orange-600 dark:text-orange-400 font-medium">"Without Aux"</span> shows heat-pump-only response, which may drop below target in extreme cold.{" "}
+                        <span className="text-purple-600 dark:text-purple-400 font-medium">"Both"</span> overlays both series for comparison.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 <div
                   className="relative w-full"
@@ -1912,8 +3096,181 @@ const HeatPumpEnergyFlow = () => {
                   steady-state temperature; it's intended for qualitative
                   insight rather than precise transient building simulation.
                 </div>
+                <DataSourcesDropdown
+                  chartName="Indoor Temperature vs Time"
+                  dataSources={{
+                    thermalCapacitance: {
+                      source: "Estimated building thermal mass",
+                      formula: "max(2000, Square Feet × 5) BTU/°F",
+                      value: `${Math.max(2000, squareFeet * 5).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/°F`,
+                      example: `C = max(2000, ${squareFeet.toLocaleString()} × 5) = ${Math.max(2000, squareFeet * 5).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/°F`,
+                      note: "Simplified lumped-capacitance model"
+                    },
+                    heatLossFactor: useAnalyzerData && effectiveHeatLossFactor
+                      ? { 
+                          source: "System Performance Analyzer", 
+                          value: `${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `H = ${effectiveHeatLossFactor.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`
+                        }
+                      : {
+                          source: "Calculated from building characteristics",
+                          value: `${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`,
+                          example: `H = ${btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F`
+                        },
+                    systemOutput: (() => {
+                      // Calculate system output at current outdoor temp
+                      let outputAtCurrent = 0;
+                      if (primarySystem === "gasFurnace") {
+                        outputAtCurrent = furnaceInput * 1000 * afue;
+                      } else {
+                        let capacityFactor;
+                        if (currentOutdoor >= 47) capacityFactor = 1.0;
+                        else if (currentOutdoor >= 17) capacityFactor = 1.0 - (47 - currentOutdoor) * 0.012;
+                        else capacityFactor = 0.64 - (17 - currentOutdoor) * 0.01;
+                        capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+                        const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+                        outputAtCurrent = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+                      }
+                      const lossAtCurrent = btuLossPerDegF * (indoorTemp - currentOutdoor);
+                      const auxNeededAtCurrent = Math.max(0, lossAtCurrent - outputAtCurrent);
+                      const totalHeatAtCurrent = outputAtCurrent + auxNeededAtCurrent;
+                      const steadyStateTemp = currentOutdoor + (totalHeatAtCurrent / Math.max(0.1, btuLossPerDegF));
+                      
+                      return {
+                        source: primarySystem === "gasFurnace" ? "Furnace output (constant)" : "Heat pump output at current outdoor temp",
+                        value: primarySystem === "gasFurnace"
+                          ? `${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr`
+                          : `${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr @ ${currentOutdoor}°F`,
+                        example: primarySystem === "gasFurnace"
+                          ? `Constant: ${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr at all temperatures`
+                          : `At ${currentOutdoor}°F: ${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr (derated from ${(tons * CONSTANTS.KW_PER_TON_OUTPUT * CONSTANTS.BTU_PER_KWH).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr @ 47°F)`,
+                        note: primarySystem === "gasFurnace" ? "Constant output" : "Derates in colder temperatures"
+                      };
+                    })(),
+                    simulationModel: (() => {
+                      const C = Math.max(2000, squareFeet * 5);
+                      const k = btuLossPerDegF / C;
+                      let outputAtCurrent = 0;
+                      if (primarySystem === "gasFurnace") {
+                        outputAtCurrent = furnaceInput * 1000 * afue;
+                      } else {
+                        let capacityFactor;
+                        if (currentOutdoor >= 47) capacityFactor = 1.0;
+                        else if (currentOutdoor >= 17) capacityFactor = 1.0 - (47 - currentOutdoor) * 0.012;
+                        else capacityFactor = 0.64 - (17 - currentOutdoor) * 0.01;
+                        capacityFactor = Math.max(CONSTANTS.MIN_CAPACITY_FACTOR, capacityFactor);
+                        const thermalOutputKw = tons * CONSTANTS.KW_PER_TON_OUTPUT * capacityFactor;
+                        outputAtCurrent = thermalOutputKw * CONSTANTS.BTU_PER_KWH;
+                      }
+                      const lossAtCurrent = btuLossPerDegF * (indoorTemp - currentOutdoor);
+                      const auxNeededAtCurrent = Math.max(0, lossAtCurrent - outputAtCurrent);
+                      // Steady state uses ACTUAL available output, not total (which includes aux)
+                      // This shows what temp the system can maintain WITHOUT aux heat
+                      const steadyStateTemp = currentOutdoor + (outputAtCurrent / Math.max(0.1, btuLossPerDegF));
+                      
+                      return {
+                        source: "Exponential approach to steady-state",
+                        formula: "T(t) = T_ss + (T_initial - T_ss) × exp(-k × t)",
+                        inputs: {
+                          timeConstant: `k = H / C = ${btuLossPerDegF.toFixed(1)} / ${C.toFixed(0)} = ${k.toFixed(4)} hr⁻¹`,
+                          steadyState: `T_ss = ${currentOutdoor}°F + (${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr available / ${btuLossPerDegF.toFixed(1)} BTU/hr/°F) = ${steadyStateTemp.toFixed(1)}°F (WITHOUT aux heat)`
+                        },
+                        example: `Starting at ${indoorTemp}°F, approaches ${steadyStateTemp.toFixed(1)}°F steady-state (NOT ${indoorTemp}°F!) because available heat (${outputAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr) is less than required (${lossAtCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr). Time constant: ${k.toFixed(4)} hr⁻¹`,
+                        note: "Qualitative model, not precise building simulation. Steady-state is what system can maintain WITHOUT auxiliary heat."
+                      };
+                    })(),
+                    currentOutdoor: {
+                      source: "User-selected outdoor temperature",
+                      value: `${currentOutdoor}°F`
+                    },
+                    targetIndoor: {
+                      source: "User-selected target indoor temperature",
+                      value: `${indoorTemp}°F`
+                    }
+                  }}
+                />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Live Math Calculations Pulldown - Always at the bottom */}
+        {primarySystem === "heatPump" && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
+            <button
+              onClick={() => setShowCalculations(!showCalculations)}
+              className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                  <Calculator size={24} className="text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">View Calculation Methodology</h3>
+              </div>
+              {showCalculations ? (
+                <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+              ) : (
+                <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+              )}
+            </button>
+
+            {showCalculations && (
+              <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div>
+                  <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Balance Point Calculation</h4>
+                  <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                    Building Heat Loss Factor: <strong>{btuLossPerDegF.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr per °F</strong><br />
+                    {useAnalyzerData && effectiveHeatLossFactor ? (
+                      <>
+                        <span className="text-green-400">Source: Measured from System Performance Analyzer (Ecobee runtime data)</span><br />
+                        {(() => {
+                          // Calculate theoretical value for comparison
+                          const designTempDiff = Math.max(10, Math.abs(70 - designOutdoorTemp));
+                          const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
+                          const theoreticalHeatLoss = (squareFeet * CONSTANTS.BASE_BTU_PER_SQFT * insulationLevel * homeShape * ceilingMultiplier) / designTempDiff;
+                          return (
+                            <span className="text-gray-500">
+                              Theoretical Baseline: ({squareFeet.toLocaleString()} sq ft * {CONSTANTS.BASE_BTU_PER_SQFT} BTU/sqft * {insulationLevel.toFixed(2)} insulation * {homeShape.toFixed(2)} home shape * {ceilingMultiplier.toFixed(2)} ceiling) / {designTempDiff.toFixed(0)}°F = <strong>{theoreticalHeatLoss.toLocaleString(undefined, { maximumFractionDigits: 1 })} BTU/hr/°F</strong>
+                            </span>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <>
+                        = ({squareFeet.toLocaleString()} sq ft * {CONSTANTS.BASE_BTU_PER_SQFT} BTU/sqft * {insulationLevel.toFixed(2)} insulation * {homeShape.toFixed(2)} home shape * {(1 + (ceilingHeight - 8) * 0.1).toFixed(2)} ceiling) / {Math.max(10, Math.abs(70 - designOutdoorTemp)).toFixed(0)}°F design temp<br />
+                      </>
+                    )}
+                    <br />
+                    System Capacity: <strong>{capacity}k BTU ({tons.toFixed(1)} tons)</strong><br />
+                    HSPF2 Rating: <strong>{hspf.toFixed(1)}</strong><br />
+                    Target Indoor Temperature: <strong>{indoorTemp}°F</strong><br />
+                    Design Outdoor Temperature: <strong>{designOutdoorTemp}°F</strong><br />
+                    <br />
+                    {balancePoint !== null && isFinite(balancePoint) ? (
+                      <>
+                        Balance Point: <strong>{balancePoint.toFixed(1)}°F</strong><br />
+                        Found where heat pump output equals building heat loss<br />
+                        At {balancePoint.toFixed(1)}°F: HP Output = Building Heat Loss
+                      </>
+                    ) : (
+                      <>
+                        Balance Point: Below design temperature ({designOutdoorTemp}°F) or above 60°F<br />
+                        System can handle all temperatures down to {designOutdoorTemp}°F without auxiliary heat
+                      </>
+                    )}
+                    {summaryStats && (
+                      <>
+                        <br />
+                        <br />
+                        Max System Output: <strong>{summaryStats.maxOutput > 0 && Number.isFinite(summaryStats.maxOutput) ? (summaryStats.maxOutput / 1000).toFixed(1) + "k" : "0"} BTU/hr</strong><br />
+                        Shortfall @ {designOutdoorTemp}°F: <strong>{summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign) ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k" : "0"} BTU/hr</strong><br />
+                        Efficiency (COP) @ {designOutdoorTemp}°F: <strong>{Number.isFinite(summaryStats.copAtDesign) ? summaryStats.copAtDesign.toFixed(2) : "N/A"}</strong>
+                      </>
+                    )}
+                  </code>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1922,3 +3279,4 @@ const HeatPumpEnergyFlow = () => {
 };
 
 export default HeatPumpEnergyFlow;
+

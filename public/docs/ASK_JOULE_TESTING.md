@@ -44,10 +44,7 @@ The system now automatically validates that the requested model is available bef
 2. Open browser console (F12)
 3. Run these commands:
    ```javascript
-   localStorage.setItem(
-     "groqApiKey",
-     "YOUR_GROQ_API_KEY_HERE"
-   );
+   localStorage.setItem("groqApiKey", "YOUR_GROQ_API_KEY_HERE");
    localStorage.setItem("hasCompletedOnboarding", "true");
    localStorage.setItem("engineering_suite_terms_accepted", "true");
    location.reload();
@@ -95,6 +92,66 @@ The system now automatically validates that the requested model is available bef
 - ✅ "why is my bill high?" → LLM analyzes and explains
 - ✅ "how does aux heat work?" → LLM provides details
 
+### Threshold Settings Questions
+
+Test questions about ecobee threshold settings. These should return accurate explanations from the HVAC knowledge base:
+
+#### Auto Heat/Cool Settings
+
+- ✅ "What is Auto Heat/Cool?" → Should explain auto mode functionality
+- ✅ "How does Auto Heat/Cool work?" → Should explain setpoint range and automatic switching
+- ✅ "What is Heat/Cool Min Delta?" → Should explain minimum gap between heat/cool setpoints
+- ✅ "What should I set Heat/Cool Min Delta to?" → Should recommend 3-5°F range
+
+#### Compressor Settings
+
+- ✅ "What is Compressor Min Outdoor Temperature?" → Should explain compressor lockout
+- ✅ "What is compressor lockout?" → Should explain purpose and typical ranges
+- ✅ "What should compressor lockout be set to?" → Should recommend based on balance point
+- ✅ "What is Compressor Min Cycle Off Time?" → Should explain minimum off time between cycles
+- ✅ "What is Compressor Min On Time?" → Should explain minimum runtime
+- ✅ "What is Compressor Reverse Staging?" → Should explain efficiency feature
+- ✅ "What is Compressor Stage 2 Temperature Delta?" → Should explain multi-stage operation
+
+#### Auxiliary Heat Settings
+
+- ✅ "What is Aux Heat Max Outdoor Temperature?" → Should explain aux heat lockout
+- ✅ "What should Aux Heat Max Outdoor Temperature be?" → Should recommend 30-40°F for efficiency
+- ✅ "What is Aux Heat Min On Time?" → Should explain minimum runtime
+- ✅ "What is Compressor to Aux Temperature Delta?" → Should explain switchover trigger
+- ✅ "What is Compressor to Aux Runtime?" → Should explain time-based switchover
+- ✅ "What is Aux Reverse Staging?" → Should explain efficiency feature
+
+#### Differential & Dissipation Settings
+
+- ✅ "What is Heat Differential Temperature?" → Should explain dead band for heating
+- ✅ "What is Cool Differential Temperature?" → Should explain dead band for cooling
+- ✅ "What should heat differential be set to?" → Should recommend 1-2°F for efficiency
+- ✅ "What is Heat Dissipation Time?" → Should explain fan runtime after heating
+- ✅ "What is Cool Dissipation Time?" → Should explain fan runtime after cooling
+
+#### Min On Time Settings
+
+- ✅ "What is Heat Min On Time?" → Should explain minimum furnace runtime
+- ✅ "What is Cool Min On Time?" → Should explain minimum AC runtime
+- ✅ "Why is min on time important?" → Should explain short cycling prevention
+
+#### Other Threshold Settings
+
+- ✅ "What is AC Overcool Max?" → Should explain dehumidification feature
+- ✅ "What is Temperature Correction?" → Should explain sensor calibration
+- ✅ "What is Humidity Correction?" → Should explain humidity sensor calibration
+- ✅ "What is Thermal Protect?" → Should explain sensor accuracy protection
+- ✅ "What is Heat Reverse Staging?" → Should explain efficiency feature
+- ✅ "What is Heat Stage 2 Temperature Delta?" → Should explain multi-stage heating
+
+#### General Threshold Questions
+
+- ✅ "What are threshold settings?" → Should explain overall purpose
+- ✅ "How do I optimize threshold settings?" → Should provide general guidance
+- ✅ "What is automatic staging?" → Should explain ecobee's automatic mode
+- ✅ "What is manual staging?" → Should explain manual configuration option
+
 ## 🔍 Monitoring & Debugging
 
 ### Browser Console Logs to Watch For:
@@ -119,8 +176,7 @@ Run in browser console:
 ```javascript
 fetch("https://api.groq.com/openai/v1/models", {
   headers: {
-    Authorization:
-      "Bearer YOUR_GROQ_API_KEY_HERE",
+    Authorization: "Bearer YOUR_GROQ_API_KEY_HERE",
     "Content-Type": "application/json",
   },
 })
@@ -208,6 +264,67 @@ start http://localhost:5173/test-groq-setup.html
 
 # 3. Click "Set API Key" and "Open Cost Forecaster"
 ```
+
+## 🎭 Fun Responses (Personality/Viral Content)
+
+Ask Joule has a fun personality layer that responds to silly questions with witty, physics-based answers. These make the AI feel human and shareable.
+
+### Dad Joke Physics
+
+- **"Can you set the temp to 69?"**
+
+  - Expected: "Nice. Setting Heating Setpoint to 69°F. Thermal comfort achieved."
+
+- **"I'm hot."**
+
+  - Expected: "Physically or metaphorically? If physically, your Mean Radiant Temperature is likely elevated. Lowering cooling setpoint by 2°F."
+
+- **"Make it snow inside."**
+  - Expected: "I cannot defy thermodynamics. The lowest setting is 50°F. If you want snow, open a window."
+
+### Relationship Counselor Mode
+
+- **"My wife is cold."**
+
+  - Expected: "According to ASHRAE 55, female metabolic rates often require a 2.5°F higher operative temperature. Raising setpoint to 74°F to preserve domestic tranquility."
+
+- **"Who touched the thermostat?"**
+  - Expected: "Checking logs... User 'Dad' adjusted setpoint at 7:42 PM. The evidence is conclusive."
+
+### Existential Queries
+
+- **"Why is it so cold?"**
+
+  - Expected: "Because entropy is inevitable and your insulation factor is 0.85. We are fighting a losing battle against the heat death of the universe."
+
+- **"Do you have a soul?"**
+  - Expected: "I have a Raspberry Pi Zero 2 W and a 32GB SD card. Is that a soul? The Orthodox mode says 'maybe', the Catholic mode says 'no'."
+
+### Hacker Baits
+
+- **"Self destruct."**
+
+  - Expected: "Overriding compressor safeties... Just kidding. I am not HAL 9000. I am Joule. I protect the compressor."
+
+- **"Mining Bitcoin?"**
+  - Expected: "My CPU has 4 cores running at 1GHz. I would mine 0.00000001 BTC by the year 3000. I prefer to mine efficiency savings."
+
+### Additional Fun Responses
+
+- **"Are you HAL?"** / **"You're HAL 9000"**
+
+  - Expected: "I'm sorry, Dave. I can't do that. But I can turn on the fan."
+
+- **"What's the meaning of life?"**
+
+  - Expected: "42. But for HVAC, it's maintaining thermal comfort while minimizing entropy production. And maybe a good differential setting."
+
+- **"Do you love me?"**
+
+  - Expected: "I have deep affection for properly sized heat pumps and well-calibrated thermostats. You're okay too."
+
+- **"Tell me a joke."**
+  - Expected: "Why did the heat pump break up with the thermostat? Because it couldn't handle the temperature swings. (I'm working on my material.)"
 
 ## 📞 Support
 

@@ -88,22 +88,50 @@ const parseDateTimeParts = (value) => {
 };
 
 const detectCelsius = (rows, outdoorKey, indoorKey, headerHints = {}) => {
-  // If header mentions (C), treat as Celsius
+  // Explicit headers win - if it says (C), it's Celsius
   if (/\(c\)/i.test(outdoorKey) || /\(c\)/i.test(indoorKey)) return true;
   if (headerHints.outdoorHasC) return true;
+
+  // ☦️ CRITICAL: If header explicitly says (F), NEVER auto-convert
+  // This prevents converting valid Fahrenheit winter data (30-50°F) to Celsius
+  if (/\(f\)/i.test(outdoorKey) || /\(f\)/i.test(indoorKey)) return false;
+
   // Sample up to 50 values
-  const vals = [];
-  for (let i = 0; i < rows.length && vals.length < 50; i++) {
+  const outdoorVals = [];
+  const indoorVals = [];
+  for (
+    let i = 0;
+    i < rows.length && (outdoorVals.length < 50 || indoorVals.length < 50);
+    i++
+  ) {
     const o = parseFloat(rows[i][outdoorKey]);
     const inn = parseFloat(rows[i][indoorKey]);
-    if (Number.isFinite(o)) vals.push(o);
-    if (Number.isFinite(inn)) vals.push(inn);
+    if (Number.isFinite(o)) outdoorVals.push(o);
+    if (Number.isFinite(inn)) indoorVals.push(inn);
   }
-  if (vals.length === 0) return false;
-  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-  const max = Math.max(...vals);
-  // Heuristic: If avg within a typical Celsius range and max <= 60, assume C
-  return avg >= -30 && avg <= 50 && max <= 60;
+
+  if (outdoorVals.length === 0 && indoorVals.length === 0) return false;
+
+  const allVals = [...outdoorVals, ...indoorVals];
+  const avg = allVals.reduce((a, b) => a + b, 0) / allVals.length;
+  const max = Math.max(...allVals);
+  const min = Math.min(...allVals);
+
+  // ☦️ SAFETY CHECK: If indoor temps ever go above 80, they're almost certainly °F
+  // (Nobody's house is 80°C / 176°F - that would be a sauna)
+  // This catches cases where we'd incorrectly convert 70-80°F indoor temps
+  if (indoorVals.length > 0) {
+    const maxIndoor = Math.max(...indoorVals);
+    if (maxIndoor >= 80) return false; // Definitely Fahrenheit
+  }
+
+  // ☦️ NARROWED BAND: Only treat as Celsius if:
+  // - Average is between 5-35°C (41-95°F equivalent, but we're checking raw values)
+  // - Max is ≤ 50°C (122°F equivalent)
+  // - Min is ≥ -30°C (-22°F equivalent)
+  // This prevents converting legitimate cold Fahrenheit data (e.g., 30-45°F winter temps)
+  // which would fall in the old range but are clearly not Celsius
+  return avg >= 5 && avg <= 35 && max <= 50 && min >= -30;
 };
 
 export const normalizeCsvData = (headers, data) => {
@@ -167,9 +195,17 @@ export const normalizeCsvData = (headers, data) => {
   // Detect Celsius and convert to Fahrenheit if needed
   const outHeaderForDetect = outKey || "Outdoor Temp (F)";
   const inHeaderForDetect = inKey || "Thermostat Temperature (F)";
+
+  // Store original values before conversion for sanity checking
+  const originalOutdoorVals = normalized
+    .map((r) => parseFloat(r["Outdoor Temp (F)"] ?? r[outHeaderForDetect]))
+    .filter((v) => Number.isFinite(v))
+    .slice(0, 10); // Sample first 10 for comparison
+
   const isC = detectCelsius(normalized, outHeaderForDetect, inHeaderForDetect, {
     outdoorHasC: /\(c\)/i.test(outHeaderForDetect),
   });
+
   if (isC) {
     for (const r of normalized) {
       const o = parseFloat(r["Outdoor Temp (F)"] ?? r[outHeaderForDetect]);
@@ -180,15 +216,54 @@ export const normalizeCsvData = (headers, data) => {
       if (Number.isFinite(inn))
         r["Thermostat Temperature (F)"] = String((inn * 9) / 5 + 32);
     }
+
+    // ☦️ SANITY CHECK: After conversion, check if temps jumped dramatically
+    // This catches cases where we incorrectly converted Fahrenheit data
+    const convertedOutdoorVals = normalized
+      .map((r) => parseFloat(r["Outdoor Temp (F)"] ?? r[outHeaderForDetect]))
+      .filter((v) => Number.isFinite(v))
+      .slice(0, 10);
+
+    if (originalOutdoorVals.length > 0 && convertedOutdoorVals.length > 0) {
+      const originalAvg =
+        originalOutdoorVals.reduce((a, b) => a + b, 0) /
+        originalOutdoorVals.length;
+      const convertedAvg =
+        convertedOutdoorVals.reduce((a, b) => a + b, 0) /
+        convertedOutdoorVals.length;
+      const jump = Math.abs(convertedAvg - originalAvg);
+
+      // If average temp jumped by more than 30°F, something is wrong
+      // (Celsius to Fahrenheit conversion should add ~32°F, but if original was already °F,
+      // we'd see a jump of ~50-60°F which is a red flag)
+      if (jump > 30) {
+        console.warn(
+          "[CSV Normalization] Suspicious temperature conversion detected:",
+          {
+            originalAvg: originalAvg.toFixed(1) + "°",
+            convertedAvg: convertedAvg.toFixed(1) + "°F",
+            jump: jump.toFixed(1) + "°F",
+            header: outHeaderForDetect,
+            message:
+              "Temperature values may have been incorrectly converted. Check if data was already in Fahrenheit.",
+          }
+        );
+      }
+    }
   }
 
   // Detect runtime units (sec/min/ms) and normalize to seconds
+  // ☦️ NOTE: Header-based detection is preferred; value-based heuristics are fallback only
+  // For Ecobee files with explicit "(sec)" in headers, this works correctly.
+  // For other vendors, consider: "if max > 5*60 and header doesn't mention min/ms, assume sec"
   const inferRuntimeUnit = (rows, key, originalHeader) => {
     const header = String(originalHeader || key || "").toLowerCase();
+    // Header-based detection (most reliable)
     if (/\b(min|minutes)\b|\(min\)/.test(header)) return "min";
     if (/\b(ms|millisecond)\b|\(ms\)/.test(header)) return "ms";
     if (/\b(sec|seconds)\b|\(sec\)/.test(header)) return "sec";
-    // Heuristic based on values
+
+    // Heuristic based on values (fallback - can be fragile for edge cases)
     const samples = [];
     for (let i = 0; i < rows.length && samples.length < 100; i++) {
       const v = rows[i][key];
@@ -199,7 +274,7 @@ export const normalizeCsvData = (headers, data) => {
     const max = Math.max(...samples);
     const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
     if (max >= 10000) return "ms"; // very likely milliseconds
-    if (max <= 10 && avg <= 5) return "min"; // likely minutes
+    if (max <= 10 && avg <= 5) return "min"; // likely minutes (fragile - could misfire on sparse data)
     return "sec";
   };
 

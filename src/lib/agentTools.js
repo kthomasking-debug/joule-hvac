@@ -300,6 +300,104 @@ export function getLocationContext(userLocation, userSettings = null) {
 }
 
 /**
+ * Tool: Get current outdoor temperature from NWS API
+ * Fetches real-time current conditions from National Weather Service
+ * Falls back to Open-Meteo if NWS is unavailable
+ */
+export async function getCurrentOutdoorTemp(lat, lon) {
+  if (!lat || !lon) {
+    // Try to get from location context
+    const location = getLocationContext(null, null);
+    if (location && location.lat && location.lon) {
+      lat = location.lat;
+      lon = location.lon;
+    } else {
+      // Try localStorage
+      if (typeof window !== "undefined") {
+        try {
+          const userLocation = localStorage.getItem("userLocation");
+          if (userLocation) {
+            const parsed = JSON.parse(userLocation);
+            lat = parsed.latitude || parsed.lat;
+            lon = parsed.longitude || parsed.lon;
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    }
+  }
+
+  if (!lat || !lon) {
+    return { error: true, message: "Location not available" };
+  }
+
+  try {
+    // Try NWS API first (for US locations)
+    const pointsUrl = `https://api.weather.gov/points/${lat},${lon}`;
+    const pointsResp = await fetch(pointsUrl, {
+      headers: {
+        "User-Agent": "EngineeringTools/1.0 (https://github.com/your-repo)",
+        Accept: "application/json",
+      },
+    });
+
+    if (pointsResp.ok) {
+      const pointsData = await pointsResp.json();
+      const gridId = pointsData.properties?.gridId;
+      const gridX = pointsData.properties?.gridX;
+      const gridY = pointsData.properties?.gridY;
+
+      if (gridId && gridX !== undefined && gridY !== undefined) {
+        // Get current observations
+        const obsUrl = `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/observations/latest`;
+        const obsResp = await fetch(obsUrl, {
+          headers: {
+            "User-Agent": "EngineeringTools/1.0 (https://github.com/your-repo)",
+            Accept: "application/json",
+          },
+        });
+
+        if (obsResp.ok) {
+          const obsData = await obsResp.json();
+          const temp = obsData.properties?.temperature?.value;
+          if (temp !== null && temp !== undefined) {
+            // NWS observations return temperature in Celsius
+            // Convert to Fahrenheit
+            const tempF = (temp * 9) / 5 + 32;
+            return {
+              success: true,
+              temperature: Math.round(tempF),
+              source: "NWS",
+              timestamp: obsData.properties?.timestamp,
+            };
+          }
+        }
+      }
+    }
+
+    // Fallback to Open-Meteo for current conditions
+    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m&temperature_unit=fahrenheit`;
+    const openMeteoResp = await fetch(openMeteoUrl);
+    if (openMeteoResp.ok) {
+      const data = await openMeteoResp.json();
+      const currentTemp = data.current?.temperature_2m;
+      if (currentTemp !== null && currentTemp !== undefined) {
+        return {
+          success: true,
+          temperature: Math.round(currentTemp),
+          source: "Open-Meteo",
+        };
+      }
+    }
+
+    return { error: true, message: "Unable to fetch current temperature" };
+  } catch (error) {
+    return { error: true, message: error.message };
+  }
+}
+
+/**
  * Tool: Search HVAC knowledge base
  * Uses RAG (Retrieval-Augmented Generation) with structured knowledge base
  * Includes ACCA Manual J/S/D, ASHRAE 55/62.2, DOE guides, and engineering standards

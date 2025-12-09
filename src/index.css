@@ -139,3 +139,60 @@ html, body { margin: 0; padding: 0; }
     8px 8px 16px rgba(0, 0, 0, 0.4),
     -8px -8px 16px rgba(255, 255, 255, 0.05);
 }
+
+/* Subtle Ambient Particle Animations - ProStat Style */
+
+/* Cooling: White dots drifting down slowly (like dust motes) */
+@keyframes float-slow {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.2;
+  }
+  90% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateY(100vh) translateX(20px);
+    opacity: 0;
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 15s linear infinite;
+}
+
+/* Heating: Orange particles rising from bottom (like embers) */
+@keyframes float-up {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(-15px);
+    opacity: 0;
+  }
+}
+
+.animate-float-up {
+  animation: float-up 12s linear infinite;
+}
+
+/* Subtle pulse for heating glow */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
+}

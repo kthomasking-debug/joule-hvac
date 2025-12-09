@@ -267,3 +267,8 @@ This gives you:
 - Set up remote access via Tailscale
 - Configure automatic updates
 
+
+
+
+
+

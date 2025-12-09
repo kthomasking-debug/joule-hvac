@@ -5,6 +5,7 @@ import App from "./App.jsx";
 import "./styles/tailwind.css";
 import "./styles/ui.css";
 import "./styles/design-system.css";
+import "./styles/print.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { routes } from "./navConfig.js";
 

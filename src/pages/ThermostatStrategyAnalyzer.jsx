@@ -402,7 +402,7 @@ export default function ThermostatStrategyAnalyzer() {
                   <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
                     <Calculator size={24} className="text-white" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">View Calculation Methodology</h3>
                 </div>
                 {showCalculations ? (
                   <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
@@ -413,68 +413,117 @@ export default function ThermostatStrategyAnalyzer() {
 
               {showCalculations && (
                 <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-                <div className="mb-4">
-                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Select Hour of Day</label>
-                  <input type="range" min={0} max={23} value={selectedHour} onChange={e => setSelectedHour(Number(e.target.value))} className="w-full" />
-                  <div className="text-center text-sm mt-1">Hour: <span data-testid="detail-hour" className="font-mono">{selectedHour}:00</span> &nbsp;|&nbsp; Outdoor Temp: <span data-testid="detail-outdoor-temp" className="font-mono">{outdoorTemp}°F</span></div>
+                {/* Summary Calculations Section */}
+                <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Summary Calculations (24-Hour Totals)</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Strategy A: Constant Temperature ({constantTemp}°F)</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        For each hour (0-23):<br />
+                        Calculate indoor temp = {constantTemp}°F (constant)<br />
+                        Calculate hourly energy = sum(electricalKw * runtime% / 100) for all 24 hours<br />
+                        Calculate hourly cost = sum(energy * ${settings.utilityCost.toFixed(3)}/kWh) for all 24 hours<br />
+                        Total Energy = <strong>{result.constant.totalEnergy.toFixed(2)} kWh</strong><br />
+                        Total Cost = <strong>${result.constant.totalCost.toFixed(2)}</strong><br />
+                        Total Aux Energy = <strong>{result.constant.totalAux.toFixed(2)} kWh</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Strategy B: Setback ({comfortTemp}°F → {setbackTemp}°F, {setbackDuration}h)</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        For each hour (0-23):<br />
+                        Calculate indoor temp = setback window? {setbackTemp}°F : {comfortTemp}°F<br />
+                        Setback window: hours {setbackStart}:00 to {((setbackStart + setbackDuration) % 24)}:00<br />
+                        Recovery factor: first 2 hours after setback = 1.35 * heat loss (35% extra load)<br />
+                        Calculate hourly energy = sum(electricalKw * runtime% / 100) for all 24 hours<br />
+                        Calculate hourly cost = sum(energy * ${settings.utilityCost.toFixed(3)}/kWh) for all 24 hours<br />
+                        Total Energy = <strong>{result.setback.totalEnergy.toFixed(2)} kWh</strong><br />
+                        Total Cost = <strong>${result.setback.totalCost.toFixed(2)}</strong><br />
+                        Total Aux Energy = <strong>{result.setback.totalAux.toFixed(2)} kWh</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Savings Calculation</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        Daily Savings = Constant Cost - Setback Cost<br />
+                        = ${result.constant.totalCost.toFixed(2)} - ${result.setback.totalCost.toFixed(2)}<br />
+                        = <strong>${result.savings.toFixed(2)}</strong> per day<br />
+                        <br />
+                        Percentage Change = (Savings / Constant Cost) * 100%<br />
+                        = (${result.savings.toFixed(2)} / ${result.constant.totalCost.toFixed(2)}) * 100%<br />
+                        = <strong>{(result.savings / result.constant.totalCost * 100).toFixed(1)}%</strong>
+                      </code>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-4 text-sm">
-                  <div>
-                    <span className="font-semibold">1. Outdoor Temperature Profile:</span><br />
-                    <span>
-                      <span className="font-mono">T_hour = mid + amplitude × sin(2π(h-16)/24)</span><br />
-                      mid = ({highTemp} + {lowTemp}) / 2 = <span className="font-mono">{mid.toFixed(1)}</span><br />
-                      amplitude = ({highTemp} - {lowTemp}) / 2 = <span className="font-mono">{amplitude.toFixed(1)}</span><br />
-                      T_hour = {mid.toFixed(1)} + {amplitude.toFixed(1)} × sin(2π({selectedHour}-16)/24) = <span className="font-mono">{outdoorTemp}°F</span>
-                    </span>
+
+                {/* Per-Hour Detail Section */}
+                <div>
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Per-Hour Calculation Details</h4>
+                  <div className="mb-4">
+                    <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Select Hour of Day</label>
+                    <input type="range" min={0} max={23} value={selectedHour} onChange={e => setSelectedHour(Number(e.target.value))} className="w-full" />
+                    <div className="text-center text-sm mt-1">Hour: <span data-testid="detail-hour" className="font-mono">{selectedHour}:00</span> &nbsp;|&nbsp; Outdoor Temp: <span data-testid="detail-outdoor-temp" className="font-mono">{outdoorTemp}°F</span></div>
                   </div>
-                  <div>
-                    <span className="font-semibold">2. Building Heat Loss (BTU/hr):</span><br />
-                    <span className="font-mono">
-                      HeatLoss = sqft × 22.67 × insulation × shape × (1 + 0.1 × (ceilingHeight - 8))<br />
-                      = {defaultSettings.squareFeet} × 22.67 × {defaultSettings.insulationLevel} × {defaultSettings.homeShape} × (1 + 0.1 × ({defaultSettings.ceilingHeight} - 8)) = <span className="font-mono">{heatLoss}</span> BTU/hr
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">3. Hourly Building Heat Loss:</span><br />
-                    <span className="font-mono">
-                      btuLossPerDegreeF = HeatLoss / 70 = {heatLoss} / 70 = {btuLossPerDegreeF.toFixed(1)}<br />
-                      buildingHeatLossBtu = btuLossPerDegreeF × (indoorTemp - outdoorTemp) = {btuLossPerDegreeF.toFixed(1)} × ({indoorTemp} - {outdoorTemp}) = <span className="font-mono">{buildingHeatLossBtu.toFixed(0)}</span>
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">4. Heat Pump Output:</span><br />
-                    <span className="font-mono">
-                      heatpumpOutputBtu = tons × 3.517 × capacityFactor × 3412.14<br />
-                      = {settings.tons} × 3.517 × {capacityFactor.toFixed(3)} × 3412.14 = <span className="font-mono">{isFinite(heatpumpOutputBtu) ? heatpumpOutputBtu.toFixed(0) : '—'}</span>
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">5. Power and Runtime:</span><br />
-                    <span className="font-mono">
-                      powerFactor = 1 / max(0.7, capacityFactor) = {isFinite(powerFactor) ? powerFactor.toFixed(2) : '—'}<br />
-                      baseElectricalKw = compressorPower × powerFactor = {settings.compressorPower} × {isFinite(powerFactor) ? powerFactor.toFixed(2) : '—'} = {isFinite(baseElectricalKw) ? baseElectricalKw.toFixed(2) : '—'}<br />
-                      defrostPenalty = {(indoorTemp > outdoorTemp) ? defrostPenalty.toFixed(2) : 'N/A'} <span className="italic">(only if 20 &lt; outdoorTemp &lt; 45)</span><br />
-                      electricalKw = baseElectricalKw × defrostPenalty = {isFinite(baseElectricalKw) ? baseElectricalKw.toFixed(2) : '—'} × {(indoorTemp > outdoorTemp) ? defrostPenalty.toFixed(2) : 'N/A'} = <span className="font-mono">{isFinite(electricalKw) ? electricalKw.toFixed(2) : '—'}</span>
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">6. Runtime and Auxiliary Heat:</span><br />
-                    <span className="font-mono">
-                      runtime% = buildingHeatLossBtu / heatpumpOutputBtu × 100 = {isFinite(buildingHeatLossBtu) && isFinite(heatpumpOutputBtu) ? buildingHeatLossBtu.toFixed(0) : '—'} / {isFinite(heatpumpOutputBtu) ? heatpumpOutputBtu.toFixed(0) : '—'} × 100 = {isFinite(runtimePercent) ? runtimePercent.toFixed(1) : '—'}%<br />
-                      deficitBtu = max(0, buildingHeatLossBtu - heatpumpOutputBtu) = {isFinite(deficitBtu) ? deficitBtu.toFixed(0) : '—'}<br />
-                      auxKw = deficitBtu / 3412.14 = {isFinite(deficitBtu) ? deficitBtu.toFixed(0) : '—'} / 3412.14 = <span className="font-mono">{(indoorTemp > outdoorTemp && isFinite(auxKw)) ? auxKw.toFixed(2) : 'N/A'}</span>
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold">7. Hourly Cost:</span><br />
-                    <span className="font-mono">
-                      cost_hour = electricalKw × rate = {electricalKw.toFixed(2)} × {settings.utilityCost} = <span className="font-mono">${costHour.toFixed(2)}</span>
-                    </span>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">1. Outdoor Temperature Profile</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        T_hour = mid + amplitude * sin(2 * PI * (h - 16) / 24)<br />
+                        mid = ({highTemp} + {lowTemp}) / 2 = {mid.toFixed(1)}<br />
+                        amplitude = ({highTemp} - {lowTemp}) / 2 = {amplitude.toFixed(1)}<br />
+                        T_hour = {mid.toFixed(1)} + {amplitude.toFixed(1)} * sin(2 * PI * ({selectedHour} - 16) / 24) = <strong>{outdoorTemp}°F</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">2. Building Heat Loss (BTU/hr)</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        HeatLoss = sqft * 22.67 * insulation * shape * (1 + 0.1 * (ceilingHeight - 8))<br />
+                        = {settings.squareFeet} * 22.67 * {settings.insulationLevel} * {settings.homeShape} * (1 + 0.1 * ({settings.ceilingHeight} - 8)) = <strong>{heatLoss} BTU/hr</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">3. Hourly Building Heat Loss</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        btuLossPerDegreeF = HeatLoss / 70 = {heatLoss} / 70 = {btuLossPerDegreeF.toFixed(1)}<br />
+                        buildingHeatLossBtu = btuLossPerDegreeF * (indoorTemp - outdoorTemp) = {btuLossPerDegreeF.toFixed(1)} * ({indoorTemp} - {outdoorTemp}) = <strong>{buildingHeatLossBtu.toFixed(0)}</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">4. Heat Pump Output</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        heatpumpOutputBtu = tons * 3.517 * capacityFactor * 3412.14<br />
+                        = {settings.tons} * 3.517 * {capacityFactor.toFixed(3)} * 3412.14 = <strong>{isFinite(heatpumpOutputBtu) ? heatpumpOutputBtu.toFixed(0) : '—'}</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">5. Power and Runtime</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        powerFactor = 1 / max(0.7, capacityFactor) = {isFinite(powerFactor) ? powerFactor.toFixed(2) : '—'}<br />
+                        baseElectricalKw = compressorPower * powerFactor = {settings.compressorPower} * {isFinite(powerFactor) ? powerFactor.toFixed(2) : '—'} = {isFinite(baseElectricalKw) ? baseElectricalKw.toFixed(2) : '—'}<br />
+                        defrostPenalty = {(indoorTemp > outdoorTemp) ? defrostPenalty.toFixed(2) : 'N/A'} (only if 20 &lt; outdoorTemp &lt; 45)<br />
+                        electricalKw = baseElectricalKw * defrostPenalty = {isFinite(baseElectricalKw) ? baseElectricalKw.toFixed(2) : '—'} * {(indoorTemp > outdoorTemp) ? defrostPenalty.toFixed(2) : 'N/A'} = <strong>{isFinite(electricalKw) ? electricalKw.toFixed(2) : '—'}</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">6. Runtime and Auxiliary Heat</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        runtime% = buildingHeatLossBtu / heatpumpOutputBtu * 100 = {isFinite(buildingHeatLossBtu) && isFinite(heatpumpOutputBtu) ? buildingHeatLossBtu.toFixed(0) : '—'} / {isFinite(heatpumpOutputBtu) ? heatpumpOutputBtu.toFixed(0) : '—'} * 100 = {isFinite(runtimePercent) ? runtimePercent.toFixed(1) : '—'}%<br />
+                        deficitBtu = max(0, buildingHeatLossBtu - heatpumpOutputBtu) = {isFinite(deficitBtu) ? deficitBtu.toFixed(0) : '—'}<br />
+                        auxKw = deficitBtu / 3412.14 = {isFinite(deficitBtu) ? deficitBtu.toFixed(0) : '—'} / 3412.14 = <strong>{(indoorTemp > outdoorTemp && isFinite(auxKw)) ? auxKw.toFixed(2) : 'N/A'}</strong>
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">7. Hourly Cost</p>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        cost_hour = electricalKw * rate = {electricalKw.toFixed(2)} * {settings.utilityCost} = <strong>${costHour.toFixed(2)}</strong>
+                      </code>
+                    </div>
                   </div>
                 </div>
                   <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                    All variables update as you change thermostat settings above or select a different hour. See the code for more details on capacity factor and runtime logic.
+                    The summary calculations show how the 24-hour totals are computed. The per-hour details show the calculation for a single selected hour. All variables update as you change thermostat settings above or select a different hour.
                   </div>
                 </div>
               )}

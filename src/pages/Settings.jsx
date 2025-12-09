@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   Settings,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Home,
   ThermometerSun,
   Flame,
@@ -22,8 +24,9 @@ import {
   ExternalLink,
   Plus,
   Edit2,
+  Zap,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   fetchGroqModels,
   suggestModel,
@@ -44,19 +47,35 @@ import {
 import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import EcobeeSettings from "../components/EcobeeSettings";
 import JouleBridgeSettings from "../components/JouleBridgeSettings";
+import StorageUsageIndicator from "../components/StorageUsageIndicator";
+import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
+import AutoSettingsMathEquations from "../components/AutoSettingsMathEquations";
 import { setProCode, clearProCode, hasProAccess } from "../utils/demoMode";
+import { getStorageUsage, cleanupOldAnalyses } from "../utils/storageCleanup";
+import { useAutoSave } from "../hooks/useAutoSave";
+import ValidatedInput from "../components/ValidatedInput";
+import UnitSystemToggle from "../components/UnitSystemToggle";
 
-const Section = ({ title, icon, children, ...props }) => (
+const Section = ({ title, icon, description, children, ...props }) => (
   <div
-    className="glass-card p-glass space-y-4 animate-fade-in-up"
+    className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 space-y-4"
     {...props}
   >
-    <h2 className="heading-secondary flex items-center gap-3">
-      <div className="icon-container">
-        {icon}
-      </div>
-      {title}
-    </h2>
+    <div>
+      <h2 className="text-[18px] font-medium text-[#E8EDF3] flex items-center gap-3">
+        {icon && (
+          <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
+            {icon}
+          </div>
+        )}
+        {title}
+      </h2>
+      {description && (
+        <p className="text-xs text-[#A7B0BA] mt-1 mb-3 max-w-2xl leading-relaxed">
+          {description}
+        </p>
+      )}
+    </div>
     {children}
   </div>
 );
@@ -71,10 +90,24 @@ const ProCodeInput = () => {
   });
   const [proAccess, setProAccess] = useState({ hasAccess: false, source: null });
   const [message, setMessage] = useState('');
+  const location = useLocation();
 
   useEffect(() => {
     checkAccess();
   }, []);
+
+  // Scroll to Joule Bridge section when navigated to with #joule-bridge hash
+  useEffect(() => {
+    if (location.hash === '#joule-bridge') {
+      // Scroll to joule-bridge section after a brief delay to ensure it's rendered
+      setTimeout(() => {
+        const jouleBridgeElement = document.getElementById('joule-bridge');
+        if (jouleBridgeElement) {
+          jouleBridgeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [location.hash]);
 
   const checkAccess = async () => {
     const access = await hasProAccess();
@@ -107,8 +140,13 @@ const ProCodeInput = () => {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-gray-600 dark:text-gray-400">
-        Enter your Pro code to unlock advanced features. Codes are provided when you purchase the Monitor tier ($20/year) or Bridge hardware ($129).
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+        <p className="text-sm text-amber-900 dark:text-amber-200 font-semibold mb-1">
+          Hardware Owners
+        </p>
+        <p className="text-xs text-amber-800 dark:text-amber-300">
+          Enter the code included with your Bridge ($129) or Sovereign ($299) device to unlock advanced features.
+        </p>
       </div>
 
       <div>
@@ -120,14 +158,14 @@ const ProCodeInput = () => {
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="PRO-XXXX"
+            placeholder="Enter code from device"
             className="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono uppercase"
             aria-label="Pro Code"
           />
           <button
             type="button"
             onClick={handleSetCode}
-            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-semibold"
+            className="px-4 py-2 bg-[#1E4CFF] hover:bg-blue-500 text-white rounded-lg transition-colors text-sm font-semibold"
           >
             Save
           </button>
@@ -135,7 +173,7 @@ const ProCodeInput = () => {
             <button
               type="button"
               onClick={handleClearCode}
-              className="px-3 py-2 rounded border border-red-300 dark:border-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-600 dark:text-red-400"
+              className="px-3 py-2 rounded-lg border border-red-500/50 hover:bg-red-500/10 text-sm text-red-400 hover:text-red-300 transition-colors"
             >
               Clear
             </button>
@@ -254,7 +292,7 @@ const VoicePicker = () => {
         id="voice-picker"
         value={selectedVoice}
         onChange={handleVoiceChange}
-        className={fullInputClasses}
+        className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
         aria-label="Voice persona selection"
       >
         <option value="">Default (Auto-select best voice)</option>
@@ -264,8 +302,141 @@ const VoicePicker = () => {
           </option>
         ))}
       </select>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-1.5 text-xs text-[#A7B0BA] max-w-2xl leading-relaxed">
         Choose a voice for Ask Joule. British English voices sound more formal and authoritative (JARVIS-like).
+      </p>
+    </div>
+  );
+};
+
+const DeleteAllDataButton = ({ setToast }) => {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!showConfirm) {
+      setShowConfirm(true);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Clear all localStorage data
+      localStorage.clear();
+      
+      // Clear IndexedDB if available
+      if (typeof window !== "undefined" && window.indexedDB) {
+        try {
+          const databases = await window.indexedDB.databases();
+          for (const db of databases) {
+            if (db.name) {
+              const deleteReq = window.indexedDB.deleteDatabase(db.name);
+              await new Promise((resolve, reject) => {
+                deleteReq.onsuccess = () => resolve();
+                deleteReq.onerror = () => reject(deleteReq.error);
+                deleteReq.onblocked = () => resolve(); // Continue even if blocked
+              });
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to clear IndexedDB:", error);
+        }
+      }
+
+      setToast?.({ 
+        message: "All data has been deleted. The page will reload.", 
+        type: "success" 
+      });
+
+      // Reload the page after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to delete all data:", error);
+      setToast?.({ 
+        message: "Failed to delete all data. Please try again.", 
+        type: "error" 
+      });
+      setIsDeleting(false);
+      setShowConfirm(false);
+    }
+  };
+
+  return (
+    <div>
+      {!showConfirm ? (
+        <button
+          onClick={handleDelete}
+          className="px-4 py-2 bg-red-600/80 hover:bg-red-600 border border-red-500/50 text-white rounded-lg font-semibold transition-colors"
+        >
+          Delete All Data
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-red-400">
+            Are you absolutely sure? This cannot be undone!
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="px-4 py-2 bg-red-600/80 hover:bg-red-600 disabled:bg-red-600/40 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors border border-red-500/50"
+            >
+              {isDeleting ? "Deleting..." : "Yes, Delete Everything"}
+            </button>
+            <button
+              onClick={() => setShowConfirm(false)}
+              disabled={isDeleting}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800/50 disabled:cursor-not-allowed text-[#E8EDF3] rounded-lg font-semibold transition-colors border border-slate-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TTSEngineToggle = () => {
+  const [useBrowserTTS, setUseBrowserTTS] = useState(() => {
+    try {
+      return localStorage.getItem("useBrowserTTS") === "true";
+    } catch {
+      return false; // Default to ElevenLabs
+    }
+  });
+
+  const handleToggle = (e) => {
+    const useBrowser = e.target.checked;
+    setUseBrowserTTS(useBrowser);
+    try {
+      localStorage.setItem("useBrowserTTS", useBrowser.toString());
+      // Dispatch event to notify other components
+      window.dispatchEvent(new Event("ttsEngineChanged"));
+    } catch (err) {
+      console.warn("Failed to save TTS engine preference:", err);
+    }
+  };
+
+  return (
+    <div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={useBrowserTTS}
+          onChange={handleToggle}
+          className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+        />
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Use Browser TTS (instead of ElevenLabs)
+        </span>
+      </label>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
+        {useBrowserTTS
+          ? "Using browser's built-in text-to-speech. No API credits used."
+          : "Using ElevenLabs for high-quality voice synthesis. API credits will be used."}
       </p>
     </div>
   );
@@ -299,8 +470,53 @@ const VoiceListenDurationInput = () => {
         aria-label="Voice listening duration"
       />
       <span className="text-sm text-gray-600 dark:text-gray-300">seconds</span>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
+      <p className="text-xs text-[#7C8894] max-w-md">
         (How long voice input listens before auto-stopping)
+      </p>
+    </div>
+  );
+};
+
+const FunSafeModeToggle = () => {
+  const [funSafeMode, setFunSafeMode] = useState(() => {
+    try {
+      return localStorage.getItem("funSafeMode") !== "false";
+    } catch {
+      return true; // Default to safe mode
+    }
+  });
+
+  const handleToggle = (e) => {
+    const isSafe = e.target.checked;
+    setFunSafeMode(isSafe);
+    try {
+      if (isSafe) {
+        localStorage.removeItem("funSafeMode"); // Remove or set to anything but "false"
+      } else {
+        localStorage.setItem("funSafeMode", "false");
+      }
+    } catch (err) {
+      console.warn("Failed to save fun safe mode preference:", err);
+    }
+  };
+
+  return (
+    <div>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={funSafeMode}
+          onChange={handleToggle}
+          className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+        />
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Fun Safe Mode (Family-Friendly Responses)
+        </span>
+      </label>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-7">
+        {funSafeMode
+          ? "Using toned-down, family-friendly responses. Disable for full-strength chaotic Joule humor (PG-13)."
+          : "Full-strength chaotic Joule enabled. Responses may include PG-13 humor and references."}
       </p>
     </div>
   );
@@ -504,13 +720,13 @@ const ZoneManagementSection = ({ setToast }) => {
 
         <button
           onClick={addZone}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-[#1E4CFF] hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors"
         >
           <Plus size={18} />
           Add Zone / Thermostat
         </button>
 
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-[#A7B0BA] max-w-2xl leading-relaxed">
           💡 Tip: If you have multiple thermostats, create a zone for each. Upload CSV data for each zone separately in the System Performance Analyzer.
         </p>
       </div>
@@ -548,17 +764,17 @@ const ByzantineModeToggle = ({ setToast }) => {
   };
 
   return (
-    <div className="glass-card p-glass">
+    <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+          <p className="font-semibold text-[#E8EDF3] flex items-center gap-2">
             🕯️ Byzantine Liturgical Mode
           </p>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+          <p className="text-xs text-[#A7B0BA] mt-1">
             Joule responds in the style of Orthodox liturgical chants
           </p>
           {enabled && (
-            <p className="text-xs text-purple-600 dark:text-purple-400 mt-2 italic">
+            <p className="text-xs text-purple-400 mt-2 italic">
               "Rejoice, Oh Coil Unfrosted! Glory to Thee, Oh Scroll Compressor!"
             </p>
           )}
@@ -579,16 +795,16 @@ const ByzantineModeToggle = ({ setToast }) => {
 const LocalLLMSettings = () => {
   const [enabled, setEnabled] = useState(() => {
     try {
-      return localStorage.getItem("useLocalLLM") === "true";
+      return localStorage.getItem("useLocalBackend") === "true" || localStorage.getItem("useLocalLLM") === "true";
     } catch {
       return false;
     }
   });
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
+      return localStorage.getItem("localBackendUrl") || localStorage.getItem("jouleBridgeUrl") || "http://raspberrypi.local:3002";
     } catch {
-      return "http://localhost:8080";
+      return "http://raspberrypi.local:3002";
     }
   });
   const [model, setModel] = useState(() => {
@@ -613,18 +829,16 @@ const LocalLLMSettings = () => {
     setConnectionStatus("unknown");
     
     try {
-      const response = await fetch(`${bridgeUrl}/api/llm/query`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: "Test",
-          model: model,
-        }),
+      // Test health endpoint first
+      const healthResponse = await fetch(`${bridgeUrl}/health`, {
+        method: "GET",
         signal: AbortSignal.timeout(5000),
       });
       
-      if (response.ok) {
+      if (healthResponse.ok) {
+        const healthData = await healthResponse.json();
         setConnectionStatus("connected");
+        console.log("[Local LLM] Bridge connected:", healthData);
       } else {
         setConnectionStatus("disconnected");
       }
@@ -640,7 +854,8 @@ const LocalLLMSettings = () => {
     const newValue = e.target.checked;
     setEnabled(newValue);
     try {
-      localStorage.setItem("useLocalLLM", newValue ? "true" : "false");
+      localStorage.setItem("useLocalBackend", newValue ? "true" : "false");
+      localStorage.setItem("useLocalLLM", newValue ? "true" : "false"); // Backward compatibility
       if (newValue) {
         // Test connection when enabling
         testConnection();
@@ -652,7 +867,8 @@ const LocalLLMSettings = () => {
     const val = e.target.value.trim();
     setBridgeUrl(val);
     try {
-      localStorage.setItem("jouleBridgeUrl", val);
+      localStorage.setItem("localBackendUrl", val);
+      localStorage.setItem("jouleBridgeUrl", val); // Backward compatibility
     } catch {}
   };
 
@@ -671,8 +887,8 @@ const LocalLLMSettings = () => {
           <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
             Use Local LLM (Joule Bridge/Core)
           </label>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Run LLM locally on your Joule Bridge or Core instead of using Groq API. Requires Ollama installed.
+          <p className="text-xs text-[#A7B0BA] mb-3 max-w-2xl leading-relaxed">
+            Run RAG locally on Raspberry Pi (Zero 2 W or Pi 5). Zero 2 W uses Groq API for fast inference (500+ t/s). Pi 5 runs fully local with Ollama. Both keep your data private.
           </p>
         </div>
         <label className="inline-flex items-center gap-3">
@@ -689,18 +905,22 @@ const LocalLLMSettings = () => {
         <>
           <div>
             <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-              Joule Bridge URL
+              Raspberry Pi Bridge URL
             </label>
             <input
               type="text"
               value={bridgeUrl}
               onChange={handleBridgeUrlChange}
-              placeholder="http://localhost:8080"
+              placeholder="http://raspberrypi.local:3002"
               className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              aria-label="Joule Bridge URL"
+              aria-label="Raspberry Pi Bridge URL"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              URL of your Joule Bridge or Core running the service
+              URL of your Raspberry Pi 5 running the Joule Local RAG Bridge. 
+              Use <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">raspberrypi.local</code> or the Pi's IP address.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">
+              Default: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://raspberrypi.local:3002</code>
             </p>
           </div>
 
@@ -730,20 +950,20 @@ const LocalLLMSettings = () => {
               type="button"
               onClick={testConnection}
               disabled={testing}
-              className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm disabled:opacity-50"
+              className="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-sm text-[#E8EDF3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testing ? "Testing..." : "Test Connection"}
             </button>
             {connectionStatus === "connected" && (
               <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                 <CheckCircle2 size={16} />
-                <span>Connected to Bridge</span>
+                <span>Connected to Pi Bridge</span>
               </div>
             )}
             {connectionStatus === "disconnected" && (
               <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
                 <XCircle size={16} />
-                <span>Cannot reach Bridge</span>
+                <span>Cannot reach Pi Bridge</span>
               </div>
             )}
           </div>
@@ -762,7 +982,8 @@ const LocalLLMSettings = () => {
           <li>No vendor lock-in</li>
         </ul>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-          📖 See <a href="/docs/LOCAL-LLM-RASPBERRY-PI.md" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">setup guide</a> for installation instructions on your Joule Bridge or Core.
+          📖 See <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">pi-setup/install.sh</code> for setup instructions. 
+          Requires Raspberry Pi 5 16GB with Ollama installed.
         </p>
       </div>
     </div>
@@ -926,7 +1147,7 @@ const GroqApiKeyInput = () => {
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
-            className="px-3 py-2 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+            className="px-3 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-sm text-[#E8EDF3] transition-colors"
             aria-label={showKey ? "Hide key" : "Show key"}
           >
             {showKey ? "🙈" : "👁️"}
@@ -1151,7 +1372,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
     <Section title="Building Characteristics" icon={<Home size={20} />}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
             Home Size (sq ft)
           </label>
           <input
@@ -1189,17 +1410,17 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                 }
               }
             }}
-            className={fullInputClasses}
+            className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={settings.useManualHeatLoss}
           />
           {settings.useManualHeatLoss && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
               Disabled when using manual heat loss entry
             </p>
           )}
         </div>
         <div>
-          <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
             Insulation Quality
           </label>
           <select
@@ -1207,7 +1428,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             onChange={(e) =>
               onSettingChange("insulationLevel", Number(e.target.value))
             }
-            className={fullInputClasses}
+            className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={settings.useManualHeatLoss}
           >
             <option value={1.4}>Poor</option>
@@ -1219,42 +1440,78 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
       
       {/* Heat Loss Source Selection */}
       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <label className="block text-xs font-semibold mb-3 text-gray-600 dark:text-gray-300">
+        <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
           Heat Loss Source
         </label>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Select which heat loss value to use for calculations. Only one option can be active at a time.
+        <p className="text-xs text-[#A7B0BA] mb-4 max-w-2xl leading-relaxed">
+          Select which method to use for heat loss calculations. Only one option can be active at a time.
         </p>
         
         <div className="space-y-3">
-          {/* Manual Entry Option */}
+          {/* Calculated (DoE) Option - Recommended */}
           <div className="flex items-start gap-3">
             <label className="inline-flex items-center gap-2 mt-1">
               <input
-                type="checkbox"
+                type="radio"
+                name="heatLossSource"
                 className="h-4 w-4"
-                checked={!!settings.useManualHeatLoss}
+                checked={!!settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)}
                 onChange={(e) => {
-                  const checked = e.target.checked;
-                  if (checked) {
-                    // Uncheck other options
-                    onSettingChange("useCalculatedHeatLoss", false);
-                    onSettingChange("useAnalyzerHeatLoss", false);
-                    onSettingChange("useManualHeatLoss", true);
-                  } else {
-                    // If unchecking, default to calculated
+                  if (e.target.checked) {
                     onSettingChange("useManualHeatLoss", false);
+                    onSettingChange("useAnalyzerHeatLoss", false);
                     onSettingChange("useCalculatedHeatLoss", true);
+                    // Mark that user has made an explicit choice - never auto-select again
+                    localStorage.setItem('heatLossMethodUserChoice', 'true');
                   }
                 }}
               />
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Manual Entry
+                ○ Calculated (DOE Data) - Recommended
               </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Enter exact heat loss in BTU/hr/°F
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Most accurate for typical homes. Based on square footage, insulation, home shape, and ceiling height.
+              </p>
+              {(settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)) && (
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 font-mono">
+                  Current value: {calculatedHeatLossFactor.toLocaleString()} BTU/hr/°F
+                  {calculatedHeatLossFactor > 0 && (
+                    <span className="ml-2">
+                      ({Math.round(calculatedHeatLossFactor * 70).toLocaleString()} BTU/hr @ 70°F ΔT)
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Manual Entry Option */}
+          <div className="flex items-start gap-3">
+            <label className="inline-flex items-center gap-2 mt-1">
+              <input
+                type="radio"
+                name="heatLossSource"
+                className="h-4 w-4"
+                checked={!!settings.useManualHeatLoss}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    onSettingChange("useCalculatedHeatLoss", false);
+                    onSettingChange("useAnalyzerHeatLoss", false);
+                    onSettingChange("useManualHeatLoss", true);
+                    // Mark that user has made an explicit choice - never auto-select again
+                    localStorage.setItem('heatLossMethodUserChoice', 'true');
+                  }
+                }}
+              />
+            </label>
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                ○ Manual Entry
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                For users with professional energy audits. Enter exact heat loss in BTU/hr/°F.
               </p>
               {settings.useManualHeatLoss && (
                 <div className="mt-2">
@@ -1303,9 +1560,9 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                           onSettingChange("manualHeatLoss", finalVal);
                         }
                       }}
-                      className={fullInputClasses}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <span className="text-xs text-[#7C8894] whitespace-nowrap">
                       BTU/hr/°F
                     </span>
                   </div>
@@ -1314,86 +1571,47 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             </div>
           </div>
 
-          {/* Calculated (DoE) Option */}
-          <div className="flex items-start gap-3">
-            <label className="inline-flex items-center gap-2 mt-1">
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={!!settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  if (checked) {
-                    // Uncheck other options
-                    onSettingChange("useManualHeatLoss", false);
-                    onSettingChange("useAnalyzerHeatLoss", false);
-                    onSettingChange("useCalculatedHeatLoss", true);
-                  } else {
-                    // If unchecking, default to manual if available, otherwise analyzer
-                    onSettingChange("useCalculatedHeatLoss", false);
-                    if (settings.useManualHeatLoss) {
-                      onSettingChange("useManualHeatLoss", true);
-                    } else if (outletContext?.heatLossFactor) {
-                      onSettingChange("useAnalyzerHeatLoss", true);
-                    }
-                  }
-                }}
-              />
-            </label>
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Calculated (Department of Energy Data) - Recommended
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Based on square footage, insulation, home shape, and ceiling height. This is the default method and works well for most homes.
-              </p>
-              {(settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)) && (
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 font-mono">
-                  Current value: {calculatedHeatLossFactor.toLocaleString()} BTU/hr/°F
-                  {calculatedHeatLossFactor > 0 && (
-                    <span className="ml-2">
-                      ({Math.round(calculatedHeatLossFactor * 70).toLocaleString()} BTU/hr @ 70°F ΔT)
-                    </span>
-                  )}
-                </p>
-              )}
-            </div>
-          </div>
-
           {/* Analyzer CSV Option */}
           <div className="flex items-start gap-3">
             <label className="inline-flex items-center gap-2 mt-1">
               <input
-                type="checkbox"
+                type="radio"
+                name="heatLossSource"
                 className="h-4 w-4"
                 checked={!!settings.useAnalyzerHeatLoss}
                 onChange={(e) => {
-                  const checked = e.target.checked;
-                  if (checked) {
-                    // Uncheck other options
+                  if (e.target.checked) {
                     onSettingChange("useManualHeatLoss", false);
                     onSettingChange("useCalculatedHeatLoss", false);
                     onSettingChange("useAnalyzerHeatLoss", true);
-                  } else {
-                    // If unchecking CSV, default to DOE calculated data
-                    onSettingChange("useAnalyzerHeatLoss", false);
-                    onSettingChange("useCalculatedHeatLoss", true);
+                    // Mark that user has made an explicit choice - never auto-select again
+                    localStorage.setItem('heatLossMethodUserChoice', 'true');
                   }
                 }}
               />
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Analyzer Data (CSV Import) - Optional
+                ○ From CSV Analyzer
               </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                From System Performance Analyzer CSV file upload. If unchecked, will use DOE calculated data instead.
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
               </p>
               {settings.useAnalyzerHeatLoss && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
                   {outletContext?.heatLossFactor 
                     ? `Current value: ${Number(outletContext.heatLossFactor).toFixed(1)} BTU/hr/°F`
-                    : "No analyzer data available. Upload CSV in System Performance Analyzer first."}
+                    : (
+                      <span>
+                        No analyzer data available.{" "}
+                        <Link 
+                          to="/performance-analyzer" 
+                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Upload CSV in System Performance Analyzer →
+                        </Link>
+                      </span>
+                    )}
                 </p>
               )}
               {!settings.useAnalyzerHeatLoss && outletContext?.heatLossFactor && (
@@ -1409,41 +1627,58 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
   );
 };
 
-const CostSettings = ({ settings, onSettingChange }) => (
-  <Section title="Cost Settings" icon={<DollarSign size={20} />}>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
-          Cost per kWh ($)
-        </label>
-        <div className="flex items-center gap-2">
-          <span className="text-gray-500 dark:text-gray-400">$</span>
-          <input
-            type="number"
-            min={0.05}
-            max={1.0}
-            step={0.01}
-            value={settings.utilityCost != null ? Number(settings.utilityCost).toFixed(2) : "0.10"}
-            onChange={(e) => {
-              const val = Math.min(1.0, Math.max(0.05, Number(e.target.value)));
-              const rounded = Math.round(val * 100) / 100;
-              onSettingChange("utilityCost", rounded);
-            }}
-            className="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            placeholder="0.15"
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400">/kWh</span>
+const CostSettings = ({ settings, onSettingChange, userSettings }) => {
+  // Get location for average rate hints
+  const location = userSettings?.location || userSettings?.city;
+  const state = userSettings?.state || "US";
+  const avgRate = state === "GA" ? 0.12 : state === "CA" ? 0.28 : state === "TX" ? 0.11 : 0.15;
+  
+  return (
+    <Section 
+      title="Cost Settings" 
+      icon={<DollarSign size={20} />}
+      description="Used for 7-day cost forecasts, annual estimates, and gas vs heat pump comparisons."
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+            Cost per kWh ($)
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-[#A7B0BA]">$</span>
+            <input
+              type="number"
+              min={0.05}
+              max={1.0}
+              step={0.01}
+              value={settings.utilityCost != null ? Number(settings.utilityCost).toFixed(2) : "0.10"}
+              onChange={(e) => {
+                const val = Math.min(1.0, Math.max(0.05, Number(e.target.value)));
+                const rounded = Math.round(val * 100) / 100;
+                onSettingChange("utilityCost", rounded);
+              }}
+              className="flex-1 px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="0.15"
+            />
+            <span className="text-xs text-[#7C8894]">/kWh</span>
+          </div>
+          {location && (
+            <p className="text-xs text-blue-400 mt-1.5 max-w-md">
+              💡 {location}, {state} average: ${avgRate.toFixed(2)}/kWh (EIA data)
+            </p>
+          )}
+          {!location && (
+            <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+              Used for budget calculations and cost estimates
+            </p>
+          )}
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Used for budget calculations and cost estimates
-        </p>
-      </div>
       <div>
-        <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
+        <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
           Gas Cost per Therm ($)
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 dark:text-gray-400">$</span>
+          <span className="text-[#A7B0BA]">$</span>
           <input
             type="number"
             min={0.5}
@@ -1455,26 +1690,210 @@ const CostSettings = ({ settings, onSettingChange }) => (
               const rounded = Math.round(val * 100) / 100;
               onSettingChange("gasCost", rounded);
             }}
-            className="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="1.20"
           />
-          <span className="text-xs text-gray-500 dark:text-gray-400">/therm</span>
+          <span className="text-xs text-[#7C8894]">/therm</span>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Used for gas furnace cost comparisons
-        </p>
+          {location && (
+            <p className="text-xs text-blue-400 mt-1.5 max-w-md">
+              💡 {location}, {state} average: ~$1.20/therm (EIA data)
+            </p>
+          )}
+          {!location && (
+            <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+              Used for gas furnace cost comparisons
+            </p>
+          )}
+        </div>
       </div>
+    </Section>
+  );
+};
+
+const AdvancedEquipmentProfile = ({ settings, onSettingChange, setToast }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const handleToggle = () => {
+    if (!expanded) {
+      // Enable custom profile when expanding
+      onSettingChange("useCustomEquipmentProfile", true);
+    }
+    setExpanded(!expanded);
+  };
+
+  const handleInputChange = (key, value) => {
+    const numValue = value === "" ? null : Number(value);
+    onSettingChange(key, numValue);
+  };
+
+  const hasRequiredData = 
+    settings.capacity47 && 
+    settings.capacity17 && 
+    settings.cop47 && 
+    settings.cop17;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Advanced: Custom COP Curve (Optional)
+            </p>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              title="COP (Coefficient of Performance) measures heat pump efficiency. A COP curve shows how efficiency changes at different outdoor temperatures. Higher COP = more efficient."
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Upload NEEP data or manually enter capacity/COP at different temperatures for more accurate balance point calculations.
+          </p>
+        </div>
+        <button
+          onClick={handleToggle}
+          className="ml-4 p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
+          {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={!!settings.useCustomEquipmentProfile}
+                onChange={(e) => onSettingChange("useCustomEquipmentProfile", e.target.checked)}
+                className="h-4 w-4"
+              />
+              Enable Custom Equipment Profile
+            </label>
+            {hasRequiredData && (
+              <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                <CheckCircle2 size={14} />
+                Profile Complete
+              </span>
+            )}
+          </div>
+
+          {settings.useCustomEquipmentProfile && (
+            <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-3">
+                Required: Capacity and COP at 47°F and 17°F
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Capacity at 47°F */}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                    Capacity @ 47°F (BTU/hr)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={200000}
+                    step={100}
+                    value={settings.capacity47 ?? ""}
+                    onChange={(e) => handleInputChange("capacity47", e.target.value)}
+                    placeholder="e.g., 36000"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+                    Rated capacity (from NEEP or spec sheet)
+                  </p>
+                </div>
+
+                {/* Capacity at 17°F */}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                    Capacity @ 17°F (BTU/hr)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={200000}
+                    step={100}
+                    value={settings.capacity17 ?? ""}
+                    onChange={(e) => handleInputChange("capacity17", e.target.value)}
+                    placeholder="e.g., 28000"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+                    Cold climate capacity
+                  </p>
+                </div>
+
+                {/* COP at 47°F */}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                    COP @ 47°F
+                  </label>
+                  <input
+                    type="number"
+                    min={1.0}
+                    max={6.0}
+                    step={0.1}
+                    value={settings.cop47 ?? ""}
+                    onChange={(e) => handleInputChange("cop47", e.target.value)}
+                    placeholder="e.g., 4.2"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+                    Coefficient of Performance at rated temp
+                  </p>
+                </div>
+
+                {/* COP at 17°F */}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                    COP @ 17°F
+                  </label>
+                  <input
+                    type="number"
+                    min={1.0}
+                    max={6.0}
+                    step={0.1}
+                    value={settings.cop17 ?? ""}
+                    onChange={(e) => handleInputChange("cop17", e.target.value)}
+                    placeholder="e.g., 2.8"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+                    COP at cold temperature
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+                <p className="text-xs text-blue-800 dark:text-blue-200 font-semibold mb-1">
+                  💡 How to find this data:
+                </p>
+                <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 ml-4 list-disc">
+                  <li>NEEP Cold-Climate Heat Pump Database: neep.org</li>
+                  <li>Manufacturer submittal sheets or product data catalogs</li>
+                  <li>AHRI Directory for matched system performance</li>
+                </ul>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                  <strong>Result:</strong> Your balance point and cost calculations become dead accurate instead of using generic "average" efficiency curves.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  </Section>
-);
+  );
+};
 
 const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
   const [showAfueTooltip, setShowAfueTooltip] = useState(false);
   const capacities = { 18: 1.5, 24: 2, 30: 2.5, 36: 3, 42: 3.5, 48: 4, 60: 5 };
-  const inputClasses =
-    "w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100";
-  const selectClasses =
-    "w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100";
 
   return (
     <Section
@@ -1484,29 +1903,29 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
       <div className="space-y-4">
         {/* Primary System Selection */}
         <div>
-          <p className="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
             Primary Heating System
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+          </label>
+          <p className="text-xs text-[#A7B0BA] mb-3 max-w-2xl">
             Select how your home is heated.
           </p>
-          <div className="inline-flex rounded-md overflow-hidden border dark:border-gray-600">
+          <div className="inline-flex rounded-lg overflow-hidden border border-slate-700">
             <button
               onClick={() => onSettingChange("primarySystem", "heatPump")}
-              className={`px-4 py-2 text-sm font-semibold flex items-center gap-1 ${
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-1 transition-colors ${
                 settings.primarySystem === "heatPump"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                  ? "bg-[#1E4CFF] text-white"
+                  : "bg-slate-900 text-[#A7B0BA] hover:text-white hover:bg-slate-800"
               }`}
             >
               ⚡ Heat Pump
             </button>
             <button
               onClick={() => onSettingChange("primarySystem", "gasFurnace")}
-              className={`px-4 py-2 text-sm font-semibold flex items-center gap-1 ${
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-1 transition-colors ${
                 settings.primarySystem === "gasFurnace"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                  ? "bg-[#1E4CFF] text-white"
+                  : "bg-slate-900 text-[#A7B0BA] hover:text-white hover:bg-slate-800"
               }`}
             >
               <Flame size={16} /> Gas Furnace
@@ -1518,9 +1937,18 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
         {settings.primarySystem === "heatPump" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
-                Heating Efficiency (HSPF2)
-              </label>
+              <div className="flex items-center gap-1 mb-2">
+                <label className="text-sm font-medium text-[#E8EDF3]">
+                  Heating Efficiency (HSPF2)
+                </label>
+                <button
+                  type="button"
+                  className="text-[#7C8894] hover:text-[#A7B0BA]"
+                  title="HSPF2 (Heating Seasonal Performance Factor) measures heat pump heating efficiency. Higher = more efficient. Typical range: 8-10.5 for modern systems."
+                >
+                  <HelpCircle className="w-3 h-3" />
+                </button>
+              </div>
               <input
                 type="number"
                 min={6}
@@ -1533,13 +1961,22 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
                     Math.min(13, Math.max(6, Number(e.target.value)))
                   )
                 }
-                className={inputClasses}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
-                Cooling Efficiency (SEER2)
-              </label>
+              <div className="flex items-center gap-1 mb-2">
+                <label className="text-sm font-medium text-[#E8EDF3]">
+                  Cooling Efficiency (SEER2)
+                </label>
+                <button
+                  type="button"
+                  className="text-[#7C8894] hover:text-[#A7B0BA]"
+                  title="SEER2 (Seasonal Energy Efficiency Ratio) measures A/C cooling efficiency. Higher = more efficient. Typical range: 14-18 for modern systems."
+                >
+                  <HelpCircle className="w-3 h-3" />
+                </button>
+              </div>
               <input
                 type="number"
                 min={14}
@@ -1552,11 +1989,11 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
                     Math.min(22, Math.max(14, Number(e.target.value)))
                   )
                 }
-                className={inputClasses}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1 text-gray-600 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
                 Capacity (Tons)
               </label>
               <select
@@ -1570,7 +2007,7 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
                     type: "success",
                   });
                 }}
-                className={selectClasses}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 {[18, 24, 30, 36, 42, 48, 60].map((bt) => (
                   <option key={bt} value={bt}>
@@ -1586,14 +2023,14 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
         {settings.primarySystem === "gasFurnace" && (
           <div className="space-y-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-sm font-medium text-[#E8EDF3]">
                   Furnace AFUE
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowAfueTooltip(!showAfueTooltip)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                  className="text-[#7C8894] hover:text-[#A7B0BA] transition-colors"
                   aria-label="What's AFUE?"
                 >
                   <HelpCircle size={14} />
@@ -1695,7 +2132,6 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
 };
 
 const SettingsPage = () => {
-  const navigate = useNavigate();
   const [toast, setToast] = useState(null);
   const [advancedSettingsExpanded, setAdvancedSettingsExpanded] =
     useState(false);
@@ -1707,255 +2143,457 @@ const SettingsPage = () => {
       console.warn(`setUserSetting not provided for setting: ${key}`, value);
     });
 
+  const [activeSection, setActiveSection] = useState("home-setup");
+  const [showPlans, setShowPlans] = useState(false);
+  const sections = [
+    { id: "home-setup", label: "Home Setup", number: "1" },
+    { id: "system-config", label: "System Configuration", number: "2" },
+    { id: "costs-rates", label: "Costs & Rates", number: "3" },
+    { id: "thermostat", label: "Thermostat Behavior", number: "4" },
+    { id: "bridge-ai", label: "Bridge & AI", number: "5" },
+  ];
+
+  // Track active section on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + 200;
+      const sectionIds = ["home-setup", "system-config", "costs-rates", "thermostat", "bridge-ai"];
+      for (const sectionId of sectionIds) {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          const { offsetTop, offsetHeight } = element;
+          if (scrollPosition >= offsetTop && scrollPosition < offsetTop + offsetHeight) {
+            setActiveSection(sectionId);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScroll);
+    handleScroll(); // Initial check
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
-    <div className="page-gradient-overlay">
-      <div className="settings-page p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-8 animate-fade-in-up">
-          <div className="flex items-center gap-4">
-            <div className="icon-container icon-container-gradient icon-container-lg">
-              <Settings className="w-7 h-7" />
-            </div>
-            <h1 className="heading-primary">
+    <div className="min-h-screen bg-[#050B10]">
+      <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-6">
+        {/* Page Header */}
+        <header className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-[28px] font-semibold text-[#FFFFFF] mb-1">
               Settings
             </h1>
+            <p className="text-sm text-[#A7B0BA]">
+              Configure your home, system, and preferences
+            </p>
           </div>
           <DashboardLink />
         </header>
 
-      <UserProfileCard setToast={setToast} />
-      
-      {/* Product Tiers Banner */}
-      <div className="mb-6 rounded-xl border-2 border-purple-300 dark:border-purple-700 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950 p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Crown className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Joule Product Tiers</h3>
-          </div>
-          <Link
-            to="/hardware"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-colors shadow-sm hover:shadow-md"
-          >
-            Manage Subscription
-            <ExternalLink size={16} />
-          </Link>
+        {/* Sticky Side Navigation */}
+        <div className="hidden lg:block fixed left-4 top-1/2 -translate-y-1/2 z-40">
+          <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-3 shadow-lg">
+            <div className="space-y-1">
+              {sections.map((section) => (
+                <a
+                  key={section.id}
+                  href={`#${section.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const element = document.getElementById(section.id);
+                    if (element) {
+                      element.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    activeSection === section.id
+                      ? "bg-[#1E4CFF] text-white"
+                      : "text-[#A7B0BA] hover:text-white hover:bg-slate-900"
+                  }`}
+                >
+                  <span className="text-xs font-medium w-5">{section.number}</span>
+                  <span className="font-medium">{section.label}</span>
+                </a>
+              ))}
+            </div>
+          </nav>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+      {/* Product Tiers - Collapsible */}
+      <div className="mb-8 bg-[#0C1118] border border-slate-800 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowPlans((v) => !v)}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-900/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Crown className="w-5 h-5 text-purple-400" />
+            <span className="text-sm font-medium text-[#E8EDF3]">
+              Comfort strategy & hardware tiers
+            </span>
+          </div>
+          <ChevronDown className={`w-5 h-5 text-[#A7B0BA] transition-transform ${showPlans ? "rotate-180" : ""}`} />
+        </button>
+        {showPlans && (
+          <div className="p-6 border-t border-slate-800">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white mb-1">Choose Your Comfort Strategy</h3>
+              <p className="text-xs text-[#A7B0BA]">Select a product tier to unlock features</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Free Tier */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg border-2 border-gray-300 dark:border-gray-600 p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-3 min-h-[3rem]">
-              <h4 className="font-bold text-lg text-gray-900 dark:text-white">Free</h4>
-              <span className="text-2xl font-extrabold text-gray-900 dark:text-white leading-tight">$0</span>
+          <div className="bg-[#0C1118] border-2 border-slate-700 rounded-lg p-4 flex flex-col relative">
+            <div className="absolute top-3 right-3">
+              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Current</span>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 font-semibold">CSV Analyzer</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">For DIY homeowners and one-time analysis</p>
+            <div className="flex items-center justify-between mb-3 min-h-[3rem]">
+              <h4 className="font-bold text-lg text-white">Free</h4>
+              <span className="text-2xl font-extrabold text-white leading-tight">$0</span>
+            </div>
+            <p className="text-sm text-slate-300 mb-3 font-semibold">Analyzer</p>
+            <p className="text-xs text-slate-400 mb-3">Manual CSV upload • Lead magnet</p>
             <ul className="space-y-2 text-sm flex-grow mb-4">
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Manual CSV upload & analysis</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-300">Manual CSV upload & analysis</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Heat loss calculation (BTU/hr/°F)</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-300">Heat loss calculation (BTU/hr/°F)</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">System balance point analysis</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-300">System balance point analysis</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Efficiency percentile ranking</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-300">Efficiency percentile ranking</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Export results to CSV</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-300">Export results to CSV</span>
               </li>
               <li className="flex items-start gap-2">
-                <XCircle size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-500 dark:text-gray-500">No automatic monitoring</span>
+                <XCircle size={16} className="text-slate-500 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-500">No automatic monitoring</span>
               </li>
             </ul>
-            <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400 italic text-center">You're using this tier</p>
-            </div>
           </div>
 
-          {/* Monitor Tier */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-lg border-2 border-blue-400 dark:border-blue-600 p-4 relative flex flex-col">
-            <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">POPULAR</div>
+          {/* Bridge Tier - Controller */}
+          <div className="bg-gradient-to-br from-amber-600/20 to-orange-600/20 rounded-lg border-2 border-amber-500/50 p-4 relative flex flex-col">
+            <div className="absolute top-3 right-3 bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded">POPULAR</div>
             <div className="flex items-center justify-between mb-3 min-h-[3rem]">
-              <h4 className="font-bold text-lg text-gray-900 dark:text-white">Monitor</h4>
-              <div className="text-right">
-                <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400 leading-tight whitespace-nowrap">$20</span>
-                <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">/year</span>
-              </div>
+              <h4 className="font-bold text-lg text-white">Bridge</h4>
+              <span className="text-2xl font-extrabold text-amber-400 leading-tight whitespace-nowrap">$129</span>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Monitor</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Annual subscription • Automatic cloud monitoring</p>
+            <p className="text-sm text-amber-200 mb-1 font-semibold">Controller</p>
+            <p className="text-xs text-amber-300/80 mb-3">One-time purchase • Pi Zero 2 W • The standard brain</p>
             <ul className="space-y-2 text-sm flex-grow mb-4">
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Everything in Free tier</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Everything in Free tier</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Automatic daily data collection from Ecobee</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Pi Zero 2 W hardware included</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Daily heat loss analysis & trend tracking</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Local control & short cycle protection</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Efficiency score over time</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Automatic data logging</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Alert notifications for changes</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Full thermostat control (setpoints, schedules)</span>
               </li>
               <li className="flex items-start gap-2">
-                <XCircle size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-500 dark:text-gray-500">No hardware control (read-only)</span>
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Works completely offline</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Cloud AI ready (bring your own API key)</span>
               </li>
             </ul>
-            <button 
-              onClick={() => navigate("/upgrades?product=monitor&showCart=true")}
-              className="mt-auto w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-lg transition-colors shadow-lg hover:shadow-xl"
-            >
-              Subscribe - $20/year
-            </button>
-          </div>
-
-          {/* Bridge Tier */}
-          <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950 rounded-lg border-2 border-amber-400 dark:border-amber-600 p-4 relative flex flex-col">
-            <div className="absolute top-2 right-2 bg-amber-600 text-white text-xs font-bold px-2 py-1 rounded">PREMIUM</div>
-            <div className="flex items-center justify-between mb-3 min-h-[3rem]">
-              <h4 className="font-bold text-lg text-gray-900 dark:text-white">Bridge</h4>
-              <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 leading-tight whitespace-nowrap">$129</span>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 font-semibold">Joule Bridge</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">One-time purchase • Complete control & sovereignty</p>
-            <ul className="space-y-2 text-sm flex-grow mb-4">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Everything in Monitor tier</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Joule Bridge hardware included (pre-configured dedicated logic controller)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Local HomeKit control (works with Siri)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Full thermostat control (setpoints, schedules)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">Works completely offline</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700 dark:text-gray-300">No cloud dependency</span>
-              </li>
-            </ul>
-            <button 
-              onClick={() => navigate("/upgrades?product=bridge&showCart=true")}
-              className="mt-auto w-full px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-lg transition-colors shadow-lg hover:shadow-xl"
+            <a
+              href={EBAY_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-auto w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-lg transition-colors shadow-lg hover:shadow-xl text-center"
             >
               Buy Now - $129
+            </a>
+          </div>
+
+          {/* Sovereign Tier - AI Core */}
+          <div className="bg-gradient-to-br from-violet-600/20 to-purple-600/20 rounded-lg border-2 border-violet-500/50 p-4 relative flex flex-col opacity-90">
+            <div className="absolute top-3 right-3 bg-violet-500 text-white text-xs font-bold px-2 py-1 rounded">COMING SOON</div>
+            <div className="flex items-center justify-between mb-3 min-h-[3rem]">
+              <h4 className="font-bold text-lg text-white">Sovereign</h4>
+              <span className="text-2xl font-extrabold text-violet-400 leading-tight whitespace-nowrap">$299</span>
+            </div>
+            <p className="text-sm text-violet-200 mb-1 font-semibold">The AI Core</p>
+            <p className="text-xs text-violet-300/80 mb-3">Coming Soon • Pi 5 16GB • The genius brain</p>
+            <ul className="space-y-2 text-sm flex-grow mb-4">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Everything in Bridge tier</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Pi 5 16GB hardware included</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Voice control (Local Whisper)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">LLM intelligence (on-device)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">100% air-gapped operation</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                <span className="text-slate-200">Maximum privacy & sovereignty</span>
+              </li>
+            </ul>
+            <button
+              disabled
+              className="mt-auto w-full px-6 py-3 bg-slate-700 text-slate-400 rounded-lg font-bold text-lg cursor-not-allowed text-center"
+            >
+              Coming Soon
             </button>
+          </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Section 1: Home Setup */}
+      <div id="home-setup" className="mb-8 scroll-mt-24">
+        <div className="mb-5 pb-3 border-b border-slate-800">
+          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">1. Home Setup</h2>
+          <p className="text-sm text-[#A7B0BA]">Configure your home structure and zones</p>
+        </div>
+        <div className="space-y-5">
+          <ZoneManagementSection setToast={setToast} />
+          <BuildingCharacteristics
+            settings={userSettings}
+            onSettingChange={setUserSetting}
+            outletContext={outletCtx}
+          />
+        </div>
+      </div>
+
+      {/* Section 2: System Configuration */}
+      <div id="system-config" className="mb-8 scroll-mt-24">
+        <div className="mb-5 pb-3 border-b border-slate-800">
+          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">2. System Configuration</h2>
+          <p className="text-sm text-[#A7B0BA]">Define your HVAC equipment and capabilities</p>
+        </div>
+        <div className="space-y-5">
+          <HvacSystemConfig
+            settings={userSettings}
+            onSettingChange={setUserSetting}
+            setToast={setToast}
+          />
+
+          {/* Advanced Equipment Profile (Elite Tier) */}
+          {userSettings.primarySystem === "heatPump" && (
+            <Section title="Advanced Equipment Profile" icon={<Crown className="w-5 h-5 text-amber-500" />}>
+              <AdvancedEquipmentProfile
+                settings={userSettings}
+                onSettingChange={setUserSetting}
+                setToast={setToast}
+              />
+            </Section>
+          )}
+        </div>
+      </div>
+
+      {/* Section 3: Costs & Rates */}
+      <div id="costs-rates" className="mb-8 scroll-mt-24">
+        <div className="mb-5 pb-3 border-b border-slate-800">
+          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">3. Costs & Rates</h2>
+          <p className="text-sm text-[#A7B0BA]">Set utility rates and pricing preferences</p>
+        </div>
+        <CostSettings
+          settings={userSettings}
+          onSettingChange={setUserSetting}
+          userSettings={userSettings}
+        />
+      </div>
+
+      {/* Section 4: Thermostat Behavior */}
+      <div id="thermostat" className="mb-8 scroll-mt-24">
+        <div className="mb-5 pb-3 border-b border-slate-800">
+          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">4. Thermostat Behavior</h2>
+          <p className="text-sm text-[#A7B0BA]">Configure schedule, setbacks, and control logic</p>
+        </div>
+        <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
+          {/* Sticky Summary Bar - Dynamic */}
+          {(() => {
+            // Compute strategy from thermostat settings
+            let strategy = "Constant temp";
+            let setback = "Off";
+            
+            try {
+              const thermostatSettings = JSON.parse(localStorage.getItem("thermostatSettings") || "{}");
+              if (thermostatSettings.schedule?.enabled) {
+                // Check if there's a sleep/away comfort setting that differs from home
+                const home = thermostatSettings.comfortSettings?.home;
+                const sleep = thermostatSettings.comfortSettings?.sleep;
+                if (sleep && home) {
+                  const hasSetback = sleep.heatSetPoint !== home.heatSetPoint || sleep.coolSetPoint !== home.coolSetPoint;
+                  if (hasSetback) {
+                    strategy = "Scheduled";
+                    const heatDelta = home.heatSetPoint - sleep.heatSetPoint;
+                    const coolDelta = sleep.coolSetPoint - home.coolSetPoint;
+                    if (heatDelta > 0) {
+                      setback = `${sleep.heatSetPoint}°F (night)`;
+                    } else if (coolDelta > 0) {
+                      setback = `${sleep.coolSetPoint}°F (night)`;
+                    } else {
+                      setback = "On";
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Fallback to defaults
+            }
+            
+            return (
+              <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-lg">
+                <div className="text-xs font-medium text-slate-400 mb-2">Current Configuration</div>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-slate-300">
+                    Mode: <span className="font-semibold text-white">{userSettings.primarySystem === "heatPump" ? "Heat pump" : userSettings.primarySystem === "gasFurnace" ? "Gas furnace" : "Unknown"}</span>
+                  </span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-300">
+                    Strategy: <span className="font-semibold text-white">{strategy}</span>
+                  </span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-300">
+                    Night setback: <span className="font-semibold text-white">{setback}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+          <ThermostatSettingsPanel />
+          <div className="mt-6">
+            <AutoSettingsMathEquations />
           </div>
         </div>
       </div>
 
-      {/* Zone Management */}
-      <ZoneManagementSection setToast={setToast} />
-
-      <BuildingCharacteristics
-        settings={userSettings}
-        onSettingChange={setUserSetting}
-        outletContext={outletCtx}
-      />
-      <HvacSystemConfig
-        settings={userSettings}
-        onSettingChange={setUserSetting}
-        setToast={setToast}
-      />
-
-      <CostSettings
-        settings={userSettings}
-        onSettingChange={setUserSetting}
-      />
-
-      {/* Thermostat Settings */}
-      <Section title="Thermostat Settings" icon={<ThermometerSun size={20} />}>
-        <ThermostatSettingsPanel />
-      </Section>
-
-      {/* Joule Bridge (HomeKit HAP) - Preferred */}
-      <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />}>
-        <JouleBridgeSettings />
-      </Section>
-
-      {/* Ecobee Cloud API (Fallback) */}
-      <Section title="Ecobee Cloud API (Fallback)" icon={<ThermometerSun size={20} />}>
-        <EcobeeSettings />
-      </Section>
-
-      {/* Pro Code Section */}
-      <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
-        <ProCodeInput />
-      </Section>
+      {/* Section 5: Bridge & AI */}
+      <div id="bridge-ai" className="mb-8 scroll-mt-24">
+        <div className="mb-5 pb-3 border-b border-slate-800">
+          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">5. Bridge & AI</h2>
+          <p className="text-sm text-[#A7B0BA]">Connect hardware and configure AI features</p>
+        </div>
+        <div className="space-y-5">
+          <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
+            <JouleBridgeSettings />
+          </Section>
+          <Section title="Ecobee Cloud API (Fallback)" icon={<ThermometerSun size={20} />}>
+            <EcobeeSettings />
+          </Section>
+          <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
+            <ProCodeInput />
+          </Section>
+        </div>
+      </div>
 
       {/* Advanced Settings Section */}
-      <div className="glass-card">
+      <div className="bg-[#0C1118] border border-slate-800 rounded-xl">
         <button
           onClick={() => setAdvancedSettingsExpanded(!advancedSettingsExpanded)}
-          className="w-full p-glass flex items-center justify-between hover:opacity-80 transition-opacity"
+          className="w-full p-6 flex items-center justify-between hover:bg-slate-900/50 transition-colors"
         >
           <div className="flex items-center gap-3">
-            <div className="icon-container">
-              <Shield className="w-5 h-5 text-purple-500" />
+            <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-purple-400" />
             </div>
-            <h2 className="heading-secondary">
+            <h2 className="text-[18px] font-medium text-[#E8EDF3]">
               Advanced Settings
             </h2>
           </div>
           <ChevronRight
-            className={`text-gray-500 transition-transform ${
+            className={`text-slate-400 transition-transform ${
               advancedSettingsExpanded ? "rotate-90" : ""
             }`}
           />
         </button>
 
         {advancedSettingsExpanded && (
-          <div className="p-glass border-t border-gray-200 dark:border-gray-700 space-y-6">
+          <div className="p-6 border-t border-slate-800 space-y-6">
             <Section title="Local LLM (Joule Bridge/Core)" icon={<Server size={20} />}>
               <LocalLLMSettings />
             </Section>
 
-            <Section title="Groq AI Integration" icon={<Server size={20} />}>
+            <Section title="Groq AI Integration" icon={<Zap size={20} />}>
               <GroqApiKeyInput />
             </Section>
 
             <Section title="Voice Settings" icon={<Mic size={20} />}>
               <div className="space-y-4">
+                <TTSEngineToggle />
                 <VoicePicker />
                 <VoiceListenDurationInput />
+                <FunSafeModeToggle />
+              </div>
+            </Section>
+
+            <Section title="Display Preferences" icon={<Settings size={20} />}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                    Unit System
+                  </label>
+                  <UnitSystemToggle />
+                  <p className="mt-1.5 text-xs text-[#A7B0BA] max-w-2xl leading-relaxed">
+                    US mode: °F, kBTU/h, BTU/hr/°F, kWh. International mode: °C, kW, W/K, Joules (with kWh in parentheses).
+                  </p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!userSettings.nerdMode}
+                      onChange={(e) =>
+                        setUserSetting("nerdMode", e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Nerd Mode (Joule / SI Units)
+                    </span>
+                  </label>
+                  <p className="mt-1.5 text-xs text-[#A7B0BA] max-w-2xl leading-relaxed ml-6">
+                    Show energy values in Joules (MJ/GJ) with kWh in parentheses. Perfect for impressing engineers and physicists on Reddit. Joule stores all energy internally in Joules, then formats for display.
+                  </p>
+                </div>
               </div>
             </Section>
 
             {/* Detailed Annual Estimate Toggle */}
-            <div className="glass-card p-glass">
+            <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-semibold text-gray-800 dark:text-gray-100">
+                  <p className="font-semibold text-[#E8EDF3]">
                     Detailed Annual Estimate
                   </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                  <p className="text-xs text-[#A7B0BA] mt-1">
                     Use month-by-month calculations for more accurate annual
                     estimates
                   </p>
@@ -1995,6 +2633,37 @@ const SettingsPage = () => {
 
             {/* Byzantine Mode Easter Egg 🕯️ */}
             <ByzantineModeToggle setToast={setToast} />
+
+            {/* Data Management & Privacy Section */}
+            <Section title="Data Management & Privacy" icon={<Shield size={20} />}>
+              <div className="space-y-4">
+                {/* Storage Usage Indicator */}
+                <StorageUsageIndicator />
+                
+                <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <h3 className="font-semibold text-red-900 dark:text-red-200 mb-2 flex items-center gap-2">
+                    <Trash2 size={18} />
+                    Delete All Data
+                  </h3>
+                  <p className="text-sm text-red-800 dark:text-red-300 mb-4">
+                    This will permanently delete all stored data including:
+                  </p>
+                  <ul className="text-sm text-red-700 dark:text-red-400 mb-4 space-y-1 list-disc list-inside">
+                    <li>All CSV analysis results and history</li>
+                    <li>All user settings and preferences</li>
+                    <li>All zone configurations</li>
+                    <li>All thermostat data and diagnostics</li>
+                    <li>All saved analyses and labels</li>
+                    <li>Location data and preferences</li>
+                    <li>Voice settings and AI preferences</li>
+                  </ul>
+                  <p className="text-sm font-semibold text-red-900 dark:text-red-200 mb-4">
+                    ⚠️ This action cannot be undone!
+                  </p>
+                  <DeleteAllDataButton setToast={setToast} />
+                </div>
+              </div>
+            </Section>
           </div>
         )}
       </div>
@@ -2006,7 +2675,7 @@ const SettingsPage = () => {
           onClose={() => setToast(null)}
         />
       )}
-    </div>
+      </div>
     </div>
   );
 };

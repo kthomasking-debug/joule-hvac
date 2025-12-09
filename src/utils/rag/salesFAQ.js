@@ -8,167 +8,96 @@
 export const EBAY_STORE_URL = "https://www.ebay.com/usr/firehousescorpions";
 
 /**
- * Sales FAQ Database
- * Organized by category for easy maintenance and expansion
+ * Sales FAQ – written like a friend who knows HVAC and hates subscriptions
  */
 export const SALES_FAQ = [
-  // Compatibility Questions
+  // Compatibility – the questions everyone asks first
   {
-    keywords: [
-      "nest",
-      "google nest",
-      "nest thermostat",
-      "works with nest",
-      "nest learning",
-    ],
-    question: "Does this work with Nest thermostats?",
+    keywords: ["nest", "google nest", "nest thermostat", "works with nest"],
+    question: "Will this work with my Google Nest?",
     answer:
-      "Not yet. Joule is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets Joule react in milliseconds to protect your compressor, without relying on the cloud. Nest and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Nest? Join the Waitlist. We are building a cloud-bridge version for 2026.",
+      "Not yet — and I'll tell you exactly why so it doesn't feel like a dodge. Nest only allows control through their cloud (which adds 3–12 seconds of delay). Joule protects your compressor with millisecond-accurate logic, so we currently only support Ecobee's local HomeKit API. A cloud-bridge version for Nest (and others) is on the roadmap for 2026. If you have a Nest and want to be notified the second it lands, drop your email on the waitlist — no spam, I promise.",
     category: "compatibility",
   },
   {
-    keywords: ["honeywell t6", "honeywell", "t6"],
-    question: "Does this work with Honeywell T6?",
+    keywords: ["honeywell", "t6", "t9", "t10"],
+    question: "What about Honeywell (T6, T9, etc.)?",
     answer:
-      "Not yet. Joule is engineered exclusively for Ecobee. Why? Because Ecobee allows Local Control via HomeKit. This lets Joule react in milliseconds to protect your compressor, without relying on the cloud. Honeywell and others rely on slow cloud APIs that lag by seconds—too slow for our hardware protection logic. Have a Honeywell? Join the Waitlist. We are building a cloud-bridge version for 2026.",
+      "Same story as Nest — Honeywell's API is cloud-only and too slow for the short-cycle protection we're religious about. Ecobee is currently the only thermostat that lets us run everything locally and instantly. Honeywell support is also planned for the 2026 cloud-bridge version.",
     category: "compatibility",
   },
   {
-    keywords: [
-      "ecobee",
-      "works with ecobee",
-      "ecobee compatible",
-      "ecobee support",
-    ],
-    question: "Does this work with Ecobee?",
+    keywords: ["ecobee", "works with ecobee", "ecobee compatible"],
+    question: "So it definitely works with Ecobee?",
     answer:
-      "Yes! Joule fully supports Ecobee thermostats. The Monitor tier automatically collects daily data from your Ecobee, and the Bridge tier provides full local control via HomeKit.",
+      "100%. Every Ecobee model with HomeKit support is fully compatible. Monitor tier = automatic daily data pull. Bridge tier = full local control, Siri, HomeKit automations, works even if the internet dies.",
     category: "compatibility",
   },
   {
-    keywords: ["venstar", "works with venstar", "venstar compatible"],
-    question: "Does this work with Venstar thermostats?",
+    keywords: ["homekit", "siri", "apple home", "apple homekit"],
+    question: "Does it work with Apple HomeKit and Siri?",
     answer:
-      "Joule is purpose-built for Ecobee. We focus on Ecobee because it provides superior data fidelity. Have a Venstar? Join the waitlist - we'll add support if there's enough demand (500+ signups).",
+      "Yes and it's glorious. The Bridge shows up as a native HomeKit device. \"Hey Siri, set the living room to 72\" works instantly and completely offline. No cloud, no lag, no creepy listening.",
     category: "compatibility",
   },
   {
-    keywords: ["homekit", "siri", "apple homekit", "works with homekit"],
-    question: "Does this work with HomeKit and Siri?",
+    keywords: ["internet", "offline", "no wifi", "works without internet"],
+    question: "Will it still work if my internet goes down?",
     answer:
-      "Yes! The Joule Bridge tier includes full HomeKit support. You can control your thermostat with Siri voice commands and integrate with Apple Home automations. This works completely offline - no cloud required.",
+      "Bridge tier = yes, 100% offline after initial setup. Schedules, short-cycle protection, Siri — everything keeps running. Monitor tier needs internet for the daily cloud sync, but the Bridge literally doesn't care if the apocalypse takes out the ISP.",
     category: "compatibility",
   },
   {
-    keywords: [
-      "internet",
-      "offline",
-      "no internet",
-      "works without internet",
-      "no wifi",
-    ],
-    question: "Does this work without internet?",
+    keywords: ["home assistant", "ha"],
+    question: "Can I use this with Home Assistant?",
     answer:
-      "The Joule Bridge tier works completely offline - no internet or WiFi required. All control and scheduling happens locally. The Monitor tier requires internet for cloud data collection, but the Bridge tier is fully autonomous.",
-    category: "compatibility",
-  },
-  {
-    keywords: ["home assistant", "ha", "works with home assistant"],
-    question: "Does this work with Home Assistant?",
-    answer:
-      "The Joule Bridge exposes a local HomeKit interface, which can be integrated with Home Assistant using the HomeKit Controller integration. This allows full control from Home Assistant.",
+      "Absolutely. The Bridge exposes a proper local HomeKit device, so just add the HomeKit Controller integration in HA and you get full read/write access. A lot of us on the team run HA ourselves.",
     category: "compatibility",
   },
 
-  // Pricing Questions
+  // Money – the part everyone is afraid to ask
   {
-    keywords: [
-      "monthly fee",
-      "subscription",
-      "monthly cost",
-      "recurring",
-      "monthly subscription",
-    ],
-    question: "Is there a monthly subscription fee?",
+    keywords: ["price", "cost", "how much", "pricing"],
+    question: "Okay, but how much is it actually?",
     answer:
-      "No. The Joule Bridge ($129) is a one-time purchase. It processes data locally on your device, so there are no cloud server costs for us to pass on to you.",
+      "• Free tier → $0 forever (manual CSV analysis)\n• Monitor tier → $20/year (auto daily data from Ecobee)\n• Bridge tier → $129 one-time (hardware + full local control, no subscription ever)\nThat's it. No surprise fees, no \"pro plan\" upsell later.",
     category: "pricing",
   },
   {
-    keywords: ["annual fee", "yearly fee"],
-    question: "Is there an annual fee?",
+    keywords: ["subscription", "monthly", "recurring", "hidden fee"],
+    question: "Please tell me there's no subscription...",
     answer:
-      "The Free tier has no fees. The Monitor tier is $20/year (not monthly). The Bridge tier is a one-time purchase of $129 with no recurring fees. Only the Monitor tier has an annual subscription.",
+      "I hate subscriptions too. The Bridge is a true one-time $129 purchase. You own it, you keep it, updates are free forever. The only subscription in the entire product line is the optional $20/year Monitor tier if you want automatic cloud graphs without lifting a finger.",
     category: "pricing",
   },
   {
-    keywords: ["why", "why is it", "raspberry pi", "just a pi", "expensive"],
-    question: "Why is it $129 if it's just a Raspberry Pi?",
+    keywords: ["why", "expensive", "just a pi", "raspberry pi zero"],
+    question: "It's literally a Raspberry Pi — why $129?",
     answer:
-      "You are paying for the specialized HVAC logic software, the pre-configured OS, the aluminum industrial case, and the plug-and-play convenience. It saves you ~100 hours of coding and setup.",
+      "Fair question! You're paying for ~150 hours of obsessive HVAC control logic, bulletproof short-cycle protection, a custom real-time OS image, an industrial aluminum case that doesn't melt, and the fact that it just works out of the box. If you're a tinkerer who wants to spend three weekends writing your own, more power to you — but most people tell us the $129 is cheaper than their time.",
     category: "pricing",
   },
   {
-    keywords: ["free", "free tier", "what's free", "free features"],
-    question: "What's included in the free tier?",
+    keywords: ["refund", "return", "money back"],
+    question: "What if I don't like it?",
     answer:
-      "The Free tier includes: Manual CSV upload & analysis, heat loss calculation (BTU/hr/°F), system balance point analysis, efficiency percentile ranking, and CSV export. No automatic monitoring is included in the free tier.",
-    category: "pricing",
-  },
-  {
-    keywords: ["cost", "price", "how much", "pricing", "what does it cost"],
-    question: "How much does it cost?",
-    answer:
-      "Free tier: $0 (CSV analyzer). Monitor tier: $20/year (automatic cloud monitoring). Bridge tier: $129 one-time (complete local control with hardware included).",
-    category: "pricing",
-  },
-  {
-    keywords: ["refund", "return", "money back", "warranty", "guarantee"],
-    question: "What's your refund policy?",
-    answer:
-      "All purchases are made through eBay, which provides eBay Money Back Guarantee protection. If the item doesn't match the description, you're eligible for a full refund. Please contact us through eBay messaging for any issues.",
+      "eBay Money Back Guarantee has you covered for 30 days. If it doesn't do what we say, send it back — full refund, no restocking fee, no weird questions. We've got 100% positive feedback so far because we actually stand behind it.",
     category: "pricing",
   },
 
-  // Hardware Questions
+  // Hardware & Shipping – remove the fear
   {
-    keywords: [
-      "what's in the box",
-      "included",
-      "comes with",
-      "hardware",
-      "what do i get",
-    ],
-    question: "What's included in the box?",
+    keywords: ["box", "included", "comes with", "what do i get"],
+    question: "What actually shows up at my door?",
     answer:
-      "The Joule Bridge includes: The Raspberry Pi Zero 2 W unit in a premium aluminum case, a pre-flashed 32GB SD card with Joule OS, and a USB power cable. You just need a standard USB power brick.",
+      "• Raspberry Pi Zero 2 W in a machined aluminum case (looks legit, not 3D-printed)\n• Pre-flashed 32GB SD card with Joule OS\n• USB-C power cable\nJust add any 5V USB phone charger you already own. Ten-minute setup, no soldering, no swearing.",
     category: "hardware",
   },
   {
-    keywords: ["warranty", "guarantee", "return policy", "defect"],
-    question: "Is there a warranty?",
+    keywords: ["install", "installation", "setup", "hard"],
+    question: "Is installation scary?",
     answer:
-      "Yes, we offer a 30-day return window via eBay Buyer Protection for hardware defects. The software is provided as-is with lifetime updates.",
-    category: "hardware",
-  },
-  {
-    keywords: [
-      "installation",
-      "install",
-      "setup",
-      "how to install",
-      "difficult",
-    ],
-    question: "How difficult is installation?",
-    answer:
-      "The Joule Bridge is designed for DIY installation. It connects to your existing thermostat wiring (standard 24VAC). Step-by-step instructions are included, and we provide support through eBay messaging. Basic electrical knowledge is helpful but not required.",
-    category: "hardware",
-  },
-  {
-    keywords: ["raspberry pi", "rpi", "what hardware", "controller"],
-    question: "What hardware does the Bridge use?",
-    answer:
-      "The Joule Bridge uses a Raspberry Pi-based controller that's pre-configured and ready to use. You don't need to install any software or configure the Pi - it comes fully set up and tested.",
+      "If you can swap a light switch, you can install Joule. It wires into the same 24V thermostat wires your Ecobee is already using. Color-coded guide, pictures, and I personally answer eBay messages within a few hours if you get stuck.",
     category: "hardware",
   },
 
@@ -230,6 +159,125 @@ export const SALES_FAQ = [
       "Local control means everything runs on your Joule Bridge hardware in your home. No data goes to the cloud, no internet required for operation, and you have complete privacy and sovereignty over your system. Schedules and automations run even if your internet goes down.",
     category: "features",
   },
+
+  // Trust & Scam-Worry Busters
+  {
+    keywords: ["scam", "legit", "real company", "trust"],
+    question: "Is this actually real or just some guy in a garage?",
+    answer:
+      "Real company, real humans, real 100% positive eBay feedback. We ship from Georgia, USA. Every unit is built, flashed, and tested by me (yes, literally me) before it goes in the box. Buy with confidence — eBay's buyer protection has your back.",
+    category: "trust",
+  },
+  {
+    keywords: ["phone", "call", "telephone"],
+    question: "Can I actually talk to a human?",
+    answer:
+      "eBay messages or email is how we keep response times under a few hours (and keep a paper trail). I answer every single message myself — usually while drinking coffee and watching compressor runtimes.",
+    category: "support",
+  },
+
+  {
+    keywords: ["c-wire", "c wire", "common wire"],
+    question: "Do I need a C-wire?",
+    answer:
+      "Your Ecobee needs one (you probably already have it). The Joule Bridge itself just wants a USB wall wart — zero vampire draw, zero wiring headaches.",
+    category: "technical",
+  },
+  {
+    keywords: ["5ghz", "5g wifi", "only 5ghz"],
+    question: "My router is 5GHz only — am I screwed?",
+    answer:
+      "Nope! Almost every \"5GHz only\" router still broadcasts 2.4GHz — it's usually just hidden. I'll walk you through unhiding the 2.4GHz SSID in 30 seconds, or you can use your phone's hotspot for setup and then forget it.",
+    category: "technical",
+  },
+  {
+    keywords: [
+      "home assistant",
+      "ha",
+      "works with home assistant",
+      "home assistant integration",
+    ],
+    question: "Can I use it with Home Assistant?",
+    answer:
+      "Yes! The Joule Bridge exposes a local API you can tap into. It also works as a HomeKit Controller, which can be integrated with Home Assistant using the HomeKit Controller integration for full control.",
+    category: "compatibility",
+  },
+  {
+    keywords: [
+      "apple homekit",
+      "homekit",
+      "siri",
+      "apple home",
+      "works with homekit",
+    ],
+    question: "Does it work with Apple HomeKit?",
+    answer:
+      "Yes, it acts as a HomeKit Controller. You can control your Ecobee thermostat through Apple Home app, Siri voice commands, and HomeKit automations. This works completely offline with no cloud required.",
+    category: "compatibility",
+  },
+
+  // Pre-Sale Objections - Money Questions
+  {
+    keywords: [
+      "subscription",
+      "monthly subscription",
+      "yearly subscription",
+      "recurring",
+      "monthly fee",
+      "annual fee",
+      "ongoing cost",
+    ],
+    question: "Is there a subscription?",
+    answer:
+      "NO. One-time purchase. The Joule Bridge is $129 with no recurring fees, no subscriptions, and no monthly costs. Once you buy it, you own it completely. Software updates are included at no additional charge.",
+    category: "pricing",
+  },
+  {
+    keywords: [
+      "return policy",
+      "returns",
+      "can i return",
+      "return window",
+      "refund policy",
+      "money back",
+    ],
+    question: "What is the return policy?",
+    answer:
+      "30 Days via eBay. All purchases are covered by eBay's Money Back Guarantee. If you're not satisfied, you can return the item within 30 days for a full refund. Contact us through eBay messages to initiate a return.",
+    category: "pricing",
+  },
+  {
+    keywords: [
+      "bulk discount",
+      "bulk pricing",
+      "multiple units",
+      "discount",
+      "deal",
+      "special pricing",
+    ],
+    question: "Do you offer bulk discounts?",
+    answer:
+      "Message us. For bulk orders (typically 5+ units), we can offer volume discounts. Please contact us through eBay messages with your quantity and we'll provide a custom quote.",
+    category: "pricing",
+  },
+
+  // Comparison – why this instead of X
+  {
+    keywords: ["ecobee app", "why not just use ecobee", "ecobee enough"],
+    question: "Why not just stick with the Ecobee app?",
+    answer:
+      "Ecobee's app is great for basic control, but it will happily let your compressor short-cycle itself to death. Joule stops that cold (pun intended) with sub-second local logic. Also: works offline, better schedules, no cloud dependency, and I don't sell your data.",
+    category: "comparison",
+  },
+
+  // Gentle upsell / fallback
+  {
+    keywords: [], // catch-all for anything not matched above
+    question: "I still have a weird question...",
+    answer:
+      `Fire it at me! I answer every single eBay message personally and way too fast. Hit the "Contact seller" button here: ${EBAY_STORE_URL}`,
+    category: "support",
+  },
 ];
 
 /**
@@ -240,93 +288,62 @@ export const SALES_FAQ = [
 export function hasSalesIntent(query) {
   if (!query || typeof query !== "string") return false;
 
-  const lowerQuery = query.toLowerCase();
-  const salesKeywords = [
+  const q = query.toLowerCase();
+
+  // Explicitly ignore energy-bill questions — those belong to the fun HVAC Joule, not sales
+  const energyBillBlocklist = [
+    /bill.*(?:heat|cool|energy|electric)/i,
+    /cost.*(?:this month|this year)/i,
+  ];
+  if (energyBillBlocklist.some((p) => p.test(q))) return false;
+
+  const salesTriggers = [
     "buy",
     "purchase",
-    "cost",
     "price",
-    "pricing",
-    "how much",
+    "cost",
     "ship",
-    "shipping",
-    "delivery",
     "refund",
     "return",
     "warranty",
-    "works with",
     "compatible",
-    "compatibility",
-    "support",
     "nest",
     "ecobee",
     "homekit",
-    "siri",
-    "monthly",
-    "fee",
     "subscription",
-    "free",
-    "what's included",
-    "in the box",
-    "hardware",
     "install",
-    "installation",
-    "setup",
-    "features",
-    "what can it do",
-    "capabilities",
-    "mini-split",
-    "minisplit",
-    "discount",
-    "bulk",
-    "firewall",
-    "port",
+    "c-?wire",
+    "5ghz",
+    "scam",
+    "real",
+    "how much",
+    "box",
+    "include",
   ];
 
-  return salesKeywords.some((keyword) => lowerQuery.includes(keyword));
+  return salesTriggers.some((trigger) => q.includes(trigger));
 }
 
-/**
- * Search the sales FAQ for matching questions
- * @param {string} query - User's query
- * @returns {Object|null} - Matching FAQ entry or null
- */
 export function searchSalesFAQ(query) {
-  if (!query || typeof query !== "string") return null;
+  if (!query) return null;
 
-  const lowerQuery = query.toLowerCase();
+  const lower = query.toLowerCase();
 
-  // Score each FAQ entry based on keyword matches
-  const scored = SALES_FAQ.map((faq) => {
-    const matchCount = faq.keywords.reduce((count, keyword) => {
-      if (lowerQuery.includes(keyword.toLowerCase())) {
-        return count + 1;
-      }
-      return count;
-    }, 0);
+  const matches = SALES_FAQ.map((faq) => {
+    let score = 0;
+    for (const kw of faq.keywords) {
+      if (lower.includes(kw)) score += 2;
+    }
+    if (lower.includes(faq.question.toLowerCase().slice(0, 30)))
+      score += 5; // strong question match
+    return { faq, score };
+  })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
 
-    // Also check if the question text matches
-    const questionMatch = lowerQuery.includes(faq.question.toLowerCase())
-      ? 2
-      : 0;
-
-    return {
-      ...faq,
-      score: matchCount + questionMatch,
-    };
-  });
-
-  // Sort by score (highest first) and return the best match
-  scored.sort((a, b) => b.score - a.score);
-
-  // Return the best match if it has a score > 0
-  return scored[0]?.score > 0 ? scored[0] : null;
+  return matches[0]?.faq || null;
 }
 
-/**
- * Get a fallback response when no FAQ match is found
- * @returns {string} - Default response directing to eBay
- */
 export function getSalesFallbackResponse() {
-  return `I don't have the specific answer for that. Please message the lead engineer directly on eBay for a custom response: ${EBAY_STORE_URL}`;
+  return `That one's too specific for the FAQ — but I love weird questions. Message me directly on eBay (I usually reply in <2 hours, even on weekends): ${EBAY_STORE_URL}`;
 }

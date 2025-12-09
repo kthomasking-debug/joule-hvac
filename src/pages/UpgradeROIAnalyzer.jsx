@@ -189,7 +189,7 @@ export default function UpgradeROIAnalyzer() {
               <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
                 <Calculator size={24} className="text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">View Calculation Methodology</h3>
             </div>
             {showCalculations ? (
               <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
@@ -201,122 +201,60 @@ export default function UpgradeROIAnalyzer() {
           {showCalculations && (
             <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
               {/* Current System */}
-              <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+              <div>
                 <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Current System (Baseline)</h4>
-                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                  <div className="flex justify-between">
-                    <span>Annual Heating Cost:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{currency(baseline.heating)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Annual Cooling Cost:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{currency(baseline.cooling)}</span>
-                  </div>
-                  <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
-                    <div className="flex justify-between">
-                      <span>Total Annual Cost:</span>
-                      <span className="font-bold text-blue-600 dark:text-blue-400">{currency(baseline.total)}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                      = {currency(baseline.heating)} (heating) + {currency(baseline.cooling)} (cooling)
-                    </div>
-                  </div>
-                </div>
+                <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                  Annual Heating Cost: <strong>{currency(baseline.heating)}</strong><br />
+                  Annual Cooling Cost: <strong>{currency(baseline.cooling)}</strong><br />
+                  <br />
+                  Total Annual Cost: <strong>{currency(baseline.total)}</strong><br />
+                  = {currency(baseline.heating)} (heating) + {currency(baseline.cooling)} (cooling)
+                </code>
               </div>
 
               {/* Upgraded System */}
-              <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+              <div>
                 <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Upgraded System</h4>
-                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
                   {upgradeType === 'hvac' && (
                     <>
-                      <div className="flex justify-between">
-                        <span>New HSPF2:</span>
-                        <span className="font-bold">{hspf2}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>New SEER2:</span>
-                        <span className="font-bold">{seer2}</span>
-                      </div>
+                      New HSPF2: <strong>{hspf2}</strong><br />
+                      New SEER2: <strong>{seer2}</strong><br />
                     </>
                   )}
                   {upgradeType !== 'hvac' && (
                     <>
-                      <div className="flex justify-between">
-                        <span>Insulation Improvement:</span>
-                        <span className="font-bold">
-                          {improvementLevel === 'excellent' ? '25% reduction' : '15% reduction'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Home Shape Improvement:</span>
-                        <span className="font-bold">
-                          {improvementLevel === 'excellent' ? '5% reduction' : '3% reduction'}
-                        </span>
-                      </div>
+                      Insulation Improvement: <strong>{improvementLevel === 'excellent' ? '25% reduction' : '15% reduction'}</strong><br />
+                      Home Shape Improvement: <strong>{improvementLevel === 'excellent' ? '5% reduction' : '3% reduction'}</strong><br />
                     </>
                   )}
-                  <div className="flex justify-between pt-2">
-                    <span>Annual Heating Cost:</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">{currency(upgraded.heating)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Annual Cooling Cost:</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">{currency(upgraded.cooling)}</span>
-                  </div>
-                  <div className="pt-2 border-t border-green-300 dark:border-green-700">
-                    <div className="flex justify-between">
-                      <span>Total Annual Cost:</span>
-                      <span className="font-bold text-green-600 dark:text-green-400">{currency(upgraded.total)}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                      = {currency(upgraded.heating)} (heating) + {currency(upgraded.cooling)} (cooling)
-                    </div>
-                  </div>
-                </div>
+                  <br />
+                  Annual Heating Cost: <strong>{currency(upgraded.heating)}</strong><br />
+                  Annual Cooling Cost: <strong>{currency(upgraded.cooling)}</strong><br />
+                  <br />
+                  Total Annual Cost: <strong>{currency(upgraded.total)}</strong><br />
+                  = {currency(upgraded.heating)} (heating) + {currency(upgraded.cooling)} (cooling)
+                </code>
               </div>
 
               {/* ROI Calculations */}
-              <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+              <div>
                 <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">ROI Calculations</h4>
-                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                  <div className="flex justify-between">
-                    <span>Annual Savings:</span>
-                    <span className="font-bold text-purple-600 dark:text-purple-400">{currency(annualSavings)}</span>
-                  </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                    = {currency(baseline.total)} (current) - {currency(upgraded.total)} (upgraded)
-                  </div>
-                  <div className="pt-2 border-t border-purple-300 dark:border-purple-700">
-                    <div className="flex justify-between">
-                      <span>Upgrade Cost:</span>
-                      <span className="font-bold">{currency(upgradeCost)}</span>
-                    </div>
-                    <div className="flex justify-between pt-2">
-                      <span>Payback Period:</span>
-                      <span className="font-bold text-purple-600 dark:text-purple-400">
-                        {isFinite(payback) ? `${payback.toFixed(1)} years` : '—'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      = {currency(upgradeCost)} ÷ {currency(annualSavings)}/year
-                    </div>
-                    <div className="flex justify-between pt-2">
-                      <span>10-Year ROI:</span>
-                      <span className="font-bold text-purple-600 dark:text-purple-400">{currency(roi10)}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      = (10 × {currency(annualSavings)}) - {currency(upgradeCost)}
-                    </div>
-                    <div className="flex justify-between pt-2">
-                      <span>NPV (10 years, {discountRate * 100}% discount):</span>
-                      <span className="font-bold text-purple-600 dark:text-purple-400">{currency(npv)}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      = Present value of 10 years of savings minus initial cost
-                    </div>
-                  </div>
-                </div>
+                <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                  Annual Savings: <strong>{currency(annualSavings)}</strong><br />
+                  = {currency(baseline.total)} (current) - {currency(upgraded.total)} (upgraded)<br />
+                  <br />
+                  Upgrade Cost: <strong>{currency(upgradeCost)}</strong><br />
+                  <br />
+                  Payback Period: <strong>{isFinite(payback) ? `${payback.toFixed(1)} years` : '—'}</strong><br />
+                  = {currency(upgradeCost)} / {currency(annualSavings)}/year<br />
+                  <br />
+                  10-Year ROI: <strong>{currency(roi10)}</strong><br />
+                  = (10 * {currency(annualSavings)}) - {currency(upgradeCost)}<br />
+                  <br />
+                  NPV (10 years, {discountRate * 100}% discount): <strong>{currency(npv)}</strong><br />
+                  = Present value of 10 years of savings minus initial cost
+                </code>
               </div>
             </div>
           )}

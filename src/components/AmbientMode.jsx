@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Mic } from 'lucide-react';
+import { useUnitSystem, formatTemperatureFromF } from '../lib/units';
 
 export default function AmbientMode({ 
   currentTemp = 72,
@@ -11,6 +12,7 @@ export default function AmbientMode({
   onTap 
 }) {
   const [showDetails, setShowDetails] = useState(false);
+  const { unitSystem } = useUnitSystem();
 
   useEffect(() => {
     if (!isActive) return;
@@ -39,7 +41,8 @@ export default function AmbientMode({
       {/* Current temperature - massive display */}
       <div className="text-center mb-8">
         <div className={`text-[12rem] font-bold leading-none ${statusColor}`}>
-          {currentTemp}°
+          {formatTemperatureFromF(currentTemp, unitSystem, { decimals: 0, withUnit: false })}
+          <span className="text-[6rem]">{unitSystem === "intl" ? "°C" : "°F"}</span>
         </div>
         <div className="text-4xl text-gray-400 mt-4">
           Current Temperature
@@ -49,7 +52,9 @@ export default function AmbientMode({
       {/* Target temperature */}
       <div className="text-center mb-12">
         <div className="text-5xl text-gray-500">
-          Target: <span className="text-white font-semibold">{targetTemp}°</span>
+          Target: <span className="text-white font-semibold">
+            {formatTemperatureFromF(targetTemp, unitSystem, { decimals: 0 })}
+          </span>
         </div>
       </div>
 
@@ -67,8 +72,8 @@ export default function AmbientMode({
       {showDetails && (
         <div className="absolute bottom-12 left-0 right-0 text-center animate-fadeIn">
           <div className="text-2xl text-gray-400">
-            {tempDiff > 0 && `${tempDiff}° warmer than target`}
-            {tempDiff < 0 && `${Math.abs(tempDiff)}° cooler than target`}
+            {tempDiff > 0 && `${formatTemperatureFromF(tempDiff, unitSystem, { decimals: 0, withUnit: false })}°${unitSystem === "intl" ? "C" : "F"} warmer than target`}
+            {tempDiff < 0 && `${formatTemperatureFromF(Math.abs(tempDiff), unitSystem, { decimals: 0, withUnit: false })}°${unitSystem === "intl" ? "C" : "F"} cooler than target`}
             {tempDiff === 0 && 'Right on target'}
           </div>
         </div>

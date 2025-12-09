@@ -4,6 +4,32 @@
   --radius-md: 12px;
 }
 
+/* Screen reader only - visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only:focus,
+.sr-only:focus-within,
+.focus-within\:not-sr-only:focus-within {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
 html,
 body {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -21,10 +47,12 @@ body {
   /* Constrain body to viewport exactly to prevent extra dark area */
   height: 100vh;
   width: 100vw;
+  /* Ensure body doesn't prevent scrolling */
+  overscroll-behavior: none;
 }
 
 html.dark body {
-  background-color: #0f172a;
+  background-color: #000000;
   color: #f1f5f9;
 }
 
@@ -38,11 +66,19 @@ html.dark body {
   overflow-y: auto; /* Allow scrolling within the scaled wrapper */
   overflow-x: hidden;
   box-sizing: border-box;
+  /* Ensure we can scroll to the top */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  /* Ensure scroll position can reach 0 */
+  overscroll-behavior-y: contain;
+  /* Prevent any padding/margin from blocking scroll to top */
+  padding-top: 0;
+  margin-top: 0;
 }
 
 html.dark body {
-  background-color: #0f172a;
-  color: #f1f5f9;
+  background-color: #0C0F14; /* Layer 0 */
+  color: #FFFFFF; /* Primary text */
   /* Ensure dark background extends properly with zoom */
   min-height: 100vh;
 }
@@ -512,17 +548,27 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
 
-/* Print Styles */
+/* Print Styles - Enhanced for Professional Reports */
 @media print {
 
   /* Hide navigation and UI elements */
   .app-header-bar,
   .mobile-nav,
   .app-nav,
-  button,
-  .btn,
+  nav,
+  header,
+  button:not(.print-include),
+  .btn:not(.print-include),
   input[type="range"],
-  .dashboard-link {
+  input[type="file"],
+  .dashboard-link,
+  .file-upload-section,
+  .upload-section,
+  .joule-fab,
+  .ask-joule,
+  .mode-toggle,
+  .copy-to-clipboard,
+  .no-print {
     display: none !important;
   }
 
@@ -532,6 +578,12 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     color: black !important;
     margin: 0;
     padding: 0;
+    font-size: 12pt;
+  }
+
+  html.dark body {
+    background: white !important;
+    color: black !important;
   }
 
   .page {
@@ -539,12 +591,30 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     padding: 0.5in !important;
   }
 
+  /* Remove scaling for print */
+  .app-scale-wrapper {
+    transform: none !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
   /* Ensure cards and content are visible */
-  .card {
-    border: 1px solid #ddd !important;
+  .card,
+  .bg-white,
+  .bg-gray-800,
+  [class*="bg-"] {
     background: white !important;
+    border: 1px solid #ddd !important;
     page-break-inside: avoid;
     margin-bottom: 0.5rem;
+    box-shadow: none !important;
+  }
+
+  /* Remove gradients */
+  [class*="gradient"],
+  [class*="from-"],
+  [class*="to-"] {
+    background: white !important;
   }
 
   /* Show all text in black for printing */
@@ -552,17 +622,62 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     color: black !important;
   }
 
-  /* Preserve important colors for charts and highlights */
-  .text-blue-600,
-  .text-green-600,
-  .text-red-600,
-  .text-orange-600 {
-    color: inherit !important;
+  html.dark * {
+    color: black !important;
+    background: white !important;
+  }
+
+  /* Analysis result cards */
+  .bg-blue-900,
+  .bg-green-900,
+  .bg-yellow-900,
+  .bg-red-900,
+  .bg-purple-900,
+  .bg-indigo-900 {
+    background: white !important;
+    border: 2px solid black !important;
+    color: black !important;
+  }
+
+  /* Large numbers should be prominent */
+  .text-5xl,
+  .text-4xl,
+  .text-3xl {
+    font-size: 24pt !important;
+    font-weight: bold;
+    color: black !important;
+  }
+
+  /* Hide charts (they don't print well) */
+  .recharts-wrapper,
+  .recharts-surface,
+  svg[class*="recharts"],
+  canvas {
+    display: none !important;
+  }
+
+  /* Hide icons */
+  svg,
+  .lucide {
+    display: none !important;
   }
 
   /* Ensure tables print properly */
   table {
     page-break-inside: avoid;
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  table th,
+  table td {
+    border: 1px solid #333;
+    padding: 0.5em;
+  }
+
+  table th {
+    background: #f0f0f0 !important;
+    font-weight: bold;
   }
 
   /* Better heading visibility */

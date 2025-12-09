@@ -19,6 +19,23 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
   const fetchData = async (latitude, longitude, targetMonth) => {
     if (!latitude || !longitude || !targetMonth) return;
 
+    // Validate coordinates are valid numbers
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      console.warn("Invalid coordinates for forecast:", {
+        latitude,
+        longitude,
+      });
+      return;
+    }
+
+    // Validate latitude is between -90 and 90, longitude between -180 and 180
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      console.warn("Coordinates out of valid range:", { lat, lon });
+      return;
+    }
+
     if (abortRef.current) {
       try {
         abortRef.current.abort();
@@ -34,7 +51,8 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
 
     try {
       // Step 1: Fetch 15-day forecast from Open-Meteo
-      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,relativehumidity_2m_max,relativehumidity_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=15`;
+      // Request both daily temps AND hourly humidity (can get both in one call)
+      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min&hourly=relativehumidity_2m&temperature_unit=fahrenheit&timezone=auto&forecast_days=15`;
 
       if (typeof window !== "undefined" && import.meta?.env?.DEV) {
         console.log("🌤️ Fetching 15-day forecast:", {
@@ -49,32 +67,96 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
       });
 
       if (!forecastResp.ok) {
-        throw new Error(`Forecast API error: ${forecastResp.status}`);
+        // Try to get more details from the error response
+        let errorDetails = `Forecast API error: ${forecastResp.status}`;
+        try {
+          const errorText = await forecastResp.text();
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.reason) {
+              errorDetails += ` - ${errorData.reason}`;
+            }
+          } catch {
+            errorDetails += ` - ${errorText.substring(0, 100)}`;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+        throw new Error(errorDetails);
       }
 
       const forecastData = await forecastResp.json();
+
+      // Helper function to aggregate hourly humidity into daily values
+      const buildDailyHumidity = (hourlyTime, hourlyHumidity, dailyDates) => {
+        return dailyDates.map((day) => {
+          // Match all hourly timestamps that start with "YYYY-MM-DD"
+          const dayValues = [];
+          for (let i = 0; i < hourlyTime.length; i++) {
+            if (hourlyTime[i].startsWith(day)) {
+              const humidity = hourlyHumidity[i];
+              if (
+                humidity !== null &&
+                humidity !== undefined &&
+                Number.isFinite(humidity)
+              ) {
+                dayValues.push(humidity);
+              }
+            }
+          }
+
+          if (dayValues.length === 0) {
+            // Fallback if something weird happens
+            return {
+              date: day,
+              humidityMin: 60,
+              humidityMax: 60,
+              humidityAvg: 60,
+            };
+          }
+
+          const sum = dayValues.reduce((a, b) => a + b, 0);
+          const humidityAvg = sum / dayValues.length;
+          const humidityMin = Math.min(...dayValues);
+          const humidityMax = Math.max(...dayValues);
+
+          return {
+            date: day,
+            humidityMin,
+            humidityMax,
+            humidityAvg,
+          };
+        });
+      };
+
+      // Aggregate hourly humidity into daily values
+      const dailyHumidity = buildDailyHumidity(
+        forecastData.hourly?.time || [],
+        forecastData.hourly?.relativehumidity_2m || [],
+        forecastData.daily?.time || []
+      );
 
       // Process forecast days - filter to only include days in the target month
       const today = new Date();
       const year = today.getFullYear();
       const daysInMonth = new Date(year, targetMonth, 0).getDate();
 
-      const forecastDays = forecastData.daily.time
-        .map((date, idx) => ({
-          date: new Date(date),
-          dayOfMonth: new Date(date).getDate(),
-          high: forecastData.daily.temperature_2m_max[idx],
-          low: forecastData.daily.temperature_2m_min[idx],
-          avg:
-            (forecastData.daily.temperature_2m_max[idx] +
-              forecastData.daily.temperature_2m_min[idx]) /
-            2,
-          humidity:
-            (forecastData.daily.relativehumidity_2m_max[idx] +
-              forecastData.daily.relativehumidity_2m_min[idx]) /
-            2,
-          source: "forecast",
-        }))
+      const forecastDays = (forecastData.daily?.time || [])
+        .map((date, idx) => {
+          const humidity = dailyHumidity.find((h) => h.date === date);
+          return {
+            date: new Date(date),
+            dayOfMonth: new Date(date).getDate(),
+            high: forecastData.daily.temperature_2m_max[idx],
+            low: forecastData.daily.temperature_2m_min[idx],
+            avg:
+              (forecastData.daily.temperature_2m_max[idx] +
+                forecastData.daily.temperature_2m_min[idx]) /
+              2,
+            humidity: humidity?.humidityAvg ?? 60, // Use aggregated average humidity
+            source: "forecast",
+          };
+        })
         .filter((day) => {
           const dayDate = day.date;
           return (

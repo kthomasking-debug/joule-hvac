@@ -14,12 +14,14 @@ export default function useForecast(lat, lon, options = {}) {
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [dataSource, setDataSource] = useState(null); // Track which API was used
   const abortRef = useRef(null);
 
   // Fallback to Open-Meteo if NWS is unavailable
   // Defined before fetchData so it can be called from within fetchData
   const fetchOpenMeteoFallback = async (latitude, longitude, controller) => {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m&temperature_unit=fahrenheit&timeformat=unixtime&forecast_days=7`;
+    // Request humidity & dew point (some older naming variations included for robustness)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,relative_humidity_2m,dew_point_2m&temperature_unit=fahrenheit&timeformat=unixtime&forecast_days=7&timezone=auto`;
 
     if (typeof window !== "undefined" && import.meta?.env?.DEV) {
       console.log("🌤️ Using Open-Meteo Fallback:", {
@@ -40,14 +42,46 @@ export default function useForecast(lat, lon, options = {}) {
       ? Math.round(apiElevationMeters * 3.28084)
       : null;
 
-    const processed = json.hourly.time.map((t, i) => ({
-      time: new Date(t * 1000),
-      temp: json.hourly.temperature_2m[i],
-      humidity: json.hourly.relativehumidity_2m[i],
-      // Store API elevation for elevation adjustment
-      apiElevationFeet: apiElevationFeet,
-    }));
+    const temps = json.hourly?.temperature_2m || [];
+    const humidityA = json.hourly?.relativehumidity_2m || [];
+    const humidityB = json.hourly?.relative_humidity_2m || [];
+    const dewpoints = json.hourly?.dew_point_2m || [];
+
+    const processed = json.hourly.time.map((t, i) => {
+      const temp = temps[i];
+      let humidity = humidityA[i] ?? humidityB[i];
+
+      // Fallback: derive relative humidity from dewpoint if missing
+      if (
+        (humidity === undefined || humidity === null) &&
+        dewpoints[i] !== undefined &&
+        temp !== undefined
+      ) {
+        // Convert Fahrenheit to Celsius for Magnus formula
+        const TdC = ((dewpoints[i] - 32) * 5) / 9;
+        const TC = ((temp - 32) * 5) / 9;
+        // Approximation using Magnus formula (over water)
+        const esTd = Math.exp((17.625 * TdC) / (243.04 + TdC));
+        const esT = Math.exp((17.625 * TC) / (243.04 + TC));
+        humidity = Math.min(100, Math.max(0, (esTd / esT) * 100));
+      }
+
+      // Final fallback to 50% if still missing
+      if (humidity === undefined || humidity === null || isNaN(humidity)) {
+        humidity = 50;
+      }
+
+      return {
+        time: new Date(t * 1000),
+        temp,
+        humidity,
+        // Store API elevation for elevation adjustment
+        apiElevationFeet: apiElevationFeet,
+      };
+    });
+
     setForecast(processed);
+    setDataSource("Open-Meteo");
   };
 
   const fetchData = async (latitude, longitude) => {
@@ -167,6 +201,7 @@ export default function useForecast(lat, lon, options = {}) {
         .slice(0, 168); // Limit to 7 days (168 hours)
 
       setForecast(processed);
+      setDataSource("NWS");
     } catch (err) {
       if (err.name === "AbortError") return; // canceled
 
@@ -197,5 +232,5 @@ export default function useForecast(lat, lon, options = {}) {
 
   const refetch = () => fetchData(lat, lon);
 
-  return { forecast, loading, error, refetch };
+  return { forecast, loading, error, refetch, dataSource };
 }

@@ -8,10 +8,13 @@ import {
   ChevronUp,
   Volume2,
   VolumeX,
+  Search,
+  Moon,
+  Sun,
+  Printer,
 } from "lucide-react";
 import { routes } from "./navConfig";
 import "./App.css"; // Retain any legacy specifics (can prune later)
-import { Moon, Sun } from "lucide-react";
 import TermsAcceptanceModal from "./components/TermsAcceptanceModal";
 import { useTermsAcceptance } from "./hooks/useTermsAcceptance";
 import AnimatedSplash from "./components/AnimatedSplash";
@@ -29,6 +32,13 @@ import {
   calculateAnnualCoolingCostFromCDD,
 } from "./lib/hddData";
 import { useSwipeNavigation } from "./hooks/useSwipeNavigation";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import SearchBar from "./components/SearchBar";
+import Breadcrumbs from "./components/Breadcrumbs";
+import { initStorageCleanup } from "./utils/storageCleanup";
+import { addToRecentlyViewed } from "./utils/recentlyViewed";
+import FeatureTour from "./components/FeatureTour";
+import { SeasonProvider } from "./features/forecaster/components";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -43,14 +53,78 @@ function AppInner() {
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
   // State for Ask Joule modal
   const [isJouleModalOpen, setIsJouleModalOpen] = useState(false);
+  // State for search bar
+  const [showSearch, setShowSearch] = useState(false);
 
   // Terms acceptance state
   const { termsAccepted, markTermsAccepted, isLoaded } = useTermsAcceptance();
   const navigate = useNavigate();
+  const location = useLocation();
   const { mode, setMode } = useMode();
   
   // Enable swipe navigation on touch devices
   useSwipeNavigation();
+  
+  // Preload critical routes on hover/focus
+  React.useEffect(() => {
+    const preloadRoute = (routePath) => {
+      // Find the route component and preload it
+      const route = routes.find(r => r.path === routePath);
+      if (route && route.Component && route.Component._payload) {
+        // Preload the lazy component
+        route.Component._payload._result?.then?.();
+      }
+    };
+    
+    // Preload critical routes on mouseenter of nav links
+    const handleNavHover = (e) => {
+      // Check if e.target is a valid element with closest method
+      if (e.target && typeof e.target.closest === 'function') {
+        const link = e.target.closest('a[href]');
+        if (link) {
+          const href = link.getAttribute('href');
+          if (href && href !== location.pathname) {
+            preloadRoute(href);
+          }
+        }
+      }
+    };
+    
+    // Preload home and analysis routes immediately (most common)
+    setTimeout(() => {
+      preloadRoute('/home');
+      preloadRoute('/analysis');
+    }, 2000); // After initial load
+    
+    document.addEventListener('mouseenter', handleNavHover, true);
+    return () => document.removeEventListener('mouseenter', handleNavHover, true);
+  }, [location.pathname]);
+  
+  // Global keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+p': (e) => {
+      e.preventDefault();
+      window.print();
+    },
+    'ctrl+k': (e) => {
+      e.preventDefault();
+      // Open search
+      setShowSearch(true);
+    },
+    'ctrl+shift+k': (e) => {
+      e.preventDefault();
+      // Open Ask Joule if available
+      if (setIsJouleModalOpen) {
+        setIsJouleModalOpen(true);
+      }
+    },
+    'escape': () => {
+      // Close modals
+      setIsJouleModalOpen(false);
+      setShowMoreMenu(false);
+      setShowSearch(false);
+    },
+  }, [setIsJouleModalOpen]);
 
   // Use unified settings manager defaults
   const defaultSettings = useMemo(() => DEFAULT_SETTINGS, []);
@@ -185,12 +259,36 @@ function AppInner() {
     };
   }, []);
 
-  // Auto-enable analyzer heat loss usage when analyzer data exists
+  // Auto-enable analyzer heat loss usage ONLY on first detection (one-time setup)
+  // CRITICAL: Never override user's explicit choice - if they've selected a method, respect it forever
   useEffect(() => {
-    if (latestAnalysis?.heatLossFactor && !mergedUserSettings.useAnalyzerHeatLoss) {
-      setSetting("useAnalyzerHeatLoss", true);
+    if (!latestAnalysis?.heatLossFactor) return;
+    
+    // Check if user has ever made an explicit choice in Settings
+    // This flag is set when user clicks any radio button in the heat loss method selector
+    const userHasMadeChoice = localStorage.getItem('heatLossMethodUserChoice') === 'true';
+    if (userHasMadeChoice) {
+      return; // User has explicitly chosen a method - never auto-select
     }
-  }, [latestAnalysis, mergedUserSettings.useAnalyzerHeatLoss]);
+    
+    // Check if user has explicitly disabled analyzer heat loss (they chose a different method)
+    // If useAnalyzerHeatLoss is explicitly false, user has chosen NOT to use it - never override
+    if (mergedUserSettings.useAnalyzerHeatLoss === false) {
+      return; // User explicitly chose not to use analyzer data - respect that choice
+    }
+    
+    // Only auto-enable if:
+    // 1. Analyzer data exists
+    // 2. User hasn't made an explicit choice
+    // 3. We haven't auto-selected before (one-time only)
+    if (!mergedUserSettings.useAnalyzerHeatLoss) {
+      const hasAutoSelectedBefore = localStorage.getItem('heatLossMethodAutoSelected') === 'true';
+      if (!hasAutoSelectedBefore) {
+        setSetting("useAnalyzerHeatLoss", true);
+        localStorage.setItem('heatLossMethodAutoSelected', 'true');
+      }
+    }
+  }, [latestAnalysis?.heatLossFactor]); // Only trigger when analyzer data appears/changes, not on settings changes
 
   // Calculate annualEstimate - automatically uses analyzer data when available
   const annualEstimate = useMemo(() => {
@@ -617,13 +715,32 @@ function AppInner() {
     return localStorage.getItem("isPro") === "true";
   }, []);
 
-  const location = useLocation();
   const isHome = location.pathname === "/" || location.pathname === "";
   // Hide the persistent/global AskJoule instance on pages that provide their own AskJoule component
   const ASK_JOULE_DISABLED_PATHS = ["/", "/cost-forecaster", "/app"];
   const shouldShowGlobalAskJoule = !ASK_JOULE_DISABLED_PATHS.includes(
     location.pathname
   );
+
+  // Track recently viewed pages
+  React.useEffect(() => {
+    if (location.pathname && location.pathname !== "/" && location.pathname !== "/home") {
+      // Get page title from routes
+      const route = routes.find(r => r.path === location.pathname);
+      if (route) {
+        // Get icon component name if it's a function/component
+        let iconName = null;
+        if (route.icon) {
+          iconName = route.icon.displayName || route.icon.name || (typeof route.icon === 'function' ? 'Icon' : null);
+        }
+        addToRecentlyViewed(
+          location.pathname,
+          route.label || route.name || "Page",
+          iconName
+        );
+      }
+    }
+  }, [location.pathname]);
   const [showAskModal, setShowAskModal] = React.useState(false);
 
   // Centralized onboarding redirect: When the terms are accepted and the app has loaded,
@@ -637,6 +754,39 @@ function AppInner() {
     const timer = setTimeout(() => setShowSplash(false), 2500); // Splash visible for 2.5s
     return () => clearTimeout(timer);
   }, []);
+
+  // Initialize storage cleanup on app load
+  useEffect(() => {
+    initStorageCleanup(90); // Keep data for 90 days
+  }, []);
+
+  // Ensure scroll container can scroll to top on route changes
+  useEffect(() => {
+    const scrollContainer = document.querySelector('.app-scale-wrapper');
+    if (scrollContainer) {
+      // Ensure we can scroll to the top
+      scrollContainer.scrollTop = 0;
+    }
+  }, [location.pathname]);
+
+  // Check if onboarding is completed and redirect if not
+  // MUST be called before any early returns to follow Rules of Hooks
+  React.useEffect(() => {
+    if (termsAccepted && isLoaded) {
+      try {
+        const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+        // Only redirect if we're not already on onboarding or landing page
+        if (!hasCompletedOnboarding && 
+            location.pathname !== "/onboarding" && 
+            location.pathname !== "/" &&
+            !location.pathname.startsWith("/legal")) {
+          navigate("/onboarding");
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+  }, [termsAccepted, isLoaded, location.pathname, navigate]);
 
   if (showSplash) {
     return <AnimatedSplash />;
@@ -663,75 +813,114 @@ function AppInner() {
 
   return (
     <div className="app-scale-wrapper flex flex-col h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
+      {/* Skip Links for Accessibility */}
+      <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:z-50 focus-within:top-0 focus-within:left-0 focus-within:right-0">
+        <a
+          href="#main-content"
+          className="block p-4 bg-blue-600 text-white text-center font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Skip to main content
+        </a>
+        <a
+          href="#navigation"
+          className="block p-4 bg-blue-600 text-white text-center font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Skip to navigation
+        </a>
+      </div>
+
       {/* Header */}
-      <header className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700">
+      <header id="navigation" className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center">
-          <NavLink to="/" className="flex items-center space-x-2">
-            <img src="/icon-192.png" alt="Joule Logo" className="h-8 w-8" />
-            <span className="font-bold text-lg hidden sm:inline">Joule</span>
+          <NavLink to="/" className="flex items-center">
+            <img 
+              src="/Logo.svg" 
+              alt="Joule Logo" 
+              className="h-12 w-auto dark:invert transition-all" 
+            />
           </NavLink>
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center space-x-1">
-          {navLinks.map((route) => (
-            <NavLink
-              key={route.path}
-              to={route.path}
-              onClick={() => {
-                // Switch to traditional mode when navigating from AI mode
-                if (mode === "ai") {
-                  setMode("traditional");
+        <nav className="hidden sm:flex items-center space-x-1">
+          {navLinks && navLinks.length > 0 ? (
+            navLinks.map((route) => (
+              <NavLink
+                key={route.path}
+                to={route.path}
+                onClick={() => {
+                  // Switch to traditional mode when navigating from AI mode
+                  if (mode === "ai") {
+                    setMode("traditional");
+                  }
+                }}
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive
+                      ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                      : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  }`
                 }
-              }}
-              className={({ isActive }) =>
-                `px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive
-                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`
-              }
-            >
-              {route.name}
-            </NavLink>
-          ))}
+              >
+                {route.name}
+              </NavLink>
+            ))
+          ) : (
+            <div className="text-xs text-gray-500">Loading menu...</div>
+          )}
         </nav>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="p-2 rounded-full hover:bg-[#1D232C] transition-colors"
+            aria-label="Search (Ctrl+K)"
+            title="Search (Ctrl+K)"
+          >
+            <Search size={20} className="text-[#A7B0BA]" />
+          </button>
           <button
             onClick={toggleDarkMode}
-            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="p-2 rounded-full hover:bg-[#1D232C] transition-colors"
             aria-label="Toggle dark mode"
           >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            {darkMode ? <Sun size={20} className="text-[#A7B0BA]" /> : <Moon size={20} className="text-[#A7B0BA]" />}
           </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4">
+      <main id="main-content" className="flex-1 overflow-y-auto p-4" tabIndex={-1}>
         {mode === "ai" ? (
           <AIMode />
         ) : (
-          <Outlet
-            context={{
-              userSettings: mergedUserSettings,
-              setUserSettings,
-              setUserSetting,
-              manualTemp,
-              handleTempChange,
-              manualHumidity,
-              handleHumidityChange,
-              heatLossFactor,
-              setHeatLossFactor,
-            }}
-          />
+          <>
+            <Breadcrumbs />
+            <Outlet
+              context={{
+                userSettings: mergedUserSettings,
+                setUserSettings,
+                setUserSetting,
+                manualTemp,
+                handleTempChange,
+                manualHumidity,
+                handleHumidityChange,
+                heatLossFactor,
+                setHeatLossFactor,
+              }}
+            />
+          </>
         )}
       </main>
 
-      {/* Floating Action Button for Ask Joule - hidden when global button is shown */}
-      {!shouldShowGlobalAskJoule && (
+      {/* Floating Action Button for Ask Joule - hidden when global button is shown or on checkout page */}
+      {!shouldShowGlobalAskJoule && location.pathname !== "/" && (
         <JouleFab onClick={() => setIsJouleModalOpen(true)} />
+      )}
+
+      {/* Search Bar */}
+      {showSearch && (
+        <SearchBar onClose={() => setShowSearch(false)} />
       )}
 
       {/* Ask Joule Modal */}
@@ -757,45 +946,49 @@ function AppInner() {
       )}
 
       {/* Bottom Navigation for Mobile */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around">
-        {navLinks.slice(0, 4).map((route) => (
-          <NavLink
-            key={route.path}
-            to={route.path}
-            onClick={() => {
-              // Switch to traditional mode when navigating from AI mode
-              if (mode === "ai") {
-                setMode("traditional");
+      {navLinks && navLinks.length > 0 && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around z-30">
+          {navLinks.slice(0, 4).map((route) => (
+            <NavLink
+              key={route.path}
+              to={route.path}
+              onClick={() => {
+                // Switch to traditional mode when navigating from AI mode
+                if (mode === "ai") {
+                  setMode("traditional");
+                }
+              }}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center text-center p-2 ${
+                  isActive
+                    ? "text-blue-600 dark:text-blue-400"
+                    : "text-gray-600 dark:text-gray-400"
+                }`
               }
-            }}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center text-center p-2 ${
-                isActive
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-gray-600 dark:text-gray-400"
-              }`
-            }
-          >
-            {route.icon
-              ? React.createElement(route.icon, {
-                  className: "h-5 w-5",
-                  "aria-hidden": true,
-                })
-              : null}
-            <span className="text-xs mt-1">{route.name}</span>
-          </NavLink>
-        ))}
-        <button
-          onClick={() => setShowMoreMenu(!showMoreMenu)}
-          className="flex flex-col items-center justify-center text-center p-2 text-gray-600 dark:text-gray-400"
-        >
-          {showMoreMenu ? <ChevronDown /> : <ChevronUp />}
-          <span className="text-xs mt-1">More</span>
-        </button>
-      </nav>
+            >
+              {route.icon
+                ? React.createElement(route.icon, {
+                    className: "h-5 w-5",
+                    "aria-hidden": true,
+                  })
+                : null}
+              <span className="text-xs mt-1">{route.name}</span>
+            </NavLink>
+          ))}
+          {moreLinks && moreLinks.length > 0 && (
+            <button
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="flex flex-col items-center justify-center text-center p-2 text-gray-600 dark:text-gray-400"
+            >
+              {showMoreMenu ? <ChevronDown /> : <ChevronUp />}
+              <span className="text-xs mt-1">More</span>
+            </button>
+          )}
+        </nav>
+      )}
 
       {/* More Menu Modal */}
-      {showMoreMenu && (
+      {showMoreMenu && moreLinks && moreLinks.length > 0 && (
         <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white dark:bg-gray-800 p-4 z-20 shadow-lg rounded-t-lg">
           <div className="grid grid-cols-4 gap-4">
             {moreLinks.map((route) => (
@@ -826,6 +1019,9 @@ function AppInner() {
 
       {/* Animated Splash Screen */}
       {showSplash && <AnimatedSplash onComplete={() => setShowSplash(false)} />}
+
+      {/* Feature Tour - overlays on top of everything */}
+      <FeatureTour />
 
       {/* Floating Ask Joule Launcher - only in Traditional Mode */}
       {shouldShowGlobalAskJoule && mode === "traditional" && (
@@ -892,6 +1088,7 @@ function AppInner() {
                   }
                   auditLog={auditLog}
                   onUndo={(id) => undoChange(id)}
+                  pushAuditLog={pushAuditLog}
                 />
               </div>
             </div>
@@ -906,7 +1103,9 @@ function AppInner() {
 const App = () => (
   <ConversationProvider>
     <ModeProvider>
-      <AppInner />
+      <SeasonProvider>
+        <AppInner />
+      </SeasonProvider>
     </ModeProvider>
   </ConversationProvider>
 );

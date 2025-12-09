@@ -1,13 +1,217 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
+// Lazy load pre-generated TTS module to avoid breaking if file doesn't exist
+let preGeneratedTTSModule = null;
+async function loadPreGeneratedTTS() {
+  if (preGeneratedTTSModule) return preGeneratedTTSModule;
+  try {
+    preGeneratedTTSModule = await import("../lib/preGeneratedTTS");
+    return preGeneratedTTSModule;
+  } catch (error) {
+    console.warn("Pre-generated TTS module not available:", error);
+    return null;
+  }
+}
+
+// ElevenLabs TTS integration
+const ELEVENLABS_API_KEY = "sk_6f2db1886a416f1985025b6ef997d9ddf27c1985b228e580";
+
+// Function to get voice ID from localStorage or use default
+function getElevenLabsVoiceId() {
+  try {
+    const savedVoiceId = localStorage.getItem("elevenLabsVoiceId");
+    if (savedVoiceId) {
+      return savedVoiceId;
+    }
+  } catch (e) {
+    // Ignore localStorage errors
+  }
+  // Default to Absintha (Dark Voice Alchemy)
+  // If this doesn't work, the voice ID can be found via the ElevenLabs API
+  // and set in localStorage with key "elevenLabsVoiceId"
+  return "pNInz6obpgDQGcFmaJgB"; // Placeholder - will be auto-detected or set manually
+}
+
+// Auto-detect Absintha voice on first load
+let voiceIdCache = null;
+let voiceIdLoading = null;
+
+async function initializeAbsinthaVoice() {
+  if (voiceIdCache) return voiceIdCache;
+  if (voiceIdLoading) return voiceIdLoading;
+  
+  // Check localStorage first
+  try {
+    const saved = localStorage.getItem("elevenLabsVoiceId");
+    if (saved) {
+      voiceIdCache = saved;
+      return saved;
+    }
+  } catch (e) {
+    // Ignore
+  }
+  
+  // Try to find Absintha voice
+  voiceIdLoading = findVoiceIdByName("Absintha", ELEVENLABS_API_KEY).then((voiceId) => {
+    if (voiceId) {
+      voiceIdCache = voiceId;
+      try {
+        localStorage.setItem("elevenLabsVoiceId", voiceId);
+      } catch (e) {
+        // Ignore
+      }
+      return voiceId;
+    }
+    // Fallback to default if not found
+    return getElevenLabsVoiceId();
+  });
+  
+  return voiceIdLoading;
+}
+
+// Function to fetch available voices from ElevenLabs API
+async function fetchElevenLabsVoices(apiKey = ELEVENLABS_API_KEY) {
+  try {
+    const response = await fetch("https://api.elevenlabs.io/v1/voices", {
+      method: "GET",
+      headers: {
+        "xi-api-key": apiKey,
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.voices || [];
+    }
+  } catch (error) {
+    console.warn("Failed to fetch ElevenLabs voices:", error);
+  }
+  return [];
+}
+
+// Function to find voice ID by name
+async function findVoiceIdByName(voiceName, apiKey = ELEVENLABS_API_KEY) {
+  const voices = await fetchElevenLabsVoices(apiKey);
+  const voice = voices.find(
+    (v) =>
+      v.name.toLowerCase().includes(voiceName.toLowerCase()) ||
+      v.name.toLowerCase().includes("absintha")
+  );
+  return voice?.voice_id || null;
+}
+
+async function speakWithElevenLabs(text, apiKey = ELEVENLABS_API_KEY, voiceId = null) {
+  // Get voice ID (use provided, or try to initialize Absintha, or fallback)
+  let finalVoiceId = voiceId;
+  if (!finalVoiceId) {
+    // Try to get from cache or initialize
+    if (voiceIdCache) {
+      finalVoiceId = voiceIdCache;
+    } else {
+      // Initialize on first use (non-blocking)
+      initializeAbsinthaVoice().then((id) => {
+        voiceIdCache = id;
+      });
+      // Use default for now, will use cached value on next call
+      finalVoiceId = getElevenLabsVoiceId();
+    }
+  }
+  try {
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}`,
+      {
+        method: "POST",
+        headers: {
+          "Accept": "audio/mpeg",
+          "Content-Type": "application/json",
+          "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          text: text,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`ElevenLabs API error: ${response.status}`);
+    }
+
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    return new Promise((resolve, reject) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      audio.onerror = (error) => {
+        URL.revokeObjectURL(audioUrl);
+        reject(error);
+      };
+      audio.play();
+    });
+  } catch (error) {
+    console.warn("ElevenLabs TTS failed, falling back to browser TTS:", error);
+    throw error;
+  }
+}
+
 export function useSpeechSynthesis(options = {}) {
+  // Check localStorage for TTS engine preference (reactive to changes)
+  const [useElevenLabsState, setUseElevenLabsState] = useState(() => {
+    try {
+      const useBrowserTTS = localStorage.getItem("useBrowserTTS");
+      return useBrowserTTS !== "true"; // If useBrowserTTS is true, useElevenLabs should be false
+    } catch {
+      return true; // Default to ElevenLabs
+    }
+  });
+
+  // Listen for changes to the preference
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "useBrowserTTS") {
+        const useBrowserTTS = e.newValue === "true";
+        setUseElevenLabsState(!useBrowserTTS);
+      }
+    };
+    
+    const handleTTSEngineChange = () => {
+      try {
+        const useBrowserTTS = localStorage.getItem("useBrowserTTS") === "true";
+        setUseElevenLabsState(!useBrowserTTS);
+      } catch {
+        // Ignore errors
+      }
+    };
+    
+    // Listen for storage events (from other tabs/windows)
+    window.addEventListener("storage", handleStorageChange);
+    // Listen for custom event (from same tab)
+    window.addEventListener("ttsEngineChanged", handleTTSEngineChange);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("ttsEngineChanged", handleTTSEngineChange);
+    };
+  }, []);
+
   const {
     enabled = true,
     defaultRate = 1.0,
     defaultPitch = 1.0,
     defaultLang = "en-US",
     personality = "friendly",
+    useElevenLabs: useElevenLabsOption = useElevenLabsState, // Use state or override from options
   } = options;
+  
+  // Use the state value if not overridden by options
+  const useElevenLabs = useElevenLabsOption !== undefined ? useElevenLabsOption : useElevenLabsState;
 
   const synthRef = useRef(
     typeof window !== "undefined" ? window.speechSynthesis : null
@@ -115,8 +319,15 @@ export function useSpeechSynthesis(options = {}) {
     } catch (e) {
       void e; /* ignore */
     }
+    // Also stop ElevenLabs audio if playing
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
     speakingRef.current = false;
     currentUtterRef.current = null;
+    setIsSpeaking(false);
   }, []);
 
   // The speak function is implemented later (lower in this file) to leverage
@@ -136,10 +347,21 @@ export function useSpeechSynthesis(options = {}) {
   const [voice, setVoice] = useState(null);
   const [availableVoices, setAvailableVoices] = useState([]);
   const utteranceRef = useRef(null);
+  const audioRef = useRef(null); // For ElevenLabs audio playback
+  const usingElevenLabsRef = useRef(false); // Track if ElevenLabs is currently playing
 
   // Check if speech synthesis is supported
   const isSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
+
+  // Initialize Absintha voice on mount (non-blocking)
+  useEffect(() => {
+    if (useElevenLabs && ELEVENLABS_API_KEY && !voiceIdCache) {
+      initializeAbsinthaVoice().catch(() => {
+        // Silently fail - will use default voice ID
+      });
+    }
+  }, [useElevenLabs]);
 
   // Load available voices
   useEffect(() => {
@@ -216,44 +438,99 @@ export function useSpeechSynthesis(options = {}) {
   }, [isSupported, voice]);
 
   // Stop any ongoing speech when component unmounts
+  // BUT: Don't cancel if we're navigating (TTS should continue during navigation)
   useEffect(() => {
     return () => {
-      if (
-        isSupported &&
-        window.speechSynthesis &&
-        window.speechSynthesis.speaking
-      ) {
-        window.speechSynthesis.cancel();
+      // Check if there's a pending TTS message in sessionStorage
+      // If so, don't cancel - let it continue during navigation
+      const hasPendingTTS = sessionStorage.getItem('askJoule_pendingTTS');
+      const pendingTimestamp = sessionStorage.getItem('askJoule_pendingTTS_timestamp');
+      
+      // Only cancel if there's no pending TTS, or if it's older than 5 seconds (stale)
+      if (!hasPendingTTS || (pendingTimestamp && Date.now() - parseInt(pendingTimestamp) > 5000)) {
+        if (
+          isSupported &&
+          window.speechSynthesis &&
+          window.speechSynthesis.speaking
+        ) {
+          window.speechSynthesis.cancel();
+        }
+      } else {
+        // Clear the pending TTS flag after a delay to allow it to continue
+        // The new page will handle continuing the TTS if needed
+        setTimeout(() => {
+          sessionStorage.removeItem('askJoule_pendingTTS');
+          sessionStorage.removeItem('askJoule_pendingTTS_timestamp');
+        }, 100);
       }
     };
   }, [isSupported]);
 
   // Speak text function
   const speak = useCallback(
-    (text, options = {}) => {
+    async (text, options = {}) => {
       // Check both the parent's enabled prop (enabledRef) AND internal state (isEnabled)
       // Both must be true for speech to work
-      if (!isSupported || !enabledRef.current || !isEnabled || !text) return;
+      if (!enabledRef.current || !isEnabled || !text) return Promise.resolve();
 
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
+      // Cancel any ongoing speech (both browser TTS and ElevenLabs)
+      // Do this FIRST before anything else to prevent overlapping audio
+      if (isSupported) {
+        window.speechSynthesis.cancel();
+      }
+      
+      // Aggressively stop any existing ElevenLabs audio
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+          // Remove all event listeners to prevent callbacks
+          audioRef.current.onended = null;
+          audioRef.current.onerror = null;
+          audioRef.current.onpause = null;
+          // Revoke the URL if we have it stored
+          if (audioRef.current.src && audioRef.current.src.startsWith('blob:')) {
+            URL.revokeObjectURL(audioRef.current.src);
+          }
+        } catch (e) {
+          // Ignore errors during cleanup
+        }
+        audioRef.current = null;
+      }
+      usingElevenLabsRef.current = false; // Reset flag
 
       // Clean text for better speech (remove emojis, special chars, markdown)
+      // This cleaning is used for both ElevenLabs and browser TTS
       const cleanText = text
         .replace(/[✓✅❌💡🎯⚡]/gu, "") // Remove common emojis
         .replace(/ℹ️/gu, "") // Remove info emoji separately due to variation selector
-        // Remove markdown formatting (prevents TTS from reading "asterisk bold asterisk")
-        .replace(/\*\*/g, "") // Remove bold markers (**)
-        .replace(/\*/g, "") // Remove italic markers (*)
+        // Replace markdown formatting with pauses for natural speech
+        .replace(/\*\*/g, ", ") // Replace bold markers (**) with comma pause
+        .replace(/\*/g, ", ") // Replace italic markers (*) with comma pause (short silence)
         .replace(/`/g, "") // Remove code markers (`)
         .replace(/#/g, "") // Remove header markers (#)
         .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1") // Convert links [text](url) to just "text"
+        // Replace symbols with spoken equivalents
+        .replace(/→/g, " to ") // Right arrow → "to"
+        .replace(/←/g, " from ") // Left arrow → "from"
+        .replace(/~/g, "about ") // Tilde → "about"
+        .replace(/±/g, " plus or minus ") // Plus-minus → "plus or minus"
+        .replace(/×/g, " times ") // Multiplication → "times"
+        .replace(/÷/g, " divided by ") // Division → "divided by"
+        .replace(/≈/g, " approximately ") // Approximately → "approximately"
+        .replace(/≤/g, " less than or equal to ") // Less than or equal → "less than or equal to"
+        .replace(/≥/g, " greater than or equal to ") // Greater than or equal → "greater than or equal to"
+        .replace(/≠/g, " not equal to ") // Not equal → "not equal to"
+        .replace(/↑/g, " up ") // Up arrow → "up"
+        .replace(/↓/g, " down ") // Down arrow → "down"
         // Phonetic hacks for correct pronunciation
         .replace(/Joule/gi, "Jool") // "Joule" → "Jool" (rhymes with "pool")
         .replace(/ASHRAE/gi, "Ash Ray") // "ASHRAE" → "Ash Ray" (rhymes with "Trash Day")
         .replace(/\bISO\b/gi, "I S O") // Pronounce ISO as letters
         .replace(/\bDOE\b/gi, "D O E") // Pronounce DOE as letters (Department of Energy)
         .replace(/\bBTU\b/gi, "B T U") // Pronounce BTU as letters
+        // Replace "BTU/hr" with "BTU per hour" (must come before general "/" replacement)
+        .replace(/\bBTU\s*\/\s*hr\b/gi, "B T U per hour")
         .replace(/\bHSPF\b/gi, "H S P F") // Pronounce HSPF as letters
         .replace(/\bSEER\b/gi, "S E E R") // Pronounce SEER as letters
         .replace(/\bAFUE\b/gi, "A F U E") // Pronounce AFUE as letters
@@ -263,7 +540,19 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/\bTMY3\b/gi, "T M Y 3") // Typical Meteorological Year 3
         .replace(/\bHERS\b/gi, "H E R S") // Home Energy Rating System
         .replace(/\bHVAC\b/gi, "H V A C") // Heating, Ventilation, Air Conditioning
-        .replace(/\$(\d+)/g, "$1 dollars") // Say "dollars" instead of just the number
+        // Format currency for speech: $X.XX → "X dollars and XX cents" or "XX cents"
+        .replace(/\$(\d+)\.(\d{2})\b/g, (match, dollars, cents) => {
+          const dollarsNum = parseInt(dollars, 10);
+          const centsNum = parseInt(cents, 10);
+          if (dollarsNum === 0) {
+            return centsNum === 0 ? "0 dollars" : `${centsNum} cent${centsNum === 1 ? '' : 's'}`;
+          } else if (centsNum === 0) {
+            return `${dollarsNum} dollar${dollarsNum === 1 ? '' : 's'}`;
+          } else {
+            return `${dollarsNum} dollar${dollarsNum === 1 ? '' : 's'} and ${centsNum} cent${centsNum === 1 ? '' : 's'}`;
+          }
+        })
+        .replace(/\$(\d+)\b/g, "$1 dollars") // Handle whole dollar amounts without decimals
         // Replace negative numbers first (before range replacements)
         // Only match negative numbers at word boundaries or start of string, not in compound words
         .replace(/(^|\s)-(\d+)/g, "$1negative $2") // Negative numbers: "-5" → "negative 5" (only at start or after whitespace)
@@ -289,50 +578,338 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/(\d+)\s*COP/gi, "$1 C O P") // Handle COP with numbers
         .replace(/(\d+)\s*EER/gi, "$1 E E R") // Handle EER with numbers
         .replace(/kBTU/gi, "thousand B T U")
+        // Handle "BTU/hr" with numbers (e.g., "314 BTU/hr")
+        .replace(/(\d+)\s*BTU\s*\/\s*hr\b/gi, "$1 B T U per hour")
         .replace(/sq\s*ft/gi, "square feet")
         .trim();
 
       if (!cleanText) return;
 
-      const utterance = new SpeechSynthesisUtterance(
-        personalityWrap(cleanText)
-      );
-
-      // Apply options
-      utterance.rate = options.rate || 1.0;
-      utterance.pitch = options.pitch || 1.0;
-      utterance.volume = options.volume || 1.0;
-
-      if (voice) {
-        utterance.voice = voice;
+      // FALLBACK CHAIN: Pre-generated → Browser TTS (for dynamic) → ElevenLabs → Browser TTS (fallback)
+      
+      // Step 1: Check for pre-generated audio (offline, instant, no API costs)
+      try {
+        const preGeneratedModule = await loadPreGeneratedTTS();
+        if (preGeneratedModule) {
+          const hasDynamic = preGeneratedModule.hasDynamicContent(cleanText);
+          
+          // If text has dynamic content, skip pre-generated and use Browser TTS
+          if (!hasDynamic) {
+            const preGeneratedPath = await preGeneratedModule.findPreGeneratedAudio(cleanText);
+            if (preGeneratedPath) {
+              setIsSpeaking(true);
+              
+              // Cancel any browser TTS
+              if (isSupported) {
+                window.speechSynthesis.cancel();
+              }
+              
+              // Play pre-generated audio
+              const audio = new Audio(preGeneratedPath);
+              audioRef.current = audio;
+              
+              await new Promise((resolve, reject) => {
+                const cleanup = () => {
+                  if (audioRef.current === audio) {
+                    audioRef.current = null;
+                  }
+                  setIsSpeaking(false);
+                };
+                
+                audio.onended = () => {
+                  cleanup();
+                  resolve();
+                };
+                
+                audio.onerror = (error) => {
+                  cleanup();
+                  reject(error);
+                };
+                
+                audio.onpause = () => {
+                  setIsSpeaking(false);
+                };
+                
+                audio.play().catch(reject);
+              });
+              
+              return Promise.resolve(); // Successfully played pre-generated audio
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Pre-generated audio failed, falling back:", error);
+        // Continue to next fallback
       }
 
-      // Set up event handlers
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-      };
+      // Step 2: If text has dynamic content (numbers, variables), use Browser TTS
+      // This avoids API costs for responses like "The temperature is 72 degrees"
+      let hasDynamic = false;
+      try {
+        const preGeneratedModule = await loadPreGeneratedTTS();
+        if (preGeneratedModule) {
+          hasDynamic = preGeneratedModule.hasDynamicContent(cleanText);
+        } else {
+          // Fallback: simple check for numbers if module not available
+          hasDynamic = /\d+/.test(cleanText);
+        }
+      } catch {
+        // Fallback: simple check for numbers if module not available
+        hasDynamic = /\d+/.test(cleanText);
+      }
+      
+      if (hasDynamic) {
+        if (!isSupported) {
+          console.warn("Speech synthesis not supported in this browser");
+          setIsSpeaking(false);
+          return Promise.resolve();
+        }
+        
+        // Use browser TTS for dynamic content
+        const utterance = new SpeechSynthesisUtterance(
+          personalityWrap(cleanText)
+        );
 
-      utterance.onend = () => {
+        utterance.rate = options.rate || 1.0;
+        utterance.pitch = options.pitch || 1.0;
+        utterance.volume = options.volume || 1.0;
+
+        if (voice) {
+          utterance.voice = voice;
+        }
+
+        // Return a promise that resolves when TTS finishes
+        return new Promise((resolve) => {
+          utterance.onstart = () => {
+            setIsSpeaking(true);
+          };
+
+          utterance.onend = () => {
+            setIsSpeaking(false);
+            utteranceRef.current = null;
+            resolve(); // Resolve when speech ends
+          };
+
+          utterance.onerror = (event) => {
+            // "interrupted" is expected when speech is cancelled - don't log it as an error
+            if (event.error !== "interrupted") {
+              console.warn("Speech synthesis error:", event.error);
+            }
+            setIsSpeaking(false);
+            utteranceRef.current = null;
+            // Resolve even on error so navigation can proceed
+            resolve();
+          };
+
+          utteranceRef.current = utterance;
+          window.speechSynthesis.speak(utterance);
+        });
+      }
+
+      // Step 3: Try ElevenLabs API (for non-dynamic content without pre-generated audio)
+      if (useElevenLabs && ELEVENLABS_API_KEY) {
+        // Double-check: if ElevenLabs is already playing, don't start another
+        if (usingElevenLabsRef.current || audioRef.current) {
+          console.warn("ElevenLabs audio already playing, skipping new request");
+          return;
+        }
+        
+        // Cancel any browser TTS that might be playing
+        if (isSupported) {
+          window.speechSynthesis.cancel();
+        }
+        
+        try {
+          setIsSpeaking(true);
+          usingElevenLabsRef.current = true; // Mark that we're using ElevenLabs
+          
+          // Apply text cleaning and formatting for ElevenLabs
+          const formattedText = personalityWrap(cleanText);
+          
+          const voiceId = getElevenLabsVoiceId();
+          const response = await fetch(
+            `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+            {
+              method: "POST",
+              headers: {
+                "Accept": "audio/mpeg",
+                "Content-Type": "application/json",
+                "xi-api-key": ELEVENLABS_API_KEY,
+              },
+              body: JSON.stringify({
+                text: formattedText,
+                model_id: "eleven_flash_v2", // Flash model for low latency (~75ms)
+                voice_settings: {
+                  stability: 0.5,
+                  similarity_boost: 0.75,
+                },
+                output_format: "mp3_44100_128", // Optimized format for faster streaming
+              }),
+            }
+          );
+
+          if (response.ok) {
+            // Start playing audio as soon as we get the response (streaming approach)
+            // Create audio element immediately and load the blob URL
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Final check: make sure no other audio started while we were fetching
+            if (audioRef.current) {
+              URL.revokeObjectURL(audioUrl);
+              return; // Another audio already started
+            }
+            
+            const audio = new Audio();
+            audioRef.current = audio;
+            
+            // Ensure browser TTS is stopped before playing ElevenLabs audio
+            if (isSupported) {
+              window.speechSynthesis.cancel();
+            }
+            
+            // Set up audio source and start playing immediately
+            audio.src = audioUrl;
+            audio.preload = "auto"; // Preload for faster start
+            
+            await new Promise((resolve, reject) => {
+              const cleanup = () => {
+                URL.revokeObjectURL(audioUrl);
+                if (audioRef.current === audio) {
+                  audioRef.current = null;
+                }
+                setIsSpeaking(false);
+                usingElevenLabsRef.current = false;
+              };
+              
+              let hasStarted = false;
+              let fallbackTimeout = null;
+              
+              const startPlayback = () => {
+                if (hasStarted) return;
+                hasStarted = true;
+                if (fallbackTimeout) {
+                  clearTimeout(fallbackTimeout);
+                  fallbackTimeout = null;
+                }
+                audio.play().catch((error) => {
+                  cleanup();
+                  reject(error);
+                });
+              };
+              
+              // Start playing as soon as enough data is loaded (don't wait for full load)
+              audio.oncanplay = startPlayback; // Fires when enough data is loaded to start playing
+              audio.oncanplaythrough = startPlayback; // Fires when entire audio can play without buffering
+              
+              audio.onended = () => {
+                cleanup();
+                resolve();
+              };
+              audio.onerror = (error) => {
+                cleanup();
+                reject(error);
+              };
+              audio.onpause = () => {
+                setIsSpeaking(false);
+                usingElevenLabsRef.current = false;
+              };
+              
+              // Load the audio (triggers oncanplay/oncanplaythrough)
+              audio.load();
+              
+              // Fallback: if events don't fire quickly, try playing after a short delay
+              fallbackTimeout = setTimeout(() => {
+                if (!hasStarted && audio.readyState >= 2) { // HAVE_CURRENT_DATA
+                  startPlayback();
+                }
+              }, 150);
+            });
+            
+            return Promise.resolve(); // Successfully used ElevenLabs, exit early - DO NOT continue to browser TTS
+          } else {
+            throw new Error(`ElevenLabs API error: ${response.status}`);
+          }
+        } catch (error) {
+          // Fall through to browser TTS if ElevenLabs fails
+          console.warn("ElevenLabs TTS failed, using browser TTS:", error);
+          // Make sure we don't have both playing - ensure ElevenLabs audio is stopped
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            audioRef.current = null;
+          }
+          usingElevenLabsRef.current = false;
+        }
+      }
+
+      // Fallback to browser speechSynthesis
+      // ONLY if ElevenLabs is NOT currently active
+      if (usingElevenLabsRef.current) {
+        return Promise.resolve(); // Don't use browser TTS if ElevenLabs is active
+      }
+      
+      if (!isSupported) {
+        console.warn("Speech synthesis not supported in this browser");
         setIsSpeaking(false);
-        utteranceRef.current = null;
-      };
+        return Promise.resolve();
+      }
 
-      utterance.onerror = (event) => {
-        console.warn("Speech synthesis error:", event.error);
-        setIsSpeaking(false);
-        utteranceRef.current = null;
-      };
+      // Return a promise that resolves when TTS finishes
+      return new Promise((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(
+          personalityWrap(cleanText)
+        );
 
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
+        // Apply options
+        utterance.rate = options.rate || 1.0;
+        utterance.pitch = options.pitch || 1.0;
+        utterance.volume = options.volume || 1.0;
+
+        if (voice) {
+          utterance.voice = voice;
+        }
+
+        // Set up event handlers
+        utterance.onstart = () => {
+          setIsSpeaking(true);
+        };
+
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          utteranceRef.current = null;
+          resolve(); // Resolve promise when speech ends
+        };
+
+        utterance.onerror = (event) => {
+          // "interrupted" is expected when speech is cancelled - don't log it as an error
+          if (event.error !== "interrupted") {
+            console.warn("Speech synthesis error:", event.error);
+          }
+          setIsSpeaking(false);
+          utteranceRef.current = null;
+          resolve(); // Resolve even on error so navigation can proceed
+        };
+
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      });
     },
-    [isSupported, voice, isEnabled] // Include isEnabled so function updates when toggleEnabled changes it
+    [isSupported, voice, isEnabled, useElevenLabs] // Include isEnabled and useElevenLabs so function updates when they change
   );
 
   // Stop speaking
   const stop = useCallback(() => {
-    if (!isSupported) return;
-    window.speechSynthesis.cancel();
+    // Stop browser TTS
+    if (isSupported) {
+      window.speechSynthesis.cancel();
+    }
+    // Stop ElevenLabs audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
     setIsSpeaking(false);
   }, [isSupported]);
 

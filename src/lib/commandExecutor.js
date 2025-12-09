@@ -157,7 +157,9 @@ const SETTING_NAME_MAP = {
   "compressor min cycle off": "compressorMinCycleOff",
   "compressor off time": "compressorMinCycleOff",
   "compressor lockout": "compressorMinOutdoorTemp",
+  "compressor cutoff": "compressorMinOutdoorTemp",
   "compressor min outdoor temp": "compressorMinOutdoorTemp",
+  "compressor min outdoor temperature": "compressorMinOutdoorTemp",
 
   // Aux Heat
   "aux lockout": "auxHeatMaxOutdoorTemp",

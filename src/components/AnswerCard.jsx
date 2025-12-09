@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, TrendingDown } from 'lucide-react';
 
-const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, onOpenDashboard }) => {
+const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings }) => {
   return (
     <div className="mt-6 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 dark:from-emerald-900/30 dark:via-teal-900/30 dark:to-sky-900/30 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 card-lift">
       {loading ? (
@@ -42,17 +42,6 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
               </p>
             </div>
           )}
-          <div className="pt-2">
-            <button 
-              onClick={onOpenDashboard} 
-              className="w-full btn btn-primary px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 flex items-center justify-center gap-2"
-            >
-              Open full dashboard
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
         </div>
       )}
     </div>

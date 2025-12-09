@@ -4,6 +4,7 @@ import {
   controlRelay,
   updateSystemState,
   evaluateInterlock,
+  BridgeConnectionError,
 } from "../lib/jouleBridgeApi";
 
 /**
@@ -32,7 +33,10 @@ export function useProstatRelay(channel = 2, pollInterval = 5000) {
       setLoading(false);
       return data;
     } catch (err) {
-      console.error("Error fetching relay status:", err);
+      // Only log non-connection errors (connection refused is expected when Bridge isn't available)
+      if (!(err instanceof BridgeConnectionError)) {
+        console.error("Error fetching relay status:", err);
+      }
       setError(err.message);
       setConnected(false);
       setLoading(false);

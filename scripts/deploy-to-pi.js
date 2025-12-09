@@ -122,3 +122,11 @@ console.log(`   Visit: http://${host}`);
 console.log(`   Or: http://${host.replace('joule.local', '192.168.1.100')} (if mDNS doesn't work)`);
 console.log('');
 
+
+
+
+
+
+
+
+

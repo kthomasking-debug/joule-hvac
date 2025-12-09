@@ -8,7 +8,6 @@ import { useSpeechSynthesis } from "./useSpeechSynthesis";
 import { useConversationContext } from "../contexts/ConversationContext";
 import { useProactiveAgent } from "./useProactiveAgent";
 import { parseAskJoule } from "../utils/askJouleParser";
-import { parseThermostatCommand } from "../utils/nlp/commandParser";
 import { executeCommand } from "../utils/nlp/commandExecutor";
 import { resolvePronouns } from "../utils/nlp/contextResolver";
 import { fetchGeocodeCandidates, chooseBestCandidate } from "../utils/geocode";

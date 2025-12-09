@@ -1,4 +1,5 @@
 import React from 'react';
+import { useUnitSystem, formatEnergyFromKwh } from '../lib/units';
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
@@ -9,6 +10,7 @@ export default function BeforeAfterSlider({
   titleRight = 'Setback',
   defaultValue = 0,
 }) {
+  const { unitSystem } = useUnitSystem();
   const [t, setT] = React.useState(defaultValue);
   const cost = lerp(left.cost, right.cost, t);
   const energy = lerp(left.energy, right.energy, t);
@@ -46,11 +48,11 @@ export default function BeforeAfterSlider({
         </div>
         <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
           <div className="text-xs text-gray-500 dark:text-gray-400">Energy</div>
-          <div className="text-3xl font-black text-blue-600 dark:text-blue-400">{energy.toFixed(2)} kWh</div>
+          <div className="text-3xl font-black text-blue-600 dark:text-blue-400">{formatEnergyFromKwh(energy, unitSystem, { decimals: 2 })}</div>
         </div>
         <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
           <div className="text-xs text-gray-500 dark:text-gray-400">Aux Heat</div>
-          <div className="text-3xl font-black text-orange-600 dark:text-orange-400">{aux.toFixed(2)} kWh</div>
+          <div className="text-3xl font-black text-orange-600 dark:text-orange-400">{formatEnergyFromKwh(aux, unitSystem, { decimals: 2 })}</div>
         </div>
       </div>
       <div className="mt-4 text-center text-sm">
@@ -60,8 +62,8 @@ export default function BeforeAfterSlider({
         </span>
       </div>
       <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>{titleLeft}: ${left.cost.toFixed(2)}, {left.energy.toFixed(2)} kWh, {left.aux.toFixed(2)} kWh aux</span>
-        <span>{titleRight}: ${right.cost.toFixed(2)}, {right.energy.toFixed(2)} kWh, {right.aux.toFixed(2)} kWh aux</span>
+        <span>{titleLeft}: ${left.cost.toFixed(2)}, {formatEnergyFromKwh(left.energy, unitSystem, { decimals: 2 })}, {formatEnergyFromKwh(left.aux, unitSystem, { decimals: 2 })} aux</span>
+        <span>{titleRight}: ${right.cost.toFixed(2)}, {formatEnergyFromKwh(right.energy, unitSystem, { decimals: 2 })}, {formatEnergyFromKwh(right.aux, unitSystem, { decimals: 2 })} aux</span>
       </div>
     </div>
   );

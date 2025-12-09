@@ -1,14 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
+import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Calculator, Award, Leaf } from 'lucide-react';
 import { inputClasses, fullInputClasses, selectClasses } from '../lib/uiClasses';
 import { DashboardLink } from '../components/DashboardLink';
 import { fetchGeocodeCandidates, chooseBestCandidate, reverseGeocode } from '../utils/geocode';
 import { fetchStateAverageGasPrice } from '../lib/eia';
 import { getDefrostPenalty } from '../lib/heatUtils';
+import useForecast from '../hooks/useForecast';
+import { useUnitSystem, formatTemperatureFromF, formatCapacityFromKbtuh } from '../lib/units';
 
 const GasVsHeatPump = () => {
   const EXTREME_COLD_F = 0; // Default threshold for extreme cold advisory
+  const { unitSystem } = useUnitSystem();
 
   // Extract context
   const outletContext = useOutletContext() || {};
@@ -57,9 +60,9 @@ const GasVsHeatPump = () => {
     try {
       const savedLocation = localStorage.getItem('userLocation');
       if (savedLocation) {
-        const { city, state } = JSON.parse(savedLocation);
-        if (city && state) {
-          return `${city}, ${state}`;
+        const locationData = JSON.parse(savedLocation);
+        if (locationData.city && locationData.state) {
+          return `${locationData.city}, ${locationData.state}`;
         }
       }
     } catch (e) {
@@ -67,16 +70,58 @@ const GasVsHeatPump = () => {
     }
     return "Chicago, IL"; // Default fallback
   });
-  const [location, setLocation] = useState(null);
+  
+  // Initialize location from onboarding data if available
+  const [location, setLocation] = useState(() => {
+    try {
+      const savedLocation = localStorage.getItem('userLocation');
+      if (savedLocation) {
+        const locationData = JSON.parse(savedLocation);
+        if (locationData.latitude && locationData.longitude) {
+          return {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load saved location coordinates:', e);
+    }
+    return null;
+  });
   const [foundLocationName, setFoundLocationName] = useState("");
-  const [forecast, setForecast] = useState(null);
   const [forecastTimezone, setForecastTimezone] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  
+  // Local state for geocoding operations
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState(null);
+  
+  // Use NWS-first forecast hook
+  const { forecast: rawForecast, loading: forecastLoading, error: forecastError, dataSource: forecastDataSource } = useForecast(
+    location?.latitude,
+    location?.longitude,
+    { enabled: !!location }
+  );
+  
+  // Transform forecast data to expected format
+  const forecast = useMemo(() => {
+    if (!rawForecast) return null;
+    return rawForecast.map(hour => ({
+      timeMs: hour.time.getTime(),
+      temp: hour.temp,
+      humidity: hour.humidity ?? 50, // Default to 50% if missing
+    }));
+  }, [rawForecast]);
+  
+  // Combined UI state
+  const isLoading = geoLoading || forecastLoading;
+  const displayError = geoError || forecastError || null;
   const [geocodeCandidates, setGeocodeCandidates] = useState([]);
   const [showCandidateList, setShowCandidateList] = useState(false);
   const [lowHeatLossWarning, setLowHeatLossWarning] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
+  const [simpleMode, setSimpleMode] = useState(false);
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   // Basic US state abbreviation to name mapping for better geocoding disambiguation
   const STATE_ABBR = useMemo(() => ({
@@ -137,9 +182,12 @@ const GasVsHeatPump = () => {
   }, [indoorTemp, compressorPower, efficiency, heatLoss, tons]);
 
   const handleCitySearch = async () => {
-    if (!locationQuery) return setError("Please enter a city (e.g., 'Chicago, IL').");
-    setLoading(true);
-    setError(null);
+    if (!locationQuery) {
+      setGeoError("Please enter a city (e.g., 'Chicago, IL').");
+      return;
+    }
+    setGeoError(null);
+    setGeoLoading(true);
     try {
       const fullQuery = locationQuery.trim();
 
@@ -184,7 +232,7 @@ const GasVsHeatPump = () => {
       if (prioritized.length > 1) {
         setGeocodeCandidates(prioritized.slice(0, 7));
         setShowCandidateList(true);
-        setLoading(false);
+        setGeoLoading(false);
         return; // Wait for user to pick
       }
 
@@ -192,8 +240,10 @@ const GasVsHeatPump = () => {
       setLocation({ latitude: bestResult.latitude, longitude: bestResult.longitude });
       setFoundLocationName(`${bestResult.name}${bestResult.admin1 ? ', ' + bestResult.admin1 : ''}${bestResult.country ? ', ' + bestResult.country : ''}`);
     } catch (e) {
-      setError(e.message);
-      setLoading(false);
+      console.error("Geocoding error:", e);
+      setGeoError(e?.message || "Failed to find that city.");
+    } finally {
+      setGeoLoading(false);
     }
   };
 
@@ -210,18 +260,18 @@ const GasVsHeatPump = () => {
     const hasBrowserGeo = typeof navigator !== 'undefined' && !!navigator.geolocation;
     const hasCapacitorGeo = !!(window?.Capacitor?.isNativePlatform && window?.Capacitor?.Plugins?.Geolocation?.getCurrentPosition);
     if (!hasBrowserGeo && !hasCapacitorGeo) {
-      setError('Geolocation is not available in this environment.');
+      setGeoError('Geolocation is not available in this environment.');
       return;
     }
 
     // Helpful hint when running on an insecure origin (browsers block geolocation on HTTP except localhost).
     if (typeof window !== 'undefined' && !window.isSecureContext && !/^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
-      setError('Location requires HTTPS (or localhost) in browsers. Use city search or switch to https.');
+      setGeoError('Location requires HTTPS (or localhost) in browsers. Use city search or switch to https.');
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    setGeoError(null);
+    setGeoLoading(true);
 
     const getPosition = () => new Promise((resolve, reject) => {
       if (hasCapacitorGeo) {
@@ -263,9 +313,9 @@ const GasVsHeatPump = () => {
         if (e.code === 1) msg = 'Location access was denied. Check browser/site permissions.';
         else if (e.message) msg = e.message;
       }
-      setError(msg);
+      setGeoError(msg);
     } finally {
-      setLoading(false);
+      setGeoLoading(false);
     }
   };
 
@@ -308,55 +358,42 @@ const GasVsHeatPump = () => {
     }
   };
 
-  // Auto-search location on mount (uses location from onboarding if available)
-  useEffect(() => { handleCitySearch(); }, []);
-
+  // Auto-load location from onboarding on mount
   useEffect(() => {
-    if (!location) return;
-    const fetchWeather = async () => {
-      setLoading(true);
-      setError(null);
+    // If we already have coordinates from onboarding, set the found location name
+    if (location?.latitude && location?.longitude) {
       try {
-        // Request humidity & dew point (some older naming variations included for robustness)
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&hourly=temperature_2m,relativehumidity_2m,relative_humidity_2m,dew_point_2m&temperature_unit=fahrenheit&timeformat=unixtime&forecast_days=7&timezone=auto`);
-        if (!response.ok) throw new Error('Weather data not available.');
-        const data = await response.json();
-        const temps = data?.hourly?.temperature_2m || [];
-        const humidityA = data?.hourly?.relativehumidity_2m || [];
-        const humidityB = data?.hourly?.relative_humidity_2m || [];
-        const dewpoints = data?.hourly?.dew_point_2m || [];
-        const times = data?.hourly?.time || [];
-
-        const processedForecast = times.map((t, i) => {
-          const temp = temps[i];
-          let humidity = humidityA[i] ?? humidityB[i];
-          // Fallback: derive relative humidity from dewpoint if missing
-          if ((humidity === undefined || humidity === null) && dewpoints[i] !== undefined && temp !== undefined) {
-            // Convert Fahrenheit to Celsius for Magnus formula
-            const TdC = (dewpoints[i] - 32) * 5 / 9;
-            const TC = (temp - 32) * 5 / 9;
-            // Approximation using Magnus formula (over water)
-            const esTd = Math.exp((17.625 * TdC) / (243.04 + TdC));
-            const esT = Math.exp((17.625 * TC) / (243.04 + TC));
-            humidity = Math.min(100, Math.max(0, (esTd / esT) * 100));
+        const savedLocation = localStorage.getItem('userLocation');
+        if (savedLocation) {
+          const locationData = JSON.parse(savedLocation);
+          if (locationData.city && locationData.state) {
+            setFoundLocationName(`${locationData.city}${locationData.state ? ', ' + locationData.state : ''}${locationData.country ? ', ' + locationData.country : ''}`);
+            // Forecast will automatically load via useForecast hook since location is set
+            return;
           }
-          if (humidity === undefined || humidity === null || isNaN(humidity)) humidity = 50; // Final fallback
-          return {
-            timeMs: t * 1000,
-            temp,
-            humidity,
-          };
-        });
-        setForecastTimezone(data.timezone || null);
-        setForecast(processedForecast);
+        }
       } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
+        console.error('Failed to load saved location name:', e);
       }
-    };
-    fetchWeather();
-  }, [location]);
+    }
+    // If no saved coordinates, try to search using the location query
+    if (locationQuery && locationQuery !== "Chicago, IL") {
+      handleCitySearch();
+    }
+  }, []); // Only run on mount
+
+  // Set timezone from location (useForecast doesn't provide timezone, so we'll infer from location)
+  useEffect(() => {
+    if (location && forecast) {
+      // Try to get timezone from the first forecast entry's time
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setForecastTimezone(tz);
+      } catch {
+        setForecastTimezone(null);
+      }
+    }
+  }, [location, forecast]);
 
   const weeklyMetrics = useMemo(() => {
     if (!forecast) return null;
@@ -435,206 +472,431 @@ const GasVsHeatPump = () => {
     return { extremeCold, overRuntime };
   }, [forecast, getPerformanceAtTemp]);
 
+  // Calculate CO2 savings for hero banner
+  const co2Savings = useMemo(() => {
+    if (!weeklyMetrics) return null;
+    const estimatedHPkWh = weeklyMetrics.totalHPCost / utilityCost;
+    const estimatedGasTherms = weeklyMetrics.totalGasCost / gasCostPerTherm;
+    const hpCO2 = estimatedHPkWh * 0.92; // lbs CO₂ from electricity
+    const gasCO2 = estimatedGasTherms * 11.7; // lbs CO₂ from natural gas
+    const co2Saved = gasCO2 - hpCO2;
+    return co2Saved >= 0 ? `${co2Saved.toFixed(0)} lbs` : null;
+  }, [weeklyMetrics, utilityCost, gasCostPerTherm]);
+
+  // Format daily rows for table
+  const dailyRows = useMemo(() => {
+    if (!weeklyMetrics) return [];
+    return weeklyMetrics.summary.map(day => ({
+      date: day.day,
+      tempRange: `${formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })}–${formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}`,
+      hp: day.hpCost,
+      gas: day.gasCost,
+      savings: day.savings
+    }));
+  }, [weeklyMetrics]);
+
+  // Calculate savings percentage
+  const savingsPercent = useMemo(() => {
+    if (!weeklyMetrics || weeklyMetrics.totalGasCost === 0) return '0%';
+    return `${((weeklyMetrics.totalSavings / weeklyMetrics.totalGasCost) * 100).toFixed(0)}%`;
+  }, [weeklyMetrics]);
+
+  // Annual savings label
+  const annualSavingsLabel = useMemo(() => {
+    if (!weeklyMetrics) return '$0';
+    return `$${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}`;
+  }, [weeklyMetrics]);
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">7-Day Cost Comparison</h2>
-          <p className="text-gray-600 dark:text-gray-400">Compare heat pump vs. gas furnace costs for your home</p>
-        </div>
-        <DashboardLink />
-      </div>
-
-      {/* Step 1: Building & Systems (inputs grouped together) */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg">
-            <Home size={24} className="text-white" />
-          </div>
-          <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Step 1: Your Building & Systems</h3>
-        </div>
-        {/* Building Characteristics Sub-section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="max-w-7xl mx-auto px-4 py-6 text-gray-200">
+      {/* ---------------- PAGE HERO ---------------- */}
+      <section className="mb-8">
+        <div className="flex justify-between items-center mb-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Square Footage</label>
-            <input type="range" min="800" max="4000" step="100" value={squareFeet} onChange={(e) => setSquareFeetContext(Number(e.target.value))} className="w-full mb-2" />
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{squareFeet.toLocaleString()} sq ft</span>
+            <h1 className="text-3xl font-bold text-white">7-Day Cost Comparison</h1>
+            <p className="mt-2 text-gray-400">
+              See how your heat pump stacks up against gas for the next 7 days — using real weather and real physics.
+            </p>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Insulation</label>
-            <select value={insulationLevel} onChange={(e) => setInsulationLevelContext(Number(e.target.value))} className={selectClasses}>
-              <option value={1.4}>Poor</option>
-              <option value={1.0}>Average</option>
-              <option value={0.65}>Good</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Home Shape</label>
-            <select value={homeShape} onChange={(e) => setHomeShapeContext(Number(e.target.value))} className={selectClasses}>
-              <option value={1.3}>Cabin/A-Frame</option>
-              <option value={1.15}>Ranch</option>
-              <option value={1.0}>Average</option>
-              <option value={0.9}>2-Story</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Ceiling Height</label>
-            <input type="range" min="7" max="20" step="1" value={ceilingHeight} onChange={(e) => setCeilingHeightContext(Number(e.target.value))} className="w-full mb-2" />
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{ceilingHeight} ft</span>
+          <div className="flex items-center gap-4">
+            <label className={`flex items-center gap-2 ${(!location || !forecast || forecastLoading) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+              <input
+                type="checkbox"
+                checked={simpleMode}
+                onChange={(e) => setSimpleMode(e.target.checked)}
+                disabled={!location || !forecast || forecastLoading}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <span className={`text-sm ${(!location || !forecast || forecastLoading) ? 'text-gray-500' : 'text-gray-300'}`}>
+                Simple mode
+                {(!location || !forecast || forecastLoading) && (
+                  <span className="ml-1 text-xs text-gray-500">(enter location first)</span>
+                )}
+              </span>
+            </label>
+            <DashboardLink />
           </div>
         </div>
-        {/* System Comparison Sub-section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-          {/* Heat Pump Card */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl shadow-lg p-6 border-2 border-blue-200 dark:border-blue-800">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
-                <Zap size={24} className="text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Heat Pump</h3>
+        {weeklyMetrics && !isLoading && co2Savings && (() => {
+          const nighttimeTemp = Number(userSettings?.winterThermostatNight ?? userSettings?.nighttimeTemp) || (indoorTemp - 2);
+          return (
+            <div className="mt-4 bg-green-900/30 border border-green-600/40 rounded-lg p-4">
+              <p className="text-green-300 text-sm">
+                This week your heat pump will cost <strong className="text-green-400">${weeklyMetrics.totalHPCost.toFixed(2)}</strong> vs <strong className="text-green-400">${weeklyMetrics.totalGasCost.toFixed(2)}</strong> on gas — about <strong className="text-green-400">${weeklyMetrics.totalSavings.toFixed(2)}</strong> saved for the same comfort.
+              </p>
+              <p className="text-green-400/70 text-xs mt-2">
+                This assumes {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} day / {formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })} night
+              </p>
             </div>
-            <div className="space-y-4">
+          );
+        })()}
+      </section>
+
+      {/* ---------------- STEP 1 ---------------- */}
+      {!simpleMode && (
+      <section className="bg-[#11161e] border border-[#1f2937] rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold text-white mb-1">Step 1 · Your Building & Systems</h2>
+        <p className="text-gray-400 text-sm mb-6">
+          Tell Joule what you're heating so we don't compare apples to igloos.
+        </p>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* ---- HOME DETAILS ---- */}
+          <div>
+            <h3 className="text-lg font-semibold text-blue-300 mb-1">Your Home</h3>
+            <p className="text-gray-500 text-xs mb-3">size & shell</p>
+            <div className="space-y-4 text-sm">
               <div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Capacity
-                  <button className="group relative">
-                    <Info size={14} className="text-gray-500" />
-                    <span className="invisible group-hover:visible absolute left-0 top-6 w-48 bg-gray-900 text-white text-xs rounded p-2 z-10">
-                      Nominal heating/cooling size of the heat pump
-                    </span>
-                  </button>
-                </label>
-                <select value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={selectClasses}>
-                  {Object.entries(capacities).map(([btu, ton]) => (
-                    <option key={btu} value={btu}>{btu}k BTU ({ton} tons)</option>
-                  ))}
+                <label className="block text-gray-300 mb-1">Home size (sq ft)</label>
+                <input type="range" min="800" max="4000" step="100" value={squareFeet} onChange={(e) => setSquareFeetContext(Number(e.target.value))} className="w-full mb-2" />
+                <span className="text-lg font-bold text-white">{squareFeet.toLocaleString()} sq ft</span>
+                <p className="text-gray-500 text-xs mt-1">Heated floor area only.</p>
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-1">Insulation level</label>
+                <select value={insulationLevel} onChange={(e) => setInsulationLevelContext(Number(e.target.value))} className={selectClasses}>
+                  <option value={1.4}>Rough</option>
+                  <option value={1.0}>Typical</option>
+                  <option value={0.65}>Tight</option>
                 </select>
+                <p className="text-gray-500 text-xs mt-1">How drafty or tight the building shell is.</p>
               </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  SEER2
-                  <button className="group relative">
-                    <Info size={14} className="text-gray-500" />
-                    <span className="invisible group-hover:visible absolute left-0 top-6 w-48 bg-gray-900 text-white text-xs rounded p-2 z-10">
-                      Seasonal Energy Efficiency Ratio 2. Higher is better
-                    </span>
-                  </button>
-                </label>
-                <select value={efficiency} onChange={(e) => setEfficiency(Number(e.target.value))} className={selectClasses}>
-                  {[14, 15, 16, 17, 18, 19, 20, 21, 22].map(seer => (
-                    <option key={seer} value={seer}>{seer} SEER2</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Electricity Cost</label>
-                <input type="range" min="0.05" max="0.50" step="0.01" value={utilityCost} onChange={(e) => setUtilityCost(Number(e.target.value))} className="w-full mb-2" />
-                <span className="text-lg font-bold text-gray-900 dark:text-gray-100">${utilityCost.toFixed(2)} / kWh</span>
+              
+              {/* Advanced Details Accordion */}
+              <div className="border border-[#1c2733] rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
+                  className="w-full flex items-center justify-between p-3 hover:bg-[#0c1218] transition-colors text-left"
+                >
+                  <span className="text-sm font-medium text-gray-300">Advanced details (optional)</span>
+                  {showAdvancedDetails ? (
+                    <ChevronUp className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+                {showAdvancedDetails && (
+                  <div className="p-3 space-y-4 border-t border-[#1c2733] bg-[#0c1218]">
+                    <div>
+                      <label className="block text-gray-300 mb-1">Home shape</label>
+                      <select value={homeShape} onChange={(e) => setHomeShapeContext(Number(e.target.value))} className={selectClasses}>
+                        <option value={1.0}>Simple box</option>
+                        <option value={1.15}>Cape/Craftsman</option>
+                        <option value={1.3}>Spiky modern</option>
+                      </select>
+                      <p className="text-gray-500 text-xs mt-1">Complex shapes lose more heat than simple boxes.</p>
+                    </div>
+                    <div>
+                      <label className="block text-gray-300 mb-1">Ceiling height</label>
+                      <input type="range" min="7" max="20" step="1" value={ceilingHeight} onChange={(e) => setCeilingHeightContext(Number(e.target.value))} className="w-full mb-2" />
+                      <span className="text-lg font-bold text-white">{ceilingHeight} ft</span>
+                      <p className="text-gray-500 text-xs mt-1">Higher ceilings = more air volume to heat.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Gas Furnace Card */}
-          <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950 rounded-xl shadow-lg p-6 border-2 border-orange-200 dark:border-orange-800">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg">
-                <Flame size={24} className="text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Gas Furnace</h3>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Efficiency (AFUE)
-                  <button className="group relative">
-                    <Info size={14} className="text-gray-500" />
-                    <span className="invisible group-hover:visible absolute left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded p-2 z-10">
-                      98-90%: High-Efficiency (PVC vent)<br />
-                      90-80%: Standard (Metal vent)<br />
-                      &lt;80%: Legacy (Pilot light)
-                    </span>
-                  </button>
-                </label>
-                <input type="range" min={80} max={98} value={gasFurnaceAFUE * 100} onChange={(e) => setGasFurnaceAFUE(Number(e.target.value) / 100)} className="w-full mb-2" />
-                <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Gas Cost
-                  <button className="group relative">
-                    <Info size={14} className="text-gray-500" />
-                    <span className="invisible group-hover:visible absolute left-0 top-6 w-64 bg-gray-900 text-white text-xs rounded p-2 z-10">
-                      Check your utility bill. If you have $/Mcf, convert: 1 Mcf ≈ 10.37 therms
-                    </span>
-                  </button>
-                </label>
-                <input type="range" min="0.5" max="3.0" step="0.05" value={gasCostPerTherm} onChange={(e) => setGasCostPerTherm(Number(e.target.value))} className="w-full mb-2" />
-                <span className="text-lg font-bold text-gray-900 dark:text-gray-100">${gasCostPerTherm.toFixed(2)} / therm</span>
-
-                <div className="mt-3 p-3 rounded-lg bg-white dark:bg-gray-900 border border-orange-200 dark:border-orange-800 space-y-2">
-                  <GasMcfConverter onApply={(val) => setGasCostPerTherm(val)} />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href="https://www.eia.gov/dnav/ng/ng_pri_sum_a_EPG0_PRS_DMcf_m.htm"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300"
-                    >
-                      EIA State Gas Prices
-                    </a>
+          {/* ---- SYSTEM CARDS ---- */}
+          <div className="space-y-6">
+            {/* HEAT PUMP CARD */}
+            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-blue-300 mb-1">Heat Pump</h3>
+              <p className="text-gray-500 text-xs mb-3">efficiency & size</p>
+              <div className="space-y-4 text-sm">
+                <div>
+                  <label className="block text-gray-300 mb-1">Capacity</label>
+                  <select value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={selectClasses}>
+                    {Object.entries(capacities).map(([btu, ton]) => (
+                      <option key={btu} value={btu}>
+                        {unitSystem === "intl" 
+                          ? formatCapacityFromKbtuh(Number(btu), unitSystem) + ` (${btu}k BTU)`
+                          : `${btu}k BTU (${ton} tons)`
+                        }
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const capacityBTU = capacity * 1000;
+                    const heatLossBTU = heatLoss;
+                    const ratio = capacityBTU / heatLossBTU;
+                    if (ratio > 2.5) {
+                      return (
+                        <p className="text-yellow-400 text-xs mt-2 flex items-start gap-1">
+                          <Info size={14} className="flex-shrink-0 mt-0.5" />
+                          <span>This is a very large system for an {squareFeet.toLocaleString()} sq ft space — that's okay if you're modeling reality.</span>
+                        </p>
+                      );
+                    } else if (ratio < 0.8) {
+                      return (
+                        <p className="text-yellow-400 text-xs mt-2 flex items-start gap-1">
+                          <Info size={14} className="flex-shrink-0 mt-0.5" />
+                          <span><strong>This looks a bit undersized for your home's heat loss.</strong> If that matches the equipment you actually have, keep it – you're modeling reality.</span>
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Efficiency (HSPF2/SEER2)</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
                     <button
                       type="button"
-                      className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      onClick={() => setShowStatePickerModal(true)}
-                      disabled={!eiaApiKey}
+                      onClick={() => setEfficiency(15)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        efficiency >= 14 && efficiency <= 15
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
                     >
-                      {!eiaApiKey ? 'API Key Required' : 'Fetch State Average'}
+                      Standard (14-15)
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setEfficiency(17)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        efficiency >= 16 && efficiency <= 17
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      Good (16-17)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEfficiency(19)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        efficiency >= 18 && efficiency <= 20
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      High (18-20)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEfficiency(21)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        efficiency >= 21
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      Premium (21+)
+                    </button>
+                  </div>
+                  {showAdvancedDetails && (
+                    <select value={efficiency} onChange={(e) => setEfficiency(Number(e.target.value))} className={selectClasses}>
+                      {[14, 15, 16, 17, 18, 19, 20, 21, 22].map(seer => (
+                        <option key={seer} value={seer}>{seer} SEER2</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Electricity Cost ($/kWh)</label>
+                  <input type="range" min="0.05" max="0.50" step="0.01" value={utilityCost} onChange={(e) => setUtilityCost(Number(e.target.value))} className="w-full mb-2" />
+                  <span className="text-lg font-bold text-white">${utilityCost.toFixed(2)} / kWh</span>
+                </div>
+              </div>
+            </div>
+
+            {/* GAS FURNACE CARD */}
+            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-red-300 mb-1">Gas Furnace</h3>
+              <p className="text-gray-500 text-xs mb-3">efficiency & fuel price</p>
+              <div className="space-y-4 text-sm">
+                <div>
+                  <label className="block text-gray-300 mb-1">AFUE (%)</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setGasFurnaceAFUE(0.80)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        Math.round(gasFurnaceAFUE * 100) === 80
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      80% (old)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGasFurnaceAFUE(0.90)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        Math.round(gasFurnaceAFUE * 100) === 90
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      90%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGasFurnaceAFUE(0.95)}
+                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                        Math.round(gasFurnaceAFUE * 100) >= 95
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      95%+ (high-efficiency)
+                    </button>
+                  </div>
+                  <input type="range" min={80} max={98} value={gasFurnaceAFUE * 100} onChange={(e) => setGasFurnaceAFUE(Number(e.target.value) / 100)} className="w-full mb-2" />
+                  <span className="text-lg font-bold text-white">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Gas Cost ($/therm)</label>
+                  <input type="range" min="0.5" max="3.0" step="0.05" value={gasCostPerTherm} onChange={(e) => setGasCostPerTherm(Number(e.target.value))} className="w-full mb-2" />
+                  <span className="text-lg font-bold text-white">${gasCostPerTherm.toFixed(2)} / therm</span>
+                  <div className="mt-3 p-3 rounded-lg bg-[#0a0f14] border border-[#1c2733] space-y-2">
+                    <GasMcfConverter onApply={(val) => setGasCostPerTherm(val)} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href="https://www.eia.gov/dnav/ng/ng_pri_sum_a_EPG0_PRS_DMcf_m.htm"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-blue-400 underline hover:text-blue-300"
+                      >
+                        EIA State Gas Prices
+                      </a>
+                      <button
+                        type="button"
+                        className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        onClick={() => setShowStatePickerModal(true)}
+                        disabled={!eiaApiKey}
+                      >
+                        {!eiaApiKey ? 'API Key Required' : 'Fetch State Average'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Weather & Forecast Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg">
-            <MapPin size={24} className="text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Step 2: Get Weather Forecast</h2>
-        </div>
+        <p className="mt-6 text-gray-500 text-xs">
+          These inputs define your home's heat loss and how hard each system must work.
+        </p>
+      </section>
+      )}
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      {/* ---------------- STEP 2 ---------------- */}
+      {!simpleMode && (
+      <section className="bg-[#11161e] border border-[#1f2937] rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold text-white mb-1">Step 2 · Weather for Your Home</h2>
+        <p className="text-gray-400 text-sm mb-6">
+          Joule uses next week's real forecast to simulate both systems hour-by-hour.
+        </p>
+        <p className="text-gray-400 text-sm mb-6">
+          We pull the 7-day forecast for your address and run both systems through identical weather.
+        </p>
+
+        <div className="flex gap-3 items-center flex-wrap">
           <input
             type="text"
             value={locationQuery}
             onChange={e => setLocationQuery(e.target.value)}
             placeholder="City, State (e.g., Chicago, IL)"
-            className={`${fullInputClasses} flex-1`}
+            className={`${fullInputClasses} flex-1 min-w-[200px]`}
             onKeyDown={e => e.key === 'Enter' && handleCitySearch()}
           />
-          <button onClick={handleCitySearch} className="px-6 py-3 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105">
+          <button onClick={handleCitySearch} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm">
             Search
           </button>
-          <button onClick={handleLocationRequest} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+          <button onClick={handleLocationRequest} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white text-sm flex items-center gap-2">
             <MapPin size={18} />
             Use My Location
           </button>
         </div>
 
+        <p className="text-gray-500 text-xs mt-3">
+          Forecast temps drive the physics model — cold snaps and warm spells both matter.
+        </p>
+
+        {forecastDataSource && (
+          <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/40 rounded-lg space-y-2">
+            <p className="text-xs text-blue-300 flex items-center gap-2">
+              <Info size={14} className="flex-shrink-0" />
+              <span>
+                <strong>Weather data source:</strong> {forecastDataSource === 'NWS' ? (
+                  <>
+                    <a 
+                      href="https://www.weather.gov/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      National Weather Service (NWS)
+                    </a>
+                    {' '}— official US government forecast
+                  </>
+                ) : (
+                  <>
+                    <a 
+                      href="https://open-meteo.com/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      Open-Meteo
+                    </a>
+                    {' '}— global weather API (used when NWS unavailable)
+                  </>
+                )}
+              </span>
+            </p>
+            {forecastDataSource === 'NWS' && (
+              <p className="text-xs text-blue-400/80 pl-5">
+                <strong>Note:</strong> We use NWS hourly forecast data (better for cost calculations) and calculate daily min/max from hourly values. 
+                The{' '}
+                <a 
+                  href="https://www.weather.gov/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="underline hover:text-blue-300"
+                >
+                  weather.gov website
+                </a>
+                {' '}shows official daily forecast periods, which may differ slightly. Both are valid — hourly data is more accurate for hour-by-hour energy cost modeling.
+              </p>
+            )}
+          </div>
+        )}
+
         {showCandidateList && geocodeCandidates.length > 0 && (
-          <div className="mb-4 p-4 border-2 border-green-200 dark:border-green-800 rounded-lg bg-green-50 dark:bg-green-950">
-            <p className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Select a matching location:</p>
+          <div className="mt-4 p-4 border-2 border-green-600/40 rounded-lg bg-green-900/20">
+            <p className="text-sm font-semibold mb-3 text-green-300">Select a matching location:</p>
             <ul className="space-y-2">
               {geocodeCandidates.map(c => (
                 <li key={`${c.latitude}-${c.longitude}`}>
                   <button
                     type="button"
                     onClick={() => handleCandidateSelect(c)}
-                    className={`text-left ${fullInputClasses} px-3 py-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-green-100 dark:hover:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-900 dark:text-gray-100 transition-colors`}
+                    className="text-left w-full px-3 py-2 rounded-lg bg-[#0c1218] hover:bg-[#141a22] border border-[#1c2733] text-gray-300 hover:text-white transition-colors"
                   >
                     {c.name}{c.admin1 ? `, ${c.admin1}` : ''}{c.country ? `, ${c.country}` : ''} ({c.latitude.toFixed(2)}, {c.longitude.toFixed(2)})
                   </button>
@@ -645,30 +907,30 @@ const GasVsHeatPump = () => {
         )}
 
         {foundLocationName && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-sm text-gray-700 dark:text-gray-300">
+          <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/40 rounded-lg">
+            <p className="text-sm text-blue-300">
               <span className="font-semibold">Location:</span> {foundLocationName}
             </p>
           </div>
         )}
 
         {(warnings.extremeCold || warnings.overRuntime) && (
-          <div className="mb-4 space-y-3">
+          <div className="mt-4 space-y-3">
             {warnings.extremeCold && (
-              <div className="flex gap-3 p-4 rounded-lg border-2 bg-amber-50 dark:bg-amber-950 border-amber-300 dark:border-amber-700">
-                <AlertCircle size={20} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-amber-800 dark:text-amber-200">
+              <div className="flex gap-3 p-4 rounded-lg border-2 bg-amber-900/20 border-amber-600/40">
+                <AlertCircle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-300">
                   <p className="font-semibold mb-1">Extreme Cold Warning</p>
-                  <p>Forecast includes sub-zero temperatures (≤ {EXTREME_COLD_F}°F). Many heat pumps rely on auxiliary/backup heat in this range, which may increase actual electricity usage.</p>
+                  <p>Forecast includes sub-zero temperatures (≤ {formatTemperatureFromF(EXTREME_COLD_F, unitSystem, { decimals: 0 })}). Many heat pumps rely on auxiliary/backup heat in this range, which may increase actual electricity usage.</p>
                 </div>
               </div>
             )}
             {warnings.overRuntime && (
-              <div className="flex gap-3 p-4 rounded-lg border-2 bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700">
-                <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-yellow-800 dark:text-yellow-200">
+              <div className="flex gap-3 p-4 rounded-lg border-2 bg-yellow-900/20 border-yellow-600/40">
+                <AlertCircle size={20} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-yellow-300">
                   <p className="font-semibold mb-1">Runtime Warning</p>
-                  <p>At times the modeled heat pump would need to run over 100% duty cycle to maintain {indoorTemp}°F. Real systems will either use backup heat or allow temperature drop, which can increase actual costs.</p>
+                  <p>At times the modeled heat pump would need to run over 100% duty cycle to maintain {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}. Real systems will either use backup heat or allow temperature drop, which can increase actual costs.</p>
                 </div>
               </div>
             )}
@@ -676,41 +938,107 @@ const GasVsHeatPump = () => {
         )}
 
         {lowHeatLossWarning && (
-          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-lg">
-            <p className="text-sm text-amber-700 dark:text-amber-300">
+          <div className="mt-4 p-3 bg-amber-900/20 border border-amber-600/40 rounded-lg">
+            <p className="text-sm text-amber-300">
               ⚠️ Heat loss appears unusually low. Double-check square footage, insulation and shape — costs may be understated.
             </p>
           </div>
         )}
 
-        {loading && (
+        {isLoading && (
           <div className="flex items-center justify-center gap-3 py-8">
-            <svg className="animate-spin h-8 w-8 text-green-600" viewBox="0 0 24 24">
+            <svg className="animate-spin h-8 w-8 text-blue-400" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
-            <p className="text-gray-700 dark:text-gray-300 font-medium">Loading forecast...</p>
+            <p className="text-gray-300 font-medium">Loading forecast...</p>
           </div>
         )}
 
-        {error && (
-          <div className="flex gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+        {displayError && (
+          <div className="mt-4 flex gap-3 p-4 bg-red-900/20 border border-red-600/40 rounded-lg">
+            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
             </svg>
-            <p className="text-red-700 dark:text-red-300 font-medium">{error}</p>
+            <p className="text-red-300 font-medium">{displayError}</p>
           </div>
         )}
-        {/* Results moved to a dedicated section below */}
-      </div>
+      </section>
+      )}
 
-      {/* Results & Insight Section (centralized at the end) */}
-      {weeklyMetrics && !loading && (
+      {/* Results & Bragging Rights Section */}
+      {weeklyMetrics && !isLoading && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg"><TrendingUp size={24} className="text-white" /></div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Results & Insight</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Results & Bragging Rights</h2>
+
+          {/* Net Result One-Liner */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-lg border-l-4 border-blue-500 dark:border-blue-400">
+            <p className="text-base text-gray-900 dark:text-white">
+              <strong>Net result:</strong> your current heat pump setup is <strong className="text-blue-700 dark:text-blue-300">about ${Math.abs(weeklyMetrics.totalSavings).toFixed(2)} {weeklyMetrics.totalSavings >= 0 ? 'cheaper' : 'more expensive'}</strong> than gas over the next 7 days at this weather.
+            </p>
           </div>
+
+          {/* Top Summary Row - Three Big Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {/* Card 1: Total Week Cost - Heat Pump */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-900 rounded-xl p-6 border-2 border-blue-300 dark:border-blue-700 shadow-lg">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">This week with your heat pump you'll spend:</h3>
+              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-2">${weeklyMetrics.totalHPCost.toFixed(2)}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Running your current heat pump with your settings and forecast.</p>
+            </div>
+
+            {/* Card 2: Total Week Cost - Gas Furnace */}
+            <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-900 rounded-xl p-6 border-2 border-orange-300 dark:border-orange-700 shadow-lg">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">If you heated with gas instead, it would cost:</h3>
+              <p className="text-4xl font-bold text-orange-600 dark:text-orange-400 mb-2">${weeklyMetrics.totalGasCost.toFixed(2)}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Same house, same weather, same comfort — just on gas.</p>
+            </div>
+
+            {/* Card 3: Savings & Annualized */}
+            <div className={`bg-gradient-to-br ${weeklyMetrics.totalSavings >= 0 ? 'from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-900 border-4 border-green-400 dark:border-green-500' : 'from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-900 border-4 border-red-400 dark:border-red-500'} rounded-xl p-6 shadow-xl ring-2 ${weeklyMetrics.totalSavings >= 0 ? 'ring-green-300 dark:ring-green-600' : 'ring-red-300 dark:ring-red-600'} ring-opacity-50`}>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">You come out ahead by:</h3>
+              <p className={`text-4xl font-bold mb-2 ${weeklyMetrics.totalSavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                ${weeklyMetrics.totalSavings.toFixed(2)}
+              </p>
+              <div className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mb-2 ${weeklyMetrics.totalSavings >= 0 ? 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200' : 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200'}`}>
+                ≈ ${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}/year at this pattern
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Assumes this week is roughly typical for your heating season.</p>
+            </div>
+          </div>
+
+          {/* Pride Copy Block */}
+          {weeklyMetrics.totalSavings >= 0 && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 rounded-xl p-6 mb-8 border-l-4 border-green-500 dark:border-green-400">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">In plain English:</h3>
+              <p className="text-sm text-gray-800 dark:text-gray-200 mb-2">
+                With your setup, <strong className="font-bold text-gray-900 dark:text-white">your heat pump beats a gas furnace by about {((weeklyMetrics.totalSavings / weeklyMetrics.totalGasCost) * 100).toFixed(0)}% on energy cost for the same comfort.</strong>
+              </p>
+              <p className="text-sm text-gray-800 dark:text-gray-200 mb-2">
+                That's <strong className="text-green-700 dark:text-green-400">${weeklyMetrics.totalSavings.toFixed(2)}</strong> saved this week and roughly <strong className="text-green-700 dark:text-green-400">${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}/year</strong> if this pattern holds.
+              </p>
+              <p className="text-sm text-gray-800 dark:text-gray-200 italic mb-2">
+                Translation: your weird electric box is absolutely clowning on fossil heat.
+              </p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 italic">
+                Based on this week's forecast
+              </p>
+            </div>
+          )}
+
+          {/* Simple Mode Tip */}
+          {simpleMode && weeklyMetrics && (() => {
+            const nighttimeTemp = Number(userSettings?.winterThermostatNight ?? userSettings?.nighttimeTemp) || (indoorTemp - 2);
+            return (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-8">
+                <p className="text-base text-gray-800 dark:text-gray-200">
+                  <strong className="text-blue-700 dark:text-blue-300">To save more, lower your nighttime temp by {unitSystem === "intl" ? "1–2°C" : "1–2°F"}.</strong>
+                </p>
+              </div>
+            );
+          })()}
+
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             {/* Heat Pump Cost */}
@@ -747,21 +1075,13 @@ const GasVsHeatPump = () => {
             </div>
           </div>
 
-          {/* Diagnostic Insight Box */}
-          <div className={`mb-6 p-6 rounded-xl border-l-4 shadow-md ${weeklyMetrics.totalSavings >= 0 ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-l-green-600 dark:border-l-green-400' : 'bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 border-l-red-600 dark:border-l-red-400'}`}>
-            <h3 className={`font-bold text-lg mb-3 flex items-center gap-2 ${weeklyMetrics.totalSavings >= 0 ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
-              <TrendingUp size={20} />
-              Insight
-            </h3>
-            <p className={`text-sm leading-relaxed ${weeklyMetrics.totalSavings >= 0 ? 'text-green-700 dark:text-green-200' : 'text-red-700 dark:text-red-200'}`}>
-              {weeklyMetrics.totalSavings >= 0
-                ? `In this scenario, the heat pump is more economical. This is common in regions with moderate winter temperatures and where electricity rates are competitive with natural gas.`
-                : `In this scenario, the gas furnace is more economical. This is common in regions with very cold winter temperatures and when the price of natural gas is significantly lower than electricity. However, heat pumps often provide superior comfort and may have other benefits not captured in this weekly cost analysis.`
-              }
+          {/* Daily Breakdown Table */}
+          {!simpleMode && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Daily Breakdown – How Each Day Stacked Up</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Colder days tilt toward gas being more expensive. Mild days are where heat pumps really flex.
             </p>
-          </div>
-
-          <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-gray-100">Daily Cost Breakdown</h3>
 
           {/* Mobile cards */}
           <div className="grid grid-cols-1 gap-3 md:hidden">
@@ -769,12 +1089,21 @@ const GasVsHeatPump = () => {
               <div key={day.day} className="border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-800 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-gray-900 dark:text-gray-100">{day.day}</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">{day.lowTemp.toFixed(0)}–{day.highTemp.toFixed(0)}°F</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })}–{formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-blue-600 dark:text-blue-400 font-semibold">HP: ${day.hpCost.toFixed(2)}</span>
-                  <span className="text-orange-600 dark:text-orange-400 font-semibold">Gas: ${day.gasCost.toFixed(2)}</span>
-                  <span className={`font-bold ${day.savings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
+                    {day.savings >= 0 && <span>🟢</span>}
+                    HP: ${day.hpCost.toFixed(2)}
+                  </span>
+                  <span className="text-orange-600 dark:text-orange-400 font-semibold flex items-center gap-1">
+                    {day.savings < 0 && <span>🔴</span>}
+                    Gas: ${day.gasCost.toFixed(2)}
+                  </span>
+                  <span className={`font-bold flex items-center gap-1 ${day.savings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {day.savings >= 0 ? <span>⬆</span> : <span>⬇</span>}
                     ${day.savings.toFixed(2)}
                   </span>
                 </div>
@@ -782,121 +1111,181 @@ const GasVsHeatPump = () => {
             ))}
           </div>
 
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-hidden rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-sm">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900 border-b-2 border-gray-200 dark:border-gray-700">
-                  <th className="p-4 font-bold text-gray-900 dark:text-gray-100">Day</th>
-                  <th className="p-4 font-bold text-gray-900 dark:text-gray-100">Temp Range</th>
-                  <th className="p-4 font-bold text-blue-600 dark:text-blue-400">HP Cost</th>
-                  <th className="p-4 font-bold text-orange-600 dark:text-orange-400">Gas Cost</th>
-                  <th className="p-4 font-bold text-gray-900 dark:text-gray-100">Savings with HP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weeklyMetrics.summary.map((day, idx) => (
-                  <tr key={day.day} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
-                    <td className="p-4 font-semibold text-gray-900 dark:text-gray-100">{day.day}</td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">{day.lowTemp.toFixed(0)} - {day.highTemp.toFixed(0)}°F</td>
-                    <td className="p-4 font-semibold text-blue-600 dark:text-blue-400">${day.hpCost.toFixed(2)}</td>
-                    <td className="p-4 font-semibold text-orange-600 dark:text-orange-400">${day.gasCost.toFixed(2)}</td>
-                    <td className={`p-4 font-bold ${day.savings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      ${day.savings.toFixed(2)}
-                    </td>
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-hidden rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900 border-b-2 border-gray-200 dark:border-gray-700">
+                    <th className="p-4 font-bold text-gray-900 dark:text-gray-100">Day</th>
+                    <th className="p-4 font-bold text-gray-900 dark:text-gray-100">Temp Range ({unitSystem === "intl" ? "°C" : "°F"})</th>
+                    <th className="p-4 font-bold text-blue-600 dark:text-blue-400 text-right">Heat Pump Cost</th>
+                    <th className="p-4 font-bold text-orange-600 dark:text-orange-400 text-right">Gas Cost</th>
+                    <th className="p-4 font-bold text-gray-900 dark:text-gray-100 text-right">You Saved</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {weeklyMetrics.summary.map((day, idx) => (
+                    <tr key={day.day} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'} hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors`}>
+                      <td className="p-4 font-semibold text-gray-900 dark:text-gray-100">{day.day}</td>
+                      <td className="p-4 text-gray-700 dark:text-gray-300">
+                        {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })}–{formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
+                      </td>
+                      <td className="p-4 font-semibold text-blue-600 dark:text-blue-400 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {day.savings >= 0 && <span className="text-green-600 dark:text-green-400">🟢</span>}
+                          ${day.hpCost.toFixed(2)}
+                        </div>
+                      </td>
+                      <td className="p-4 font-semibold text-orange-600 dark:text-orange-400 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {day.savings < 0 && <span className="text-red-600 dark:text-red-400">🔴</span>}
+                          ${day.gasCost.toFixed(2)}
+                        </div>
+                      </td>
+                      <td className={`p-4 font-bold text-right ${day.savings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <div className="flex items-center justify-end gap-2">
+                          {day.savings >= 0 ? (
+                            <span className="text-green-600 dark:text-green-400">⬆</span>
+                          ) : (
+                            <span className="text-red-600 dark:text-red-400">⬇</span>
+                          )}
+                          ${day.savings.toFixed(2)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {(() => {
+              // Find days with biggest savings
+              const daysWithSavings = weeklyMetrics.summary
+                .filter(day => day.savings > 0)
+                .sort((a, b) => b.savings - a.savings);
+              
+              if (daysWithSavings.length === 0) {
+                return null;
+              }
+              
+              // Get top 2-3 days with biggest savings
+              const topDays = daysWithSavings.slice(0, 3);
+              const dayNames = topDays.map(d => d.day);
+              const dayNamesStr = dayNames.length === 1 
+                ? dayNames[0]
+                : dayNames.length === 2
+                ? `${dayNames[0]} & ${dayNames[1]}`
+                : `${dayNames.slice(0, -1).join(', ')}, & ${dayNames[dayNames.length - 1]}`;
+              
+              // Find common temperature pattern
+              const allBelow40 = topDays.every(d => d.highTemp < 40);
+              const allBelow50 = topDays.every(d => d.highTemp < 50);
+              const tempPattern = allBelow40 
+                ? 'when temps stay below 40°F all day'
+                : allBelow50
+                ? 'when temps stay below 50°F all day'
+                : `when temps averaged ${Math.round(topDays.reduce((sum, d) => sum + (d.lowTemp + d.highTemp) / 2, 0) / topDays.length)}°F`;
+              
+              return (
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-4 text-center">
+                  <strong className="text-gray-900 dark:text-gray-100">Biggest savings: {dayNamesStr}, {tempPattern}.</strong>
+                </p>
+              );
+            })()}
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center">
+              Total this week: <strong className="text-blue-600 dark:text-blue-400">${weeklyMetrics.totalHPCost.toFixed(2)}</strong> on heat pump vs <strong className="text-orange-600 dark:text-orange-400">${weeklyMetrics.totalGasCost.toFixed(2)}</strong> on gas — you kept <strong className="text-green-600 dark:text-green-400">${weeklyMetrics.totalSavings.toFixed(2)}</strong> in your pocket.
+            </p>
+          </div>
+          )}
+
+          {/* Use These Results micro-CTA */}
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6 mb-8 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">What you can actually do with this:</h3>
+            <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300 mb-4">
+              <li>💬 <strong>Share this with your HVAC tech</strong> if you're planning changes.</li>
+              <li>🧮 <strong>Use it to compare quotes:</strong> plug in the new equipment's efficiency and see how it pencils out.</li>
+              <li>📎 <strong>Download the brag sheet</strong> if you want something to send to friends / HOA / Facebook group.</li>
+            </ul>
+            <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white font-semibold rounded-lg transition-colors text-sm">
+              Download brag sheet (PDF)
+            </button>
           </div>
         </div>
       )}
 
-      {/* Live Math Calculations Pulldown */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <button
-          onClick={() => setShowCalculations(!showCalculations)}
-          className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
-              <Calculator size={24} className="text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
-          </div>
-          {showCalculations ? (
-            <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-          ) : (
-            <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-          )}
-        </button>
-
-        {showCalculations && (
-          <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-            {/* Building Heat Loss Calculation */}
-            <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Heat Loss</h4>
-              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                <div className="flex justify-between">
-                  <span>Base BTU/sq ft:</span>
-                  <span className="font-bold">22.67 BTU/hr/°F per sq ft</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Square Feet:</span>
-                  <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Insulation Factor:</span>
-                  <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Home Shape Factor:</span>
-                  <span className="font-bold">{homeShape.toFixed(2)}x</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Ceiling Height Multiplier:</span>
-                  <span className="font-bold">{(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x</span>
-                </div>
-                <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
-                  <div className="flex justify-between">
-                    <span>Total Heat Loss @ 70°F ΔT:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{heatLoss.toLocaleString()} BTU/hr</span>
-                  </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}
-                  </div>
-                </div>
-                <div className="pt-2">
-                  <div className="flex justify-between">
-                    <span>BTU Loss per °F:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{(heatLoss / 70).toFixed(1)} BTU/hr/°F</span>
-                  </div>
-                </div>
+      {/* Calculation Methodology Section - Expanded Details */}
+      {!simpleMode && weeklyMetrics && !isLoading && (
+        <div className="bg-[#11161e] border border-[#1f2937] rounded-xl shadow-lg overflow-hidden">
+          <button
+            onClick={() => setShowCalculations(!showCalculations)}
+            className="w-full flex items-center justify-between p-6 hover:bg-[#0c1218] transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                <Calculator size={24} className="text-white" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-white">Show the math (for engineers, nerds, and inspectors)</h3>
               </div>
             </div>
+            {showCalculations ? (
+              <ChevronUp className="w-6 h-6 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-6 h-6 text-gray-400" />
+            )}
+          </button>
 
-            {/* Heat Pump Calculations */}
-            <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
-              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Heat Pump System</h4>
-              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                <div className="flex justify-between">
-                  <span>Capacity:</span>
-                  <span className="font-bold">{capacity}k BTU ({tons} tons)</span>
+          {showCalculations && (
+            <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                We simulate both systems hour-by-hour using:
+              </p>
+              <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300 mb-4 list-disc list-inside">
+                <li>Your home size, insulation, and ceiling height</li>
+                <li>A simplified Manual-J-style heat loss model</li>
+                <li>Rated efficiency for your heat pump and the comparison furnace</li>
+                <li>Local 7-day weather forecast</li>
+              </ul>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                We then convert total BTUs into cost using your electricity and gas rates.
+              </p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Share this with your installer if they want the details.
+              </p>
+              <div className="mt-6 space-y-6">
+                {/* TL;DR Summary */}
+                <div>
+                  <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-sm overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                    # TL;DR: At your {squareFeet.toLocaleString()} sq ft / {heatLoss.toLocaleString()} BTU/hr design loss, the heat pump wins this week by {((weeklyMetrics.totalSavings / weeklyMetrics.totalGasCost) * 100).toFixed(0)}% on fuel cost.
+                  </code>
                 </div>
-                <div className="flex justify-between">
-                  <span>SEER2:</span>
-                  <span className="font-bold">{efficiency}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Compressor Power:</span>
-                  <span className="font-bold">{(compressorPower).toFixed(2)} kW</span>
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  = {tons} tons × 1.0 × (15 / {efficiency})
-                </div>
-                <div className="pt-2 border-t border-indigo-300 dark:border-indigo-700">
-                  <div className="font-semibold mb-2">Performance at 35°F (example):</div>
-                  {(() => {
+                {/* Building Heat Loss Calculation */}
+            <div>
+              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Heat Loss</h4>
+              <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                Base BTU/sq ft: 22.67 BTU/hr/°F per sq ft<br />
+                Square Feet: {squareFeet.toLocaleString()} sq ft<br />
+                Insulation Factor: {insulationLevel.toFixed(2)}x<br />
+                Home Shape Factor: {homeShape.toFixed(2)}x<br />
+                Ceiling Height Multiplier: {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x<br />
+                <br />
+                Total Heat Loss @ 70°F ΔT: <strong>{heatLoss.toLocaleString()} BTU/hr</strong><br />
+                = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {homeShape.toFixed(2)} * {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}<br />
+                <br />
+                BTU Loss per °F: <strong>{(heatLoss / 70).toFixed(1)} BTU/hr/°F</strong>
+              </code>
+            </div>
+
+                {/* Heat Pump Calculations */}
+                <div>
+                  <h4 className="font-bold text-lg mb-3 text-white">Heat Pump System</h4>
+                  <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                Capacity: {capacity}k BTU ({tons} tons)<br />
+                SEER2: {efficiency}<br />
+                Compressor Power: <strong>{(compressorPower).toFixed(2)} kW</strong><br />
+                = {tons} tons * 1.0 * (15 / {efficiency})<br />
+                <br />
+                Performance at 35°F (example):<br />
+                {(() => {
                     const exampleTemp = 35;
                     const exampleHumidity = 50;
                     const examplePerf = getPerformanceAtTemp(exampleTemp, exampleHumidity);
@@ -916,67 +1305,31 @@ const GasVsHeatPump = () => {
                     const runtimeClamped = Math.min(100, Math.max(0, runtime));
                     return (
                       <>
-                        <div className="flex justify-between">
-                          <span>Capacity Factor:</span>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{capacityFactorClamped.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Power Factor:</span>
-                          <span className="font-bold">{powerFactor.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Defrost Penalty:</span>
-                          <span className="font-bold">{defrostPenalty.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Electrical Power:</span>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{electricalKw.toFixed(2)} kW</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Heat Output:</span>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Building Heat Loss:</span>
-                          <span className="font-bold">{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Runtime:</span>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{runtimeClamped.toFixed(1)}%</span>
-                        </div>
-                        <div className="pt-2 border-t border-indigo-300 dark:border-indigo-700">
-                          <div className="flex justify-between">
-                            <span>Hourly Cost @ {runtimeClamped.toFixed(1)}%:</span>
-                            <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                              ${(electricalKw * (runtimeClamped / 100) * utilityCost).toFixed(3)}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400">
-                            = {electricalKw.toFixed(2)} kW × ({runtimeClamped.toFixed(1)}% / 100) × ${utilityCost.toFixed(2)}/kWh
-                          </div>
-                        </div>
+                        Capacity Factor: <strong>{capacityFactorClamped.toFixed(3)}</strong><br />
+                        Power Factor: <strong>{powerFactor.toFixed(3)}</strong><br />
+                        Defrost Penalty: <strong>{defrostPenalty.toFixed(3)}</strong><br />
+                        Electrical Power: <strong>{electricalKw.toFixed(2)} kW</strong><br />
+                        Heat Output: <strong>{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                        Building Heat Loss: <strong>{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                        Runtime: <strong>{runtimeClamped.toFixed(1)}%</strong><br />
+                        <br />
+                        Hourly Cost @ {runtimeClamped.toFixed(1)}%: <strong>${(electricalKw * (runtimeClamped / 100) * utilityCost).toFixed(3)}</strong><br />
+                        = {electricalKw.toFixed(2)} kW * ({runtimeClamped.toFixed(1)}% / 100) * ${utilityCost.toFixed(2)}/kWh
                       </>
                     );
                   })()}
-                </div>
-              </div>
+              </code>
             </div>
 
-            {/* Gas Furnace Calculations */}
-            <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
-              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Gas Furnace System</h4>
-              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                <div className="flex justify-between">
-                  <span>AFUE:</span>
-                  <span className="font-bold">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Gas Cost:</span>
-                  <span className="font-bold">${gasCostPerTherm.toFixed(2)} / therm</span>
-                </div>
-                <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
-                  <div className="font-semibold mb-2">Performance at 35°F (example):</div>
-                  {(() => {
+                {/* Gas Furnace Calculations */}
+                <div>
+                  <h4 className="font-bold text-lg mb-3 text-white">Gas Furnace System</h4>
+                  <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                AFUE: <strong>{(gasFurnaceAFUE * 100).toFixed(0)}%</strong><br />
+                Gas Cost: <strong>${gasCostPerTherm.toFixed(2)} / therm</strong><br />
+                <br />
+                Performance at 35°F (example):<br />
+                {(() => {
                     const exampleTemp = 35;
                     const examplePerf = getPerformanceAtTemp(exampleTemp, 50);
                     const tempDiff = Math.max(1, indoorTemp - exampleTemp);
@@ -986,81 +1339,41 @@ const GasVsHeatPump = () => {
                     const gasCostForHour = thermsUsed * gasCostPerTherm;
                     return (
                       <>
-                        <div className="flex justify-between">
-                          <span>Building Heat Loss:</span>
-                          <span className="font-bold">{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Gas Energy Input:</span>
-                          <span className="font-bold text-orange-600 dark:text-orange-400">{(gasEnergyInputBtu / 1000).toFixed(0)}k BTU/hr</span>
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400">
-                          = {(buildingHeatLossBtu / 1000).toFixed(0)}k ÷ {(gasFurnaceAFUE * 100).toFixed(0)}%
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Therms per Hour:</span>
-                          <span className="font-bold text-orange-600 dark:text-orange-400">{thermsUsed.toFixed(4)}</span>
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400">
-                          = {(gasEnergyInputBtu / 1000).toFixed(0)}k ÷ 100,000
-                        </div>
-                        <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
-                          <div className="flex justify-between">
-                            <span>Hourly Cost:</span>
-                            <span className="font-bold text-orange-600 dark:text-orange-400">${gasCostForHour.toFixed(3)}</span>
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400">
-                            = {thermsUsed.toFixed(4)} therms × ${gasCostPerTherm.toFixed(2)}/therm
-                          </div>
-                        </div>
+                        Building Heat Loss: <strong>{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                        Gas Energy Input: <strong>{(gasEnergyInputBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                        = {(buildingHeatLossBtu / 1000).toFixed(0)}k / {(gasFurnaceAFUE * 100).toFixed(0)}%<br />
+                        Therms per Hour: <strong>{thermsUsed.toFixed(4)}</strong><br />
+                        = {(gasEnergyInputBtu / 1000).toFixed(0)}k / 100,000<br />
+                        <br />
+                        Hourly Cost: <strong>${gasCostForHour.toFixed(3)}</strong><br />
+                        = {thermsUsed.toFixed(4)} therms * ${gasCostPerTherm.toFixed(2)}/therm
                       </>
                     );
                   })()}
-                </div>
-              </div>
+              </code>
             </div>
 
-            {/* Weekly Summary Calculations */}
-            {weeklyMetrics && (
-              <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Weekly Summary</h4>
-                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                  <div className="flex justify-between">
-                    <span>Total HP Cost (7 days):</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">${weeklyMetrics.totalHPCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Gas Cost (7 days):</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">${weeklyMetrics.totalGasCost.toFixed(2)}</span>
-                  </div>
-                  <div className="pt-2 border-t border-green-300 dark:border-green-700">
-                    <div className="flex justify-between">
-                      <span>Weekly Savings:</span>
-                      <span className={`font-bold ${weeklyMetrics.totalSavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        ${weeklyMetrics.totalSavings.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      = ${weeklyMetrics.totalGasCost.toFixed(2)} - ${weeklyMetrics.totalHPCost.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="pt-2">
-                    <div className="flex justify-between">
-                      <span>Estimated Annual Savings:</span>
-                      <span className={`font-bold ${weeklyMetrics.estimatedAnnualSavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        ${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      = ${weeklyMetrics.totalSavings.toFixed(2)} × 26 heating weeks/year
-                    </div>
-                  </div>
-                </div>
+                {/* Weekly Summary Calculations */}
+                {weeklyMetrics && (
+                  <div>
+                    <h4 className="font-bold text-lg mb-3 text-white">Weekly Summary</h4>
+                    <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                  Total HP Cost (7 days): <strong>${weeklyMetrics.totalHPCost.toFixed(2)}</strong><br />
+                  Total Gas Cost (7 days): <strong>${weeklyMetrics.totalGasCost.toFixed(2)}</strong><br />
+                  <br />
+                  Weekly Savings: <strong>${weeklyMetrics.totalSavings.toFixed(2)}</strong><br />
+                  = ${weeklyMetrics.totalGasCost.toFixed(2)} - ${weeklyMetrics.totalHPCost.toFixed(2)}<br />
+                  <br />
+                  Estimated Annual Savings: <strong>${weeklyMetrics.estimatedAnnualSavings.toFixed(0)}</strong><br />
+                  = ${weeklyMetrics.totalSavings.toFixed(2)} * 26 heating weeks/year
+                </code>
               </div>
             )}
+              </div>
           </div>
         )}
       </div>
+      )}
 
       {/* State Picker Modal for EIA Gas Price Fetch */}
       {showStatePickerModal && (

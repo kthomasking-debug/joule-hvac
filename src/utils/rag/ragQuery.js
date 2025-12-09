@@ -1,6 +1,6 @@
 /**
- * RAG Query Utility
- * Provides semantic search and retrieval of HVAC knowledge for Ask Joule
+ * RAG Query Utility – Now With Better Manners and Smarter Standards Detection
+ * Used by Ask Joule to pull real HVAC knowledge instead of hallucinating
  */
 
 import {
@@ -9,107 +9,121 @@ import {
 } from "./hvacKnowledgeBase.js";
 
 /**
- * Query the HVAC knowledge base and return formatted results
- * @param {string} query - User's question or search query
- * @returns {Promise<{success: boolean, content?: string, message?: string}>}
+ * Main RAG lookup – returns clean, LLM-ready context
  */
 export async function queryHVACKnowledge(query) {
-  if (!query || typeof query !== "string" || query.trim().length === 0) {
+  if (!query?.trim()) {
     return {
       success: false,
-      message: "Query is required",
+      message: "I didn't catch that — could you try asking again?",
     };
   }
 
   try {
-    // Search the knowledge base
-    const results = searchKnowledgeBase(query);
+    const results = searchKnowledgeBase(query.trim());
 
     if (results.length === 0) {
       return {
         success: false,
-        message: "No relevant HVAC knowledge found for your query.",
+        message:
+          "I looked everywhere in my HVAC brain and couldn't find a solid answer for that one. Try rephrasing or ask me something weird — I love weird.",
       };
     }
 
-    // Format for LLM context
-    const formatted = formatKnowledgeForLLM(results);
+    const content = formatKnowledgeForLLM(results);
 
     return {
       success: true,
-      content: formatted,
-      results: results, // Include raw results for debugging
+      content,
+      sources: results.map((r) => ({
+        title: r.title,
+        score: r.relevanceScore,
+      })), // helpful for debugging / future UI
     };
   } catch (error) {
-    console.error("[RAG] Error querying knowledge base:", error);
+    // Fail quietly in production, loud in dev
+    if (import.meta.env.DEV) {
+      console.error("[RAG] Search failed:", error);
+    }
+
     return {
       success: false,
-      message: `Error searching knowledge base: ${error.message}`,
+      message:
+        "Something hiccuped on my end while digging through the knowledge base. I'll get it fixed — try again in a minute?",
     };
   }
 }
 
 /**
- * Enhanced search that also checks for specific engineering standards
- * @param {string} query - User's question
- * @returns {Promise<{success: boolean, content?: string, standards?: Array}>}
+ * Enhanced version that also tells you which engineering standards apply
+ * Perfect for when someone asks "am I oversized?" or "what's the right airflow?"
  */
 export async function queryWithStandards(query) {
-  const lowerQuery = query.toLowerCase();
+  const q = query.toLowerCase().trim();
 
-  // Detect which standards are relevant
-  const relevantStandards = [];
+  const relevantStandards = new Set();
 
+  // Manual J – Load Calculation
   if (
-    lowerQuery.includes("manual j") ||
-    lowerQuery.includes("load calculation") ||
-    lowerQuery.includes("heat loss") ||
-    lowerQuery.includes("sizing")
+    /manual\s*j|load\s*calc|heat\s*loss.*\d+|sizing|btu.*sizing|right\s*size/i.test(
+      q
+    )
   ) {
-    relevantStandards.push("ACCA Manual J");
+    relevantStandards.add("ACCA Manual J (Residential Load Calculation)");
   }
 
+  // Manual S – Equipment Selection
   if (
-    lowerQuery.includes("manual s") ||
-    lowerQuery.includes("equipment selection") ||
-    lowerQuery.includes("oversized") ||
-    lowerQuery.includes("undersized")
+    /manual\s*s|oversized|undersized|short\s*cycl|equipment\s*selection|too\s*big|too\s*small/i.test(
+      q
+    )
   ) {
-    relevantStandards.push("ACCA Manual S");
+    relevantStandards.add("ACCA Manual S (Equipment Selection)");
   }
 
+  // Manual D – Duct Design
   if (
-    lowerQuery.includes("manual d") ||
-    lowerQuery.includes("duct") ||
-    lowerQuery.includes("airflow") ||
-    lowerQuery.includes("cfm")
+    /manual\s*d|duct.*(design|size|cfm)|air\s*flow|static\s*pressure|velocity/i.test(
+      q
+    )
   ) {
-    relevantStandards.push("ACCA Manual D");
+    relevantStandards.add("ACCA Manual D (Residential Duct Design)");
   }
 
+  // ASHRAE 55 – Thermal Comfort
   if (
-    lowerQuery.includes("ashrae 55") ||
-    lowerQuery.includes("thermal comfort") ||
-    lowerQuery.includes("comfort zone") ||
-    lowerQuery.includes("setpoint")
+    /ashrae\s*55|thermal\s*comfort|comfort\s*zone|pmv|ppd|too\s*hot.*humidity|feels\s*like/i.test(
+      q
+    )
   ) {
-    relevantStandards.push("ASHRAE Standard 55");
+    relevantStandards.add(
+      "ASHRAE Standard 55 (Thermal Environmental Conditions for Human Occupancy)"
+    );
   }
 
+  // ASHRAE 62.2 – Ventilation & IAQ
   if (
-    lowerQuery.includes("ashrae 62") ||
-    lowerQuery.includes("ventilation") ||
-    lowerQuery.includes("fresh air") ||
-    lowerQuery.includes("indoor air quality")
+    /ashrae\s*62|ventilation|fresh\s*air|iaq|indoor\s*air|co2|air\s*changes?|erv|hrv/i.test(
+      q
+    )
   ) {
-    relevantStandards.push("ASHRAE Standard 62.2");
+    relevantStandards.add(
+      "ASHRAE 62.2 (Ventilation and Acceptable Indoor Air Quality)"
+    );
   }
 
-  // Query the knowledge base
-  const knowledgeResult = await queryHVACKnowledge(query);
+  // Bonus: Building America / ENERGY STAR references
+  if (/energy\s*star|building\s*america|zero\s*energy|net\s*zero/i.test(q)) {
+    relevantStandards.add(
+      "Building America Solution Center & ENERGY STAR guidelines"
+    );
+  }
+
+  const knowledge = await queryHVACKnowledge(query);
 
   return {
-    ...knowledgeResult,
-    relevantStandards: relevantStandards,
+    ...knowledge,
+    relevantStandards:
+      relevantStandards.size > 0 ? Array.from(relevantStandards) : undefined,
   };
 }

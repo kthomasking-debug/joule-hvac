@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ShoppingCart,
@@ -25,22 +25,20 @@ const PRODUCTS = {
   bridge: {
     id: "bridge",
     name: "Bridge",
-    tagline: "Essential Control",
-    price: { monthly: 15, annual: 12, oneTime: null },
-    description: "Smart thermostat control with cloud connectivity. Perfect for renters and simple setups.",
+    tagline: "Controller",
+    price: { monthly: null, annual: null, oneTime: 129 },
+    description: "One-time purchase • Pi Zero 2 W • The standard brain",
     features: [
-      { text: "Full thermostat control", included: true },
-      { text: "Mobile app & web dashboard", included: true },
-      { text: "Energy usage tracking", included: true },
-      { text: "Basic scheduling", included: true },
-      { text: "Cloud-based processing", included: true },
-      { text: "Local AI processing", included: false },
-      { text: "Works offline", included: false },
-      { text: "HomeKit integration", included: false },
-      { text: "Advanced automation", included: false },
+      { text: "Everything in Free tier", included: true },
+      { text: "Pi Zero 2 W hardware included", included: true },
+      { text: "Local control & short cycle protection", included: true },
+      { text: "Automatic data logging", included: true },
+      { text: "Full thermostat control (setpoints, schedules)", included: true },
+      { text: "Works completely offline", included: true },
+      { text: "Cloud AI ready (bring your own API key)", included: true },
     ],
-    cta: "Start Free Trial",
-    popular: false,
+    cta: "Buy Now - $129",
+    popular: true,
     gradient: "from-blue-500 to-cyan-500",
     ebayUrl: "https://www.ebay.com/usr/firehousescorpions",
   },
@@ -94,10 +92,53 @@ export default function Upgrades() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [cart, setCart] = useState([]);
-  const [showCart, setShowCart] = useState(false);
+  // Initialize showCart from URL on mount
+  const [showCart, setShowCart] = useState(() => {
+    return searchParams.get("showCart") === "true";
+  });
   const [showCheckout, setShowCheckout] = useState(false);
   const [billingCycle] = useState("monthly"); // For future billing cycle switching
   const [hoveredTier, setHoveredTier] = useState(null);
+  const isUpdatingFromUrl = useRef(false);
+
+  // Sync showCart state with URL parameter for browser navigation
+  useEffect(() => {
+    const showCartParam = searchParams.get("showCart");
+    const shouldShowCart = showCartParam === "true";
+    
+    if (shouldShowCart !== showCart) {
+      isUpdatingFromUrl.current = true;
+      setShowCart(shouldShowCart);
+      // Reset checkout when cart is closed via URL
+      if (!shouldShowCart) {
+        setShowCheckout(false);
+      }
+      // Reset flag after state update
+      setTimeout(() => {
+        isUpdatingFromUrl.current = false;
+      }, 0);
+    }
+  }, [searchParams, showCart]);
+
+  // Update URL when showCart changes from user action (for browser navigation support)
+  useEffect(() => {
+    // Skip if this update came from URL to prevent loops
+    if (isUpdatingFromUrl.current) {
+      return;
+    }
+
+    const currentShowCart = searchParams.get("showCart") === "true";
+    
+    if (showCart !== currentShowCart) {
+      const newParams = new URLSearchParams(searchParams);
+      if (showCart) {
+        newParams.set("showCart", "true");
+      } else {
+        newParams.delete("showCart");
+      }
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [showCart, searchParams, setSearchParams]);
 
   // Handle URL query parameters to auto-add products to cart
   useEffect(() => {
@@ -122,7 +163,13 @@ export default function Upgrades() {
         setShowCart(true);
       }
 
-      setSearchParams({});
+      // Clear product param but keep showCart if it was set
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("product");
+      if (showCartParam === "true") {
+        newParams.set("showCart", "true");
+      }
+      setSearchParams(newParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
 
@@ -309,7 +356,12 @@ export default function Upgrades() {
               <div className="absolute inset-0 bg-slate-800/90 backdrop-blur-sm" />
 
               {/* Popular Badge */}
-              {tier.badge && (
+              {tier.popular && (
+                <div className="absolute top-0 right-0 bg-gradient-to-r from-orange-500 to-red-600 text-white px-4 py-1 text-sm font-semibold rounded-bl-lg">
+                  POPULAR
+                </div>
+              )}
+              {tier.badge && !tier.popular && (
                 <div className="absolute top-0 right-0 bg-gradient-to-r from-violet-500 to-purple-600 text-white px-4 py-1 text-sm font-semibold rounded-bl-lg">
                   {tier.badge}
                 </div>
@@ -347,22 +399,37 @@ export default function Upgrades() {
                 </div>
 
                 {/* CTA Button */}
-                <button
-                  onClick={() => {
-                    if (tier.id === "elite") {
-                      // Join waitlist - could navigate or show modal
-                      return;
-                    }
-                    addToCart(tier.id);
-                  }}
-                  className={`w-full py-4 px-6 rounded-xl font-semibold transition-all mb-8 ${
-                    tier.popular
-                      ? `bg-gradient-to-r ${tier.gradient} hover:shadow-2xl hover:shadow-violet-500/70 text-white text-lg font-bold animate-pulse hover:animate-none`
-                      : "bg-white/10 hover:bg-white/20 border border-white/20"
-                  }`}
-                >
-                  {tier.cta}
-                </button>
+                {tier.id === "bridge" ? (
+                  <a
+                    href={tier.ebayUrl || EBAY_STORE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`w-full py-4 px-6 rounded-xl font-semibold transition-all mb-8 block text-center ${
+                      tier.popular
+                        ? `bg-gradient-to-r ${tier.gradient} hover:shadow-2xl hover:shadow-violet-500/70 text-white text-lg font-bold animate-pulse hover:animate-none`
+                        : "bg-white/10 hover:bg-white/20 border border-white/20"
+                    }`}
+                  >
+                    {tier.cta} (add on ebay)
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (tier.id === "elite") {
+                        // Join waitlist - could navigate or show modal
+                        return;
+                      }
+                      addToCart(tier.id);
+                    }}
+                    className={`w-full py-4 px-6 rounded-xl font-semibold transition-all mb-8 ${
+                      tier.popular
+                        ? `bg-gradient-to-r ${tier.gradient} hover:shadow-2xl hover:shadow-violet-500/70 text-white text-lg font-bold animate-pulse hover:animate-none`
+                        : "bg-white/10 hover:bg-white/20 border border-white/20"
+                    }`}
+                  >
+                    {tier.cta}
+                  </button>
+                )}
 
                 {/* Features List */}
                 <div className="space-y-3">

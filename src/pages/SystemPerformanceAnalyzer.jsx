@@ -1,12 +1,34 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, lazy, Suspense, memo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
-import { Upload, Zap, Home, TrendingUp, HelpCircle, Ruler, BarChart3, AlertTriangle, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, Zap, Home, TrendingUp, HelpCircle, Ruler, BarChart3, AlertTriangle, Calculator, ChevronDown, ChevronUp, Settings, Copy, Check, Wind, Fan } from 'lucide-react';
+import AnalyzerErrorState from '../components/AnalyzerErrorState';
+import TypicalBuildingFallbackCard from '../components/TypicalBuildingFallbackCard';
+import { calculateBalancePoint } from '../utils/balancePointCalculator';
+import { resolveHeatLossFactor } from '../utils/heatLossResolution';
 import { fullInputClasses } from '../lib/uiClasses'
 import { DashboardLink } from '../components/DashboardLink';
 import { normalizeCsvData } from '../lib/csvNormalization';
 import { averageHourlyRows } from '../lib/csvUtils';
 import { analyzeThermostatIssues } from '../lib/thermostatDiagnostics';
 import { calculateHeatLoss } from '../utils/calculatorEngines';
+import { calculateThresholdRecommendations } from '../lib/thresholdRecommendations';
+import logger from '../utils/logger';
+import { analyzeThermostatData } from '../utils/coastDownPhysics';
+import ErrorBoundary from '../components/ErrorBoundary';
+import AnalysisGraphs from '../components/SystemPerformanceAnalyzer/AnalysisGraphs';
+import CopyToClipboard from '../components/CopyToClipboard';
+import { AnalysisResultsSkeleton } from '../components/SkeletonLoader';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import IconTooltip from '../components/IconTooltip';
+import ShareButtons from '../components/ShareButtons';
+import { createShareableLink, getSharedDataFromURL } from '../utils/shareableLink';
+import BillCalibration from '../components/BillCalibration';
+import { getCached } from '../utils/cachedStorage';
+import { getAnnualHDD, getAnnualCDD, calculateAnnualHeatingCostFromHDD, calculateAnnualCoolingCostFromCDD } from '../lib/hddData';
+import { saveCsvData, loadCsvData, hasCsvData, getCsvMetadata, getStorageStats, listAllCsvData } from '../lib/csvDatabase';
+import '../styles/print.css';
+
+// Import chart components normally for now (lazy loading can be added later if needed)
 import {
   LineChart,
   Line,
@@ -21,406 +43,239 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-// --- COAST-DOWN HEAT LOSS ANALYSIS FUNCTION ---
-// ☦️ ARCHITECTURAL DECISION: Why coast-down method instead of steady-state?
-//
-// Original approach (steady-state): Find periods where heat pump runs continuously (greater than 290 sec)
-// in cold weather (less than 40°F), measure output, calculate heat loss = output / temp diff.
-// Problem: Many well-insulated homes never meet these conditions. System errors out.
-//
-// Current approach (coast-down): Find periods where heating is OFF, measure natural temp decay,
-// calculate thermal decay rate K, convert to BTU/hr/°F using thermal mass estimate.
-// Advantage: Works with ANY data where system is off, universally applicable.
-//
-// Why this matters: The "3 AM on second Tuesday after Pascha" edge case is real - well-insulated
-// homes in mild climates may never have long cold-weather run cycles. Coast-down works everywhere.
-//
-// Trade-offs: Requires thermal mass estimation (8 BTU/°F per sq ft), but this is more reliable
-// than estimating heat pump capacity factors at various temperatures.
-//
-// Real-world validation: Tested on 12 homes. Steady-state worked on 4/12. Coast-down worked on 12/12.
-const analyzeThermostatData = (data, config) => {
-  // Detect column names - check for raw ecobee format first
-  let outdoorTempCol, thermostatTempCol, heatStage1Col, auxHeatCol, timeCol, dateCol;
+// analyzeThermostatData has been moved to src/utils/coastDownPhysics.js
+// Imported at the top of the file
+
+// Component to display coast-down period data points
+const CoastDownDataViewer = ({ coastDownData, result, squareFeet, userSettings }) => {
+  if (!coastDownData || !Array.isArray(coastDownData) || coastDownData.length === 0) {
+    return null;
+  }
   
-  if (data.length > 0) {
-    const sampleRow = data[0];
-    const availableCols = Object.keys(sampleRow);
-    console.log('Available columns in data:', availableCols);
+  try {
+    const startRow = coastDownData[0];
+    const endRow = coastDownData[coastDownData.length - 1];
+    if (!startRow || !endRow) return null;
     
-    // Try to find ecobee columns first (raw format)
-    outdoorTempCol = availableCols.find(col => /^Outdoor Tel$/i.test(col.trim())) || 
-                     availableCols.find(col => /outdoor.*temp/i.test(col)) ||
-                     'Outdoor Temp (F)';
+    const startIndoor = Number(startRow?.indoorTemp) || 0;
+    const endIndoor = Number(endRow?.indoorTemp) || 0;
+    const startOutdoor = Number(startRow?.outdoorTemp) || 0;
+    const endOutdoor = Number(endRow?.outdoorTemp) || 0;
+    const tempDrop = startIndoor - endIndoor;
+    const avgIndoor = coastDownData.reduce((sum, r) => sum + (Number(r?.indoorTemp) || 0), 0) / coastDownData.length;
+    const avgOutdoor = coastDownData.reduce((sum, r) => sum + (Number(r?.outdoorTemp) || 0), 0) / coastDownData.length;
+    const avgDeltaT = avgIndoor - avgOutdoor;
     
-    thermostatTempCol = availableCols.find(col => /^Current Ten$/i.test(col.trim())) ||
-                        availableCols.find(col => /^(thermostat|indoor|current).*temp/i.test(col)) ||
-                        'Thermostat Temperature (F)';
+    // Calculate theoretical heat loss for comparison
+    const theoreticalFactor = (squareFeet * 22.67 * (userSettings?.insulationLevel || 1.0) * (userSettings?.homeShape || 1.0) * (1 + ((userSettings?.ceilingHeight || 8) - 8) * 0.1)) / 70;
+    const measuredFactor = Number(result?.heatLossFactor) || 0;
+    const isSuspiciouslyLow = measuredFactor > 0 && measuredFactor < theoreticalFactor * 0.5;
     
-    // Ecobee "Heat Stage" might be in seconds or might need conversion
-    // Also check for "Aux Heat 1 (Fan (sec))" format
-    heatStage1Col = availableCols.find(col => /^Heat Stage$/i.test(col.trim())) ||
-                    availableCols.find(col => /heat.*stage/i.test(col)) ||
-                    'Heat Stage 1 (sec)';
-    
-    auxHeatCol = availableCols.find(col => /^Aux Heat 1\s*\(Fan\s*\(sec\)\)$/i.test(col.trim())) ||
-                 availableCols.find(col => /^Aux Heat 1$/i.test(col.trim())) ||
-                 availableCols.find(col => /aux.*heat/i.test(col)) ||
-                 'Aux Heat 1 (sec)';
-    
-    timeCol = availableCols.find(col => /^Time$/i.test(col.trim())) || 'Time';
-    dateCol = availableCols.find(col => /^Date$/i.test(col.trim())) || 'Date';
-    
-    console.log('Detected columns:', { outdoorTempCol, thermostatTempCol, heatStage1Col, auxHeatCol, timeCol, dateCol });
-    console.log('Sample values:', {
-      outdoor: sampleRow[outdoorTempCol],
-      indoor: sampleRow[thermostatTempCol],
-      heatStage: sampleRow[heatStage1Col],
-      auxHeat: sampleRow[auxHeatCol],
-      time: sampleRow[timeCol],
-      date: sampleRow[dateCol],
-    });
-  } else {
-    // Fallback to normalized names
-    outdoorTempCol = 'Outdoor Temp (F)';
-    thermostatTempCol = 'Thermostat Temperature (F)';
-    heatStage1Col = 'Heat Stage 1 (sec)';
-    auxHeatCol = 'Aux Heat 1 (sec)';
-    timeCol = 'Time';
-    dateCol = 'Date';
-  }
-
-  // Part 1: Find the real-world Balance Point
-  const auxHeatEntries = data.filter(row => {
-    const val = row[auxHeatCol];
-    return val != null && val !== '' && parseFloat(val) > 0;
-  });
-  let balancePoint = -99;
-  if (auxHeatEntries.length > 0) {
-    balancePoint = Math.max(...auxHeatEntries.map(row => parseFloat(row[outdoorTempCol])));
-  } else {
-    const outdoorTemps = data.map(row => parseFloat(row[outdoorTempCol])).filter(t => !isNaN(t));
-    if (outdoorTemps.length > 0) {
-      balancePoint = Math.min(...outdoorTemps);
-    }
-  }
-
-  // Part 2: Coast-Down Method - Find periods where heating is OFF
-  // ☦️ LOAD-BEARING: This method calculates heat loss by measuring natural temperature decay
-  // when the heating system is completely off. This is more accurate than steady-state methods
-  // because it doesn't require estimating heat pump output capacity.
-  // 
-  // Why this exists: The original steady-state method required periods with heat pump running
-  // continuously (>290 seconds) in cold weather (<40°F). Many well-insulated homes never meet
-  // these conditions, leading to "no suitable period found" errors. The coast-down method
-  // works with any period where the system is off, making it universally applicable.
-  //
-  // Edge cases handled:
-  // - Stable temperatures (well-insulated homes): Uses minimal 0.1°F drop
-  // - Rising temperatures: Detects and explains (heating on, internal gains, etc.)
-  // - Short periods: Requires minimum 3 hours for statistical accuracy
-  // - Daytime periods: Prefers nighttime to eliminate solar heat gain
-  
-  // Helper: Parse time string to minutes since midnight
-  const parseTimeToMinutes = (timeStr) => {
-    if (!timeStr) return 0;
-    const parts = String(timeStr).split(':');
-    if (parts.length < 2) return 0;
-    const hours = parseInt(parts[0], 10) || 0;
-    const minutes = parseInt(parts[1], 10) || 0;
-    return hours * 60 + minutes;
-  };
-
-  // Helper: Calculate hours between two time points
-  const hoursBetween = (time1, time2) => {
-    const mins1 = parseTimeToMinutes(time1);
-    const mins2 = parseTimeToMinutes(time2);
-    const diff = Math.abs(mins2 - mins1);
-    // Handle wrap-around (e.g., 23:00 to 1:00 = 2 hours, not 22 hours)
-    const wrapped = Math.min(diff, 1440 - diff);
-    return wrapped / 60;
-  };
-
-  // Look for continuous periods where Heat Stage = 0 (system off)
-  let coastDownPeriod = null;
-  let bestCoastDownLength = 0;
-
-  // Find all periods where system is off
-  for (let i = 0; i < data.length; i++) {
-    const startRow = data[i];
-    const heatStageVal = startRow[heatStage1Col];
-    const heatStage = heatStageVal != null && heatStageVal !== '' ? parseFloat(heatStageVal) : 1;
-    
-    // Start of a potential coast-down period (system is off)
-    if (heatStage === 0) {
-      let j = i;
-      let period = [startRow];
-      
-      // Extend the period while system remains off
-      while (j + 1 < data.length) {
-        const nextRow = data[j + 1];
-        const nextHeatStage = nextRow[heatStage1Col];
-        const nextHeatStageVal = nextHeatStage != null && nextHeatStage !== '' ? parseFloat(nextHeatStage) : 1;
-        
-        // Check if still on same day and system still off
-        if (nextHeatStageVal === 0 && nextRow[dateCol] === startRow[dateCol]) {
-          period.push(nextRow);
-          j++;
-        } else {
-          break;
-        }
-      }
-      
-      // ☦️ LOAD-BEARING: Minimum 3 hours required for statistical accuracy
-      // Why 3 hours: Temperature drops are often small (0.1-1.0°F). With 5-minute intervals,
-      // we need at least 36 data points to get a reliable trend. Shorter periods are too noisy.
-      // Real-world validation: Tested with 1-hour periods → unreliable results. 3+ hours → consistent.
-      if (period.length >= 3) {
-        const startTime = period[0][timeCol];
-        const endTime = period[period.length - 1][timeCol];
-        const durationHours = hoursBetween(startTime, endTime);
-        
-        // ☦️ LOAD-BEARING: Prefer nighttime periods (8 PM - 8 AM)
-        // Why nighttime: Solar heat gain through windows can cause temperature to rise or stay
-        // stable even when heating is off, making the calculation invalid. Nighttime eliminates
-        // this variable. Edge case: Very well-insulated homes may still work during daytime,
-        // but nighttime is more reliable.
-        const startHour = parseTimeToMinutes(startTime) / 60;
-        const isNighttime = startHour >= 20 || startHour <= 8; // 8 PM to 8 AM
-        
-        if (durationHours >= 3 && (durationHours > bestCoastDownLength || (isNighttime && durationHours >= bestCoastDownLength * 0.8))) {
-          coastDownPeriod = period;
-          bestCoastDownLength = durationHours;
-        }
-      }
-    }
-  }
-
-  if (!coastDownPeriod || coastDownPeriod.length < 3) {
-    throw new Error(
-      `Could not find a suitable 'coast-down' period (system OFF for at least 3 hours) to calculate heat loss.\n\n` +
-      `The coast-down method requires:\n` +
-      `- Heating system completely OFF (Heat Stage = 0)\n` +
-      `- At least 3 hours of continuous data\n` +
-      `- Nighttime preferred (to eliminate solar heat gain)\n\n` +
-      `Tip: Look for periods in your data when the thermostat was set lower or the system was off.`
+    return (
+      <details className="mt-4">
+        <summary className="cursor-pointer text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-2">
+          <span>📊 View Ecobee Data Points Used in Calculation</span>
+        </summary>
+        <div className="mt-3 bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-300 dark:border-gray-700">
+          {/* Summary Statistics */}
+          <div className="mb-4 p-3 bg-white dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600">
+            <h5 className="font-semibold text-sm mb-2 text-gray-900 dark:text-gray-100">Coast-Down Period Summary</h5>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Start:</span> {startRow.date || 'N/A'} {startRow.time || 'N/A'}
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">End:</span> {endRow.date || 'N/A'} {endRow.time || 'N/A'}
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Duration:</span> {coastDownData.length} data points
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Indoor Temp Drop:</span> {!isNaN(startIndoor) ? startIndoor.toFixed(1) : 'N/A'}°F → {!isNaN(endIndoor) ? endIndoor.toFixed(1) : 'N/A'}°F ({!isNaN(tempDrop) ? (tempDrop > 0 ? '-' : '+') + Math.abs(tempDrop).toFixed(2) : 'N/A'}°F)
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Avg Indoor Temp:</span> {!isNaN(avgIndoor) ? avgIndoor.toFixed(1) : 'N/A'}°F
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Avg Outdoor Temp:</span> {!isNaN(avgOutdoor) ? avgOutdoor.toFixed(1) : 'N/A'}°F
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Avg ΔT:</span> {!isNaN(avgDeltaT) ? avgDeltaT.toFixed(1) : 'N/A'}°F
+              </div>
+            </div>
+          </div>
+          
+          {/* Data Quality Warning */}
+          {isSuspiciouslyLow && (
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border-2 border-yellow-400 dark:border-yellow-600 rounded">
+              <p className="font-semibold text-sm text-yellow-800 dark:text-yellow-200 mb-2">⚠️ Data Quality Warning</p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-2">
+                Your measured heat loss factor ({measuredFactor.toFixed(1)} BTU/hr/°F) is significantly lower than the theoretical estimate ({theoreticalFactor.toFixed(1)} BTU/hr/°F). 
+                This could indicate:
+              </p>
+              <ul className="text-xs text-yellow-700 dark:text-yellow-300 list-disc list-inside space-y-1">
+                <li>Data quality issues (missing or incorrect temperature readings)</li>
+                <li>System was not completely off during coast-down period</li>
+                <li>Significant solar gain or internal heat sources during measurement</li>
+                <li>Temperature sensor calibration issues</li>
+              </ul>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
+                <strong>Recommendation:</strong> Review the data points below. Check that Heat Stage = 0 and Aux Heat = 0 for all rows, 
+                and verify temperature readings are reasonable.
+              </p>
+            </div>
+          )}
+          
+          {/* Sample Data Points (First 10 and Last 10) */}
+          <div className="mb-3">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Sample Data Points (showing first 10 and last 10 rows):</p>
+            <div className="overflow-x-auto max-h-64 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded">
+              <table className="min-w-full text-xs border-collapse">
+                <thead className="bg-gray-200 dark:bg-gray-800 sticky top-0">
+                  <tr>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">#</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">Date</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">Time</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Indoor (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Outdoor (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">ΔT (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Heat</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Aux</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-900">
+                  {/* First 10 rows */}
+                  {coastDownData.slice(0, 10).map((row, idx) => {
+                    const deltaT = (Number(row?.indoorTemp) || 0) - (Number(row?.outdoorTemp) || 0);
+                    return (
+                      <tr key={`start-${idx}`} className={idx === 0 ? "bg-yellow-50 dark:bg-yellow-900/20" : ""}>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{idx + 1}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.date || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.time || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.indoorTemp) ? Number(row.indoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.outdoorTemp) ? Number(row.outdoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(deltaT) ? deltaT.toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.heatStage) ? Number(row.heatStage).toFixed(0) : '0'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.auxHeat) ? Number(row.auxHeat).toFixed(0) : '0'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Separator if more than 20 rows */}
+                  {coastDownData.length > 20 && (
+                    <tr>
+                      <td colSpan="8" className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-center text-gray-500 dark:text-gray-400 italic">
+                        ... ({coastDownData.length - 20} more rows) ...
+                      </td>
+                    </tr>
+                  )}
+                  {/* Last 10 rows */}
+                  {coastDownData.slice(-10).map((row, idx) => {
+                    const actualIdx = coastDownData.length - 10 + idx;
+                    const deltaT = (Number(row?.indoorTemp) || 0) - (Number(row?.outdoorTemp) || 0);
+                    return (
+                      <tr key={`end-${idx}`} className={actualIdx === coastDownData.length - 1 ? "bg-yellow-50 dark:bg-yellow-900/20" : ""}>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{actualIdx + 1}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.date || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.time || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.indoorTemp) ? Number(row.indoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.outdoorTemp) ? Number(row.outdoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(deltaT) ? deltaT.toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.heatStage) ? Number(row.heatStage).toFixed(0) : '0'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.auxHeat) ? Number(row.auxHeat).toFixed(0) : '0'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Full Data Table (Collapsible) */}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+              View All {coastDownData.length} Data Points
+            </summary>
+            <div className="mt-2 overflow-x-auto max-h-96 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded">
+              <table className="min-w-full text-xs border-collapse">
+                <thead className="bg-gray-200 dark:bg-gray-800 sticky top-0">
+                  <tr>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">#</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">Date</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">Time</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Indoor (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Outdoor (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">ΔT (°F)</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Heat</th>
+                    <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">Aux</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-900">
+                  {coastDownData.map((row, idx) => {
+                    const deltaT = (Number(row?.indoorTemp) || 0) - (Number(row?.outdoorTemp) || 0);
+                    return (
+                      <tr key={idx} className={idx === 0 || idx === coastDownData.length - 1 ? "bg-yellow-50 dark:bg-yellow-900/20" : ""}>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{idx + 1}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.date || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">{row.time || 'N/A'}</td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.indoorTemp) ? Number(row.indoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(row.outdoorTemp) ? Number(row.outdoorTemp).toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right font-mono">
+                          {!isNaN(deltaT) ? deltaT.toFixed(1) : 'N/A'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.heatStage) ? Number(row.heatStage).toFixed(0) : '0'}
+                        </td>
+                        <td className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-right">
+                          {!isNaN(row.auxHeat) ? Number(row.auxHeat).toFixed(0) : '0'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+            <strong>Note:</strong> Highlighted rows (yellow) are the start and end of the coast-down period. 
+            All rows should have Heat Stage = 0 and Aux Heat = 0 (system completely off). 
+            Check for any non-zero values which would indicate the system was running during the measurement period.
+          </p>
+        </div>
+      </details>
+    );
+  } catch (error) {
+    console.error('Error rendering coast-down data:', error);
+    return (
+      <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-sm text-red-700 dark:text-red-300">
+        Error displaying data points: {error.message}
+      </div>
     );
   }
-
-  // Calculate heat loss using coast-down method
-  const startRow = coastDownPeriod[0];
-  const endRow = coastDownPeriod[coastDownPeriod.length - 1];
-  
-  const startTime = startRow[timeCol];
-  const endTime = endRow[timeCol];
-  const durationHours = hoursBetween(startTime, endTime);
-  
-  if (durationHours < 3) {
-    throw new Error(`Coast-down period too short (${durationHours.toFixed(2)} hours). Need at least 3 hours.`);
-  }
-
-  const startIndoorTemp = parseFloat(startRow[thermostatTempCol]);
-  const endIndoorTemp = parseFloat(endRow[thermostatTempCol]);
-  
-  if (isNaN(startIndoorTemp) || isNaN(endIndoorTemp)) {
-    // Provide diagnostic info
-    console.error('Coast-down period diagnostics:', {
-      startRow: startRow,
-      endRow: endRow,
-      startTime,
-      endTime,
-      startIndoorTemp,
-      endIndoorTemp,
-      thermostatTempCol,
-      availableCols: Object.keys(startRow),
-    });
-    throw new Error(
-      `Invalid indoor temperature data in coast-down period. ` +
-      `Start temp: ${startIndoorTemp}, End temp: ${endIndoorTemp}. ` +
-      `Column: ${thermostatTempCol}. ` +
-      `Check console for detailed diagnostics.`
-    );
-  }
-  
-  // Debug: Log the period details
-  console.log('Coast-down period found:', {
-    startDate: startRow[dateCol],
-    startTime,
-    endDate: endRow[dateCol],
-    endTime,
-    durationHours: durationHours.toFixed(2),
-    rowCount: coastDownPeriod.length,
-    startIndoorTemp: startIndoorTemp.toFixed(1),
-    endIndoorTemp: endIndoorTemp.toFixed(1),
-    sampleTemps: coastDownPeriod.slice(0, 5).map(r => parseFloat(r[thermostatTempCol])).filter(t => !isNaN(t)),
-  });
-
-  // Calculate average temperatures during the coast-down period (need this before checking temp drop)
-  const indoorTemps = coastDownPeriod.map(row => parseFloat(row[thermostatTempCol])).filter(t => !isNaN(t));
-  const outdoorTemps = coastDownPeriod.map(row => parseFloat(row[outdoorTempCol])).filter(t => !isNaN(t));
-  
-  const avgIndoorTemp = indoorTemps.reduce((a, b) => a + b, 0) / indoorTemps.length;
-  const avgOutdoorTemp = outdoorTemps.reduce((a, b) => a + b, 0) / outdoorTemps.length;
-  
-  const avgTempDiff = avgIndoorTemp - avgOutdoorTemp;
-  
-  if (avgTempDiff <= 0) {
-    throw new Error("Average outdoor temperature is not lower than indoor temperature. Cannot calculate heat loss.");
-  }
-
-  const tempDrop = startIndoorTemp - endIndoorTemp;
-  
-  // Check temperature trend across entire period
-  const allTemps = coastDownPeriod.map(row => parseFloat(row[thermostatTempCol])).filter(t => !isNaN(t));
-  const tempTrend = allTemps.length > 0 ? (allTemps[allTemps.length - 1] - allTemps[0]) : tempDrop;
-  
-  // Allow for very small drops (even 0.1°F) - well-insulated homes may have minimal drops
-  if (tempDrop <= 0 || tempTrend > 0.05) {
-    // If temperature is rising, check if it's significant
-    if (tempTrend > 0.1) {
-      // Provide detailed diagnostics
-      const minTemp = Math.min(...allTemps);
-      const maxTemp = Math.max(...allTemps);
-      const tempRange = maxTemp - minTemp;
-      
-      throw new Error(
-        `Temperature is rising during coast-down period.\n\n` +
-        `Diagnostics:\n` +
-        `- Start temp: ${startIndoorTemp.toFixed(1)}°F\n` +
-        `- End temp: ${endIndoorTemp.toFixed(1)}°F\n` +
-        `- Net change: ${tempTrend.toFixed(2)}°F (rising)\n` +
-        `- Temp range: ${minTemp.toFixed(1)}°F to ${maxTemp.toFixed(1)}°F (${tempRange.toFixed(2)}°F)\n` +
-        `- Duration: ${durationHours.toFixed(2)} hours\n` +
-        `- Avg indoor: ${avgIndoorTemp.toFixed(1)}°F, Avg outdoor: ${avgOutdoorTemp.toFixed(1)}°F\n\n` +
-        `This suggests:\n` +
-        `(1) Heating system may not be fully off (check Heat Stage column)\n` +
-        `(2) Significant internal heat gain (appliances, people, solar)\n` +
-        `(3) Need a longer or different coast-down period\n\n` +
-        `Tip: Look for periods with Heat Stage = 0 for the entire duration, preferably nighttime.`
-      );
-    }
-    
-    // ☦️ LOAD-BEARING: Handle stable temperatures (well-insulated homes)
-    // Why this exists: Extremely well-insulated homes may show <0.1°F temperature change
-    // over 3+ hours. This doesn't mean the calculation is invalid - it means the home is
-    // excellent at retaining heat. We use a minimal 0.1°F drop to allow calculation.
-    //
-    // Edge case: If temp is truly stable (0.0°F change), we still calculate using 0.1°F
-    // as a conservative estimate. The resulting heat loss factor will be very low, which
-    // is correct for a well-insulated home.
-    //
-    // Real-world validation: Tested with a passive house (0.05°F change over 8 hours).
-    // Using 0.1°F produced heat loss factor of 180 BTU/hr/°F, which matches manual
-    // calculation. Without this, the system would error out on the best-insulated homes.
-    if (Math.abs(tempTrend) <= 0.1) {
-      console.warn(
-        `Temperature was stable during coast-down period (change: ${tempTrend.toFixed(2)}°F). ` +
-        `This suggests excellent insulation or minimal temperature difference. ` +
-        `Using minimal drop of 0.1°F for calculation.`
-      );
-      // Use a minimal drop for calculation
-      const adjustedTempDrop = 0.1;
-      // Recalculate with adjusted drop
-      const adjustedHourlyLossRate = adjustedTempDrop / durationHours;
-      const adjustedThermalDecayRate = adjustedHourlyLossRate / avgTempDiff;
-      const squareFeet = config.squareFeet || 2000;
-      const estimatedThermalMass = squareFeet * 8;
-      const heatLossFactor = estimatedThermalMass * adjustedThermalDecayRate;
-      const tempDiff = 70;
-      const heatLossTotal = heatLossFactor * tempDiff;
-      
-      console.log('Coast-Down Heat Loss Calculation (stable temp, using minimal drop):', {
-        startTime,
-        endTime,
-        durationHours: durationHours.toFixed(2),
-        startIndoorTemp: startIndoorTemp.toFixed(1),
-        endIndoorTemp: endIndoorTemp.toFixed(1),
-        actualTempChange: tempTrend.toFixed(2),
-        adjustedTempDrop: adjustedTempDrop.toFixed(2),
-        avgIndoorTemp: avgIndoorTemp.toFixed(1),
-        avgOutdoorTemp: avgOutdoorTemp.toFixed(1),
-        avgTempDiff: avgTempDiff.toFixed(1),
-        hourlyLossRate: adjustedHourlyLossRate.toFixed(4),
-        thermalDecayRate: adjustedThermalDecayRate.toFixed(6),
-        estimatedThermalMass: estimatedThermalMass.toFixed(0),
-        heatLossFactor: heatLossFactor.toFixed(1),
-      });
-      
-      return { 
-        heatLossFactor, 
-        balancePoint, 
-        tempDiff: avgTempDiff,
-        heatpumpOutputBtu: null,
-        heatLossTotal 
-      };
-    }
-  }
-  
-  // For very small drops (< 0.2°F), warn but proceed
-  if (tempDrop < 0.2) {
-    console.warn(
-      `Very small temperature drop detected (${tempDrop.toFixed(2)}°F over ${durationHours.toFixed(2)} hours). ` +
-      `This suggests excellent insulation. Calculation may have reduced precision.`
-    );
-  }
-
-
-  // Calculate hourly loss rate (°F per hour)
-  const hourlyLossRate = tempDrop / durationHours;
-  
-  // Calculate heat loss factor K (°F per hour per °F difference)
-  // This is the thermal decay rate - how fast the house loses temperature per degree of difference
-  const thermalDecayRate = hourlyLossRate / avgTempDiff;
-  
-  // ☦️ LOAD-BEARING: Thermal mass estimation for BTU conversion
-  // Why this exists: The coast-down method gives us a thermal decay rate (K) in °F/hr per °F.
-  // To convert to BTU/hr/°F (the standard unit), we need to know the thermal mass.
-  //
-  // Why 8 BTU/°F per sq ft: Typical homes have 5-10 BTU/°F per sq ft depending on construction.
-  // We use 8 as a middle estimate. This includes:
-  // - Air mass (~0.018 BTU/°F per cu ft)
-  // - Building materials (drywall, wood, concrete)
-  // - Furnishings
-  //
-  // Edge case: Homes with high thermal mass (concrete, tile) may be 10-12 BTU/°F per sq ft.
-  // Homes with low thermal mass (manufactured, minimal furnishings) may be 5-6.
-  // Using 8 gives a reasonable average. For precision, this could be user-configurable.
-  //
-  // Real-world validation: This factor produces heat loss values consistent with manual
-  // calculations and DOE data for typical homes (200-800 BTU/hr/°F range).
-  const squareFeet = config.squareFeet || 2000;
-  const estimatedThermalMass = squareFeet * 8; // BTU per °F
-  
-  // Heat loss factor in BTU/hr/°F
-  const heatLossFactor = estimatedThermalMass * thermalDecayRate;
-  
-  // For display, also calculate at 70°F delta T
-  const tempDiff = 70; // Standard design condition
-  const heatLossTotal = heatLossFactor * tempDiff;
-  
-  console.log('Coast-Down Heat Loss Calculation:', {
-    startTime,
-    endTime,
-    durationHours: durationHours.toFixed(2),
-    startIndoorTemp: startIndoorTemp.toFixed(1),
-    endIndoorTemp: endIndoorTemp.toFixed(1),
-    tempDrop: tempDrop.toFixed(2),
-    avgIndoorTemp: avgIndoorTemp.toFixed(1),
-    avgOutdoorTemp: avgOutdoorTemp.toFixed(1),
-    avgTempDiff: avgTempDiff.toFixed(1),
-    hourlyLossRate: hourlyLossRate.toFixed(4),
-    thermalDecayRate: thermalDecayRate.toFixed(6),
-    estimatedThermalMass: estimatedThermalMass.toFixed(0),
-    heatLossFactor: heatLossFactor.toFixed(1),
-  });
-  
-  return { 
-    heatLossFactor, 
-    balancePoint, 
-    tempDiff: avgTempDiff, // Use the actual temp diff from coast-down
-    heatpumpOutputBtu: null, // Not applicable for coast-down method
-    heatLossTotal 
-  };
 };
 
 // Inline help component for thermostat data acquisition
@@ -474,6 +329,12 @@ const ThermostatHelp = () => (
 );
 
 const SystemPerformanceAnalyzer = () => {
+  // Call context hooks FIRST to ensure consistent hook order
+  // Hooks must always be called unconditionally in the same order
+  const outletContext = useOutletContext();
+  const { setHeatLossFactor, userSettings, setUserSetting } = outletContext || {};
+  const navigate = useNavigate();
+  
   // Multi-zone support
   const [zones, setZones] = useState(() => {
     try {
@@ -484,7 +345,8 @@ const SystemPerformanceAnalyzer = () => {
   });
   const [activeZoneId, setActiveZoneId] = useState(() => {
     try {
-      return localStorage.getItem("activeZoneId") || (zones.length > 0 ? zones[0].id : "zone1");
+      const savedZones = JSON.parse(localStorage.getItem("zones") || "[]");
+      return localStorage.getItem("activeZoneId") || (savedZones.length > 0 ? savedZones[0].id : "zone1");
     } catch {
       return "zone1";
     }
@@ -506,7 +368,7 @@ const SystemPerformanceAnalyzer = () => {
       localStorage.setItem("zones", JSON.stringify([defaultZone]));
       localStorage.setItem("activeZoneId", defaultZone.id);
     }
-  }, []);
+  }, [userSettings]);
   
   const activeZone = zones.find(z => z.id === activeZoneId) || zones[0];
   
@@ -517,41 +379,366 @@ const SystemPerformanceAnalyzer = () => {
   
   // For labeling results
   const [labels, setLabels] = useState(() => {
-    const saved = localStorage.getItem(getZoneStorageKey('spa_labels'));
-    return saved ? JSON.parse(saved) : [];
-  });
-  const { setHeatLossFactor, userSettings, setUserSetting } = useOutletContext();
-  const navigate = useNavigate();
-
-  const [file, setFile] = useState(null);
-  const [, setAnalysisResults] = useState(null);
-  const [parsedCsvRows, setParsedCsvRows] = useState(() => {
-    const saved = localStorage.getItem(getZoneStorageKey('spa_parsedCsvData'));
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [dataForAnalysisRows, setDataForAnalysisRows] = useState(null);
-  const [resultsHistory, setResultsHistory] = useState(() => {
-    const saved = localStorage.getItem(getZoneStorageKey('spa_resultsHistory'));
+    const zoneKey = `spa_labels_${activeZoneId}`;
+    const saved = localStorage.getItem(zoneKey);
     return saved ? JSON.parse(saved) : [];
   });
   
-  // Update state when zone changes
+  // Get userLocation from cached storage for BillCalibration
+  const userLocation = React.useMemo(() => getCached('userLocation', null), []);
+  
+  // Initialize resultsHistory state BEFORE it's used in useMemo
+  // Use activeZoneId directly in initializer since getZoneStorageKey depends on it
+  const [resultsHistory, setResultsHistory] = useState(() => {
+    const zoneKey = `spa_resultsHistory_${activeZoneId}`;
+    const saved = localStorage.getItem(zoneKey);
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  // Get latest analysis result (used throughout component)
+  const latestAnalysis = React.useMemo(() => {
+    return resultsHistory && resultsHistory.length > 0 ? resultsHistory[0] : null;
+  }, [resultsHistory]);
+  
+  // Calculate annualEstimate for BillCalibration
+  const annualEstimate = React.useMemo(() => {
+    if (!userLocation || !userSettings) return null;
+    
+    const useManualHeatLoss = Boolean(userSettings?.useManualHeatLoss);
+    const useAnalyzerHeatLoss = Boolean(userSettings?.useAnalyzerHeatLoss);
+    
+    let heatLossFactor;
+    
+    // Priority 1: Manual Entry
+    if (useManualHeatLoss && userSettings?.manualHeatLoss) {
+      heatLossFactor = Number(userSettings.manualHeatLoss);
+    }
+    // Priority 2: Analyzer Data from CSV
+    else if (useAnalyzerHeatLoss && latestAnalysis?.heatLossFactor) {
+      heatLossFactor = latestAnalysis.heatLossFactor;
+    }
+    // Priority 3: Calculated from Building Characteristics
+    else {
+      const BASE_BTU_PER_SQFT_HEATING = 22.67;
+      const ceilingMultiplier = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
+      const designHeatLoss =
+        (userSettings.squareFeet || 1500) *
+        BASE_BTU_PER_SQFT_HEATING *
+        (userSettings.insulationLevel || 1.0) *
+        (userSettings.homeShape || 1.0) *
+        ceilingMultiplier;
+      heatLossFactor = designHeatLoss / 70;
+    }
+    
+    if (!heatLossFactor) return null;
+    
+    const homeElevation = userSettings.homeElevation ?? 0;
+    const elevationMultiplierRaw = 1 + ((homeElevation || 0) / 1000) * 0.005;
+    const elevationMultiplier = Math.max(0.8, Math.min(1.3, elevationMultiplierRaw));
+    
+    const winterThermostat = userSettings.winterThermostat || 70;
+    const summerThermostat = userSettings.summerThermostat || 74;
+    const heatingThermostatMultiplier = winterThermostat / 70;
+    
+    const annualHDD = getAnnualHDD(
+      `${userLocation.city}, ${userLocation.state}`,
+      userLocation.state
+    );
+    const annualHeatingCost = calculateAnnualHeatingCostFromHDD(
+      annualHDD,
+      heatLossFactor,
+      userSettings.hspf2 || 9.0,
+      userSettings.utilityCost || 0.15,
+      userSettings.useElectricAuxHeat
+    );
+    annualHeatingCost.energy *= heatingThermostatMultiplier;
+    annualHeatingCost.cost *= heatingThermostatMultiplier;
+    annualHeatingCost.energy *= elevationMultiplier;
+    annualHeatingCost.cost *= elevationMultiplier;
+    
+    const annualCDD = getAnnualCDD(
+      `${userLocation.city}, ${userLocation.state}`,
+      userLocation.state
+    );
+    const BASE_BTU_PER_SQFT_COOLING = 28.0;
+    const ceilingMultiplierCooling = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
+    const designHeatGain =
+      (userSettings.squareFeet || 1500) *
+      BASE_BTU_PER_SQFT_COOLING *
+      (userSettings.insulationLevel || 1.0) *
+      (userSettings.homeShape || 1.0) *
+      ceilingMultiplierCooling *
+      (userSettings.solarExposure || 1.0);
+    const heatGainFactor = designHeatGain / 20;
+    const coolingThermostatMultiplier = 74 / summerThermostat;
+    
+    const annualCoolingCost = calculateAnnualCoolingCostFromCDD(
+      annualCDD,
+      heatGainFactor,
+      userSettings.efficiency || 15.0,
+      userSettings.utilityCost || 0.15
+    );
+    annualCoolingCost.energy *= coolingThermostatMultiplier;
+    annualCoolingCost.cost *= coolingThermostatMultiplier;
+    annualCoolingCost.energy *= elevationMultiplier;
+    annualCoolingCost.cost *= elevationMultiplier;
+    
+    const totalAnnualCost = annualHeatingCost.cost + annualCoolingCost.cost;
+    const totalEnergy = annualHeatingCost.energy + annualCoolingCost.energy;
+    
+    return {
+      totalCost: totalAnnualCost,
+      totalEnergy: totalEnergy,
+      heatingCost: annualHeatingCost.cost,
+      coolingCost: annualCoolingCost.cost,
+      auxKwhIncluded: annualHeatingCost.auxKwhIncluded || 0,
+      auxKwhExcluded: annualHeatingCost.auxKwhExcluded || 0,
+      hdd: annualHDD,
+      cdd: annualCDD,
+      isEstimated: !latestAnalysis?.heatLossFactor,
+      method: "quick",
+      winterThermostat: winterThermostat,
+      summerThermostat: summerThermostat,
+    };
+  }, [userLocation, userSettings, resultsHistory]);
+
+  const [file, setFile] = useState(null);
+  const [, setAnalysisResults] = useState(null);
+  const [parsedCsvRows, setParsedCsvRows] = useState(null); // Will be loaded from IndexedDB on mount
+  const [dataForAnalysisRows, setDataForAnalysisRows] = useState(null); // Will be loaded from IndexedDB on mount
+  const [csvRestoreAttempted, setCsvRestoreAttempted] = useState(false); // Track if we've attempted restore
+  const [fileTooLargeForStorage, setFileTooLargeForStorage] = useState(false);
+  const [showNerdMode, setShowNerdMode] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = React.useRef(null);
+  
+  // Auto-restore CSV data from IndexedDB on mount and when zone changes
+  React.useEffect(() => {
+    let isMounted = true;
+    
+    async function restoreCsvData() {
+      try {
+        console.log(`[SystemPerformanceAnalyzer] Attempting to restore CSV data for zone: ${activeZoneId}`);
+        
+        // Check if data exists in IndexedDB
+        const hasData = await hasCsvData(activeZoneId);
+        console.log(`[SystemPerformanceAnalyzer] Has CSV data in IndexedDB: ${hasData}`);
+        
+        if (!hasData) {
+          // Fallback: Try to migrate from localStorage (one-time migration)
+          try {
+            const zoneKey = `spa_parsedCsvData_${activeZoneId}`;
+            const saved = localStorage.getItem(zoneKey);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`[SystemPerformanceAnalyzer] Migrating ${parsed.length} rows from localStorage to IndexedDB`);
+                // Migrate to IndexedDB
+                const filename = localStorage.getItem(`spa_filename_${activeZoneId}`) || localStorage.getItem(`spa_parsedCsvData_${activeZoneId}_filename`) || 'migrated_data.csv';
+                await saveCsvData(parsed, activeZoneId, filename);
+                // Clear localStorage after successful migration
+                localStorage.removeItem(zoneKey);
+                if (isMounted) {
+                  console.log(`[SystemPerformanceAnalyzer] ✅ Migrated and restored ${parsed.length} rows`);
+                  setParsedCsvRows(parsed);
+                  setDataForAnalysisRows(parsed);
+                }
+                return;
+              }
+            }
+          } catch (migrationError) {
+            console.warn('[SystemPerformanceAnalyzer] Failed to migrate from localStorage:', migrationError);
+          }
+          console.log(`[SystemPerformanceAnalyzer] No CSV data found in IndexedDB or localStorage for zone ${activeZoneId}`);
+          return;
+        }
+
+        // Load from IndexedDB
+        const data = await loadCsvData(activeZoneId, true);
+        console.log(`[SystemPerformanceAnalyzer] Loaded data from IndexedDB:`, data ? `${data.length} rows` : 'null');
+        
+        if (data && Array.isArray(data) && data.length > 0 && isMounted) {
+          console.log(`[SystemPerformanceAnalyzer] ✅ Restored ${data.length} rows of CSV data from IndexedDB`);
+          setParsedCsvRows(data);
+          setDataForAnalysisRows(data);
+        } else if (isMounted) {
+          console.warn(`[SystemPerformanceAnalyzer] No valid CSV data restored (data: ${data ? 'empty array' : 'null'})`);
+          setParsedCsvRows(null);
+          setDataForAnalysisRows(null);
+        }
+      } catch (error) {
+        console.error('[SystemPerformanceAnalyzer] Failed to restore CSV data from IndexedDB:', error);
+        if (isMounted) {
+          setParsedCsvRows(null);
+          setDataForAnalysisRows(null);
+        }
+      }
+    }
+
+    // Always attempt restore on mount or zone change
+    restoreCsvData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeZoneId]); // Only run when zone changes or on mount
+
+  // Also restore CSV data if analysis exists but CSV data is missing (common after page refresh)
+  React.useEffect(() => {
+    if (latestAnalysis && latestAnalysis.heatLossFactor && (!parsedCsvRows || parsedCsvRows.length === 0)) {
+      console.log('[SystemPerformanceAnalyzer] Analysis exists but CSV data missing - attempting restore');
+      let isMounted = true;
+      
+      async function restoreForAnalysis() {
+        try {
+          // Try IndexedDB first
+          const data = await loadCsvData(activeZoneId, true);
+          if (data && Array.isArray(data) && data.length > 0 && isMounted) {
+            console.log(`[SystemPerformanceAnalyzer] ✅ Restored ${data.length} rows for existing analysis`);
+            setParsedCsvRows(data);
+            setDataForAnalysisRows(data);
+            return;
+          }
+          
+          // Fallback to localStorage
+          const zoneKey = `spa_parsedCsvData_${activeZoneId}`;
+          const saved = localStorage.getItem(zoneKey);
+          if (saved && isMounted) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`[SystemPerformanceAnalyzer] ✅ Restored ${parsed.length} rows from localStorage for existing analysis`);
+                setParsedCsvRows(parsed);
+                setDataForAnalysisRows(parsed);
+                // Also migrate to IndexedDB for future
+                const filename = localStorage.getItem(`spa_filename_${activeZoneId}`) || 'migrated_data.csv';
+                await saveCsvData(parsed, activeZoneId, filename);
+              }
+            } catch (e) {
+              console.warn('[SystemPerformanceAnalyzer] Failed to restore from localStorage:', e);
+            }
+          }
+        } catch (error) {
+          console.error('[SystemPerformanceAnalyzer] Failed to restore CSV for analysis:', error);
+        }
+      }
+      
+      restoreForAnalysis();
+      
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [latestAnalysis, activeZoneId]); // Run when analysis exists but CSV is missing
+
+  // Update state when zone changes - Consolidated version
   React.useEffect(() => {
     if (!activeZoneId) return;
+
     const zoneKey = (key) => `${key}_${activeZoneId}`;
+
+    // 1. Restore Labels
     const savedLabels = localStorage.getItem(zoneKey('spa_labels'));
     setLabels(savedLabels ? JSON.parse(savedLabels) : []);
-    const savedParsed = localStorage.getItem(zoneKey('spa_parsedCsvData'));
-    setParsedCsvRows(savedParsed ? JSON.parse(savedParsed) : null);
+    
+    // 2. Restore Results History
     const savedHistory = localStorage.getItem(zoneKey('spa_resultsHistory'));
-    setResultsHistory(savedHistory ? JSON.parse(savedHistory) : []);
+    if (savedHistory) {
+      try {
+        const history = JSON.parse(savedHistory);
+        setResultsHistory(history && Array.isArray(history) ? history : []);
+      } catch (e) {
+        setResultsHistory([]);
+      }
+    } else {
+      setResultsHistory([]);
+    }
+    
+    // 3. Restore Thresholds
+    const savedRecommendations = localStorage.getItem(zoneKey('spa_thresholdRecommendations'));
+    if (savedRecommendations) {
+      try {
+        setThresholdRecommendations(JSON.parse(savedRecommendations));
+      } catch (e) { 
+        setThresholdRecommendations(null); 
+      }
+    } else {
+      setThresholdRecommendations(null);
+    }
+
+    // 4. CSV Data is now restored via IndexedDB in the separate useEffect above
+    // This section is kept for backward compatibility but will be empty if IndexedDB has the data
+
+    // Clear session-specific inputs
     setFile(null);
     setAnalysisResults(null);
-    setDataForAnalysisRows(null);
+    setFileTooLargeForStorage(false);
   }, [activeZoneId]);
+
+  // Auto-run analysis on page load/refresh if stored CSV data exists in IndexedDB
+  const hasAutoRunRef = React.useRef(false);
+  React.useEffect(() => {
+    // Only run once per zone change
+    if (hasAutoRunRef.current) return;
+    if (!parsedCsvRows || parsedCsvRows.length === 0) return;
+    
+    // If we have CSV data loaded from IndexedDB, auto-run analysis
+    async function autoRunAnalysis() {
+      try {
+        const storedData = parsedCsvRows;
+        if (storedData && Array.isArray(storedData) && storedData.length > 0) {
+          console.log(`[SystemPerformanceAnalyzer] Auto-running analysis on ${storedData.length} rows of stored CSV data`);
+          hasAutoRunRef.current = true;
+          
+          // Sample data for analysis (same logic as file upload)
+          const timeCol = 'Time';
+          const sampledData = storedData.filter(row => {
+            const t = (row[timeCol] || '').toString();
+            const parts = t.split(':');
+            if (parts.length < 2) return false;
+            const minutes = parseInt(parts[1].replace(/^0+/, '') || '0', 10);
+            return minutes === 0 || minutes === 15 || minutes === 30 || minutes === 45;
+          });
+          const dataForAnalysis = sampledData.length >= 4 ? sampledData : storedData;
+          
+          // Run analysis automatically
+          setIsLoading(true);
+          setProgress({ stage: 'Re-analyzing stored data...', percent: 10 });
+          
+          // Run analysis on stored data (will set isLoading to false when complete)
+          setTimeout(async () => {
+            await runAnalysisOnData(storedData, dataForAnalysis);
+          }, 100);
+        }
+      } catch (e) {
+        console.warn('[SystemPerformanceAnalyzer] Failed to auto-run analysis on stored data:', e);
+        setIsLoading(false);
+      }
+    }
+    
+    // Reset ref when zone changes
+    return () => {
+      hasAutoRunRef.current = false;
+    };
+  }, [activeZoneId]); // Run once on mount and when zone changes
+  
+  // Close export menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showExportMenu && exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showExportMenu]);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [progress, setProgress] = useState({ stage: '', percent: 0 });
   // Manual estimator UI state
   const [showManualEstimator, setShowManualEstimator] = useState(false);
   const [manualSqft, setManualSqft] = useState(() => userSettings?.squareFeet || 800);
@@ -560,16 +747,77 @@ const SystemPerformanceAnalyzer = () => {
   const [manualShape, setManualShape] = useState(() => userSettings?.homeShape || 0.9);
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
+  const [copiedThresholdSettings, setCopiedThresholdSettings] = useState(false);
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [selectedForComparison, setSelectedForComparison] = useState([]);
+  
+  // Threshold recommendations state - persisted in localStorage
+  const [thresholdRecommendations, setThresholdRecommendations] = useState(() => {
+    try {
+      // Use activeZoneId directly in initializer to avoid dependency on getZoneStorageKey
+      const zoneKey = `spa_thresholdRecommendations_${activeZoneId}`;
+      const saved = localStorage.getItem(zoneKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // Check for shared data in URL on mount
+  React.useEffect(() => {
+    const sharedData = getSharedDataFromURL();
+    if (sharedData && sharedData.heatLossFactor) {
+      // Display shared analysis result
+      setResultsHistory(prev => [sharedData, ...prev]);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []); // Only run on mount
+
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+p': (e) => {
+      e.preventDefault();
+      window.print();
+    },
+    'ctrl+s': (e) => {
+      e.preventDefault();
+      // Export current analysis results if available
+      if (resultsHistory.length > 0) {
+        const result = resultsHistory[0];
+        const dataStr = JSON.stringify(result, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `analysis-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    },
+    'escape': () => {
+      setError(null);
+      setSuccessMessage("");
+    },
+  }, [resultsHistory]);
 
   // Helper: Find column names (handle both normalized and raw ecobee formats)
   const findColumn = useMemo(() => {
     return (patterns) => {
-      if (!parsedCsvRows || parsedCsvRows.length === 0) return null;
+      if (!parsedCsvRows || parsedCsvRows.length === 0) {
+        return null;
+      }
       const sampleRow = parsedCsvRows[0];
+      if (!sampleRow) {
+        return null;
+      }
       const availableCols = Object.keys(sampleRow);
       for (const pattern of patterns) {
         const found = availableCols.find(col => pattern.test(col));
-        if (found) return found;
+        if (found) {
+          return found;
+        }
       }
       return null;
     };
@@ -580,6 +828,7 @@ const SystemPerformanceAnalyzer = () => {
     /^Current Ten$/i,
     /^(thermostat|indoor|current).*temp/i,
     /^Thermostat Temperature \(F\)$/i,
+    /^Thermostat Temperature/i,
   ]), [findColumn]);
 
   const heatSetTempCol = useMemo(() => findColumn([
@@ -634,36 +883,136 @@ const SystemPerformanceAnalyzer = () => {
 
   const dateCol = useMemo(() => findColumn([/^Date$/i]), [findColumn]);
   const timeCol = useMemo(() => findColumn([/^Time$/i]), [findColumn]);
+  
+  // Additional columns for advanced analysis
+  const humidityCol = useMemo(() => findColumn([
+    /^Current Humidity$/i,
+    /^Thermostat.*Humidity$/i,
+    /humidity/i,
+  ]), [findColumn]);
+  
+  const windSpeedCol = useMemo(() => findColumn([
+    /^Wind Speed$/i,
+    /wind.*speed/i,
+  ]), [findColumn]);
+  
+  const fanCol = useMemo(() => findColumn([
+    /^Fan$/i,
+    /^Fan \(sec\)$/i,
+    /fan.*sec/i,
+  ]), [findColumn]);
+  
+  // Remote sensor columns
+  const bunnyNestTempCol = useMemo(() => findColumn([
+    /^Bunny Nest.*Temp$/i,
+    /Bunny Nest \(Temp\)$/i,
+    /^Bunny Nest \(F\)$/i,
+    /^Bunny Nest.*\(F\)$/i,
+    /^Bunny Nest/i,
+  ]), [findColumn]);
+  
+  const couchTempCol = useMemo(() => findColumn([
+    /^Couch.*Temp$/i,
+    /Couch \(F\) \(Temp\)$/i,
+    /^Couch \(F\)$/i,
+    /^Couch.*\(F\)$/i,
+    /^Couch/i,
+  ]), [findColumn]);
+
+  // Debug: Log detected columns when parsedCsvRows changes
+  React.useEffect(() => {
+    if (parsedCsvRows && parsedCsvRows.length > 0) {
+      const availableCols = Object.keys(parsedCsvRows[0] || {});
+      console.log('[SystemPerformanceAnalyzer] Available columns:', availableCols);
+      console.log('[SystemPerformanceAnalyzer] Detected columns:', {
+        currentTempCol,
+        bunnyNestTempCol,
+        couchTempCol,
+        outdoorTempCol,
+        heatStageCol,
+        compressorStageCol,
+      });
+    }
+  }, [parsedCsvRows, currentTempCol, bunnyNestTempCol, couchTempCol, outdoorTempCol, heatStageCol, compressorStageCol]);
 
   // Calculate metrics - moved to top level
   const SHORT_CYCLE_THRESHOLD = 300; // seconds
 
-  // 1. Heat Differential Analysis
+  // 1. Heat/Cool Differential Analysis
   const heatDifferentialData = useMemo(() => {
-    if (!parsedCsvRows || parsedCsvRows.length === 0 || !currentTempCol || !heatSetTempCol) return null;
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !currentTempCol) return null;
+    // Need at least one setpoint column (heat or cool)
+    if (!heatSetTempCol && !coolSetTempCol) return null;
+    
     return parsedCsvRows
       .filter(row => {
         const current = parseFloat(row[currentTempCol]);
-        const setpoint = parseFloat(row[heatSetTempCol]);
-        return !isNaN(current) && !isNaN(setpoint) && current > 0 && setpoint > 0;
+        if (isNaN(current) || current <= 0) return false;
+        
+        // Check if we have at least one valid setpoint
+        const heatSet = heatSetTempCol ? parseFloat(row[heatSetTempCol]) : null;
+        const coolSet = coolSetTempCol ? parseFloat(row[coolSetTempCol]) : null;
+        const hasHeatSet = !isNaN(heatSet) && heatSet > 0;
+        const hasCoolSet = !isNaN(coolSet) && coolSet > 0;
+        
+        return hasHeatSet || hasCoolSet;
       })
       .slice(0, 500) // Limit to 500 points for performance
       .map((row, idx) => {
         const current = parseFloat(row[currentTempCol]);
-        const setpoint = parseFloat(row[heatSetTempCol]);
+        const heatSet = heatSetTempCol ? parseFloat(row[heatSetTempCol]) : null;
+        const coolSet = coolSetTempCol ? parseFloat(row[coolSetTempCol]) : null;
+        
+        // Determine which setpoint to use:
+        // - If both exist, use the one that's closer to current temp (active mode)
+        // - Otherwise use whichever exists
+        let activeSetpoint = null;
+        let setpointType = null;
+        
+        if (!isNaN(heatSet) && heatSet > 0 && !isNaN(coolSet) && coolSet > 0) {
+          // Both exist - use the one closer to current temp (active mode)
+          const heatDiff = Math.abs(current - heatSet);
+          const coolDiff = Math.abs(current - coolSet);
+          if (heatDiff <= coolDiff) {
+            activeSetpoint = heatSet;
+            setpointType = 'heat';
+          } else {
+            activeSetpoint = coolSet;
+            setpointType = 'cool';
+          }
+        } else if (!isNaN(heatSet) && heatSet > 0) {
+          activeSetpoint = heatSet;
+          setpointType = 'heat';
+        } else if (!isNaN(coolSet) && coolSet > 0) {
+          activeSetpoint = coolSet;
+          setpointType = 'cool';
+        }
+        
+        if (activeSetpoint === null) return null;
+        
+        // Create timestamp
+        const timestamp = dateCol && timeCol 
+          ? `${row[dateCol]} ${row[timeCol]}` 
+          : `Point ${idx + 1}`;
+        
         return {
-          x: idx,
-          current,
-          setpoint,
-          differential: current - setpoint,
+          timestamp,
+          currentTemp: current,
+          setTemp: activeSetpoint,
+          differential: current - activeSetpoint,
+          setpointType, // 'heat' or 'cool' for reference
         };
-      });
-  }, [parsedCsvRows, currentTempCol, heatSetTempCol]);
+      })
+      .filter(Boolean); // Remove any null entries
+  }, [parsedCsvRows, currentTempCol, heatSetTempCol, coolSetTempCol, dateCol, timeCol]);
 
-  // 2. Short Cycling Analysis
+  // 2. Short Cycling Analysis with Differential Recommendations
   const shortCyclingData = useMemo(() => {
     if (!parsedCsvRows || parsedCsvRows.length === 0 || (!heatStageCol && !coolStageCol && !compressorStageCol)) return null;
     const shortCycles = [];
+    const heatShortCycles = [];
+    const coolShortCycles = [];
+    
     parsedCsvRows.forEach((row, idx) => {
       const heatRuntime = heatStageCol ? parseFloat(row[heatStageCol]) || 0 : 0;
       const coolRuntime = coolStageCol ? parseFloat(row[coolStageCol]) || 0 : 0;
@@ -682,17 +1031,127 @@ const SystemPerformanceAnalyzer = () => {
             timestamp = timeStr;
           }
         }
-        shortCycles.push({
+        
+        const cycleData = {
           timestamp,
           heatRuntime,
           coolRuntime,
           compressorRuntime,
           totalRuntime,
-        });
+          idx,
+        };
+        
+        shortCycles.push(cycleData);
+        
+        // Track heat and cool cycles separately for differential calculation
+        if (heatRuntime > 0) {
+          heatShortCycles.push({ ...cycleData, runtime: heatRuntime });
+        }
+        if (coolRuntime > 0) {
+          coolShortCycles.push({ ...cycleData, runtime: coolRuntime });
+        }
       }
     });
-    return shortCycles.slice(0, 100); // Limit for display
-  }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, dateCol, timeCol]);
+    
+    if (shortCycles.length === 0) return null;
+    
+    // Calculate recommended differentials based on short cycling patterns
+    let recommendedHeatDifferential = null;
+    let recommendedCoolDifferential = null;
+    
+    // Analyze heat short cycles - look at temperature drops before cycles start
+    if (heatShortCycles.length > 0 && currentTempCol && heatSetTempCol) {
+      const tempDrops = [];
+      heatShortCycles.forEach(cycle => {
+        const cycleIdx = cycle.idx;
+        // Look at temperature before cycle started (when system was off)
+        for (let i = Math.max(0, cycleIdx - 5); i < cycleIdx; i++) {
+          const prevRow = parsedCsvRows[i];
+          const prevRuntime = heatStageCol ? parseFloat(prevRow[heatStageCol]) || 0 : 0;
+          if (prevRuntime === 0) {
+            const currentTemp = parseFloat(prevRow[currentTempCol]);
+            const setTemp = parseFloat(prevRow[heatSetTempCol]);
+            if (!isNaN(currentTemp) && !isNaN(setTemp) && currentTemp > 0 && setTemp > 0) {
+              const drop = setTemp - currentTemp;
+              if (drop > 0) {
+                tempDrops.push(drop);
+                break; // Only need one measurement per cycle
+              }
+            }
+          }
+        }
+      });
+      
+      if (tempDrops.length > 0) {
+        const avgDrop = tempDrops.reduce((sum, d) => sum + d, 0) / tempDrops.length;
+        // Recommend differential that's 25% larger than average drop to prevent short cycles
+        // But ensure it's at least 0.5°F and at most 2.0°F
+        recommendedHeatDifferential = Math.max(0.5, Math.min(2.0, parseFloat((avgDrop * 1.25).toFixed(1))));
+      } else {
+        // Fallback: if we can't measure temp drops, use cycle frequency
+        // Assuming 5-minute intervals, calculate cycles per hour
+        const totalHours = parsedCsvRows.length / 12; // 12 five-minute intervals per hour
+        const cyclesPerHour = heatShortCycles.length / totalHours;
+        if (cyclesPerHour > 6) {
+          recommendedHeatDifferential = 1.5;
+        } else if (cyclesPerHour > 4) {
+          recommendedHeatDifferential = 1.0;
+        } else {
+          recommendedHeatDifferential = 0.75;
+        }
+      }
+    }
+    
+    // Analyze cool short cycles - look at temperature rises before cycles start
+    if (coolShortCycles.length > 0 && currentTempCol && coolSetTempCol) {
+      const tempRises = [];
+      coolShortCycles.forEach(cycle => {
+        const cycleIdx = cycle.idx;
+        // Look at temperature before cycle started (when system was off)
+        for (let i = Math.max(0, cycleIdx - 5); i < cycleIdx; i++) {
+          const prevRow = parsedCsvRows[i];
+          const prevRuntime = coolStageCol ? parseFloat(prevRow[coolStageCol]) || 0 : 0;
+          if (prevRuntime === 0) {
+            const currentTemp = parseFloat(prevRow[currentTempCol]);
+            const setTemp = parseFloat(prevRow[coolSetTempCol]);
+            if (!isNaN(currentTemp) && !isNaN(setTemp) && currentTemp > 0 && setTemp > 0) {
+              const rise = currentTemp - setTemp;
+              if (rise > 0) {
+                tempRises.push(rise);
+                break; // Only need one measurement per cycle
+              }
+            }
+          }
+        }
+      });
+      
+      if (tempRises.length > 0) {
+        const avgRise = tempRises.reduce((sum, r) => sum + r, 0) / tempRises.length;
+        // Recommend differential that's 25% larger than average rise to prevent short cycles
+        recommendedCoolDifferential = Math.max(0.5, Math.min(2.0, parseFloat((avgRise * 1.25).toFixed(1))));
+      } else {
+        // Fallback: use cycle frequency
+        const totalHours = parsedCsvRows.length / 12;
+        const cyclesPerHour = coolShortCycles.length / totalHours;
+        if (cyclesPerHour > 6) {
+          recommendedCoolDifferential = 1.5;
+        } else if (cyclesPerHour > 4) {
+          recommendedCoolDifferential = 1.0;
+        } else {
+          recommendedCoolDifferential = 0.75;
+        }
+      }
+    }
+    
+    return {
+      cycles: shortCycles.slice(0, 100), // Limit for display
+      recommendedHeatDifferential,
+      recommendedCoolDifferential,
+      heatShortCycles: heatShortCycles.length,
+      coolShortCycles: coolShortCycles.length,
+      totalShortCycles: shortCycles.length,
+    };
+  }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, dateCol, timeCol, currentTempCol, heatSetTempCol, coolSetTempCol]);
 
   // 3. Runtime Analysis (per day)
   const runtimeAnalysisData = useMemo(() => {
@@ -716,18 +1175,31 @@ const SystemPerformanceAnalyzer = () => {
     return Object.values(dailyRuntimes)
       .map(day => ({
         date: day.date,
-        heatHours: (day.heat / 3600).toFixed(1),
-        coolHours: (day.cool / 3600).toFixed(1),
-        compressorHours: (day.compressor / 3600).toFixed(1),
-        auxHeatHours: (day.auxHeat / 3600).toFixed(1),
-        totalHours: ((day.heat + day.cool + day.compressor + day.auxHeat) / 3600).toFixed(1),
+        heatHours: day.heat / 3600,
+        coolHours: day.cool / 3600,
+        compressorHours: day.compressor / 3600,
+        auxHeatHours: day.auxHeat / 3600,
+        totalHours: (day.heat + day.cool + day.compressor + day.auxHeat) / 3600,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [parsedCsvRows, heatStageCol, coolStageCol, compressorStageCol, auxHeatCol, dateCol]);
 
   // 4. Low Outdoor Temp Analysis (Compressor Min Outdoor Temp behavior)
   const lowTempAnalysisData = useMemo(() => {
-    if (!parsedCsvRows || parsedCsvRows.length === 0 || !outdoorTempCol || !compressorStageCol) return null;
+    if (!parsedCsvRows || parsedCsvRows.length === 0) {
+      console.log('[lowTempAnalysisData] No parsedCsvRows available');
+      return null;
+    }
+    if (!outdoorTempCol) {
+      console.log('[lowTempAnalysisData] Missing outdoorTempCol. Available columns:', parsedCsvRows[0] ? Object.keys(parsedCsvRows[0]) : []);
+      return null;
+    }
+    // Use compressorStageCol if available, otherwise fall back to heatStageCol
+    const runtimeCol = compressorStageCol || heatStageCol;
+    if (!runtimeCol) {
+      console.log('[lowTempAnalysisData] Missing both compressorStageCol and heatStageCol. Available columns:', parsedCsvRows[0] ? Object.keys(parsedCsvRows[0]) : []);
+      return null;
+    }
     return parsedCsvRows
       .filter(row => {
         const outdoorTemp = parseFloat(row[outdoorTempCol]);
@@ -736,7 +1208,7 @@ const SystemPerformanceAnalyzer = () => {
       .slice(0, 200) // Limit for display
       .map((row, idx) => {
         const outdoorTemp = parseFloat(row[outdoorTempCol]);
-        const compressorRuntime = parseFloat(row[compressorStageCol]) || 0;
+        const compressorRuntime = parseFloat(row[runtimeCol]) || 0;
         const timestamp = dateCol && timeCol 
           ? `${row[dateCol]} ${row[timeCol]}` 
           : `Point ${idx + 1}`;
@@ -748,7 +1220,310 @@ const SystemPerformanceAnalyzer = () => {
         };
       })
       .sort((a, b) => a.outdoorTemp - b.outdoorTemp);
-  }, [parsedCsvRows, outdoorTempCol, compressorStageCol, dateCol, timeCol]);
+  }, [parsedCsvRows, outdoorTempCol, compressorStageCol, heatStageCol, dateCol, timeCol]);
+
+  // 5. Remote Sensor Comparison (Comfort Balance)
+  // Dynamically detect all remote sensor columns
+  const remoteSensorColumns = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !currentTempCol) return [];
+    
+    const allColumns = Object.keys(parsedCsvRows[0] || {});
+    const remoteSensors = [];
+    
+    // Known remote sensor patterns
+    const knownPatterns = [
+      { pattern: /bunny.*nest/i, name: 'Bunny Nest' },
+      { pattern: /couch/i, name: 'Couch' },
+    ];
+    
+    // Check for known patterns first
+    knownPatterns.forEach(({ pattern, name }) => {
+      const col = allColumns.find(c => pattern.test(c) && /temp|\(F\)|\(°F\)/i.test(c));
+      if (col && col !== currentTempCol) {
+        remoteSensors.push({ column: col, name, key: col.toLowerCase().replace(/[^a-z0-9]/g, '_') });
+      }
+    });
+    
+    // Find other temperature columns that might be remote sensors
+    // Look for columns with "temp" or temperature indicators that aren't the main thermostat
+    allColumns.forEach(col => {
+      if (col === currentTempCol) return;
+      
+      // Skip if already found
+      if (remoteSensors.some(s => s.column === col)) return;
+      
+      // Check if it looks like a temperature column
+      const isTempCol = /temp|\(F\)|\(°F\)|temperature/i.test(col);
+      if (isTempCol) {
+        // Check if it has actual data
+        const hasData = parsedCsvRows.some(row => {
+          const val = parseFloat(row[col]);
+          return !isNaN(val) && val > 0;
+        });
+        
+        if (hasData) {
+          // Extract a friendly name from the column name
+          const friendlyName = col
+            .replace(/\(F\)|\(°F\)|temp|temperature/gi, '')
+            .trim()
+            .replace(/[()]/g, '')
+            .trim() || col;
+          
+          remoteSensors.push({ 
+            column: col, 
+            name: friendlyName, 
+            key: col.toLowerCase().replace(/[^a-z0-9]/g, '_') 
+          });
+        }
+      }
+    });
+    
+    return remoteSensors;
+  }, [parsedCsvRows, currentTempCol]);
+
+  const remoteSensorData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0) {
+      console.log('[remoteSensorData] No parsedCsvRows available');
+      return null;
+    }
+    if (!currentTempCol) {
+      console.log('[remoteSensorData] Missing currentTempCol. Available columns:', parsedCsvRows[0] ? Object.keys(parsedCsvRows[0]) : []);
+      return null;
+    }
+    
+    // If no remote sensors found, we can still show the main thermostat data
+    // (useful for single-zone systems)
+    if (remoteSensorColumns.length === 0) {
+      console.log('[remoteSensorData] No remote sensor columns found. Available columns:', parsedCsvRows[0] ? Object.keys(parsedCsvRows[0]) : []);
+      // Return null to show "no data" message, or return main thermostat only
+      // For now, return null to maintain current behavior
+      return null;
+    }
+    
+    // Helper function to parse date/time into a Date object
+    const parseDateTime = (dateStr, timeStr) => {
+      if (!dateStr || !timeStr) return null;
+      try {
+        // Try common date formats: YYYY-MM-DD, MM/DD/YYYY, etc.
+        const datePart = dateStr.trim();
+        const timePart = timeStr.trim();
+        const dateTimeStr = `${datePart} ${timePart}`;
+        const date = new Date(dateTimeStr);
+        return isNaN(date.getTime()) ? null : date;
+      } catch (e) {
+        return null;
+      }
+    };
+    
+    // Find the most recent date/time in the data
+    let mostRecentDate = null;
+    parsedCsvRows.forEach(row => {
+      if (dateCol && timeCol && row[dateCol] && row[timeCol]) {
+        const date = parseDateTime(row[dateCol], row[timeCol]);
+        if (date && (!mostRecentDate || date > mostRecentDate)) {
+          mostRecentDate = date;
+        }
+      }
+    });
+    
+    // Calculate 48 hours before the most recent date
+    const cutoffDate = mostRecentDate ? new Date(mostRecentDate.getTime() - 48 * 60 * 60 * 1000) : null;
+    
+    return parsedCsvRows
+      .filter(row => {
+        const mainTemp = parseFloat(row[currentTempCol]);
+        if (isNaN(mainTemp) || mainTemp <= 0) return false;
+        
+        // Filter to last 48 hours if we have date/time columns
+        if (cutoffDate && dateCol && timeCol && row[dateCol] && row[timeCol]) {
+          const rowDate = parseDateTime(row[dateCol], row[timeCol]);
+          if (rowDate && rowDate < cutoffDate) return false;
+        }
+        
+        return true;
+      })
+      .slice(0, 500) // Limit for performance
+      .map((row, idx) => {
+        const mainTemp = parseFloat(row[currentTempCol]);
+        const timestamp = dateCol && timeCol 
+          ? `${row[dateCol]} ${row[timeCol]}` 
+          : `Point ${idx + 1}`;
+        
+        const dataPoint = {
+          timestamp,
+          main: !isNaN(mainTemp) ? mainTemp : null,
+        };
+        
+        // Add all remote sensor temperatures dynamically
+        remoteSensorColumns.forEach(sensor => {
+          const temp = parseFloat(row[sensor.column]);
+          const isValid = temp != null && !isNaN(temp);
+          dataPoint[sensor.key] = isValid ? temp : null;
+          dataPoint[`${sensor.key}Diff`] = isValid && !isNaN(mainTemp) 
+            ? (temp - mainTemp).toFixed(1) 
+            : null;
+        });
+        
+        return dataPoint;
+      });
+  }, [parsedCsvRows, currentTempCol, remoteSensorColumns, dateCol, timeCol]);
+
+  // 6. Mold Risk Analysis (Humidity vs Outdoor Temp)
+  const moldRiskData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !humidityCol || !outdoorTempCol) return null;
+    return parsedCsvRows
+      .filter(row => {
+        const humidity = parseFloat(row[humidityCol]);
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        return !isNaN(humidity) && !isNaN(outdoorTemp) && humidity > 0;
+      })
+      .slice(0, 500)
+      .map((row, idx) => {
+        const humidity = parseFloat(row[humidityCol]);
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        const timestamp = dateCol && timeCol 
+          ? `${row[dateCol]} ${row[timeCol]}` 
+          : `Point ${idx + 1}`;
+        const riskLevel = humidity > 60 && outdoorTemp < 40 ? 'high' : 
+                         humidity > 60 ? 'medium' : 
+                         humidity < 30 ? 'low' : 'safe';
+        
+        return {
+          timestamp,
+          humidity,
+          outdoorTemp,
+          riskLevel,
+        };
+      });
+  }, [parsedCsvRows, humidityCol, outdoorTempCol, dateCol, timeCol]);
+
+  // 7. Infiltration Check (Wind Speed vs Runtime)
+  const infiltrationData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !windSpeedCol || !heatStageCol || !outdoorTempCol) return null;
+    
+    // Helper function to parse date/time into a Date object
+    const parseDateTime = (dateStr, timeStr) => {
+      if (!dateStr || !timeStr) return null;
+      try {
+        const datePart = dateStr.trim();
+        const timePart = timeStr.trim();
+        const dateTimeStr = `${datePart} ${timePart}`;
+        const date = new Date(dateTimeStr);
+        return isNaN(date.getTime()) ? null : date;
+      } catch (e) {
+        return null;
+      }
+    };
+    
+    // Find the most recent date/time in the data
+    let mostRecentDate = null;
+    parsedCsvRows.forEach(row => {
+      if (dateCol && timeCol && row[dateCol] && row[timeCol]) {
+        const date = parseDateTime(row[dateCol], row[timeCol]);
+        if (date && (!mostRecentDate || date > mostRecentDate)) {
+          mostRecentDate = date;
+        }
+      }
+    });
+    
+    // Calculate 48 hours before the most recent date
+    const cutoffDate = mostRecentDate ? new Date(mostRecentDate.getTime() - 48 * 60 * 60 * 1000) : null;
+    
+    return parsedCsvRows
+      .filter(row => {
+        const windSpeed = parseFloat(row[windSpeedCol]);
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        const runtime = parseFloat(row[heatStageCol]) || 0;
+        if (isNaN(windSpeed) || isNaN(outdoorTemp) || runtime <= 0) return false;
+        
+        // Filter to last 48 hours if we have date/time columns
+        if (cutoffDate && dateCol && timeCol && row[dateCol] && row[timeCol]) {
+          const rowDate = parseDateTime(row[dateCol], row[timeCol]);
+          if (rowDate && rowDate < cutoffDate) return false;
+        }
+        
+        return true;
+      })
+      .slice(0, 500)
+      .map((row) => {
+        const windSpeed = parseFloat(row[windSpeedCol]);
+        const outdoorTemp = parseFloat(row[outdoorTempCol]);
+        const runtime = parseFloat(row[heatStageCol]) || 0;
+        const tempDiff = 70 - outdoorTemp; // Assume 70°F indoor
+        const runtimePerDegree = tempDiff > 0 ? runtime / tempDiff : 0;
+        
+        return {
+          windSpeed,
+          outdoorTemp,
+          runtime,
+          runtimePerDegree,
+          runtimeHours: runtime / 3600,
+        };
+      });
+  }, [parsedCsvRows, windSpeedCol, heatStageCol, outdoorTempCol, dateCol, timeCol]);
+
+  // 8. Air Circulation Efficiency (Fan vs Heat Runtime)
+  const fanEfficiencyData = useMemo(() => {
+    if (!parsedCsvRows || parsedCsvRows.length === 0 || !fanCol || !heatStageCol) return null;
+    
+    // Helper function to parse date/time into a Date object
+    const parseDateTime = (dateStr, timeStr) => {
+      if (!dateStr || !timeStr) return null;
+      try {
+        const datePart = dateStr.trim();
+        const timePart = timeStr.trim();
+        const dateTimeStr = `${datePart} ${timePart}`;
+        const date = new Date(dateTimeStr);
+        return isNaN(date.getTime()) ? null : date;
+      } catch (e) {
+        return null;
+      }
+    };
+    
+    // Find the most recent date/time in the data
+    let mostRecentDate = null;
+    parsedCsvRows.forEach(row => {
+      if (dateCol && timeCol && row[dateCol] && row[timeCol]) {
+        const date = parseDateTime(row[dateCol], row[timeCol]);
+        if (date && (!mostRecentDate || date > mostRecentDate)) {
+          mostRecentDate = date;
+        }
+      }
+    });
+    
+    // Calculate 48 hours before the most recent date
+    const cutoffDate = mostRecentDate ? new Date(mostRecentDate.getTime() - 48 * 60 * 60 * 1000) : null;
+    
+    return parsedCsvRows
+      .filter(row => {
+        const fanRuntime = parseFloat(row[fanCol]) || 0;
+        const heatRuntime = parseFloat(row[heatStageCol]) || 0;
+        if (fanRuntime <= 0 && heatRuntime <= 0) return false;
+        
+        // Filter to last 48 hours if we have date/time columns
+        if (cutoffDate && dateCol && timeCol && row[dateCol] && row[timeCol]) {
+          const rowDate = parseDateTime(row[dateCol], row[timeCol]);
+          if (rowDate && rowDate < cutoffDate) return false;
+        }
+        
+        return true;
+      })
+      .slice(0, 500)
+      .map((row, idx) => {
+        const fanRuntime = parseFloat(row[fanCol]) || 0;
+        const heatRuntime = parseFloat(row[heatStageCol]) || 0;
+        const timestamp = dateCol && timeCol 
+          ? `${row[dateCol]} ${row[timeCol]}` 
+          : `Point ${idx + 1}`;
+        
+        return {
+          timestamp,
+          fanHours: fanRuntime / 3600,
+          heatHours: heatRuntime / 3600,
+          ratio: heatRuntime > 0 ? (fanRuntime / heatRuntime).toFixed(2) : null,
+        };
+      });
+  }, [parsedCsvRows, fanCol, heatStageCol, dateCol, timeCol]);
 
   const systemConfig = { 
     capacity: activeZone?.capacity || userSettings?.capacity || 24, 
@@ -758,13 +1533,319 @@ const SystemPerformanceAnalyzer = () => {
   };
 
   const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
+    const selectedFile = event.target.files[0];
+    if (!selectedFile) return;
+    
+    // Validate file size (max 10MB)
+    const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+    if (selectedFile.size > maxSizeBytes) {
+      const fileSizeMB = (selectedFile.size / (1024 * 1024)).toFixed(2);
+      setError(`File size (${fileSizeMB} MB) exceeds the maximum allowed size of 10 MB. Please use a smaller file or split your data into multiple files.`);
+      setFile(null);
+      setFileTooLargeForStorage(false);
+      // Reset file input
+      event.target.value = '';
+      return;
+    }
+    
+    // Validate file type
+    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+      setError('Please select a CSV file (.csv extension required).');
+      setFile(null);
+      setFileTooLargeForStorage(false);
+      event.target.value = '';
+      return;
+    }
+    
+    setFile(selectedFile);
     setAnalysisResults(null);
     setError(null);
     setSuccessMessage("");
+    // Clear threshold recommendations when new file is selected
+    setThresholdRecommendations(null);
+    try {
+      localStorage.removeItem(getZoneStorageKey('spa_thresholdRecommendations'));
+    } catch (e) {
+      // Ignore errors
+    }
   };
 
-  const handleAnalyze = () => {
+  // Reusable function to run analysis on CSV data (can be called from file upload or stored data)
+  const runAnalysisOnData = async (fullData, dataForAnalysis) => {
+    try {
+      setProgress({ stage: 'Analyzing heat loss...', percent: 70 });
+      let results;
+      try {
+        results = analyzeThermostatData(dataForAnalysis, systemConfig);
+      } catch (coastDownError) {
+        // If coast-down fails, use resolution stack: RAG/Manual J → Generic fallback
+        if (coastDownError.message && (coastDownError.message.includes('coast-down') || coastDownError.message.includes('Could not find a suitable'))) {
+          logger.info('Coast-down analysis failed, using heat loss resolution stack');
+          
+          // Use resolution stack: RAG/Manual J → Generic fallback
+          const resolved = await resolveHeatLossFactor({
+            userSettings: userSettings || {},
+            analyzerResults: null, // No analyzer data since coast-down failed
+          });
+          
+          const squareFeet = systemConfig.squareFeet || userSettings?.squareFeet || 2000;
+          const homeShape = userSettings?.homeShape || 1.0;
+          const ceilingHeight = userSettings?.ceilingHeight || 8;
+          const resolvedHeatLossFactor = resolved.value;
+          const totalHeatLossAt70 = resolvedHeatLossFactor * 70;
+          
+          // Calculate balance point using the utility function
+          // This uses the heat loss factor and system capacity to find where HP output = heat loss
+          let calculatedBalancePoint = null;
+          try {
+            const balancePointResult = calculateBalancePoint({
+              heatLossFactor: resolvedHeatLossFactor,
+              capacity: systemConfig.capacity || userSettings?.capacity || 24,
+              tons: systemConfig.tons || userSettings?.tons || (systemConfig.capacity || userSettings?.capacity || 24) / 12,
+              squareFeet: squareFeet,
+              insulationLevel: userSettings?.insulationLevel || 1.0,
+              homeShape: homeShape,
+              ceilingHeight: ceilingHeight,
+              hspf2: userSettings?.hspf2 || 9,
+              winterThermostat: userSettings?.winterThermostat || 68,
+              useCustomEquipmentProfile: userSettings?.useCustomEquipmentProfile || false,
+              capacity47: userSettings?.capacity47,
+              capacity17: userSettings?.capacity17,
+              capacity5: userSettings?.capacity5,
+              cop47: userSettings?.cop47,
+              cop17: userSettings?.cop17,
+              cop5: userSettings?.cop5,
+            });
+            if (balancePointResult && balancePointResult.balancePoint != null && isFinite(balancePointResult.balancePoint)) {
+              calculatedBalancePoint = balancePointResult.balancePoint;
+            }
+          } catch (bpError) {
+            logger.warn('Failed to calculate balance point for DOE fallback:', bpError);
+            // Continue with null balance point
+          }
+          
+          // Create fallback result object
+          results = {
+            heatLossFactor: resolvedHeatLossFactor,
+            balancePoint: calculatedBalancePoint,
+            tempDiff: 70,
+            heatpumpOutputBtu: null,
+            heatLossTotal: totalHeatLossAt70,
+            usingDoeFallback: resolved.source === 'default', // Only true for generic fallback
+            usingRAGFallback: resolved.source === 'design', // True if from RAG/Manual J
+            heatLossSource: resolved.source, // 'measured' | 'design' | 'default'
+            heatLossExplanation: resolved.explanation,
+            doeHeatLossFactor: resolvedHeatLossFactor,
+            squareFeet: squareFeet,
+            coastDownPeriod: null,
+          };
+          
+          logger.info('Using resolved heat loss factor:', {
+            source: resolved.source,
+            squareFeet,
+            heatLossFactor: resolvedHeatLossFactor.toFixed(1),
+            totalHeatLossAt70: totalHeatLossAt70.toFixed(0),
+            explanation: resolved.explanation,
+          });
+        } else {
+          // Re-throw non-coast-down errors
+          throw coastDownError;
+        }
+      }
+      setAnalysisResults(results);
+      
+      setProgress({ stage: 'Running diagnostics...', percent: 85 });
+      
+      // Run diagnostic analysis (zone-specific)
+      const diagnostics = analyzeThermostatIssues(fullData);
+      try {
+        localStorage.setItem(getZoneStorageKey('spa_diagnostics'), JSON.stringify(diagnostics));
+      } catch (e) {
+        logger.warn('Failed to store diagnostics in localStorage:', e);
+      }
+      
+      // Calculate additional metrics for history display
+      let totalRuntimeHours = 0;
+      let minIndoorTemp = null;
+      let maxIndoorTemp = null;
+      let heatSetpoint = null;
+      let coolSetpoint = null;
+      let systemMode = null;
+      
+      if (fullData && fullData.length > 0) {
+        // Local helper to find columns in current data
+        const findColInData = (patterns) => {
+          if (!fullData || fullData.length === 0) return null;
+          const sampleRow = fullData[0];
+          const availableCols = Object.keys(sampleRow);
+          for (const pattern of patterns) {
+            const found = availableCols.find(col => pattern.test(col));
+            if (found) return found;
+          }
+          return null;
+        };
+        
+        const currentTempCol = findColInData([
+          /^Current Ten$/i,
+          /^(thermostat|indoor|current).*temp/i,
+          /^Thermostat Temperature \(F\)$/i,
+        ]);
+        const heatSetTempCol = findColInData([
+          /^Heat Set$/i,
+          /^Heat Setpoint$/i,
+          /^Heat Set Temp$/i,
+          /heat.*set.*temp/i,
+          /heat.*setpoint/i,
+          /^Heat Set Tel$/i,
+        ]);
+        const coolSetTempCol = findColInData([
+          /^Cool Set$/i,
+          /^Cool Setpoint$/i,
+          /^Cool Set Temp$/i,
+          /cool.*set.*temp/i,
+          /cool.*setpoint/i,
+          /^Cool Set Tei$/i,
+        ]);
+        const systemModeCol = findColInData([
+          /^System Sett$/i,
+          /^System Mode$/i,
+          /^System Setting$/i,
+          /system.*mode/i,
+        ]);
+        const heatStageColLocal = findColInData([
+          /^Heat Stage$/i,
+          /^Heat Stage 1$/i,
+          /heat.*stage.*sec/i,
+          /^Heat Stage 1 \(sec\)$/i,
+        ]);
+        const auxHeatColLocal = findColInData([
+          /^Aux Heat 1$/i,
+          /aux.*heat.*sec/i,
+          /^Aux Heat 1 \(sec\)$/i,
+          /^Aux Heat 1\s*\(Fan\s*\(sec\)\)$/i,
+        ]);
+        
+        let totalHeatSeconds = 0;
+        let totalAuxSeconds = 0;
+        
+        fullData.forEach(row => {
+          // Calculate runtime
+          if (heatStageColLocal && row[heatStageColLocal]) {
+            totalHeatSeconds += parseFloat(row[heatStageColLocal]) || 0;
+          }
+          if (auxHeatColLocal && row[auxHeatColLocal]) {
+            totalAuxSeconds += parseFloat(row[auxHeatColLocal]) || 0;
+          }
+          
+          // Track min/max indoor temp
+          if (currentTempCol && row[currentTempCol]) {
+            const temp = parseFloat(row[currentTempCol]);
+            if (!isNaN(temp)) {
+              if (minIndoorTemp === null || temp < minIndoorTemp) minIndoorTemp = temp;
+              if (maxIndoorTemp === null || temp > maxIndoorTemp) maxIndoorTemp = temp;
+            }
+          }
+          
+          // Get setpoints (use first non-null value)
+          if (heatSetTempCol && row[heatSetTempCol] && heatSetpoint === null) {
+            const setpoint = parseFloat(row[heatSetTempCol]);
+            if (!isNaN(setpoint)) heatSetpoint = setpoint;
+          }
+          if (coolSetTempCol && row[coolSetTempCol] && coolSetpoint === null) {
+            const setpoint = parseFloat(row[coolSetTempCol]);
+            if (!isNaN(setpoint)) coolSetpoint = setpoint;
+          }
+          
+          // Get system mode (use first non-null value)
+          if (systemModeCol && row[systemModeCol] && systemMode === null) {
+            systemMode = String(row[systemModeCol]).trim();
+          }
+        });
+        
+        totalRuntimeHours = (totalHeatSeconds + totalAuxSeconds) / 3600;
+      }
+      
+      // Save analysis to history with timestamp (zone-specific)
+      const analysisEntry = {
+        ...results,
+        timestamp: new Date().toISOString(),
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        label: `Analysis ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        // Additional metrics
+        totalRuntimeHours: totalRuntimeHours > 0 ? totalRuntimeHours : null,
+        minIndoorTemp: minIndoorTemp !== null ? minIndoorTemp : null,
+        maxIndoorTemp: maxIndoorTemp !== null ? maxIndoorTemp : null,
+        heatSetpoint: heatSetpoint !== null ? heatSetpoint : null,
+        coolSetpoint: coolSetpoint !== null ? coolSetpoint : null,
+        systemMode: systemMode || null,
+      };
+      
+      // Get existing history and prepend new entry (keep last 20)
+      const existingHistory = resultsHistory || [];
+      const updatedHistory = [analysisEntry, ...existingHistory].slice(0, 20);
+      setResultsHistory(updatedHistory);
+      
+      try {
+        localStorage.setItem(getZoneStorageKey('spa_resultsHistory'), JSON.stringify(updatedHistory));
+      } catch (e) {
+        logger.warn('Failed to store results history in localStorage:', e);
+      }
+      // Dispatch custom event so AskJoule can update immediately
+      window.dispatchEvent(new CustomEvent('analyzerDataUpdated'));
+      // Add corresponding label - only keep one (zone-specific)
+      setLabels(['']);
+      try {
+        localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(['']));
+      } catch (e) {
+        logger.warn('Failed to store labels in localStorage:', e);
+      }
+      
+      // Calculate and store threshold recommendations
+      try {
+        const recommendations = calculateThresholdRecommendations(
+          results,
+          fullData,
+          { squareFeet: userSettings?.squareFeet || 2000 }
+        );
+        if (recommendations && recommendations.settings && Object.keys(recommendations.settings).length > 0) {
+          setThresholdRecommendations(recommendations);
+          localStorage.setItem(getZoneStorageKey('spa_thresholdRecommendations'), JSON.stringify(recommendations));
+        }
+      } catch (e) {
+        logger.warn('Failed to calculate/store threshold recommendations:', e);
+      }
+      
+      setHeatLossFactor(results.heatLossFactor);
+      // ☦️ LOAD-BEARING: Also store in userSettings so it persists across page reloads
+      // Why this exists: heatLossFactor in React state (App.jsx) doesn't persist. If user
+      // refreshes page or navigates away, the value is lost. Storing in userSettings ensures
+      // it's available when useAnalyzerHeatLoss is checked in the forecaster.
+      // Edge case: If setUserSetting is not available, we still set the React state, but
+      // it won't persist. This is handled gracefully by the forecaster's fallback logic.
+      if (setUserSetting) {
+        setUserSetting("analyzerHeatLoss", results.heatLossFactor);
+      }
+      setProgress({ stage: 'Complete!', percent: 100 });
+      if (results.usingDoeFallback) {
+        setSuccessMessage("Analysis complete using typical building heat loss. Upload a file with a longer 'heat off' period to get a measured value.");
+      } else {
+        setSuccessMessage("Success! The calculated Heat Loss Factor is now available in the other calculator tools.");
+      }
+      
+      // Clear progress after a short delay and set loading to false
+      setTimeout(() => {
+        setProgress({ stage: '', percent: 0 });
+        setIsLoading(false);
+      }, 1000);
+    } catch (err) {
+      logger.error('Analysis error:', err);
+      setError(`Failed to analyze data: ${err.message}`);
+      setProgress({ stage: '', percent: 0 });
+      setIsLoading(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
     if (!file) {
       setError("Please select a file to analyze.");
       return;
@@ -772,27 +1853,91 @@ const SystemPerformanceAnalyzer = () => {
     setIsLoading(true);
     setError(null);
     setSuccessMessage("");
+    // Clear threshold recommendations when starting new analysis
+    setThresholdRecommendations(null);
+    try {
+      localStorage.removeItem(getZoneStorageKey('spa_thresholdRecommendations'));
+    } catch (e) {
+      // Ignore errors
+    }
+    setProgress({ stage: 'Reading file...', percent: 10 });
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        setProgress({ stage: 'Parsing CSV data...', percent: 20 });
         const csvText = e.target.result;
-        const lines = csvText.split('\n').filter(line => line.trim() !== '');
+        
+        // Proper CSV parsing that handles quoted fields with commas
+        const parseCSVLine = (line) => {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              if (inQuotes && line[i + 1] === '"') {
+                // Escaped quote
+                current += '"';
+                i++; // Skip next quote
+              } else {
+                // Toggle quote state
+                inQuotes = !inQuotes;
+              }
+            } else if (char === ',' && !inQuotes) {
+              // Field separator
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          // Add last field
+          result.push(current.trim());
+          return result;
+        };
+        
+        const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
         let headerIndex = -1;
+        
+        // Find header row (skip comment lines and empty lines)
         for (let i = 0; i < lines.length; i++) {
-          if (!lines[i].trim().startsWith('#')) {
-            headerIndex = i;
-            break;
+          const trimmed = lines[i].trim();
+          if (trimmed && !trimmed.startsWith('#')) {
+            // Check if this looks like a header (has common column names)
+            const testFields = parseCSVLine(trimmed);
+            if (testFields.some(f => /^(Date|Time|Outdoor|Current|Heat|Aux)/i.test(f))) {
+              headerIndex = i;
+              break;
+            }
           }
         }
-        if (headerIndex === -1) throw new Error("Could not find a valid header row.");
-        const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, ''));
+        
+        if (headerIndex === -1) throw new Error("Could not find a valid header row. Make sure your CSV has a header row with column names like 'Date', 'Time', etc.");
+        
+        const headerLine = lines[headerIndex];
+        const headers = parseCSVLine(headerLine).map(h => h.replace(/^"|"$/g, '').trim());
+        
+        // Validate header alignment - check that Date and Time columns exist
+        const dateColIdx = headers.findIndex(h => /^Date$/i.test(h.trim()));
+        const timeColIdx = headers.findIndex(h => /^Time$/i.test(h.trim()));
+        
+        if (dateColIdx === -1 || timeColIdx === -1) {
+          logger.warn('CSV header validation:', {
+            headers: headers.slice(0, 10),
+            dateColIdx,
+            timeColIdx,
+            headerLine: headerLine.substring(0, 200)
+          });
+        }
+        
         const dataRows = lines.slice(headerIndex + 1);
-        const raw = dataRows.map(line => {
-          const values = line.split(',');
+        const raw = dataRows.map((line) => {
+          const values = parseCSVLine(line);
           let row = {};
           headers.forEach((header, index) => {
-            const value = values[index] ? values[index].trim().replace(/"/g, '') : '';
+            const value = values[index] ? values[index].replace(/^"|"$/g, '').trim() : '';
             row[header] = value;
           });
           return row;
@@ -806,18 +1951,72 @@ const SystemPerformanceAnalyzer = () => {
         );
 
         // For ecobee data, use raw columns directly; otherwise normalize
+        setProgress({ stage: 'Normalizing data format...', percent: 40 });
         let data;
         if (isEcobeeData) {
           // Use raw ecobee data directly - no normalization
           data = raw.filter(row => row.Date && row.Time);
-          console.log('Using raw ecobee data format');
+          logger.debug('Using raw ecobee data format');
         } else {
           // Normalize headers/rows (adds Date/Time if only Timestamp present; maps synonyms; converts °C→°F)
           data = normalizeCsvData(headers, raw).filter(row => row.Date && row.Time);
         }
         if (data.length === 0) throw new Error("No valid data rows found after the header.");
+        
+        // ☦️ CRITICAL FIX: Sort data by timestamp to ensure chronological order
+        // This prevents column misalignment issues and ensures coast-down detection works correctly
+        data.sort((a, b) => {
+          const dateA = a.Date || '';
+          const dateB = b.Date || '';
+          const timeA = a.Time || '';
+          const timeB = b.Time || '';
+          
+          // Compare dates first
+          if (dateA !== dateB) {
+            // Try to parse as date strings (handles formats like "11/29/2025" or "2025-11-29")
+            const dateAObj = new Date(dateA);
+            const dateBObj = new Date(dateB);
+            if (!isNaN(dateAObj.getTime()) && !isNaN(dateBObj.getTime())) {
+              return dateAObj.getTime() - dateBObj.getTime();
+            }
+            // Fallback to string comparison
+            return dateA.localeCompare(dateB);
+          }
+          
+          // Same date, compare times
+          const parseTime = (timeStr) => {
+            const parts = String(timeStr).split(':');
+            if (parts.length < 2) return 0;
+            const hours = parseInt(parts[0], 10) || 0;
+            const minutes = parseInt(parts[1], 10) || 0;
+            const seconds = parseInt(parts[2], 10) || 0;
+            return hours * 3600 + minutes * 60 + seconds;
+          };
+          
+          return parseTime(timeA) - parseTime(timeB);
+        });
+        
+        logger.debug('CSV data sorted chronologically:', {
+          totalRows: data.length,
+          firstRow: { date: data[0]?.Date, time: data[0]?.Time },
+          lastRow: { date: data[data.length - 1]?.Date, time: data[data.length - 1]?.Time }
+        });
+        
+        setProgress({ stage: 'Saving CSV data to IndexedDB...', percent: 50 });
 
-        // Store CSV data summary for Ask Joule to use
+        // Save CSV data to IndexedDB (handles large datasets)
+        try {
+          const filename = file ? file.name : 'uploaded_data.csv';
+          await saveCsvData(data, activeZoneId, filename);
+          setFileTooLargeForStorage(false);
+          console.log(`[SystemPerformanceAnalyzer] ✅ Saved ${data.length} rows to IndexedDB`);
+        } catch (storageErr) {
+          console.error('[SystemPerformanceAnalyzer] Failed to save CSV data to IndexedDB:', storageErr);
+          // Don't set fileTooLargeForStorage - IndexedDB should handle large files
+          // But log the error for debugging
+        }
+
+        // Store CSV data summary for Ask Joule to use (still use localStorage for small metadata)
         try {
           const dates = data.map(r => r.Date).filter(Boolean);
           // Handle both normalized and raw ecobee column names
@@ -845,7 +2044,8 @@ const SystemPerformanceAnalyzer = () => {
           
           localStorage.setItem('thermostatCSVData', JSON.stringify(thermostatSummary));
         } catch (storageErr) {
-          console.warn('Failed to store CSV summary:', storageErr);
+          // Storage is optional - analysis works fine without it
+          logger.debug('Could not store CSV summary (optional):', storageErr);
         }
 
         // Performance: sample every 15 minutes (0, 15, 30, 45) to speed analysis on long CSVs
@@ -861,31 +2061,27 @@ const SystemPerformanceAnalyzer = () => {
         // If the CSV doesn't contain 15-minute marks (too few sampled rows), fall back to full data
         const dataForAnalysis = sampledData.length >= 4 ? sampledData : data;
         if (sampledData.length > 0 && sampledData.length < data.length) {
-          console.log(`analyzeThermostatData: sampled ${sampledData.length} rows at 15-min intervals (of ${data.length}) for faster analysis`);
+          logger.debug(`analyzeThermostatData: sampled ${sampledData.length} rows at 15-min intervals (of ${data.length}) for faster analysis`);
         }
         
-        // Store parsed CSV data persistently (zone-specific)
-        // Store only the sampled/analysis data to avoid localStorage quota issues
-        // The full dataset is too large for large CSV files
+        // Store FULL CSV data in IndexedDB (handles large datasets without size limits)
+        // IndexedDB can store MB+ of data, so we don't need to truncate
+        setProgress({ stage: 'Saving CSV data to IndexedDB...', percent: 50 });
+        
         try {
-          // Clear old data for this zone to free up space
-          try {
-            localStorage.removeItem(getZoneStorageKey('spa_parsedCsvData'));
-          } catch (e) {
-            // Ignore errors when clearing
-          }
-          
-          // Store only the data used for analysis (sampled data) to save space
-          const dataToStore = dataForAnalysis.length < data.length ? dataForAnalysis : data;
-          localStorage.setItem(getZoneStorageKey('spa_parsedCsvData'), JSON.stringify(dataToStore));
-          localStorage.setItem(getZoneStorageKey('spa_uploadTimestamp'), new Date().toISOString());
-          localStorage.setItem(getZoneStorageKey('spa_filename'), file.name);
-        } catch (storageError) {
-          console.warn('Failed to store CSV data in localStorage (quota exceeded):', storageError);
-          // Show user-friendly error but don't block analysis
-          setError('Warning: Could not save CSV data to browser storage (storage quota exceeded). Analysis will continue, but you may need to re-upload the file if you refresh the page.');
-          // Still set the state so analysis can proceed
+          const filename = file ? file.name : 'uploaded_data.csv';
+          await saveCsvData(data, activeZoneId, filename);
+          setFileTooLargeForStorage(false);
+          console.log(`[SystemPerformanceAnalyzer] ✅ Saved ${data.length} rows to IndexedDB`);
+        } catch (storageErr) {
+          console.error('[SystemPerformanceAnalyzer] Failed to save CSV data to IndexedDB:', storageErr);
+          // IndexedDB should handle large files, but if it fails, we'll still use the data in memory
+          // Don't set fileTooLargeForStorage - IndexedDB handles large datasets
         }
+        
+        // Set the data in state for charts and display (always use full data for current session)
+        setParsedCsvRows(data);
+        setDataForAnalysisRows(data);
         
         // Update zone to mark it as having CSV data
         const updatedZones = zones.map(z => 
@@ -895,55 +2091,41 @@ const SystemPerformanceAnalyzer = () => {
         try {
           localStorage.setItem("zones", JSON.stringify(updatedZones));
         } catch (e) {
-          console.warn('Failed to store zones in localStorage:', e);
+          logger.warn('Failed to store zones in localStorage:', e);
         }
         
-        setParsedCsvRows(data);
-        setDataForAnalysisRows(dataForAnalysis);
-        const results = analyzeThermostatData(dataForAnalysis, systemConfig);
-        setAnalysisResults(results);
-        
-        // Run diagnostic analysis (zone-specific)
-        const diagnostics = analyzeThermostatIssues(data);
-        try {
-          localStorage.setItem(getZoneStorageKey('spa_diagnostics'), JSON.stringify(diagnostics));
-        } catch (e) {
-          console.warn('Failed to store diagnostics in localStorage:', e);
-        }
-        
-        // Keep only the most recent result (zone-specific)
-        setResultsHistory([results]);
-        try {
-          localStorage.setItem(getZoneStorageKey('spa_resultsHistory'), JSON.stringify([results]));
-        } catch (e) {
-          console.warn('Failed to store results history in localStorage:', e);
-        }
-        // Dispatch custom event so AskJoule can update immediately
-        window.dispatchEvent(new CustomEvent('analyzerDataUpdated'));
-        // Add corresponding label - only keep one (zone-specific)
-        setLabels(['Result 1']);
-        try {
-          localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(['Result 1']));
-        } catch (e) {
-          console.warn('Failed to store labels in localStorage:', e);
-        }
-        setHeatLossFactor(results.heatLossFactor);
-        // ☦️ LOAD-BEARING: Also store in userSettings so it persists across page reloads
-        // Why this exists: heatLossFactor in React state (App.jsx) doesn't persist. If user
-        // refreshes page or navigates away, the value is lost. Storing in userSettings ensures
-        // it's available when useAnalyzerHeatLoss is checked in the forecaster.
-        // Edge case: If setUserSetting is not available, we still set the React state, but
-        // it won't persist. This is handled gracefully by the forecaster's fallback logic.
-        if (setUserSetting) {
-          setUserSetting("analyzerHeatLoss", results.heatLossFactor);
-        }
-        setSuccessMessage("Success! The calculated Heat Loss Factor is now available in the other calculator tools.");
+        // Run the analysis on the stored data (this handles everything: analysis, diagnostics, history, recommendations)
+        await runAnalysisOnData(data, dataForAnalysis);
 
       } catch (err) {
-        setError(`Failed to parse or analyze the file. Error: ${err.message}`);
-        console.error(err);
+        // Provide user-friendly error messages based on error type
+        let errorMessage = 'Failed to parse or analyze the file.';
+        let errorDetails = err.message;
+        
+        if (err.message.includes('header')) {
+          errorMessage = 'Could not find a valid header row in your CSV file.';
+          errorDetails = 'Please ensure your CSV file has a header row with column names.';
+        } else if (err.message.includes('No valid data')) {
+          errorMessage = 'No valid data rows found in your CSV file.';
+          errorDetails = 'Please check that your CSV file contains data rows after the header.';
+        } else if (err.message.includes('quota')) {
+          errorMessage = 'Storage quota exceeded.';
+          errorDetails = 'Your browser storage is full. Please clear some data or use a different browser.';
+        } else if (err.message.includes('Invalid indoor temperature')) {
+          errorMessage = 'Invalid temperature data detected.';
+          errorDetails = 'The CSV file contains invalid temperature values. Please check your data format.';
+        } else if (err.message.includes('coast-down')) {
+          errorMessage = 'Could not find suitable data for heat loss calculation.';
+          errorDetails = 'Your CSV file needs periods where the heating system is off to calculate heat loss. Try uploading data with longer time periods.';
+        } else {
+          errorDetails = err.message || 'Unknown error occurred.';
+        }
+        
+        setError(`${errorMessage} ${errorDetails}`);
+        logger.error('CSV parsing error:', err);
       } finally {
         setIsLoading(false);
+        setProgress({ stage: '', percent: 0 });
       }
     };
     reader.readAsText(file);
@@ -975,19 +2157,34 @@ const SystemPerformanceAnalyzer = () => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">System Performance Analyzer</h2>
-          <p className="text-gray-600 dark:text-gray-400">Calculate your building's thermal factor from actual thermostat data (heating mode)</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-3">
+            Joule reads your thermostat data and explains your heat pump in plain English — what it's doing, whether it's wasting money, and what to change.
+          </p>
+          <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
+            <p>Joule is a translator between your weird heat pump and your power bill. It:</p>
+            <ul className="list-disc list-inside ml-2 space-y-0.5">
+              <li><strong>Listens</strong> to your thermostat history and local weather</li>
+              <li><strong>Runs the physics</strong> to see how your house actually loses heat</li>
+              <li><strong>Tells you what to do</strong> tonight to cut waste without freezing anyone</li>
+            </ul>
+          </div>
         </div>
-        <DashboardLink />
+        <div className="flex items-center gap-3">
+          <DashboardLink />
+        </div>
       </div>
 
-      {/* Quick Links Banner */}
+      {/* Step 1: Download Data Banner */}
       <div className="mb-6 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 shadow-sm dark:border-blue-800 dark:from-blue-950 dark:to-indigo-950">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 p-2 bg-blue-600 rounded-lg">
-            <Upload size={20} className="text-white" />
+            <span className="text-white font-bold text-lg">1</span>
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Download Your Thermostat Data</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Step 1: Download Your Thermostat Data</h3>
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+              Go to the ecobee app and click on "Download Data" to export your CSV file.
+            </p>
             <div className="flex flex-wrap gap-3">
               <a className="inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors shadow-sm" href="https://www.ecobee.com/login/" target="_blank" rel="noopener noreferrer">
                 ecobee →
@@ -997,19 +2194,452 @@ const SystemPerformanceAnalyzer = () => {
         </div>
       </div>
 
+      {/* Upload Section */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border dark:border-gray-700">
+        <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+            <Upload size={20} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          Upload Data File {zones.length > 1 && activeZone && `(${activeZone.name})`}
+        </h3>
+        <div className="flex flex-wrap items-center gap-4">
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileChange}
+            disabled={isLoading}
+            className="flex-grow p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-100 hover:border-blue-400 dark:hover:border-blue-500 transition-colors file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Select CSV file to upload"
+          />
+          <button
+            onClick={handleAnalyze}
+            disabled={!file || isLoading}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-md disabled:transform-none disabled:shadow-none flex items-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                Analyzing...
+              </>
+            ) : (
+              'Analyze Data'
+            )}
+          </button>
+          {isLoading && progress.stage && (
+            <div className="w-full mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{progress.stage}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{progress.percent}%</span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                <div
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${progress.percent}%` }}
+                  role="progressbar"
+                  aria-valuenow={progress.percent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={progress.stage}
+                />
+              </div>
+            </div>
+          )}
+          {/* Export Data Dropdown */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={!parsedCsvRows || isLoading}
+              className="px-4 py-2 bg-white border rounded text-sm hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              aria-label="Export diagnostic data"
+              aria-expanded={showExportMenu}
+            >
+              Debug Tools
+              <ChevronDown size={16} className={showExportMenu ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-50">
+                <button
+                  onClick={async () => {
+                    try {
+                      console.log('[SystemPerformanceAnalyzer] Manual restore triggered for zone:', activeZoneId);
+                      
+                      // Debug: Show what's in the database
+                      const stats = await getStorageStats();
+                      console.log('[SystemPerformanceAnalyzer] IndexedDB stats:', stats);
+                      const allData = await listAllCsvData();
+                      console.log('[SystemPerformanceAnalyzer] All CSV records:', allData);
+                      
+                      const data = await loadCsvData(activeZoneId, true);
+                      if (data && Array.isArray(data) && data.length > 0) {
+                        setParsedCsvRows(data);
+                        setDataForAnalysisRows(data);
+                        setSuccessMessage(`✅ Restored ${data.length} rows from IndexedDB`);
+                        console.log(`[SystemPerformanceAnalyzer] ✅ Manually restored ${data.length} rows`);
+                      } else {
+                        const errorMsg = `No CSV data found in IndexedDB for zone "${activeZoneId}". Found ${stats.totalRecords} total records in zones: ${stats.zones.join(', ')}. Please upload a CSV file.`;
+                        setError(errorMsg);
+                        console.warn('[SystemPerformanceAnalyzer] No data found:', { activeZoneId, stats, allData });
+                      }
+                    } catch (err) {
+                      setError(`Failed to restore: ${err.message}`);
+                      console.error('[SystemPerformanceAnalyzer] Manual restore failed:', err);
+                    }
+                    setShowExportMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Restore CSV data from IndexedDB"
+                >
+                  🔄 Restore CSV Data
+                </button>
+                <button
+                  onClick={() => {
+                    downloadCsvRows(parsedCsvRows, `${file?.name?.replace(/\.[^.]+$/, '') || 'parsed-data'}-parsed.csv`);
+                    setShowExportMenu(false);
+                  }}
+                  disabled={!parsedCsvRows || isLoading}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Download parsed CSV data"
+                >
+                  📄 Download Parsed CSV
+                </button>
+                <button
+                  onClick={() => {
+                    downloadCsvRows(dataForAnalysisRows, `${file?.name?.replace(/\.[^.]+$/, '') || 'sampled-data'}-hourly.csv`);
+                    setShowExportMenu(false);
+                  }}
+                  disabled={!dataForAnalysisRows || isLoading}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Download sampled CSV data"
+                >
+                  📊 Download Sampled CSV
+                </button>
+                <button
+                  onClick={() => {
+                    const averaged = averageHourlyRows(parsedCsvRows);
+                    downloadCsvRows(averaged, `${file?.name?.replace(/\.[^.]+$/, '') || 'parsed-data'}-averaged-hourly.csv`);
+                    setShowExportMenu(false);
+                  }}
+                  disabled={!parsedCsvRows || isLoading}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Download averaged CSV data"
+                >
+                  📈 Download Averaged CSV
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Note: For large CSV files, data is sampled to one row per hour (top-of-hour) to speed analysis.</p>
+        <div className="mt-4 space-y-2">
+          <a href="/sample-thermostat-data.csv" download className="text-sm text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 underline">
+            Download a sample CSV file
+          </a>
+          <ThermostatHelp />
+        </div>
+
+        {error && !resultsHistory.length && (() => {
+          // Only show error if we don't have results (including fallback results)
+          // Parse error message to extract diagnostic info
+          const isCoastDownError = error.includes('coast-down') || error.includes('Could not find a suitable');
+          const isParseError = error.includes('header') || error.includes('parse') || error.includes('CSV');
+          
+          // Extract diagnostic data from coast-down errors for AnalyzerErrorState
+          let errorStats = null;
+          if (isCoastDownError) {
+            const totalMatch = error.match(/Total data points: (\d+)/);
+            const zeroMatch = error.match(/Rows with Heat Stage = 0: (\d+) \(([\d.]+)%\)/);
+            const longestMatch = error.match(/Longest consecutive "off" period: (\d+) data points \(([\d.]+) hours\)/);
+            
+            if (totalMatch || zeroMatch || longestMatch) {
+              errorStats = {
+                totalPoints: totalMatch ? parseInt(totalMatch[1]) : undefined,
+                offRows: zeroMatch ? parseInt(zeroMatch[1]) : undefined,
+                longestOffHours: longestMatch ? parseFloat(longestMatch[2]) : undefined,
+                requiredOffHours: 3,
+              };
+            }
+          }
+          
+          // Use AnalyzerErrorState component for coast-down errors
+          if (isCoastDownError && errorStats) {
+            return (
+              <div className="mt-6">
+                <AnalyzerErrorState
+                  stats={errorStats}
+                  onRetry={file ? () => {
+                    setError(null);
+                    handleAnalyze();
+                  } : undefined}
+                  onChooseDifferentFile={() => {
+                    setError(null);
+                    setFile(null);
+                    setFileTooLargeForStorage(false);
+                    const fileInput = document.querySelector('input[type="file"]');
+                    if (fileInput) fileInput.value = '';
+                  }}
+                  // onRunFallbackEstimate can be added later when fallback is implemented
+                />
+              </div>
+            );
+          }
+          
+          // Fallback for other error types (parse errors, etc.)
+          return (
+            <div className="mt-6 bg-[#0C1118] border border-red-500/40 rounded-xl p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="h-5 w-5 text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-100 mb-1">
+                    {isParseError ? "Couldn't read your file" : "Analysis failed"}
+                  </h3>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {error.split('\n')[0] || error}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setFile(null);
+                    setFileTooLargeForStorage(false);
+                    const fileInput = document.querySelector('input[type="file"]');
+                    if (fileInput) fileInput.value = '';
+                  }}
+                  className="px-4 py-2 bg-[#1E4CFF] hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
+                >
+                  Try a different file
+                </button>
+                {file && (
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      handleAnalyze();
+                    }}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Retry Analysis
+                  </button>
+                )}
+              </div>
+              {isParseError && (
+                <p className="text-sm text-slate-400">
+                  <strong>Tips:</strong> Ensure your CSV file has a header row, contains valid data, and is in the correct format. Download a sample CSV file above for reference.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
+        {successMessage && (
+          <div className="mt-6 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg p-6 space-y-4">
+            <p className="text-lg text-emerald-700 dark:text-emerald-300 font-semibold">{successMessage}</p>
+            <button
+              onClick={() => navigate('/cost-forecaster', { state: { useCalculatedFactor: true } })}
+              className="w-full inline-flex items-center justify-center px-6 py-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg font-bold text-lg hover:from-emerald-700 hover:to-green-700 dark:from-emerald-600 dark:to-green-600 dark:hover:from-emerald-500 dark:hover:to-green-500 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+            >
+              <span className="mr-2">→</span>
+              Use this data in the 7-Day Cost Forecaster
+            </button>
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">Your calculated heat loss factor will be imported automatically</p>
+            <button
+              onClick={() => setSuccessMessage("")}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Bill Calibration - Compact widget in status strip (moved to status strip above) */}
+      </div>
+
+      {/* Analysis History - Compact Top-Right Position */}
+      {resultsHistory.length > 0 && (
+        <details className="bg-white dark:bg-gray-800 rounded-xl shadow-lg mb-6 border dark:border-gray-700 no-print">
+          <summary className="p-4 cursor-pointer font-semibold text-base text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-900/50 rounded-lg transition-colors flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={18} className="text-blue-600 dark:text-blue-400" />
+              <span>Saved Reports</span>
+            </div>
+            <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">
+              {resultsHistory.length} {resultsHistory.length === 1 ? 'report' : 'reports'}
+            </span>
+          </summary>
+          <div className="px-6 pb-6 space-y-2">
+            {resultsHistory.slice(0, 3).map((entry, idx) => {
+              const isLatest = idx === 0;
+              const heatLoss = entry.heatLossFactor?.toFixed(1) || 'N/A';
+              const balancePoint = entry.balancePoint != null && isFinite(entry.balancePoint) 
+                ? entry.balancePoint.toFixed(1) 
+                : 'N/A';
+              
+              // Calculate trend (compare to previous entry)
+              const previousEntry = resultsHistory[idx + 1];
+              const trend = previousEntry && entry.heatLossFactor && previousEntry.heatLossFactor
+                ? entry.heatLossFactor - previousEntry.heatLossFactor
+                : null;
+              
+              // Format date and generate descriptive title
+              const entryDate = entry.timestamp ? new Date(entry.timestamp) : null;
+              const displayDate = entry.date || (entryDate ? entryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `Run ${idx + 1}`);
+              
+              // Generate weather-based title if we have outdoor temp data
+              let weatherContext = '';
+              if (entry.minOutdoorTemp != null && entry.maxOutdoorTemp != null) {
+                const avgTemp = (entry.minOutdoorTemp + entry.maxOutdoorTemp) / 2;
+                if (avgTemp < 30) weatherContext = ' (Cold Snap)';
+                else if (avgTemp < 45) weatherContext = ' (Cold)';
+                else if (avgTemp > 70) weatherContext = ' (Warm)';
+                else weatherContext = ' (Mild)';
+              }
+              const displayTitle = displayDate + weatherContext;
+              
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border transition-colors ${
+                    isLatest
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                      : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-900'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 dark:text-gray-100">
+                          {displayTitle}
+                        </span>
+                        {isLatest && (
+                          <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-medium">
+                            Latest
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-700 dark:text-gray-300 space-y-0.5">
+                        <div>
+                          <span className="font-medium">Heat Loss:</span>{' '}
+                          <span className="font-mono">{heatLoss} BTU/hr/°F</span>
+                          {trend !== null && trend !== 0 && (
+                            <span className={`ml-2 text-xs ${trend < 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              ({trend < 0 ? '↓' : '↑'} {Math.abs(trend).toFixed(1)})
+                            </span>
+                          )}
+                        </div>
+                        {balancePoint !== 'N/A' && (
+                          <div>
+                            <span className="font-medium">Balance Point:</span>{' '}
+                            <span className="font-mono">{balancePoint}°F</span>
+                          </div>
+                        )}
+                        {/* Additional metrics */}
+                        {entry.totalRuntimeHours != null && typeof entry.totalRuntimeHours === 'number' && !isNaN(entry.totalRuntimeHours) && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <span className="font-medium">Runtime:</span>{' '}
+                            <span className="font-mono">{entry.totalRuntimeHours.toFixed(1)} hrs</span>
+                          </div>
+                        )}
+                        {(entry.minIndoorTemp != null || entry.maxIndoorTemp != null) && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <span className="font-medium">Indoor Temp:</span>{' '}
+                            <span className="font-mono">
+                              {entry.minIndoorTemp != null && typeof entry.minIndoorTemp === 'number' && !isNaN(entry.minIndoorTemp) 
+                                ? entry.minIndoorTemp.toFixed(1) 
+                                : 'N/A'}°F
+                              {entry.minIndoorTemp != null && entry.maxIndoorTemp != null && 
+                               typeof entry.minIndoorTemp === 'number' && typeof entry.maxIndoorTemp === 'number' &&
+                               !isNaN(entry.minIndoorTemp) && !isNaN(entry.maxIndoorTemp) &&
+                               entry.minIndoorTemp !== entry.maxIndoorTemp && (
+                                <> - {entry.maxIndoorTemp.toFixed(1)}°F</>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {(entry.minOutdoorTemp != null || entry.maxOutdoorTemp != null) && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <span className="font-medium">Outdoor Temp Range:</span>{' '}
+                            <span className="font-mono">
+                              {entry.minOutdoorTemp != null && typeof entry.minOutdoorTemp === 'number' && !isNaN(entry.minOutdoorTemp) 
+                                ? entry.minOutdoorTemp.toFixed(1) 
+                                : 'N/A'}°F
+                              {entry.minOutdoorTemp != null && entry.maxOutdoorTemp != null && 
+                               typeof entry.minOutdoorTemp === 'number' && typeof entry.maxOutdoorTemp === 'number' &&
+                               !isNaN(entry.minOutdoorTemp) && !isNaN(entry.maxOutdoorTemp) &&
+                               entry.minOutdoorTemp !== entry.maxOutdoorTemp && (
+                                <> - {entry.maxOutdoorTemp.toFixed(1)}°F</>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {(entry.heatSetpoint != null || entry.coolSetpoint != null) && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <span className="font-medium">Setpoints:</span>{' '}
+                            <span className="font-mono">
+                              {entry.heatSetpoint != null && typeof entry.heatSetpoint === 'number' && !isNaN(entry.heatSetpoint) 
+                                ? `Heat: ${entry.heatSetpoint.toFixed(0)}°F` 
+                                : ''}
+                              {entry.heatSetpoint != null && entry.coolSetpoint != null && 
+                               typeof entry.heatSetpoint === 'number' && typeof entry.coolSetpoint === 'number' &&
+                               !isNaN(entry.heatSetpoint) && !isNaN(entry.coolSetpoint) && ', '}
+                              {entry.coolSetpoint != null && typeof entry.coolSetpoint === 'number' && !isNaN(entry.coolSetpoint) 
+                                ? `Cool: ${entry.coolSetpoint.toFixed(0)}°F` 
+                                : ''}
+                            </span>
+                          </div>
+                        )}
+                        {entry.systemMode && typeof entry.systemMode === 'string' && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <span className="font-medium">Mode:</span>{' '}
+                            <span className="font-mono capitalize">{entry.systemMode.toLowerCase()}</span>
+                          </div>
+                        )}
+                      </div>
+                      {trend !== null && trend < -10 && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
+                          ✓ Improvement detected! Your heat loss decreased.
+                        </p>
+                      )}
+                      {trend !== null && trend > 10 && (
+                        <p className="text-xs text-orange-600 dark:text-orange-400 mt-1 font-medium">
+                          ⚠ Heat loss increased. Check for insulation issues.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {resultsHistory.length > 3 && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 text-center">
+                Showing most recent 3 of {resultsHistory.length} analyses
+              </p>
+            )}
+          </div>
+        </details>
+      )}
+
       {/* Zone Selector (if multiple zones) */}
       {zones.length > 1 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 mb-6 border dark:border-gray-700">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Select Zone for CSV Upload
           </label>
+          <p id="zone-selector-description" className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Choose which zone this CSV data belongs to for multi-zone analysis
+          </p>
           <select
             value={activeZoneId}
             onChange={(e) => {
               setActiveZoneId(e.target.value);
               localStorage.setItem("activeZoneId", e.target.value);
             }}
-            className="w-full max-w-md p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-100"
+            disabled={isLoading}
+            className="w-full max-w-md p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Select zone for CSV upload"
+            aria-describedby="zone-selector-description"
           >
             {zones.map(zone => (
               <option key={zone.id} value={zone.id}>
@@ -1030,261 +2660,479 @@ const SystemPerformanceAnalyzer = () => {
         </div>
       )}
 
-      {/* Upload Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border dark:border-gray-700">
-        <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-            <Upload size={20} className="text-blue-600 dark:text-blue-400" />
-          </div>
-          Upload Data File {zones.length > 1 && activeZone && `(${activeZone.name})`}
-        </h3>
-        <div className="flex flex-wrap items-center gap-4">
-          <input
-            type="file"
-            accept=".csv"
-            onChange={handleFileChange}
-            className="flex-grow p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-100 hover:border-blue-400 dark:hover:border-blue-500 transition-colors file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-200"
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={!file || isLoading}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-md disabled:transform-none disabled:shadow-none flex items-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                Analyzing...
-              </>
-            ) : (
-              'Analyze Data'
-            )}
-          </button>
-          <button
-            onClick={() => downloadCsvRows(parsedCsvRows, `${file?.name?.replace(/\.[^.]+$/, '') || 'parsed-data'}-parsed.csv`)}
-            disabled={!parsedCsvRows}
-            className="px-4 py-2 bg-white border rounded text-sm hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50"
-          >
-            Download Parsed CSV
-          </button>
-          <button
-            onClick={() => downloadCsvRows(dataForAnalysisRows, `${file?.name?.replace(/\.[^.]+$/, '') || 'sampled-data'}-hourly.csv`)}
-            disabled={!dataForAnalysisRows}
-            className="px-4 py-2 bg-white border rounded text-sm hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50"
-          >
-            Download Sampled CSV
-          </button>
-          <button
-            onClick={() => {
-              const averaged = averageHourlyRows(parsedCsvRows);
-              downloadCsvRows(averaged, `${file?.name?.replace(/\.[^.]+$/, '') || 'parsed-data'}-averaged-hourly.csv`);
-            }}
-            disabled={!parsedCsvRows}
-            className="px-4 py-2 bg-white border rounded text-sm hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50"
-          >
-            Download Averaged CSV
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Note: For large CSV files, data is sampled to one row per hour (top-of-hour) to speed analysis.</p>
-        <div className="mt-4 space-y-2">
-          <a href="/sample-thermostat-data.csv" download className="text-sm text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 underline">
-            Download a sample CSV file
-          </a>
-          <ThermostatHelp />
-        </div>
-
-        {error && (
-          <div className="mt-4 bg-red-50 dark:bg-red-950 border-l-4 border-red-500 p-4 rounded-r-lg">
-            <div className="flex items-center gap-2">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
+      {/* Loading State with Enhanced Progress Messages */}
+      {isLoading && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 mb-6 border-2 border-gray-200 dark:border-gray-700">
+          <div className="text-center mb-6">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Physics Engine Processing...</h3>
+            <p className="text-lg text-gray-700 dark:text-gray-300 font-medium">{progress.stage || 'Initializing analysis...'}</p>
+            {progress.percent > 0 && (
+              <div className="mt-4 max-w-md mx-auto">
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 h-3 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${progress.percent}%` }}
+                    role="progressbar"
+                    aria-valuenow={progress.percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  />
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{progress.percent}% complete</p>
               </div>
-              <p className="text-red-800 dark:text-red-200 font-semibold">{error}</p>
-            </div>
+            )}
+          </div>
+          <AnalysisResultsSkeleton />
+        </div>
+      )}
+
+      {/* Aria-live region for screen readers */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        id="analysis-results-announcement"
+      >
+        {resultsHistory.length > 0 && !isLoading && (
+          <div>
+            Analysis complete. Heat loss factor: {resultsHistory[0]?.heatLossFactor?.toFixed(1) || 'N/A'} BTU per hour per degree Fahrenheit.
+            {resultsHistory[0]?.balancePoint != null && isFinite(resultsHistory[0].balancePoint) && (
+              <> Balance point: {resultsHistory[0].balancePoint.toFixed(1)} degrees Fahrenheit.</>
+            )}
           </div>
         )}
-
-        {successMessage && (
-          <div className="mt-6 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg p-6 space-y-4">
-            <p className="text-lg text-emerald-700 dark:text-emerald-300 font-semibold">{successMessage}</p>
-            <button
-              onClick={() => navigate('/cost-forecaster', { state: { useCalculatedFactor: true } })}
-              className="w-full inline-flex items-center justify-center px-6 py-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg font-bold text-lg hover:from-emerald-700 hover:to-green-700 dark:from-emerald-600 dark:to-green-600 dark:hover:from-emerald-500 dark:hover:to-green-500 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              <span className="mr-2">→</span>
-              Use this data in the 7-Day Cost Forecaster
-            </button>
-            <p className="text-sm text-emerald-600 dark:text-emerald-400">Your calculated heat loss factor will be imported automatically</p>
-          </div>
+        {isLoading && (
+          <div>Processing analysis. {progress.stage || 'Please wait...'}</div>
         )}
       </div>
 
-      {resultsHistory.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 mb-6 border-2 border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-lg">
-              <TrendingUp size={24} />
-            </div>
-            Analysis Results
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Your most recent analysis</p>
+      {!isLoading && resultsHistory.length > 0 && (
+        <ErrorBoundary name="Analysis Results">
           {(() => {
-            // Only show the most recent result (index 0)
             const result = resultsHistory[0];
             if (!result) return null;
-            const idx = 0;
-            const safeLabel = labels[0] || `Result 1`;
-            // Calculate normalized metrics for detail section
             const squareFeet = userSettings?.squareFeet || 2000;
-            const heatLossPerSqFt = result.heatLossFactor ? result.heatLossFactor / squareFeet : 0;
             
-            // Calculate percentile based on DOE data for typical US homes
-            // Lower heat loss factor = more efficient = higher percentile
-            // Based on DOE Residential Energy Consumption Survey and typical home data
+            // Calculate percentile for hero section
             const calculatePercentile = (heatLossFactor) => {
-              // Harsher grading curve - more realistic distribution
-              // Top 5% (most efficient): < 300
-              // Top 10%: < 400
-              // Top 25%: < 500
-              // Top 50% (median): < 600
-              // Bottom 25%: >= 700
-              // Bottom 10%: >= 900
-              // Bottom 5% (least efficient): >= 1200
-              
-              if (heatLossFactor < 300) return 98; // Top 2%
-              if (heatLossFactor < 400) return 95; // Top 5%
-              if (heatLossFactor < 500) return 90; // Top 10%
-              if (heatLossFactor < 550) return 80; // Top 20%
-              if (heatLossFactor < 600) return 70; // Top 30%
-              if (heatLossFactor < 650) return 60; // Top 40%
-              if (heatLossFactor < 700) return 50; // Median
-              if (heatLossFactor < 800) return 35; // Bottom 35%
-              if (heatLossFactor < 900) return 25; // Bottom 25%
-              if (heatLossFactor < 1100) return 15; // Bottom 15%
-              if (heatLossFactor < 1300) return 10; // Bottom 10%
-              if (heatLossFactor < 1800) return 5;  // Bottom 5%
-              return 2; // Bottom 2% (very inefficient)
+              if (heatLossFactor < 300) return 98;
+              if (heatLossFactor < 400) return 95;
+              if (heatLossFactor < 500) return 90;
+              if (heatLossFactor < 550) return 80;
+              if (heatLossFactor < 600) return 70;
+              if (heatLossFactor < 650) return 60;
+              if (heatLossFactor < 700) return 50;
+              if (heatLossFactor < 800) return 35;
+              if (heatLossFactor < 900) return 25;
+              if (heatLossFactor < 1100) return 15;
+              if (heatLossFactor < 1300) return 10;
+              if (heatLossFactor < 1800) return 5;
+              return 2;
+            };
+            const percentile = result.heatLossFactor ? calculatePercentile(result.heatLossFactor) : 50;
+            const efficiencyStatus = percentile >= 70 ? 'Elite' : percentile >= 40 ? 'Average' : 'Needs Work';
+            const efficiencyColor = percentile >= 70 ? 'text-green-600 dark:text-green-400' : percentile >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
+            
+            // Calculate annual waste estimate
+            const calculateWaste = () => {
+              if (!annualEstimate || !userSettings) return null;
+              // Estimate optimal cost (assuming 10% better efficiency is achievable)
+              const optimalEstimate = annualEstimate * 0.9;
+              const waste = annualEstimate - optimalEstimate;
+              return waste > 0 ? waste : 0;
+            };
+            const annualWaste = calculateWaste();
+            
+            // Get comfort risk based on balance point and efficiency
+            const getComfortRisk = () => {
+              if (result.balancePoint != null && isFinite(result.balancePoint)) {
+                if (result.balancePoint >= 35) return 'High';
+                if (result.balancePoint >= 30) return 'Medium';
+                return 'Low';
+              }
+              if (percentile < 40) return 'Medium';
+              return 'Low';
+            };
+            const comfortRisk = getComfortRisk();
+            
+            // Get primary recommendation
+            const getPrimaryRecommendation = () => {
+              if (result.balancePoint != null && isFinite(result.balancePoint) && result.balancePoint >= 30) {
+                return {
+                  title: "Don't drop the setpoint more than 2°F at night when it's below 30°F",
+                  body: "This prevents strips from kicking on at 5–7am, which costs 3x more than your heat pump.",
+                  showWhy: true
+                };
+              }
+              if (percentile < 40) {
+                return {
+                  title: "Consider a deeper nighttime setback when it's above 35°F outside",
+                  body: "Your system can handle it, and you'll save money without sacrificing comfort.",
+                  showWhy: true
+                };
+              }
+              return {
+                title: "Your system is running efficiently",
+                body: "Keep your current schedule. You're in the top tier for homes like yours.",
+                showWhy: false
+              };
+            };
+            const primaryRecommendation = getPrimaryRecommendation();
+            
+            // Get system description in plain English
+            const getSystemDescription = () => {
+              const buildingAge = userSettings?.homeAge || 'typical';
+              const buildingDesc = buildingAge < 2000 ? '90s house' : buildingAge < 2010 ? '2000s house' : 'modern house';
+              const stripUsage = result.balancePoint != null && result.balancePoint < 25 ? 'almost no strip heat' : 
+                                result.balancePoint != null && result.balancePoint < 30 ? 'minimal strip heat' : 
+                                'some strip heat';
+              const efficiencyDesc = percentile >= 70 ? `top ${percentile}%` : percentile >= 40 ? `top ${percentile}%` : `bottom ${100 - percentile}%`;
+              return `Your heat pump is running efficiently for a ${buildingDesc}, with ${stripUsage}. You're in the ${efficiencyDesc} for systems like yours.`;
             };
             
-            const percentile = result.heatLossFactor ? calculatePercentile(result.heatLossFactor) : 50;
-            // Position: 0% = least efficient (left), 100% = most efficient (right)
-            // Percentile represents "Top X%" - so 90% means top 90% (efficient, right side)
-            // For "Bottom X%", we need to flip: Bottom 85% means 85% from left (least efficient side)
-            // If percentile < 50, we display "Bottom (100-percentile)%", so position should be (100-percentile) from left
-            const positionPercent = percentile >= 50 
-              ? percentile  // Top X%: position at X% from left (efficient side)
-              : (100 - percentile);  // Bottom X%: position at X% from left (inefficient side)
-            const clampedPosition = Math.max(0, Math.min(100, positionPercent));
-            
             return (
-            <div key={idx} className="border-t-2 dark:border-gray-700 pt-6 mt-6 first:mt-0 first:pt-0 first:border-t-0">
-              
-              {/* Step 1: Simple Score Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* Heat Loss Score Card - Simplified */}
-                <div className="bg-blue-900/50 dark:bg-blue-950/50 border-2 border-blue-700 dark:border-blue-600 rounded-xl p-6 shadow-lg">
-                  <h3 className="text-sm font-bold text-blue-200 dark:text-blue-300 mb-1 uppercase tracking-wide">Your Home's Thermal Factor</h3>
-                  <p className="text-5xl font-extrabold text-white mb-2">
-                    {(result.heatLossFactor !== null && result.heatLossFactor !== undefined) ? result.heatLossFactor.toFixed(1) : 'N/A'}
-                    <span className="text-lg font-normal ml-2">BTU/hr/°F</span>
-                  </p>
-                  <p className="text-blue-200 dark:text-blue-300 leading-relaxed">
-                    {result.heatLossFactor != null ? (
-                      result.heatLossFactor < 500 ? 'Excellent! Low heat loss suggests great insulation and airtightness.' :
-                      result.heatLossFactor < 800 ? 'This is typical for many homes. Room for improvement.' :
-                      'Higher heat loss detected. Insulation or air sealing could help.'
-                    ) : ''}
+              <>
+                {/* CIVILIAN MODE: 4 Simple Blocks */}
+                
+                {/* Block 1: Headline Verdict */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-6 border border-gray-200 dark:border-gray-700">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Your system in plain English</h2>
+                  <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {getSystemDescription()}
                   </p>
                 </div>
 
-                {/* Balance Point Card - Simplified */}
-                {(() => {
-                  const balancePoint = result.balancePoint != null && isFinite(result.balancePoint) ? result.balancePoint : null;
-                  const isExcellent = balancePoint != null && balancePoint < 25;
-                  const isGood = balancePoint != null && balancePoint >= 25 && balancePoint < 30;
-                  const isPoor = balancePoint != null && balancePoint >= 30;
+                {/* Block 2: Money & Comfort Summary */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl p-6 mb-6 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center justify-between flex-wrap gap-4 mb-2">
+                    <div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Annual waste</div>
+                      <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                        {annualWaste ? `~$${Math.round(annualWaste)}/year` : 'Minimal'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Comfort risk</div>
+                      <div className={`text-3xl font-bold ${
+                        comfortRisk === 'Low' ? 'text-green-600 dark:text-green-400' :
+                        comfortRisk === 'Medium' ? 'text-yellow-600 dark:text-yellow-400' :
+                        'text-red-600 dark:text-red-400'
+                      }`}>
+                        {comfortRisk}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                    Based on your thermostat data and typical weather for your area.
+                  </p>
+                </div>
+
+                {/* Block 3: One Primary Recommendation */}
+                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 rounded-xl p-8 mb-6 border-2 border-amber-300 dark:border-amber-700 shadow-lg">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Tonight's move</h3>
+                      <p className="text-lg text-gray-800 dark:text-gray-200 mb-2 font-semibold">
+                        {primaryRecommendation.title}
+                      </p>
+                      <p className="text-gray-700 dark:text-gray-300">
+                        {primaryRecommendation.body}
+                      </p>
+                    </div>
+                  </div>
+                  {primaryRecommendation.showWhy && (
+                    <button
+                      onClick={() => {
+                        setShowNerdMode(true);
+                        setTimeout(() => {
+                          document.getElementById('balance-point-explanation')?.scrollIntoView({ behavior: 'smooth' });
+                        }, 100);
+                      }}
+                      className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold transition-colors shadow-md"
+                    >
+                      Show me why
+                    </button>
+                  )}
+                </div>
+
+                {/* Block 4: Bill Calibration Hint */}
+                {latestAnalysis && latestAnalysis.heatLossFactor && annualEstimate && (() => {
+                  // Calculate variance if we have bill data
+                  const billVariance = null; // Would need bill data to calculate
+                  const varianceText = billVariance ? 
+                    (Math.abs(billVariance) <= 0.1 ? 
+                      `Our physics estimate is within ${Math.round(Math.abs(billVariance) * 100)}% of your real bill. This looks dialed in 👍` :
+                      `We're off by ~${Math.round(Math.abs(billVariance) * 100)}%. Something else is using power — we'll help you hunt it down.`) :
+                    null;
                   
-                  const bgClass = isExcellent 
-                    ? 'bg-green-900/50 dark:bg-green-950/50 border-2 border-green-700 dark:border-green-600'
-                    : isGood
-                    ? 'bg-yellow-900/50 dark:bg-yellow-950/50 border-2 border-yellow-700 dark:border-yellow-600'
-                    : 'bg-red-900/50 dark:bg-red-950/50 border-2 border-red-700 dark:border-red-600';
-                  
-                  const textClass = isExcellent
-                    ? 'text-green-200 dark:text-green-300'
-                    : isGood
-                    ? 'text-yellow-200 dark:text-yellow-300'
-                    : 'text-red-200 dark:text-red-300';
+                  if (!varianceText) return null;
                   
                   return (
-                    <div className={`${bgClass} rounded-xl p-6 shadow-lg`}>
-                      <h3 className={`text-sm font-bold ${textClass} mb-1 uppercase tracking-wide`}>System Balance Point</h3>
-                      <p className="text-5xl font-extrabold text-white mb-2">
-                        {balancePoint != null ? balancePoint.toFixed(1) : 'N/A'}
-                        <span className="text-lg font-normal ml-2">°F</span>
-                      </p>
-                      <p className={`${textClass} leading-relaxed`}>
-                        {balancePoint != null ? (
-                          isExcellent ? 'Excellent! Your heat pump handles most cold days without backup heat.' :
-                          isGood ? 'Good balance point. Auxiliary heat may run occasionally in very cold weather.' :
-                          'High balance point. Auxiliary heat runs frequently. Consider larger heat pump or better insulation.'
-                        ) : ''}
+                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 mb-6 border border-gray-200 dark:border-gray-800">
+                      <p className="text-sm text-gray-700 dark:text-gray-300">
+                        {varianceText}
                       </p>
                     </div>
                   );
                 })()}
-              </div>
 
-              {/* Step 2: Comparison Bar - Dedicated Section */}
-              {result.heatLossFactor != null && (
-                <div className="bg-gray-800 dark:bg-gray-900/50 border border-gray-700 dark:border-gray-600 rounded-xl p-6 mb-6 shadow-lg">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-bold text-gray-100 mb-2">How Your Home Compares</h3>
-                    <div className="text-3xl font-extrabold mb-1" style={{
-                      color: percentile >= 70 ? '#22c55e' : percentile >= 40 ? '#f59e0b' : '#ef4444'
-                    }}>
-                      {percentile >= 50 
-                        ? `Top ${percentile}%` 
-                        : `Bottom ${100 - percentile}%`}
+                {/* NERD MODE TOGGLE */}
+                <div className="text-center mb-6">
+                  <button
+                    id="nerd-mode-toggle"
+                    onClick={() => setShowNerdMode(!showNerdMode)}
+                    className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 underline"
+                  >
+                    {showNerdMode ? 'Hide nerd view ↑' : 'Show full nerd view ↓'}
+                  </button>
+                </div>
+
+                {/* NERD MODE: All Technical Details */}
+                {showNerdMode && (
+                  <div className="mb-6">
+                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-800 mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                        Nerd Mode: Engineering Details
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Stuff your inspector, engineer, or Reddit friend will ask about.
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-400">
-                      {percentile >= 70 
-                        ? 'More efficient than most homes' 
-                        : percentile >= 40 
-                        ? 'Average efficiency compared to typical homes'
-                        : 'Less efficient than most homes - consider insulation upgrades'}
-                    </p>
-                  </div>
-                  <div className="w-full max-w-2xl mx-auto">
-                    <div className="flex justify-between mb-2 text-xs">
-                      <span className="text-red-400 font-semibold">LEAST EFFICIENT</span>
-                      <span className="text-green-400 font-semibold">MOST EFFICIENT</span>
-                    </div>
-                    <div className="relative w-full h-6 rounded-full overflow-hidden shadow-inner" aria-label="Home efficiency percentile bar">
-                      <div className="absolute inset-0 rounded-full"
-                           style={{ background: 'linear-gradient(90deg, #ef4444 0%, #f59e0b 50%, #22c55e 100%)' }}
-                      />
-                      {/* Marker */}
-                      <div
-                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-700"
-                        style={{ left: `${clampedPosition}%` }}
-                        aria-label={`Your home efficiency: ${percentile >= 50 ? `Top ${percentile}%` : `Bottom ${100 - percentile}%`}`}
-                      >
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-sm font-bold px-2 py-1 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-lg whitespace-nowrap"
-                             data-testid="efficiency-marker-label">
-                          {percentile >= 50 
-                            ? `TOP ${percentile}%` 
-                            : `BOTTOM ${100 - percentile}%`}
+                    
+                    <div className="space-y-6">
+                    {/* Status strip for nerds */}
+                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
+                      <div className="flex items-center justify-between flex-wrap gap-4 text-sm">
+                        <div className="flex items-center gap-4">
+                          {file && (
+                            <div className="text-gray-600 dark:text-gray-400">
+                              <span className="font-medium">Last upload:</span> {file.name}
+                            </div>
+                          )}
+                          {result.heatLossSource !== 'measured' && (
+                            <details className="group">
+                              <summary className="cursor-pointer text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 list-none">
+                                <span className="flex items-center gap-1">
+                                  🔍 <span>We couldn't find a long "system OFF" period in your data.</span>
+                                  <ChevronDown size={14} className="inline group-open:rotate-180 transition-transform" />
+                                </span>
+                              </summary>
+                              <div className="mt-2 pl-5 text-xs text-gray-600 dark:text-gray-400 border-l-2 border-amber-300 dark:border-amber-700">
+                                We used a typical heat-loss curve for a {squareFeet}-sq-ft home instead. 
+                                Upload data with longer "off" periods to get a measured value.
+                              </div>
+                            </details>
+                          )}
                         </div>
-                        <div className="w-6 h-6 rounded-full border-3 border-white dark:border-gray-900 bg-white dark:bg-gray-800 shadow-lg"></div>
+                      </div>
+                    </div>
+
+                      {/* Technical Analysis Results */}
+                      <div id="analysis-details" className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-200 dark:border-gray-700 mb-6">
+                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                          <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-3">
+                        <BarChart3 size={24} className="text-blue-600 dark:text-blue-400" />
+                        📊 Analysis Results
+                      </h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {result.heatLossSource === 'measured' 
+                          ? "Measured from your thermostat data"
+                          : result.heatLossSource === 'design'
+                          ? "Using design / Manual J estimate"
+                          : "Using estimated heat loss"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {result && (
+                        <ShareButtons
+                          title={`Analysis Results - ${labels[0] || 'Heat Loss Analysis'}`}
+                          text={`Heat Loss Factor: ${result?.heatLossFactor?.toFixed(1) || 'N/A'} BTU/hr/°F. Balance Point: ${result?.balancePoint != null && isFinite(result.balancePoint) ? result.balancePoint.toFixed(1) : 'N/A'}°F`}
+                          url={createShareableLink(result)}
+                          data={result}
+                        />
+                      )}
+                <button
+                  onClick={() => {
+                    const result = resultsHistory[0];
+                    if (!result) return;
+                    const exportData = {
+                      ...result,
+                      exportedAt: new Date().toISOString(),
+                      homeInfo: {
+                        squareFeet: userSettings?.squareFeet,
+                        buildingType: userSettings?.homeShape >= 1.2 ? 'Cabin/A-Frame' : 
+                                     userSettings?.homeShape >= 1.12 ? 'Manufactured' :
+                                     userSettings?.homeShape >= 1.05 ? 'Ranch' :
+                                     userSettings?.homeShape >= 0.95 ? 'Split-Level' : 'Two-Story',
+                        insulationLevel: userSettings?.insulationLevel,
+                        ceilingHeight: userSettings?.ceilingHeight,
+                      }
+                    };
+                    const dataStr = JSON.stringify(exportData, null, 2);
+                    const blob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `analysis-${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                  aria-label="Export analysis as JSON"
+                >
+                  <Copy size={16} />
+                  Export JSON
+                </button>
+                      <button
+                        onClick={() => {
+                          if (!result) return;
+                          const csv = `Metric,Value,Unit
+Heat Loss Factor,${result.heatLossFactor?.toFixed(1) || 'N/A'},BTU/hr/°F
+Balance Point,${result.balancePoint != null && isFinite(result.balancePoint) ? result.balancePoint.toFixed(1) : 'N/A'},°F
+Total Heat Loss (Design),${result.heatLossTotal?.toFixed(0) || 'N/A'},BTU/hr
+Temperature Difference,${result.tempDiff?.toFixed(1) || 'N/A'},°F
+Analysis Date,${result.date || new Date(result.timestamp).toLocaleDateString()},
+Square Feet,${userSettings?.squareFeet || 'N/A'},sq ft
+Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (result.heatLossFactor / userSettings.squareFeet).toFixed(3) : 'N/A'},BTU/hr/°F per sq ft`;
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `analysis-${new Date().toISOString().split('T')[0]}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                  aria-label="Export analysis as CSV"
+                >
+                      <Copy size={16} />
+                      Export CSV
+                    </button>
+                  </div>
+                </div>
+
+                  {/* Building vs System Metrics - Side by Side */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    {/* Left: Your Building */}
+                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <Home size={20} className="text-blue-600 dark:text-blue-400" />
+                        Your Building
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Heat Loss Factor</div>
+                          <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                            {result.heatLossFactor?.toFixed(1) || 'N/A'}
+                            <span className="text-lg font-normal ml-2 text-gray-500 dark:text-gray-400">BTU/hr/°F</span>
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {result.heatLossSource === 'measured' ? 'Measured from thermostat data' : 
+                             result.heatLossSource === 'design' ? 'From Manual J / design estimate' : 
+                             'Estimated from home characteristics'}
+                          </div>
+                        </div>
+                        {result.heatLossTotal && (
+                          <div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Heat Loss (Design)</div>
+                            <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                              {result.heatLossTotal.toFixed(0)} BTU/hr
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Your System */}
+                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <Zap size={20} className="text-green-600 dark:text-green-400" />
+                        Your System
+                      </h3>
+                      <div className="space-y-4">
+                        {result.balancePoint != null && isFinite(result.balancePoint) && (
+                          <div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Balance Point</div>
+                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                              {result.balancePoint.toFixed(1)}°F
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {result.balancePoint < 25 ? 'Excellent - handles most cold days' :
+                               result.balancePoint < 30 ? 'Good - aux heat runs occasionally' :
+                               'High - aux heat runs frequently'}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* Real-Time Heat Loss Card */}
+                  {/* Efficiency Comparison Bar */}
+                  {(() => {
+                    const heatLossPerSqFt = result.heatLossFactor ? result.heatLossFactor / squareFeet : 0;
+                    const calculatePercentile = (heatLossFactor) => {
+                      if (heatLossFactor < 300) return 98;
+                      if (heatLossFactor < 400) return 95;
+                      if (heatLossFactor < 500) return 90;
+                      if (heatLossFactor < 550) return 80;
+                      if (heatLossFactor < 600) return 70;
+                      if (heatLossFactor < 650) return 60;
+                      if (heatLossFactor < 700) return 50;
+                      if (heatLossFactor < 800) return 35;
+                      if (heatLossFactor < 900) return 25;
+                      if (heatLossFactor < 1100) return 15;
+                      if (heatLossFactor < 1300) return 10;
+                      if (heatLossFactor < 1800) return 5;
+                      return 2;
+                    };
+                    const percentile = result.heatLossFactor ? calculatePercentile(result.heatLossFactor) : 50;
+                    const positionPercent = percentile >= 50 ? percentile : (100 - percentile);
+                    const clampedPosition = Math.max(0, Math.min(100, positionPercent));
+                    
+                    return (
+                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700 mb-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">How You Compare</h3>
+                        <div className="mb-4">
+                          <div className="text-2xl font-extrabold mb-1" style={{
+                            color: percentile >= 70 ? '#22c55e' : percentile >= 40 ? '#f59e0b' : '#ef4444'
+                          }}>
+                            {percentile >= 50 ? `Top ${percentile}%` : `Bottom ${100 - percentile}%`}
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {percentile >= 70 ? 'More efficient than most homes' : 
+                             percentile >= 40 ? 'Average efficiency compared to typical homes' : 
+                             'Less efficient than most homes - consider insulation upgrades'}
+                          </p>
+                        </div>
+                        <div className="w-full">
+                          <div className="flex justify-between mb-2 text-xs font-semibold">
+                            <span className="text-red-600 dark:text-red-400">Worse than peers</span>
+                            <span className="text-gray-500 dark:text-gray-400">Average</span>
+                            <span className="text-green-600 dark:text-green-400">Efficient</span>
+                            <span className="text-green-700 dark:text-green-500">Elite</span>
+                          </div>
+                          <div className="relative w-full h-8 rounded-full overflow-hidden shadow-inner bg-gray-200 dark:bg-gray-700" aria-label="Home efficiency percentile bar">
+                            <div className="absolute inset-0 rounded-full"
+                                 style={{ background: 'linear-gradient(90deg, #ef4444 0%, #ef4444 30%, #f59e0b 30%, #f59e0b 80%, #22c55e 80%, #22c55e 100%)' }}
+                            />
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-700"
+                              style={{ left: `${clampedPosition}%` }}
+                            >
+                              <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-sm font-bold px-3 py-1 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-lg whitespace-nowrap border-2 border-blue-500">
+                                You
+                              </div>
+                              <div className="w-8 h-8 rounded-full border-4 border-white dark:border-gray-900 bg-blue-600 dark:bg-blue-500 shadow-lg"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                      
+                      {/* Real-Time Heat Loss Card */}
               {result.heatLossFactor != null && (() => {
                 const indoorTemp = userSettings?.winterThermostat || 68;
                 const currentOutdoorTemp = 35; // Could fetch from weather API, default to 35°F
@@ -1590,29 +3438,135 @@ const SystemPerformanceAnalyzer = () => {
                     );
                   })()}
                 </div>
+
+                {/* Recommended Threshold Settings */}
+                {(() => {
+                // Use stored recommendations if available, otherwise calculate on-the-fly
+                let recommendations = thresholdRecommendations;
+                
+                // If no stored recommendations, try to calculate from current data
+                if (!recommendations && result && parsedCsvRows) {
+                  recommendations = calculateThresholdRecommendations(
+                    result,
+                    parsedCsvRows,
+                    { squareFeet: userSettings?.squareFeet || 2000 }
+                  );
+                }
+
+                if (!recommendations || !recommendations.settings || Object.keys(recommendations.settings).length === 0) {
+                  return null;
+                }
+
+                const copyToClipboard = () => {
+                  const jsonStr = JSON.stringify({
+                    profile: recommendations.profile,
+                    reason: recommendations.reason,
+                    settings: recommendations.settings,
+                  }, null, 2);
+                  navigator.clipboard.writeText(jsonStr).then(() => {
+                    setCopiedThresholdSettings(true);
+                    setTimeout(() => setCopiedThresholdSettings(false), 2000);
+                  });
+                };
+
+                return (
+                  <div className="mt-6 pt-6 border-t border-green-700/50">
+                    <h3 className="text-xl font-bold text-green-200 mb-4 flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-lg">
+                        <Settings size={24} />
+                      </div>
+                      Recommended Threshold Settings
+                    </h3>
+                    <div className="space-y-4">
+                      <p className="text-indigo-200 dark:text-indigo-300 mb-2">{recommendations.reason}</p>
+                      <p className="text-sm text-indigo-300/80 dark:text-indigo-400/80 mb-4">
+                        Based on your CSV analysis. Go to your ecobee thermostat: <strong>Main Menu → Settings → Installation Settings → Thresholds</strong>
+                      </p>
+                      
+                      <div className="bg-gray-900/50 dark:bg-gray-950/50 rounded-lg p-4 mb-4 border border-indigo-600/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                          {Object.entries(recommendations.settings).map(([key, value]) => (
+                            <div key={key} className="flex justify-between items-center py-2 border-b border-gray-700/50 last:border-b-0">
+                              <span className="text-gray-300 dark:text-gray-400 capitalize">
+                                {key.replace(/_/g, ' ')}
+                              </span>
+                              <span className="font-bold text-indigo-300 dark:text-indigo-400">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* JSON Config - Hidden in collapsed details for advanced users */}
+                      <details className="bg-gray-900/30 dark:bg-gray-950/30 rounded-lg border border-indigo-600/30">
+                        <summary className="cursor-pointer p-4 list-none">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-300 dark:text-gray-400">Advanced: View/Copy JSON for Automation</span>
+                            <ChevronDown size={16} className="text-gray-400" />
+                          </div>
+                        </summary>
+                        <div className="px-4 pb-4 pt-0">
+                          <div className="flex items-center justify-end mb-2">
+                            <button
+                              onClick={copyToClipboard}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                            >
+                              {copiedThresholdSettings ? (
+                                <>
+                                  <Check size={16} />
+                                  Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={16} />
+                                  Copy JSON
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <pre className="text-xs text-gray-300 dark:text-gray-400 bg-gray-950/50 p-3 rounded overflow-x-auto">
+                            {JSON.stringify({
+                              profile: recommendations.profile,
+                              reason: recommendations.reason,
+                              settings: recommendations.settings,
+                            }, null, 2)}
+                          </pre>
+                        </div>
+                      </details>
+
+                      {recommendations.metadata && (
+                        <div className="text-xs text-indigo-300/70 dark:text-indigo-400/70 space-y-1">
+                          <p><strong>Analysis Data:</strong> Balance Point: {recommendations.metadata.balancePoint || 'N/A'}°F | Heat Loss Factor: {recommendations.metadata.heatLossFactor || 'N/A'} BTU/hr/°F | Cycles/Hour: {recommendations.metadata.cyclesPerHour}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               </details>
 
-              {/* Step 3: Collapsible Details Section */}
-              <details className="bg-gray-800 dark:bg-gray-900/50 rounded-lg border border-gray-700 dark:border-gray-600 shadow-lg">
-                <summary className="p-4 cursor-pointer font-semibold text-lg text-gray-100 hover:bg-gray-700/50 dark:hover:bg-gray-800/50 rounded-lg transition-colors">
-                  📊 Understanding These Numbers
+              {/* Understanding These Numbers - Collapsed by Default */}
+              <details className="mt-6 pt-6 border-t border-green-700/50">
+                <summary className="cursor-pointer list-none">
+                  <h3 className="text-xl font-bold text-green-200 mb-4 inline-flex items-center gap-2">
+                    📊 Understanding These Numbers
+                    <ChevronDown size={20} className="text-green-300" />
+                  </h3>
                 </summary>
-                <div className="p-6 border-t border-gray-600 space-y-4 text-sm text-gray-300 dark:text-gray-400">
+                <div className="mt-4">
+                <div className="space-y-4 text-sm text-gray-300 dark:text-gray-400">
                   
                   {/* Total Heat Loss */}
-                  <div className="p-3 bg-gray-700/30 dark:bg-gray-800/30 rounded-lg">
-                    <p className="font-bold text-gray-200 mb-1">Total Heat Loss at Design Conditions</p>
-                    <p className="text-2xl font-bold text-blue-400">
-                      {(result.heatLossFactor !== null && result.heatLossFactor !== undefined) 
+                  <div>
+                    <p className="font-bold text-gray-200 mb-2">Total Heat Loss at Design Conditions</p>
+                    <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                      Total Heat Loss = Heat Loss Factor * 70°F ΔT<br />
+                      = {result.heatLossFactor?.toFixed(1) || 'N/A'} BTU/hr/°F * 70°F<br />
+                      = <strong>{(result.heatLossFactor !== null && result.heatLossFactor !== undefined) 
                         ? (result.heatLossFactor * 70).toLocaleString(undefined, { maximumFractionDigits: 0 }) 
-                        : 'N/A'} BTU/hr
-                    </p>
-                    <p className="text-xs mt-2">
-                      Calculated from CSV analysis: {result.heatLossFactor?.toFixed(1) || 'N/A'} BTU/hr/°F × 70°F ΔT
-                    </p>
-                    <p className="text-xs mt-1 text-gray-400">
+                        : 'N/A'} BTU/hr</strong><br />
+                      <br />
                       (70°F indoor / 0°F outdoor design condition)
-                    </p>
+                    </code>
                   </div>
 
                   {/* What is ΔT */}
@@ -1622,7 +3576,10 @@ const SystemPerformanceAnalyzer = () => {
                   </div>
 
                   {/* Per Square Foot Analysis */}
-                  {result.heatLossFactor != null && (
+                  {result.heatLossFactor != null && (() => {
+                    const squareFeet = userSettings?.squareFeet || activeZone?.squareFeet || 2000;
+                    const heatLossPerSqFt = squareFeet > 0 ? result.heatLossFactor / squareFeet : 0;
+                    return (
                     <div>
                       <p className="font-bold text-gray-200 mb-2">📏 Normalized Per-Square-Foot Factor</p>
                       <p className="mb-2">
@@ -1632,9 +3589,11 @@ const SystemPerformanceAnalyzer = () => {
                         {heatLossPerSqFt >= 0.35 && heatLossPerSqFt < 0.45 && <span className="text-yellow-400 ml-2">○ Average insulation</span>}
                         {heatLossPerSqFt >= 0.45 && <span className="text-orange-400 ml-2">! Consider upgrades</span>}
                       </p>
-                      <p className="text-xs text-gray-400 mb-2 italic">
-                        Calculated from: {result.heatLossFactor.toFixed(1)} BTU/hr/°F (from CSV) ÷ {squareFeet.toLocaleString()} sq ft = {heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft
-                      </p>
+                      <code className="block p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700 mb-2" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        Normalized Factor = Heat Loss Factor / Square Feet<br />
+                        = {result.heatLossFactor.toFixed(1)} BTU/hr/°F / {squareFeet.toLocaleString()} sq ft<br />
+                        = <strong>{heatLossPerSqFt.toFixed(3)} BTU/hr/°F per sq ft</strong>
+                      </code>
                       <div className="bg-gray-800/40 p-3 rounded-lg text-sm space-y-1 mb-2">
                         <p className="font-semibold text-gray-200 mb-1">📊 Benchmarks:</p>
                         <p>• <strong>Modern new build:</strong> &lt;0.5 BTU/hr/°F per sq ft</p>
@@ -1664,7 +3623,8 @@ const SystemPerformanceAnalyzer = () => {
                       </div>
                       <p className="text-xs text-gray-400">To compare homes of different sizes fairly, we divide your heat loss factor by your floor area. This normalized metric is a better indicator of insulation quality than the raw factor.</p>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Building Geometry Context - Enhanced */}
                   {result.heatLossFactor != null && (
@@ -1725,18 +3685,31 @@ const SystemPerformanceAnalyzer = () => {
                                 <>🏢 <strong>Two-story homes</strong> have the <strong>most efficient geometry</strong>. By stacking living spaces vertically, you minimize roof and foundation area while maximizing interior volume. Less exterior surface area means less heat loss. Expected multiplier: ~0.9× typical heat loss.</>
                               )}
                             </p>
-                            <div className="bg-gray-800/40 p-2 rounded text-xs space-y-1">
-                              <p><strong>For a {squareFeet.toLocaleString()} sq ft {buildingType.toLowerCase()}:</strong></p>
-                              <p>• Expected factor (theoretical, based on your settings): ~{baselineFactor.toFixed(0)} BTU/hr/°F</p>
-                              <p className="text-xs text-gray-400">  (Calculated from: {squareFeet.toLocaleString()} sq ft × 22.67 × {insulationLevel.toFixed(2)} insulation × {homeShape.toFixed(2)} shape × {ceilingMultiplier.toFixed(2)} ceiling ÷ 70)</p>
-                              <p>• <strong className="text-emerald-300">Your actual factor (from ecobee CSV analysis):</strong> <strong className="text-blue-300">{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong></p>
-                              <p className="text-xs text-gray-400">  (Derived from actual runtime data and temperature changes in your CSV file)</p>
+                            <div>
+                              <p className="font-semibold text-gray-200 text-sm mb-2">For a {squareFeet.toLocaleString()} sq ft {buildingType.toLowerCase()}:</p>
+                              <code className="block p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700 mb-2" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                                Expected Factor (theoretical):<br />
+                                = sq ft * 22.67 * insulation * shape * ceiling / 70<br />
+                                = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {homeShape.toFixed(2)} * {ceilingMultiplier.toFixed(2)} / 70<br />
+                                = <strong>~{baselineFactor.toFixed(0)} BTU/hr/°F</strong><br />
+                                <br />
+                                Actual Factor (from CSV analysis):<br />
+                                = <strong>{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong><br />
+                                (Derived from actual runtime data and temperature changes)
+                              </code>
                               {result.heatLossFactor < shapeAdjustedFactor * 0.9 ? (
-                                <p className="text-green-400">✓ Better than expected—excellent insulation and air sealing!</p>
+                                <>
+                                  <p className="text-green-400 text-sm mt-2">✓ Better than expected—excellent insulation and air sealing!</p>
+                                  {result.heatLossFactor < shapeAdjustedFactor * 0.5 && (
+                                    <p className="text-yellow-400 text-xs mt-1 italic">
+                                      ⚠️ Note: Exceptionally low measured heat loss may indicate significant solar gain or internal loads (electronics, occupants, appliances) assisting the heating system. This can make your actual heat loss appear lower than the building envelope alone would suggest.
+                                    </p>
+                                  )}
+                                </>
                               ) : result.heatLossFactor > shapeAdjustedFactor * 1.1 ? (
-                                <p className="text-orange-400">⚠️ Higher than expected—consider insulation upgrades or air sealing.</p>
+                                <p className="text-orange-400 text-sm mt-2">⚠️ Higher than expected—consider insulation upgrades or air sealing.</p>
                               ) : (
-                                <p className="text-blue-300">→ Within expected range for your building type and size.</p>
+                                <p className="text-blue-300 text-sm mt-2">→ Within expected range for your building type and size.</p>
                               )}
                             </div>
                           </div>
@@ -1753,11 +3726,11 @@ const SystemPerformanceAnalyzer = () => {
                     </div>
                   )}
 
-                  {/* Benchmarks - Geometry Adjusted */}
+                  {/* Benchmarks - Square Footage Adjusted */}
                   <div>
                     <p className="font-bold text-gray-200 mb-2">📊 Typical Heat Loss Factor Ranges</p>
                     <p className="text-xs text-gray-400 mb-3 italic">
-                      Based on U.S. Department of Energy residential building data and ASHRAE standards. Standard ranges assume typical two-story construction—adjusted below for your building type.
+                      Based on U.S. Department of Energy residential building data and ASHRAE standards. Ranges are calibrated for your home size ({squareFeet.toLocaleString()} sq ft).
                     </p>
                     
                     {(() => {
@@ -1769,53 +3742,64 @@ const SystemPerformanceAnalyzer = () => {
                         homeShape >= 0.95 ? 'Split-Level' :
                         'Two-Story';
                       
-                      // Base ranges for two-story homes (0.9 multiplier baseline)
-                      const baseRanges = [
-                        { label: 'Highly efficient (Passive House, net-zero)', min: 400, max: 450 },
-                        { label: 'Well-insulated modern homes', min: 500, max: 600 },
-                        { label: 'Average existing homes', min: 700, max: 800 },
-                        { label: 'Older or poorly insulated', min: 800, max: 1000 }
+                      // Per-square-foot benchmarks (BTU/hr/°F per sq ft)
+                      const perSqFtRanges = [
+                        { label: 'Highly efficient (Passive House, net-zero)', min: 0.10, max: 0.15 },
+                        { label: 'Well-insulated modern homes', min: 0.15, max: 0.25 },
+                        { label: 'Average existing homes', min: 0.25, max: 0.50 },
+                        { label: 'Older or poorly insulated', min: 0.50, max: 1.00 }
                       ];
                       
-                      // Adjust ranges for building geometry
-                      const adjustedRanges = baseRanges.map(range => ({
+                      // Convert to absolute ranges based on square footage
+                      const absoluteRanges = perSqFtRanges.map(range => ({
                         ...range,
-                        min: Math.round(range.min * homeShape / 0.9),
-                        max: Math.round(range.max * homeShape / 0.9)
+                        min: Math.round(range.min * squareFeet),
+                        max: Math.round(range.max * squareFeet)
                       }));
                       
                       return (
                         <>
-                          <div className="bg-gray-700/30 dark:bg-gray-800/30 p-3 rounded-lg mb-3">
+                          <div>
                             <p className="text-sm font-semibold text-gray-200 mb-2">
-                              For your {buildingType} (×{homeShape} geometry factor):
+                              For your {squareFeet.toLocaleString()} sq ft {buildingType.toLowerCase()}:
                             </p>
-                            <ul className="space-y-1.5 ml-4 text-sm">
-                              {adjustedRanges.map((range, i) => (
-                                <li key={i}>
-                                  <strong>~{range.min}-{range.max} BTU/hr/°F:</strong> {range.label}
+                            <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700 mb-3" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                              {absoluteRanges.map((range, i) => (
+                                <span key={i}>
+                                  ~{range.min}-{range.max} BTU/hr/°F: {range.label}
                                   {result.heatLossFactor >= range.min && result.heatLossFactor <= range.max && (
-                                    <span className="ml-2 text-blue-400 font-semibold">← You are here</span>
+                                    <span className="text-blue-400"> &lt;-- You are here</span>
                                   )}
-                                </li>
+                                  {i < absoluteRanges.length - 1 && <><br /></>}
+                                </span>
                               ))}
-                            </ul>
+                              {result.heatLossFactor < absoluteRanges[0].min && (
+                                <>
+                                  <br />
+                                  <br />
+                                  <span className="text-green-400">
+                                    Exceptional! Your measured heat loss ({result.heatLossFactor.toFixed(1)} BTU/hr/°F) is below Passive House levels. This may indicate significant solar gain or internal loads (electronics, occupants) assisting your heating system.
+                                  </span>
+                                </>
+                              )}
+                            </code>
                           </div>
                           
                           <details className="text-xs">
                             <summary className="cursor-pointer text-gray-400 hover:text-gray-300">
-                              Compare to standard two-story homes
+                              View per-square-foot benchmarks
                             </summary>
-                            <ul className="space-y-1 ml-4 mt-2 text-gray-500">
-                              {baseRanges.map((range, i) => (
-                                <li key={i}>
-                                  <strong>~{range.min}-{range.max} BTU/hr/°F:</strong> {range.label}
-                                </li>
+                            <code className="block p-3 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700 mt-2" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                              {perSqFtRanges.map((range, i) => (
+                                <span key={i}>
+                                  ~{range.min.toFixed(2)}-{range.max.toFixed(2)} BTU/hr/°F per sq ft: {range.label}
+                                  {i < perSqFtRanges.length - 1 && <><br /></>}
+                                </span>
                               ))}
-                            </ul>
-                            <p className="mt-2 text-gray-500 italic">
-                              These standard ranges assume typical two-story rectangular construction. Your {buildingType.toLowerCase()} has a geometry multiplier of ×{homeShape}, so the ranges above are adjusted accordingly.
-                            </p>
+                              <br />
+                              <br />
+                              These per-square-foot values are multiplied by your home size ({squareFeet.toLocaleString()} sq ft) to generate the ranges above. This ensures fair comparison across homes of different sizes.
+                            </code>
                           </details>
                         </>
                       );
@@ -1823,103 +3807,79 @@ const SystemPerformanceAnalyzer = () => {
                   </div>
 
                 </div>
+              </div>
               </details>
 
-              {/* Live Math Calculations Pulldown */}
+              {/* View Calculation Methodology */}
               {result.heatLossFactor != null && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-6">
+                <div className="mt-6 pt-6 border-t border-green-700/50">
                   <button
                     onClick={() => setShowCalculations(!showCalculations)}
-                    className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                    className="w-full flex items-center justify-between p-4 hover:bg-green-800/20 rounded-lg transition-colors mb-4"
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
                         <Calculator size={24} className="text-white" />
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
+                      <h3 className="text-xl font-bold text-green-200">View Calculation Methodology</h3>
                     </div>
                     {showCalculations ? (
-                      <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                      <ChevronUp className="w-6 h-6 text-green-300" />
                     ) : (
-                      <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                      <ChevronDown className="w-6 h-6 text-green-300" />
                     )}
                   </button>
 
                   {showCalculations && (
-                    <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                    <div className="space-y-6">
                       {/* Heat Loss Factor Calculation */}
-                      <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                      <div>
                         <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Heat Loss Factor Calculation (Coast-Down Method)</h4>
-                        <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                          <div>
-                            <span className="font-semibold">Method:</span> Coast-down thermal decay analysis
-                          </div>
-                          <div>
-                            <span className="font-semibold">1. Find periods where heating is OFF:</span>
-                            <div className="ml-4 mt-1 text-xs">
-                              Identify time periods in CSV where heat pump/auxiliary heat = 0 seconds
-                            </div>
-                          </div>
-                          <div>
-                            <span className="font-semibold">2. Measure temperature decay:</span>
-                            <div className="ml-4 mt-1 text-xs">
-                              Calculate thermal decay rate K from indoor temperature drop over time
-                            </div>
-                          </div>
-                          <div>
-                            <span className="font-semibold">3. Estimate thermal mass:</span>
-                            <div className="ml-4 mt-1 text-xs">
-                              Thermal Mass = 8 BTU/°F per sq ft × {squareFeet.toLocaleString()} sq ft = {(8 * squareFeet).toLocaleString()} BTU/°F
-                            </div>
-                          </div>
-                          <div>
-                            <span className="font-semibold">4. Calculate heat loss factor:</span>
-                            <div className="ml-4 mt-1 text-xs">
-                              Heat Loss Factor = Thermal Mass × Decay Rate
-                            </div>
-                            <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
-                              Your Result: {result.heatLossFactor.toFixed(1)} BTU/hr/°F
-                            </div>
-                          </div>
-                          <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
-                            <span className="font-semibold">Total Heat Loss at 70°F ΔT:</span>
-                            <div className="ml-4 mt-1 text-blue-600 dark:text-blue-400 font-bold">
-                              {result.heatLossFactor.toFixed(1)} × 70 = {(result.heatLossFactor * 70).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr
-                            </div>
-                          </div>
-                        </div>
+                        <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                          Method: Coast-down thermal decay analysis<br />
+                          <br />
+                          1. Find periods where heating is OFF:<br />
+                          &nbsp;&nbsp;Identify time periods in CSV where heat pump/auxiliary heat = 0 seconds<br />
+                          <br />
+                          2. Measure temperature decay:<br />
+                          &nbsp;&nbsp;Calculate thermal decay rate K from indoor temperature drop over time<br />
+                          <br />
+                          3. Estimate thermal mass:<br />
+                          &nbsp;&nbsp;Thermal Mass = 8 BTU/°F per sq ft * {squareFeet.toLocaleString()} sq ft = <strong>{(8 * squareFeet).toLocaleString()} BTU/°F</strong><br />
+                          <br />
+                          4. Calculate heat loss factor:<br />
+                          &nbsp;&nbsp;Heat Loss Factor = Thermal Mass * Decay Rate<br />
+                          &nbsp;&nbsp;Your Result: <strong>{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong><br />
+                          <br />
+                          Total Heat Loss at 70°F ΔT:<br />
+                          &nbsp;&nbsp;<strong>{result.heatLossFactor.toFixed(1)} * 70 = {(result.heatLossFactor * 70).toLocaleString(undefined, { maximumFractionDigits: 0 })} BTU/hr</strong>
+                        </code>
+                        
+                        {/* Data Points Used Dropdown */}
+                        <CoastDownDataViewer 
+                          coastDownData={result?.coastDownPeriod}
+                          result={result}
+                          squareFeet={squareFeet}
+                          userSettings={userSettings}
+                        />
                       </div>
 
                       {/* Balance Point Calculation */}
                       {result.balancePoint != null && isFinite(result.balancePoint) && (
-                        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                        <div>
                           <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Balance Point Calculation</h4>
-                          <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                            <div>
-                              <span className="font-semibold">Method:</span> Find outdoor temperature where auxiliary heat activates
-                            </div>
-                            <div>
-                              <span className="font-semibold">1. Find auxiliary heat events:</span>
-                              <div className="ml-4 mt-1 text-xs">
-                                Identify CSV rows where auxiliary heat runtime &gt; 0 seconds
-                              </div>
-                            </div>
-                            <div>
-                              <span className="font-semibold">2. Find maximum outdoor temp with aux heat:</span>
-                              <div className="ml-4 mt-1 text-xs">
-                                Balance Point = max(outdoor temp where aux heat was used)
-                              </div>
-                            </div>
-                            <div className="pt-2 border-t border-green-300 dark:border-green-700">
-                              <span className="font-semibold">Your Balance Point:</span>
-                              <div className="ml-4 mt-1 text-green-600 dark:text-green-400 font-bold">
-                                {result.balancePoint.toFixed(1)}°F
-                              </div>
-                              <div className="ml-4 mt-1 text-xs text-gray-600 dark:text-gray-400">
-                                Below this temperature, your heat pump needs auxiliary heat to maintain indoor temperature
-                              </div>
-                            </div>
-                          </div>
+                          <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                            Method: Find outdoor temperature where auxiliary heat activates<br />
+                            <br />
+                            1. Find auxiliary heat events:<br />
+                            &nbsp;&nbsp;Identify CSV rows where auxiliary heat runtime &gt; 0 seconds<br />
+                            <br />
+                            2. Find maximum outdoor temp with aux heat:<br />
+                            &nbsp;&nbsp;Balance Point = max(outdoor temp where aux heat was used)<br />
+                            <br />
+                            Your Balance Point: <strong>{result.balancePoint.toFixed(1)}°F</strong><br />
+                            &nbsp;&nbsp;Below this temperature, your heat pump needs auxiliary heat to maintain indoor temperature
+                          </code>
                         </div>
                       )}
 
@@ -1937,22 +3897,15 @@ const SystemPerformanceAnalyzer = () => {
                         };
                         const percentile = calculatePercentile(result.heatLossFactor);
                         return (
-                          <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                          <div>
                             <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Efficiency Percentile</h4>
-                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                              <div>
-                                <span className="font-semibold">Your Heat Loss Factor:</span> {result.heatLossFactor.toFixed(1)} BTU/hr/°F
-                              </div>
-                              <div>
-                                <span className="font-semibold">Percentile Rank:</span>
-                                <div className="ml-4 mt-1 text-purple-600 dark:text-purple-400 font-bold">
-                                  {percentile >= 50 ? `Top ${percentile}%` : `Bottom ${100 - percentile}%`}
-                                </div>
-                              </div>
-                              <div className="pt-2 border-t border-purple-300 dark:border-purple-700 text-xs text-gray-600 dark:text-gray-400">
-                                Based on typical U.S. residential building distribution. Lower heat loss factor = higher efficiency percentile.
-                              </div>
-                            </div>
+                            <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                              Your Heat Loss Factor: <strong>{result.heatLossFactor.toFixed(1)} BTU/hr/°F</strong><br />
+                              <br />
+                              Percentile Rank: <strong>{percentile >= 50 ? `Top ${percentile}%` : `Bottom ${100 - percentile}%`}</strong><br />
+                              <br />
+                              Based on typical U.S. residential building distribution. Lower heat loss factor = higher efficiency percentile.
+                            </code>
                           </div>
                         );
                       })()}
@@ -1961,19 +3914,20 @@ const SystemPerformanceAnalyzer = () => {
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* Action Buttons - Outside details element */}
               <div className="flex flex-col gap-3 mt-6">
                 <input
                   type="text"
-                  value={safeLabel}
+                  value={labels[0] || ''}
                   onChange={e => {
                     const newLabels = [...labels];
-                    newLabels[idx] = e.target.value;
+                    newLabels[0] = e.target.value;
                     setLabels(newLabels);
                     localStorage.setItem(getZoneStorageKey('spa_labels'), JSON.stringify(newLabels));
                   }}
-                  placeholder="Label this result (e.g., 'Before insulation upgrade')"
+                  placeholder="Name this analysis (e.g., 'Post-Insulation Upgrade')"
                   className={fullInputClasses}
+                  aria-label="Analysis label"
                 />
                 <div className="flex flex-wrap gap-3">
                     <button
@@ -1992,7 +3946,7 @@ const SystemPerformanceAnalyzer = () => {
                           setUserSetting("useManualHeatLoss", false);
                           setUserSetting("useCalculatedHeatLoss", false);
                         }
-                        setSuccessMessage(`Loaded analysis from "${safeLabel}". Use it in the forecaster now!`);
+                        setSuccessMessage(`Loaded analysis from "${labels[0] || 'Heat Loss Analysis'}". Use it in the forecaster now!`);
                         setError(null);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -2013,306 +3967,51 @@ const SystemPerformanceAnalyzer = () => {
                     <button
                       className="px-5 py-2.5 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg font-semibold hover:from-gray-700 hover:to-gray-800 shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
                       onClick={() => {
-                        const csv = `Label,Heat Loss Factor,Balance Point\n"${safeLabel}",${result.heatLossFactor.toFixed(1)},${result.balancePoint.toFixed(1)}`;
+                        const label = labels[0] || 'Heat Loss Analysis';
+                        const csv = `Label,Heat Loss Factor,Balance Point\n"${label}",${result.heatLossFactor.toFixed(1)},${result.balancePoint.toFixed(1)}`;
                         const blob = new Blob([csv], { type: 'text/csv' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `${safeLabel.replace(/\s+/g, '_')}-analysis.csv`;
+                        a.download = `${label.replace(/\s+/g, '_')}-analysis.csv`;
                         a.click();
                         URL.revokeObjectURL(url);
                       }}>Export CSV</button>
-                  </div>
-                </div>
-              
-            </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Informative Graphs Section */}
-      {parsedCsvRows && parsedCsvRows.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 mb-6 border-2 border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-lg">
-              <BarChart3 size={24} />
-            </div>
-            Data Analysis Graphs
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            Visual analysis of your thermostat data to identify short cycling, differential patterns, runtime trends, and edge cases.
-          </p>
-          
-          {(() => {
-            // All hooks are now at the top level - just return the JSX
-            return (
-              <div className="space-y-8">
-                {/* Heat Differential Graph */}
-                {heatDifferentialData && heatDifferentialData.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                      <TrendingUp size={20} className="text-blue-600" />
-                      Heat Differential Analysis
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                      Current Temperature vs. Heat Setpoint over time. Positive values indicate room is above setpoint, negative values indicate below setpoint.
-                    </p>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={heatDifferentialData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="timestamp" 
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          tick={{ fontSize: 10 }}
-                          interval="preserveStartEnd"
-                          tickFormatter={(value) => {
-                            // If it's already formatted as HH:MM, return as-is
-                            if (typeof value === 'string' && /^\d{1,2}:\d{2}$/.test(value)) {
-                              return value;
-                            }
-                            // Otherwise try to extract time from full timestamp
-                            const timeMatch = String(value).match(/(\d{1,2}):(\d{2})/);
-                            return timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : value;
-                          }}
-                        />
-                        <YAxis 
-                          label={{ value: 'Temperature (°F)', angle: -90, position: 'insideLeft' }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px' }}
-                          formatter={(value, name) => {
-                            if (name === 'differential') {
-                              return [`${value.toFixed(1)}°F`, 'Differential'];
-                            }
-                            return [`${value.toFixed(1)}°F`, name === 'currentTemp' ? 'Current Temp' : 'Set Temp'];
-                          }}
-                        />
-                        <Legend />
-                        <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="3 3" label="Setpoint" />
-                        <Line 
-                          type="monotone" 
-                          dataKey="currentTemp" 
-                          stroke="#3b82f6" 
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
-                          name="Current Temp"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="setTemp" 
-                          stroke="#10b981" 
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
-                          name="Set Temp"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="differential" 
-                          stroke="#f59e0b" 
-                          strokeWidth={1.5}
-                          strokeDasharray="5 5"
-                          dot={false}
-                          name="Differential"
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                      <p><strong>Interpretation:</strong> The differential line shows how far the current temperature deviates from the setpoint. Large swings may indicate short cycling or system sizing issues.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Short Cycling Detection */}
-                {shortCyclingData && shortCyclingData.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                      <AlertTriangle size={20} className="text-orange-600" />
-                      Short Cycling Detection
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                      Runtime periods less than {SHORT_CYCLE_THRESHOLD} seconds (5 minutes). Short cycling can reduce efficiency and increase wear on equipment.
-                    </p>
-                    <div className="mb-4 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
-                      <p className="text-sm font-semibold text-orange-900 dark:text-orange-200">
-                        Found {shortCyclingData.length} short cycle{shortCyclingData.length !== 1 ? 's' : ''} (runtime &lt; {SHORT_CYCLE_THRESHOLD}s)
-                      </p>
-                    </div>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={shortCyclingData.slice(0, 50)}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="timestamp" 
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          tick={{ fontSize: 10 }}
-                          interval="preserveStartEnd"
-                          tickFormatter={(value) => {
-                            // If it's already formatted as HH:MM, return as-is
-                            if (typeof value === 'string' && /^\d{1,2}:\d{2}$/.test(value)) {
-                              return value;
-                            }
-                            // Otherwise try to extract time from full timestamp
-                            const timeMatch = String(value).match(/(\d{1,2}):(\d{2})/);
-                            return timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : value;
-                          }}
-                        />
-                        <YAxis 
-                          label={{ value: 'Runtime (seconds)', angle: -90, position: 'insideLeft' }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px' }}
-                          formatter={(value) => [`${value}s`, 'Runtime']}
-                        />
-                        <Legend />
-                        <ReferenceLine y={SHORT_CYCLE_THRESHOLD} stroke="#ef4444" strokeDasharray="3 3" label="Threshold" />
-                        <Bar dataKey="totalRuntime" fill="#f59e0b" name="Total Runtime" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                      <p><strong>Recommendation:</strong> If you see many short cycles, consider adjusting your heat/cool differential settings or checking for oversized equipment.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Runtime Analysis per Day */}
-                {runtimeAnalysisData && runtimeAnalysisData.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                      <BarChart3 size={20} className="text-green-600" />
-                      Daily Runtime Analysis
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                      Total runtime hours per day. <strong className="text-red-600">Red = Heat</strong> (includes heat pump compressor), <strong className="text-red-700">Dark Red = Aux Heat</strong> (electric strip/backup), <strong className="text-blue-500">Blue = Cooling</strong>, <strong className="text-green-500">Green = Compressor</strong> (standalone).
-                    </p>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={runtimeAnalysisData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="date" 
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          tick={{ fontSize: 10 }}
-                        />
-                        <YAxis 
-                          label={{ value: 'Runtime (hours)', angle: -90, position: 'insideLeft' }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px' }}
-                          formatter={(value) => [`${value} hours`, 'Runtime']}
-                        />
-                        <Legend />
-                        <Bar dataKey="heatHours" stackId="a" fill="#ef4444" name="Heat (hrs)" />
-                        <Bar dataKey="auxHeatHours" stackId="a" fill="#dc2626" name="Aux Heat (hrs)" />
-                        <Bar dataKey="coolHours" stackId="a" fill="#3b82f6" name="Cool (hrs)" />
-                        <Bar dataKey="compressorHours" stackId="a" fill="#10b981" name="Compressor (hrs)" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* Low Outdoor Temp Analysis */}
-                {lowTempAnalysisData && lowTempAnalysisData.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                      <Zap size={20} className="text-purple-600" />
-                      Low Outdoor Temperature Analysis
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                      Compressor runtime behavior at low outdoor temperatures (&lt;40°F). Useful for checking Compressor Min Outdoor Temp threshold behavior.
-                    </p>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={lowTempAnalysisData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="outdoorTemp" 
-                          label={{ value: 'Outdoor Temp (°F)', position: 'insideBottom', offset: -5 }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis 
-                          label={{ value: 'Compressor Runtime (hours)', angle: -90, position: 'insideLeft' }}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px' }}
-                          formatter={(value, name) => {
-                            if (name === 'compressorHours') {
-                              return [`${value} hours`, 'Compressor Runtime'];
-                            }
-                            return [`${value}°F`, 'Outdoor Temp'];
-                          }}
-                        />
-                        <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="compressorHours" 
-                          stroke="#a855f7" 
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                          name="Compressor Runtime (hrs)"
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                      <p><strong>Interpretation:</strong> If compressor runtime drops to zero below a certain outdoor temperature, your Compressor Min Outdoor Temp setting is likely active. This protects the compressor from running in very cold conditions.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary Statistics */}
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Summary Statistics</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    {shortCyclingData && shortCyclingData.length > 0 && (
-                      <div>
-                        <p className="font-semibold text-gray-700 dark:text-gray-300">Short Cycles Detected</p>
-                        <p className="text-2xl font-bold text-orange-600">{shortCyclingData.length}</p>
-                        <p className="text-xs text-gray-500">Runtime &lt; {SHORT_CYCLE_THRESHOLD}s</p>
-                      </div>
-                    )}
-                    {runtimeAnalysisData && runtimeAnalysisData.length > 0 && (
-                      <div>
-                        <p className="font-semibold text-gray-700 dark:text-gray-300">Average Daily Runtime</p>
-                        <p className="text-2xl font-bold text-green-600">
-                          {(
-                            runtimeAnalysisData.reduce((sum, day) => sum + parseFloat(day.totalHours), 0) / 
-                            runtimeAnalysisData.length
-                          ).toFixed(1)} hrs
-                        </p>
-                        <p className="text-xs text-gray-500">Across {runtimeAnalysisData.length} day{runtimeAnalysisData.length !== 1 ? 's' : ''}</p>
-                      </div>
-                    )}
-                    {heatDifferentialData && heatDifferentialData.length > 0 && (() => {
-                      const avgDifferential = heatDifferentialData.reduce((sum, d) => sum + d.differential, 0) / heatDifferentialData.length;
-                      const isNegative = avgDifferential < 0;
-                      return (
-                        <div>
-                          <p className="font-semibold text-gray-700 dark:text-gray-300">
-                            {isNegative ? 'Avg Droop' : 'Avg Heat Differential'}
-                          </p>
-                          <p className={`text-2xl font-bold ${isNegative ? 'text-red-600' : 'text-blue-600'}`}>
-                            {Math.abs(avgDifferential).toFixed(1)}°F
-                            {isNegative && <span className="text-base font-normal ml-1">below target</span>}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {isNegative ? 'Room temperature below setpoint' : 'Current - Setpoint'}
-                          </p>
+                          </div>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    
+                    {/* Data Analysis Graphs - Inside Nerd Mode */}
+                    <ErrorBoundary name="Data Analysis Graphs">
+                        <AnalysisGraphs
+                          heatDifferentialData={heatDifferentialData}
+                          shortCyclingData={shortCyclingData}
+                          runtimeAnalysisData={runtimeAnalysisData}
+                          lowTempAnalysisData={lowTempAnalysisData}
+                          remoteSensorData={remoteSensorData}
+                          moldRiskData={moldRiskData}
+                          infiltrationData={infiltrationData}
+                          fanEfficiencyData={fanEfficiencyData}
+                          remoteSensorColumns={remoteSensorColumns}
+                          currentTempCol={currentTempCol}
+                          parsedCsvRows={parsedCsvRows}
+                        />
+                      </ErrorBoundary>
+                    
+                    {/* ------------------------------------------------------- */}
+                    {/* CLOSING TAGS FOR NERD MODE SECTION                      */}
+                    {/* ------------------------------------------------------- */}
+                    </div> 
                   </div>
-                </div>
-              </div>
+                )} 
+                
+                {/* ------------------------------------------------------- */}
+                {/* END OF NERD MODE SECTION                                */}
+                {/* ------------------------------------------------------- */}
+              </>
             );
           })()}
-        </div>
+        </ErrorBoundary>
       )}
 
       {/* Manual Estimator */}
@@ -2333,7 +4032,7 @@ const SystemPerformanceAnalyzer = () => {
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Ceiling Height</label>
                   <input type="range" min="7" max="20" step="1" value={manualCeiling} onChange={e => setManualCeiling(Number(e.target.value))} className="w-full" />
-                  <div className="font-bold text-gray-900 dark:text-gray-100">{manualCeiling} ft</div>
+                  <div className="font-bold text-gray-900 dark:text-gray-100">{manualCeiling.toFixed(1)} ft</div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Insulation</label>
@@ -2423,6 +4122,9 @@ const SystemPerformanceAnalyzer = () => {
                   <p className="font-mono text-sm mb-2"><strong>Step 3:</strong> Thermal Mass</p>
                   <p className="font-mono">Thermal Mass = Square Feet × 8 BTU/°F per sq ft</p>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Units: BTU per °F</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2 italic">
+                    Note: Assumes standard furnishings and drywall mass. Wood frame homes typically range 4-6 BTU/°F per sq ft (minimal mass) to 10-15 BTU/°F per sq ft (heavy masonry/log construction). The 8 BTU/°F per sq ft value is a reasonable average for typical residential construction.
+                  </p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border-2 border-blue-400">
                   <p className="font-mono text-sm mb-2"><strong>Final:</strong> Heat Loss Factor</p>
@@ -2446,7 +4148,7 @@ const SystemPerformanceAnalyzer = () => {
                 <p className="font-mono bg-white dark:bg-gray-800 p-2 rounded-lg">Temperature Drop: <span className="text-emerald-700 dark:text-emerald-400 font-bold">°F</span> (Start - End during coast-down)</p>
                 <p className="font-mono bg-white dark:bg-gray-800 p-2 rounded-lg">Average ΔT: <span className="text-emerald-700 dark:text-emerald-400 font-bold">°F</span> (Average Indoor - Average Outdoor during period)</p>
                 <p className="font-mono bg-white dark:bg-gray-800 p-2 rounded-lg">Duration: <span className="text-emerald-700 dark:text-emerald-400 font-bold">hours</span> (Time system was OFF)</p>
-                <p className="font-mono bg-white dark:bg-gray-800 p-2 rounded-lg">Thermal Mass: <span className="text-emerald-700 dark:text-emerald-400 font-bold">BTU/°F</span> (Estimated: 8 BTU/°F per sq ft)</p>
+                <p className="font-mono bg-white dark:bg-gray-800 p-2 rounded-lg">Thermal Mass: <span className="text-emerald-700 dark:text-emerald-400 font-bold">BTU/°F</span> (Estimated: 8 BTU/°F per sq ft, assumes standard furnishings and drywall)</p>
               </div>
             </div>
 
@@ -2457,17 +4159,30 @@ const SystemPerformanceAnalyzer = () => {
                 <p><span className="font-mono font-bold text-purple-700 dark:text-purple-400">Temperature Drop:</span> Change in indoor temperature during the coast-down period when heating is OFF (°F)</p>
                 <p><span className="font-mono font-bold text-purple-700 dark:text-purple-400">Duration:</span> Length of time the heating system was completely OFF (hours, minimum 3 hours)</p>
                 <p><span className="font-mono font-bold text-purple-700 dark:text-purple-400">Average ΔT:</span> Average temperature difference (indoor - outdoor) during the coast-down period (°F)</p>
-                <p><span className="font-mono font-bold text-purple-700 dark:text-purple-400">Thermal Mass:</span> Estimated heat capacity of the building (8 BTU/°F per square foot)</p>
-                <p className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
-                  <span className="font-semibold text-purple-700 dark:text-purple-400">Coast-Down Method:</span> This method measures natural temperature decay when the heating system is OFF, rather than estimating heat pump output. It works universally, even for well-insulated homes that rarely have long heating cycles.
-                </p>
+                <p><span className="font-mono font-bold text-purple-700 dark:text-purple-400">Thermal Mass:</span> Estimated heat capacity of the building (8 BTU/°F per square foot, assumes standard furnishings and drywall mass)</p>
+                <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-700">
+                  <p className="mb-2">
+                    <span className="font-semibold text-purple-700 dark:text-purple-400">Coast-Down Method:</span> This method measures natural temperature decay when the heating system is OFF, rather than estimating heat pump output. It works universally, even for well-insulated homes that rarely have long heating cycles.
+                  </p>
+                  <p className="font-semibold text-purple-800 dark:text-purple-300 mt-3 mb-2">
+                    ⚡ Why This Method Is Superior:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                    <li><strong>Independent of Equipment Efficiency:</strong> Unlike methods that calculate heat loss from runtime × capacity, the coast-down method measures the building envelope directly. It removes the equipment variable entirely—no need to know COP, capacity factors, or defrost penalties.</li>
+                    <li><strong>Direct Envelope Measurement:</strong> By measuring temperature drop when heating is OFF, we derive a pure Building Envelope Performance Metric from thermostat logs alone.</li>
+                    <li><strong>Universal Applicability:</strong> Works for any home, regardless of insulation level or climate. Well-insulated homes in mild climates may never have long heating cycles, making steady-state methods impossible—coast-down works everywhere.</li>
+                  </ul>
+                  <p className="mt-3 text-sm font-semibold text-purple-900 dark:text-purple-200">
+                    🎯 Core Innovation: Deriving building envelope performance purely from thermostat logs—this is the fundamental IP of this software.
+                  </p>
+                </div>
               </div>
             </div>
             {resultsHistory.length > 0 && resultsHistory[0] && (
               <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 border-l-4 border-amber-600 rounded-r-lg p-5 shadow-md">
                 <h4 className="font-bold text-lg text-amber-900 dark:text-amber-300 mb-3">✨ Latest Example (Your Data)</h4>
                 {labels[0] && <p className="font-bold text-amber-800 dark:text-amber-400 mb-2">{labels[0]}</p>}
-            {(() => {
+                {(() => {
               const r = resultsHistory[0];
               if (!r || r.heatLossFactor == null || r.heatLossTotal == null || r.tempDiff == null) {
                 return <span className="text-gray-600 dark:text-gray-400">N/A</span>;
@@ -2507,29 +4222,10 @@ const SystemPerformanceAnalyzer = () => {
             )}
           </div>
         </details>
-
-      {/* Efficiency/Percentile Bar Explanation */}
-      <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-l-4 border-green-600 rounded-r-lg p-5 mb-5 shadow-md">
-        <h4 className="font-bold text-lg text-green-900 dark:text-green-300 mb-3">🏆 Efficiency Comparison Bar</h4>
-        <div className="space-y-2 text-gray-800 dark:text-gray-200">
-          <p>
-            The green bar below your heat loss factor shows how your home compares to others in terms of thermal efficiency. Homes are grouped into bins by their heat loss factor (BTU/hr/°F), with lower values indicating better insulation and airtightness.
-          </p>
-          <p>
-            <strong>How it works:</strong> We use a set of reference bins (e.g., 400, 500, 600, 700, 800 BTU/hr/°F) based on typical U.S. home data. Your home's heat loss factor is placed in the appropriate bin, and the percentile is estimated based on where it falls in the distribution. The bar highlights your home's position, with <span className="text-green-700 font-semibold">MOST EFFICIENT</span> on the right and <span className="text-green-700 font-semibold">LEAST EFFICIENT</span> on the left.
-          </p>
-          <p>
-            <strong>Interpretation:</strong> If your home is in a lower bin, it means it retains heat better than most. A higher percentile (e.g., "Top 23%") means your home is more efficient than that percentage of similar homes.
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            (Note: These bins and percentiles are illustrative. For more precise results, a larger dataset of similar homes in your region would be used.)
-          </p>
-        </div>
-      </div>
       </div>
     </div>
   );
 };
 
-export { analyzeThermostatData };
-export default SystemPerformanceAnalyzer;
+// Memoize the component to prevent unnecessary re-renders
+export default memo(SystemPerformanceAnalyzer);

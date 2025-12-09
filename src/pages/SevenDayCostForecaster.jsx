@@ -1,13 +1,13 @@
-import React, {
+﻿import React, {
   useState,
   useMemo,
   useEffect,
   useCallback,
   useReducer,
+  useRef,
 } from "react";
 import { Toast } from "../components/Toast";
 import { US_STATES } from "../lib/usStates";
-import html2canvas from "html2canvas";
 import ShareableSavingsCard from "../components/ShareableSavingsCard";
 import AnswerCard from "../components/AnswerCard";
 import { useOutletContext, Link, useNavigate } from "react-router-dom";
@@ -32,26 +32,24 @@ import {
   Flame,
   ThermometerSun,
   Calculator,
+  FileText,
 } from "lucide-react";
 import {
   inputClasses,
-  fullInputClasses,
   selectClasses,
 } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
 import AskJoule from "../components/AskJoule";
-import {
-  calculateElectricityCO2,
-  calculateGasCO2,
-  formatCO2,
-} from "../lib/carbonFootprint";
-import { getBestEquivalent } from "../lib/co2Equivalents";
-import needsCommaBetweenCityAndState from "../utils/validateLocation";
+// CO2 calculations - may be used in future features
+// import { calculateElectricityCO2, calculateGasCO2, formatCO2 } from "../lib/carbonFootprint";
+// import { getBestEquivalent } from "../lib/co2Equivalents";
 import {
   generateRecommendations,
   getTopRecommendations,
 } from "../utils/recommendations";
 // --- STEP 1: IMPORT RECHARTS COMPONENTS ---
+// Note: Recharts is already lazy loaded at route level (page is lazy)
+// Only loads when user navigates to /analysis/forecast
 import {
   LineChart,
   Line,
@@ -73,7 +71,6 @@ import useForecast from "../hooks/useForecast";
 import { reducer, initialState } from "./heatpump/reducer";
 import { detectWeatherAnomalies } from "../utils/weatherAnomalyDetector";
 import DailyBreakdownTable from "./heatpump/DailyBreakdownTable";
-import Joyride from "react-joyride";
 import {
   fetchLiveElectricityRate,
   fetchLiveGasRate,
@@ -81,6 +78,8 @@ import {
 } from "../lib/eiaRates";
 import { getCustomHeroUrl } from "../lib/userImages";
 import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
+import { formatEnergy, kWhToJ } from "../lib/units/energy";
+import { useUnitSystem, formatEnergyFromKwh, formatTemperatureFromF, formatHeatLossFactor, formatCapacityFromKbtuh } from "../lib/units";
 import {
   loadThermostatSettings,
 } from "../lib/thermostatSettings";
@@ -92,6 +91,25 @@ import {
   hasStateElectricityRate,
   hasStateGasRate,
 } from "../data/stateRates";
+
+// Extracted components for better maintainability
+import { 
+  UpgradeModal, 
+  Methodology, 
+  OnboardingWizard,
+  SeasonProvider,
+  SeasonModeToggle,
+  useSeason
+} from "../features/forecaster/components";
+
+// Lazy load html2canvas - only load when user actually tries to share
+let html2canvasModule = null;
+async function loadHtml2Canvas() {
+  if (!html2canvasModule) {
+    html2canvasModule = await import("html2canvas");
+  }
+  return html2canvasModule.default || html2canvasModule;
+}
 
 /**
  * Hybrid rate fetching with EIA API (live) and fallback to hardcoded state averages
@@ -108,7 +126,7 @@ const fetchUtilityRate = async (
   rateType = "electricity"
 ) => {
   if (!stateName) {
-    setSource("⚠️ US National Average");
+    setSource("âš ï¸ US National Average");
     const defaultRate =
       rateType === "electricity"
         ? STATE_ELECTRICITY_RATES.DEFAULT
@@ -130,11 +148,7 @@ const fetchUtilityRate = async (
 
     if (liveData && liveData.rate) {
       setRate(liveData.rate);
-      setSource(`✓ Live EIA Data (${liveData.timestamp})`);
-      console.log(
-        `✓ Fetched live ${rateType} rate for ${stateName}:`,
-        liveData
-      );
+      setSource(`âœ" Live EIA Data (${liveData.timestamp})`);
       return liveData.rate;
     }
   } catch (error) {
@@ -155,27 +169,23 @@ const fetchUtilityRate = async (
       : hasStateGasRate(stateName);
 
   if (isUsingStateAverage) {
-    setSource(`ⓘ ${stateName} Average (Hardcoded)`);
+    setSource(`â“˜ ${stateName} Average (Hardcoded)`);
   } else {
-    setSource("⚠️ US National Average");
+    setSource("âš ï¸ US National Average");
   }
 
   setRate(stateRate);
-  console.log(
-    `Fallback: Using ${
-      isUsingStateAverage ? "state" : "national"
-    } average ${rateType} rate for ${stateName}:`,
-    stateRate
-  );
   return stateRate;
 };
 
 const SevenDayCostForecaster = () => {
+  const { unitSystem } = useUnitSystem();
   const outlet = useOutletContext() || {};
   const { userSettings: ctxUserSettings, setUserSetting: ctxSetUserSetting } =
     outlet;
   const userSettings =
     ctxUserSettings || (outlet.userSettings ? outlet.userSettings : {});
+  const isNerdMode = userSettings?.nerdMode === true;
   const setUserSetting =
     ctxSetUserSetting ||
     outlet.setUserSetting ||
@@ -210,7 +220,7 @@ const SevenDayCostForecaster = () => {
   // Fallback compressor power (kW) if not provided by context: derive from tons and seasonal COP
   if (!Number.isFinite(compressorPower) || compressorPower <= 0) {
     const seasonalCOP =
-      Number(userSettings?.hspf2) > 0 ? Number(userSettings.hspf2) / 3.4 : 2.8; // HSPF2/3.4 ≈ seasonal COP
+      Number(userSettings?.hspf2) > 0 ? Number(userSettings.hspf2) / 3.4 : 2.8; // HSPF2/3.4 â‰ˆ seasonal COP
     compressorPower =
       (tons * heatUtils.KW_PER_TON_OUTPUT) / Math.max(1, seasonalCOP); // kW electrical draw at rated output
   }
@@ -269,7 +279,7 @@ const SevenDayCostForecaster = () => {
             const newElevation = parsed?.homeElevation;
             if (prevElevation !== newElevation || JSON.stringify(prev) !== JSON.stringify(parsed)) {
               if (import.meta.env.DEV) {
-                console.log("🏔️ Elevation change detected in localStorage:", {
+                console.log("ðŸ”ï¸ Elevation change detected in localStorage:", {
                   prevElevation,
                   newElevation,
                   prev: prev,
@@ -535,9 +545,25 @@ const SevenDayCostForecaster = () => {
   const setInsulationLevel = (v) => setUserSetting("insulationLevel", v);
   const setHomeShape = (v) => setUserSetting("homeShape", v);
   const setCeilingHeight = (v) => setUserSetting("ceilingHeight", v);
-  const setUseElectricAuxHeat = (v) => setUserSetting("useElectricAuxHeat", v);
+  // setUseElectricAuxHeat available if needed for onboarding
+  // const setUseElectricAuxHeat = (v) => setUserSetting("useElectricAuxHeat", v);
   const setEnergyMode = (v) => setUserSetting("energyMode", v);
   const setHomeElevation = (v) => setUserSetting("homeElevation", v);
+  
+  // Groq API Key state for onboarding (stored in localStorage)
+  const [groqApiKey, setGroqApiKeyState] = useState(() => 
+    typeof window !== 'undefined' ? localStorage.getItem("groqApiKey") || "" : ""
+  );
+  const setGroqApiKey = (v) => {
+    setGroqApiKeyState(v);
+    if (typeof window !== 'undefined') {
+      if (v) {
+        localStorage.setItem("groqApiKey", v);
+      } else {
+        localStorage.removeItem("groqApiKey");
+      }
+    }
+  };
 
   const [state, dispatch] = useReducer(reducer, initialState);
   
@@ -563,7 +589,7 @@ const SevenDayCostForecaster = () => {
     // Check merged settings first (includes localStorage updates) - this takes precedence
     if (typeof mergedUserSettings?.homeElevation === "number" && mergedUserSettings.homeElevation >= 0) {
       if (import.meta.env.DEV) {
-        console.log("🏔️ Using mergedUserSettings.homeElevation:", mergedUserSettings.homeElevation, {
+        console.log("ðŸ”ï¸ Using mergedUserSettings.homeElevation:", mergedUserSettings.homeElevation, {
           localUserSettings: localUserSettings?.homeElevation,
           userSettings: userSettings?.homeElevation,
         });
@@ -573,21 +599,21 @@ const SevenDayCostForecaster = () => {
     // If userSettings has homeElevation set (even if 0), use it
     if (typeof userSettings?.homeElevation === "number" && userSettings.homeElevation >= 0) {
       if (import.meta.env.DEV) {
-        console.log("🏔️ Using userSettings.homeElevation:", userSettings.homeElevation);
+        console.log("ðŸ”ï¸ Using userSettings.homeElevation:", userSettings.homeElevation);
       }
       return userSettings.homeElevation;
     }
     // Check localUserSettings directly (in case mergedUserSettings didn't work)
     if (typeof localUserSettings?.homeElevation === "number" && localUserSettings.homeElevation >= 0) {
       if (import.meta.env.DEV) {
-        console.log("🏔️ Using localUserSettings.homeElevation:", localUserSettings.homeElevation);
+        console.log("ðŸ”ï¸ Using localUserSettings.homeElevation:", localUserSettings.homeElevation);
       }
       return localUserSettings.homeElevation;
     }
     // Otherwise, use reducer state (locHomeElevation) or outlet
     const fallback = outlet?.homeElevation ?? safeLocHomeElevation ?? 0;
     if (import.meta.env.DEV) {
-      console.log("🏔️ Using fallback elevation:", fallback);
+      console.log("ðŸ”ï¸ Using fallback elevation:", fallback);
     }
     return fallback;
   }, [mergedUserSettings?.homeElevation, userSettings?.homeElevation, localUserSettings?.homeElevation, outlet?.homeElevation, safeLocHomeElevation]);
@@ -601,8 +627,6 @@ const SevenDayCostForecaster = () => {
   // Do NOT commit API keys to source control. If you previously hard-coded a key, remove it and create a .env file.
   // Removed legacy auto-fetch rate state after onboarding simplification.
   // Utility and gas rates are now manually set or auto-populated from state averages during location selection.
-  const [tourActive, setTourActive] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   // Legacy rateSource tracking removed.
   const [localRates, setLocalRates] = useState([]); // TOU rate schedule
   const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
@@ -610,6 +634,8 @@ const SevenDayCostForecaster = () => {
   const [showAfueTooltip, setShowAfueTooltip] = useState(false);
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
+  const [showLiveMath, setShowLiveMath] = useState(false);
+  const [showAssumptions, setShowAssumptions] = useState(false);
   const [isEditingElevation, setIsEditingElevation] = useState(false);
   const [editingElevationValue, setEditingElevationValue] = useState("");
 
@@ -674,7 +700,6 @@ const SevenDayCostForecaster = () => {
   // Sub-steps for the formerly tall Step 2 (now a 2-step wizard: Building -> System)
   const [hvacSubstep, setHvacSubstep] = useState(1); // 1 = Building, 2 = System
   const [showOnboarding, setShowOnboarding] = useState(isFirstTimeUser);
-  const [onboardingMode, setOnboardingMode] = useState("quick"); // 'quick' | 'custom'
   const [customHeroUrl, setCustomHeroUrl] = useState(null);
 
   // Load any previously saved custom hero
@@ -758,8 +783,8 @@ const SevenDayCostForecaster = () => {
         dispatch({
           type: "SET_LOCATION_COORDS",
           payload: {
-            latitude: loc.latitude || 0,
-            longitude: loc.longitude || 0,
+            latitude: loc.latitude ?? loc.lat ?? 0,
+            longitude: loc.longitude ?? loc.lon ?? 0,
           },
         });
         dispatch({
@@ -781,7 +806,30 @@ const SevenDayCostForecaster = () => {
             /* ignore */
           }
         }
-        const initialElev = homeElevFromSettings ?? loc.elevation ?? 0;
+        // Convert elevation from meters to feet if needed (legacy data might be in meters)
+        // If elevation is less than 1000, it's likely in meters (most US elevations are > 100 ft)
+        let elevationInFeet = loc.elevation ?? 0;
+        if (elevationInFeet > 0 && elevationInFeet < 1000) {
+          // Likely in meters, convert to feet
+          elevationInFeet = Math.round(elevationInFeet * 3.28084);
+        }
+        
+        // Also check and convert homeElevFromSettings if it's in meters
+        let convertedHomeElev = homeElevFromSettings;
+        if (convertedHomeElev !== null && convertedHomeElev > 0 && convertedHomeElev < 1000) {
+          // Likely in meters, convert to feet
+          convertedHomeElev = Math.round(convertedHomeElev * 3.28084);
+          // Update settings with converted value
+          try {
+            const userSettings = JSON.parse(localStorage.getItem("userSettings") || "{}");
+            userSettings.homeElevation = convertedHomeElev;
+            localStorage.setItem("userSettings", JSON.stringify(userSettings));
+          } catch {
+            /* ignore */
+          }
+        }
+        
+        const initialElev = convertedHomeElev ?? elevationInFeet ?? 0;
         dispatch({
           type: "SET_LOCATION_FIELD",
           field: "homeElevation",
@@ -796,8 +844,18 @@ const SevenDayCostForecaster = () => {
         dispatch({
           type: "SET_LOCATION_FIELD",
           field: "foundLocationName",
-          value: `${loc.city}, ${loc.state} (Elev: ${loc.elevation} ft)`,
+          value: `${loc.city}, ${loc.state} (Elev: ${initialElev} ft)`,
         });
+        
+        // Update localStorage with converted elevation if it was in meters
+        if (elevationInFeet !== loc.elevation && loc.elevation) {
+          try {
+            const updatedLocation = { ...loc, elevation: initialElev };
+            localStorage.setItem("userLocation", JSON.stringify(updatedLocation));
+          } catch {
+            /* ignore */
+          }
+        }
       }
     } catch (e) {
       console.error("Error loading saved location:", e);
@@ -807,7 +865,7 @@ const SevenDayCostForecaster = () => {
   // Debug logging for elevation changes (moved after locHomeElevation is defined)
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log("🏔️ Elevation State Check:", {
+      console.log("ðŸ”ï¸ Elevation State Check:", {
         globalHomeElevation,
         userSettingsHomeElevation: userSettings?.homeElevation,
         outletHomeElevation: outlet?.homeElevation,
@@ -827,7 +885,7 @@ const SevenDayCostForecaster = () => {
     
     // Debug logging
     if (import.meta.env.DEV) {
-      console.log("🏔️ Syncing globalHomeElevation to reducer:", {
+      console.log("ðŸ”ï¸ Syncing globalHomeElevation to reducer:", {
         globalHomeElevation,
         locHomeElevation: safeLocHomeElevation,
         locationElevation,
@@ -861,7 +919,7 @@ const SevenDayCostForecaster = () => {
     }
     
     // Priority 2: Analyzer Data from CSV (if enabled)
-    // ☦️ LOAD-BEARING: Check both React state (heatLossFactor) and userSettings (analyzerHeatLoss)
+    // â˜¦ï¸ LOAD-BEARING: Check both React state (heatLossFactor) and userSettings (analyzerHeatLoss)
     // Why both: React state is immediate but doesn't persist. userSettings persists across reloads.
     // The analyzer sets both, but if user refreshes, only userSettings remains.
     const analyzerHeatLossFromSettings = Number(userSettings?.analyzerHeatLoss);
@@ -980,30 +1038,11 @@ const SevenDayCostForecaster = () => {
     forecast: forecastData,
     loading: forecastLoading,
     error: forecastError,
+    dataSource: forecastDataSource,
   } = useForecast(coords.latitude, coords.longitude, { enabled: !!coords });
 
   // Debugging logs to trace calculation parameters
-  useEffect(() => {
-    console.log("🔥 Heating Mode Debug:", {
-      energyMode,
-      effectiveHeatLoss,
-      compressorPower,
-      tons,
-      indoorTemp,
-      forecastLength: forecastData?.length || 0,
-      coords,
-      hspf2,
-    });
-  }, [
-    energyMode,
-    effectiveHeatLoss,
-    compressorPower,
-    tons,
-    indoorTemp,
-    forecastData,
-    coords,
-    hspf2,
-  ]);
+  // Removed debug logging
 
   // sync hook results into reducer forecast state
   useEffect(() => {
@@ -1218,7 +1257,7 @@ const SevenDayCostForecaster = () => {
     
     // Debug logging for elevation adjustment
     if (import.meta.env.DEV) {
-      console.log("🌍 Elevation Adjustment Debug:", {
+      console.log("ðŸŒ Elevation Adjustment Debug:", {
         homeElevation: homeElev,
         locationElevation: locationElevation,
         apiElevation: apiElevation,
@@ -1329,13 +1368,6 @@ const SevenDayCostForecaster = () => {
 
   const manualDayMetrics = useMemo(() => {
     const perf = getPerformanceAtTemp(manualTemp, manualHumidity);
-    // Debug logging to investigate NaN values
-    console.log("manualDayMetrics perf:", {
-      perf,
-      manualTemp,
-      manualHumidity,
-      utilityCost,
-    });
 
     const electricalKw =
       typeof perf?.electricalKw === "number" ? perf.electricalKw : NaN;
@@ -1349,18 +1381,6 @@ const SevenDayCostForecaster = () => {
       Number.isFinite(dailyEnergy) && Number.isFinite(utilityCost)
         ? dailyEnergy * utilityCost
         : NaN;
-    console.log("manualDayMetrics values:", {
-      electricalKw,
-      runtime,
-      hourlyEnergy,
-      dailyEnergy,
-      dailyCost,
-      compressorPower,
-      tons,
-      heatLoss,
-      indoorTemp,
-      utilityCost,
-    });
     return {
       dailyEnergy,
       dailyCost,
@@ -1369,15 +1389,6 @@ const SevenDayCostForecaster = () => {
       outdoorTemp: manualTemp,
     };
   }, [manualTemp, manualHumidity, getPerformanceAtTemp, utilityCost]);
-
-  // Add logging to identify undefined values causing the error
-  console.log("manualDayMetrics:", manualDayMetrics);
-  console.log("manualDayMetrics.dailyEnergy:", manualDayMetrics?.dailyEnergy);
-  console.log("manualDayMetrics.dailyCost:", manualDayMetrics?.dailyCost);
-  console.log(
-    "manualDayMetrics.defrostPenalty:",
-    manualDayMetrics?.defrostPenalty
-  );
 
   // --- STEP 2: CALCULATE DATA FOR THE GRAPH ---
   const elevationCostData = useMemo(() => {
@@ -1578,179 +1589,6 @@ const SevenDayCostForecaster = () => {
     }
   }, [capacities]);
 
-  const steps = useMemo(
-    () => [
-      {
-        target: ".seven-day-cost-forecaster",
-        content:
-          "Welcome to the 7-Day Cost Forecaster! This is your command center for predicting and budgeting your home's energy costs for the week ahead.",
-        disableBeacon: true,
-        placement: "center",
-        spotlightClicks: true,
-      },
-      {
-        target: foundLocationName
-          ? ".bg-gradient-to-r.from-blue-50"
-          : ".bg-gradient-to-br.from-blue-100",
-        content:
-          "Everything starts here. We use your location to fetch the latest 7-day weather forecast, which is the foundation for all our calculations.",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: "#indoor-temp-slider",
-        content:
-          "This is the most important part! Drag this slider to set your desired indoor temperature. Watch how the results below change in real-time. This is how you find the perfect balance between comfort and cost.",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: "#weekly-energy-card",
-        content:
-          "This card shows you the total estimated energy your HVAC system will use over the next 7 days to maintain your chosen temperature.",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: "#weekly-cost-card",
-        content:
-          "And here's the bottom line: your estimated weekly bill. This number is calculated using the energy from above and the electricity rate you can configure in the settings below.",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: "#weekly-cost-card",
-        content:
-          "Keep an eye out for alerts that may appear here. We'll let you know if your system is relying too heavily on expensive backup heat, which is a great indicator that an upgrade could save you money.",
-        placement: "top",
-        spotlightClicks: true,
-      },
-      {
-        target: "#upgrade-button",
-        content:
-          "Curious how a newer, more efficient system would perform? Click here to run a side-by-side comparison and see your potential savings.",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: "#daily-breakdown-section",
-        content:
-          "For a deeper dive, you can expand these sections to see a day-by-day cost breakdown or analyze how your home's elevation impacts your energy costs.",
-        placement: "top",
-        spotlightClicks: true,
-      },
-      {
-        target: "#building-settings",
-        content:
-          "This is where the magic happens. In these sections, you can fine-tune all the details about your home, your specific HVAC equipment, and your utility rates for the most accurate possible forecast.",
-        placement: "top",
-        spotlightClicks: true,
-      },
-      {
-        target: "#energy-mode-toggle",
-        content:
-          "Don't forget, you can switch the entire app between Heating and Cooling modes to budget your energy costs all year round!",
-        placement: "bottom",
-        spotlightClicks: true,
-      },
-      {
-        target: ".seven-day-cost-forecaster",
-        content:
-          "You're all set! You now know how to forecast your weekly energy bill. Start by setting your location, then find the budget that's right for you. Enjoy!",
-        placement: "center",
-        spotlightClicks: true,
-      },
-    ],
-    [foundLocationName]
-  );
-
-  // Ensure all Joyride targets are mounted before starting the tour
-  useEffect(() => {
-    if (tourActive) {
-      const allTargetsMounted = steps.every((step) =>
-        document.querySelector(step.target)
-      );
-      if (!allTargetsMounted) {
-        const missingTargets = steps
-          .filter((step) => !document.querySelector(step.target))
-          .map((step) => step.target);
-        console.warn(
-          "Some Joyride targets are not yet mounted:",
-          missingTargets
-        );
-        // Don't prevent tour from starting, just log the warning
-        // setTourActive(false);
-      }
-    }
-  }, [tourActive, steps]);
-
-  // Detect dark mode for tour styling
-  useEffect(() => {
-    const checkDarkMode = () => {
-      if (typeof window !== "undefined") {
-        setIsDarkMode(document.documentElement.classList.contains("dark"));
-      }
-    };
-
-    checkDarkMode();
-
-    // Optional: Listen for theme changes
-    const observer = new MutationObserver(checkDarkMode);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  // Dynamic Joyride styles based on theme
-  const joyrideStyles = useMemo(
-    () => ({
-      options: {
-        primaryColor: "#3b82f6",
-        zIndex: 10000,
-      },
-      tooltip: {
-        backgroundColor: isDarkMode ? "#1f2937" : "#ffffff",
-        color: isDarkMode ? "#f9fafb" : "#111827",
-        borderRadius: "12px",
-        fontSize: "15px",
-        padding: "20px",
-      },
-      tooltipTitle: {
-        color: isDarkMode ? "#ffffff" : "#000000",
-        fontSize: "16px",
-        fontWeight: "bold",
-      },
-      tooltipContent: {
-        color: isDarkMode ? "#e5e7eb" : "#374151",
-      },
-      buttonNext: {
-        backgroundColor: "#3b82f6",
-        color: "#ffffff",
-        borderRadius: "8px",
-        padding: "8px 16px",
-      },
-      buttonBack: {
-        color: "#3b82f6",
-        marginRight: "10px",
-      },
-      buttonSkip: {
-        color: isDarkMode ? "#9ca3af" : "#6b7280",
-      },
-      overlay: {
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-      },
-      spotlight: {
-        border: "3px solid #60a5fa",
-        borderRadius: "16px",
-        boxShadow:
-          "0 0 0 9999px rgba(0, 0, 0, 0.8), 0 0 40px rgba(96, 165, 250, 0.7)",
-      },
-    }),
-    [isDarkMode]
-  );
 
   // Onboarding handlers
   const navigate = useNavigate();
@@ -1873,7 +1711,7 @@ const SevenDayCostForecaster = () => {
   }, [foundLocationName, weeklyMetrics, userSettings]);
 
   // Ask Joule: reveal answer once forecast completes after a query
-  const [showAnswerCard, setShowAnswerCard] = useState(false);
+  const [showAnswerCard, setShowAnswerCard] = useState(true);
   useEffect(() => {
     if (!forecastLoading && foundLocationName && showAnswerCard) {
       // nothing extra to do; AnswerCard consumes computed props
@@ -1883,52 +1721,258 @@ const SevenDayCostForecaster = () => {
   // Building details are now REQUIRED in all modes for Ask Joule
   const totalSteps = 4; // Always 4 steps: Welcome, Location, Building/System, Confirmation
 
-  return (
-    <div className="page-gradient-overlay min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-2">
-        {/* Compact Page Header */}
-        <div className="mb-3 animate-fade-in-up">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
-                <Calendar className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">
-                  7-Day Cost Forecaster
-                </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Plan your {energyMode === "heating" ? "heating" : "cooling"} costs for the week ahead
-                </p>
+  // Calculate baseline cost (constant temperature - no schedule)
+  const baselineCost = useMemo(() => {
+    if (!adjustedForecast || !getPerformanceAtTemp) return null;
+    // Calculate what cost would be if we kept constant temp (daytime temp) all week
+    const constantTemp = indoorTemp;
+    let baselineTotal = 0;
+    adjustedForecast.forEach((hour) => {
+      const perf = getPerformanceAtTemp(hour.temp, hour.humidity);
+      // Use constant temp for all hours (no schedule)
+      const tempDiff = Math.max(0, constantTemp - hour.temp);
+      if (tempDiff > 0 && perf.runtime > 0) {
+        const duty = Math.min(100, Math.max(0, perf.runtime));
+        const hourlyCost = perf.electricalKw * (duty / 100) * utilityCost;
+        baselineTotal += hourlyCost;
+      }
+    });
+    return baselineTotal;
+  }, [adjustedForecast, indoorTemp, getPerformanceAtTemp, utilityCost]);
+
+  const savingsVsBaseline = useMemo(() => {
+    if (!baselineCost || !weeklyMetrics) return null;
+    const currentCost = energyMode === "cooling" 
+      ? weeklyMetrics.totalCost 
+      : (breakdownView === "withAux" ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost);
+    return baselineCost - currentCost;
+  }, [baselineCost, weeklyMetrics, energyMode, breakdownView]);
+
+  // Determine thermostat mode for SeasonProvider
+  const thermostatMode = useMemo(() => {
+    if (primarySystem === "gasFurnace") return "heat";
+    if (energyMode === "heating") return "heat";
+    if (energyMode === "cooling") return "cool";
+    return "auto";
+  }, [primarySystem, energyMode]);
+
+  // Get current outdoor temp from forecast if available
+  const currentOutdoorTemp = useMemo(() => {
+    if (adjustedForecast && adjustedForecast.length > 0) {
+      return adjustedForecast[0]?.temp;
+    }
+    return undefined;
+  }, [adjustedForecast]);
+
+  // Define inner component that has access to all parent variables via closure
+  const SevenDayCostForecasterContent = () => {
+    // Use season context
+    const { seasonMode, setSeasonMode, isHeatingView, isCoolingView, autoDetectedMode } = useSeason();
+
+    // Sync season mode with energyMode (one-way: seasonMode → energyMode)
+    // Only sync when seasonMode changes from the toggle, not from button clicks
+    const prevSeasonModeRef = useRef(seasonMode);
+    const isUserClickRef = useRef(false);
+    
+    useEffect(() => {
+      // Skip sync if this was triggered by a user button click
+      if (isUserClickRef.current) {
+        isUserClickRef.current = false;
+        prevSeasonModeRef.current = seasonMode;
+        return;
+      }
+      
+      // Only sync if seasonMode changed (user clicked toggle), not if energyMode changed
+      if (prevSeasonModeRef.current !== seasonMode) {
+        if (seasonMode === "heating" && energyMode !== "heating") {
+          setEnergyMode("heating");
+        } else if (seasonMode === "cooling" && energyMode !== "cooling") {
+          setEnergyMode("cooling");
+        } else if (seasonMode === "auto") {
+          const detected = autoDetectedMode === "heating" ? "heating" : autoDetectedMode === "cooling" ? "cooling" : energyMode;
+          if (detected !== energyMode) {
+            setEnergyMode(detected);
+          }
+        }
+        prevSeasonModeRef.current = seasonMode;
+      }
+    }, [seasonMode, autoDetectedMode, energyMode, setEnergyMode]);
+
+    return (
+      <div className="min-h-screen bg-[#0C0F14]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        {/* Page Header - Clear Hierarchy */}
+        <div className="mb-10">
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h1 className="text-[32px] font-semibold text-[#FFFFFF] mb-2">
+                {isHeatingView && !isCoolingView
+                  ? "Heating Load Forecast"
+                  : isCoolingView && !isHeatingView
+                  ? "Cooling Load Forecast"
+                  : isHeatingView && isCoolingView
+                  ? "Comfort & Efficiency Forecast"
+                  : energyMode === "heating"
+                  ? "Heating Load Forecast"
+                  : energyMode === "cooling"
+                  ? "Cooling Load Forecast"
+                  : "Comfort & Efficiency Forecast"}
+              </h1>
+              <p className="text-base text-[#A7B0BA] leading-relaxed">
+                {isHeatingView && !isCoolingView
+                  ? "Set your schedule and see how it affects your heating costs."
+                  : isCoolingView && !isHeatingView
+                  ? "Set your schedule and see how it affects your cooling costs."
+                  : isHeatingView && isCoolingView
+                  ? "Set your schedule and see how it affects your heating and cooling costs."
+                  : energyMode === "heating"
+                  ? "Set your schedule and see how it affects your heating costs."
+                  : energyMode === "cooling"
+                  ? "Set your schedule and see how it affects your cooling costs."
+                  : "Set your schedule and see how it affects your energy costs."}
+              </p>
+              
+              {/* Section Navigation */}
+              <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                <a href="#summary" className="text-[#1E4CFF] hover:text-[#1a3fcc] transition-colors">Summary</a>
+                <span className="text-[#7C8894]">·</span>
+                <a href="#schedule" className="text-[#1E4CFF] hover:text-[#1a3fcc] transition-colors">Schedule</a>
+                <span className="text-[#7C8894]">·</span>
+                <a href="#daily-breakdown" className="text-[#1E4CFF] hover:text-[#1a3fcc] transition-colors">Daily breakdown</a>
+                <span className="text-[#7C8894]">·</span>
+                <a href="#assumptions" className="text-[#1E4CFF] hover:text-[#1a3fcc] transition-colors">Assumptions & config</a>
+                <span className="text-[#7C8894]">·</span>
+                <a href="#calculations" className="text-[#1E4CFF] hover:text-[#1a3fcc] transition-colors">Calculations</a>
               </div>
             </div>
-            {/* Mode Toggle - Compact */}
-            <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
-              <button
-                onClick={() => setEnergyMode("heating")}
-                className={`px-2.5 py-1 text-xs font-semibold flex items-center gap-1 transition-colors ${
-                  energyMode === "heating"
-                    ? "bg-red-600 text-white"
-                    : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-                }`}
-              >
-                <Flame size={12} /> Heating
-              </button>
-              <button
-                onClick={() => setEnergyMode("cooling")}
-                className={`px-2.5 py-1 text-xs font-semibold flex items-center gap-1 transition-colors ${
-                  energyMode === "cooling"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-                }`}
-              >
-                <ThermometerSun size={12} /> Cooling
-              </button>
+            <div className="flex items-center gap-3">
+              {/* Compact Ask Joule */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    const panel = document.getElementById('compact-ask-joule');
+                    if (panel) {
+                      panel.classList.toggle('hidden');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#151A21] border border-[#222A35] rounded-lg hover:bg-[#1D232C] transition-colors"
+                  title="Ask Joule AI Assistant"
+                >
+                  <Zap size={16} className="text-[#1E4CFF]" />
+                  <span className="text-sm text-[#E8EDF3]">Ask Joule</span>
+                </button>
+                <div id="compact-ask-joule" className="hidden absolute top-full right-0 mt-2 w-96 bg-[#151A21] border border-[#222A35] rounded-xl p-4 z-50 shadow-xl">
+                  <AskJoule
+                    hasLocation={!!foundLocationName}
+                    disabled={false}
+                    userSettings={userSettings}
+                    userLocation={
+                      foundLocationName
+                        ? {
+                            city: foundLocationName.split(",")[0],
+                            state: foundLocationName.split(",")[1]?.trim(),
+                            elevation: locationElevation,
+                          }
+                        : null
+                    }
+                    annualEstimate={
+                      weeklyMetrics
+                        ? {
+                            totalCost: weeklyMetrics.totalCost * 52,
+                            heatingCost: weeklyMetrics.totalCost * 52 * 0.7,
+                            coolingCost: weeklyMetrics.totalCost * 52 * 0.3,
+                          }
+                        : null
+                    }
+                    recommendations={recommendations}
+                    onNavigate={(path) => {
+                      if (path) navigate(path);
+                    }}
+                    onSettingChange={(key, value, meta = {}) => {
+                      if (typeof setUserSetting === "function") {
+                        setUserSetting(key, value, {
+                          ...meta,
+                          source: meta?.source || "AskJoule",
+                        });
+                      } else {
+                        if (key === "winterThermostat") setIndoorTemp(value);
+                        if (key === "summerThermostat") setIndoorTemp(value);
+                      }
+                    }}
+                    auditLog={outlet.auditLog}
+                    onUndo={(id) => outlet.undoChange && outlet.undoChange(id)}
+                    onParsed={(params) => {
+                      const {
+                        cityName,
+                        squareFeet,
+                        insulationLevel,
+                        indoorTemp,
+                        primarySystem,
+                      } = params || {};
+                      try {
+                        if (typeof squareFeet === "number")
+                          setSquareFeet(squareFeet);
+                        if (typeof insulationLevel === "number")
+                          setInsulationLevel(insulationLevel);
+                        if (typeof indoorTemp === "number")
+                          setIndoorTemp(indoorTemp);
+                        if (
+                          primarySystem === "heatPump" ||
+                          primarySystem === "gasFurnace"
+                        )
+                          setPrimarySystem(primarySystem);
+                      } catch {
+                        /* Intentionally empty */
+                      }
+                      if (cityName && cityName !== (ui?.cityName || "")) {
+                        dispatch({
+                          type: "SET_LOCATION_FIELD",
+                          field: "cityName",
+                          value: cityName,
+                        });
+                        setAutoAdvanceOnboarding(false);
+                        handleCitySearch();
+                      }
+                      setShowAnswerCard(true);
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* Mode Toggle */}
+              <div id="energy-mode-toggle" className="inline-flex rounded-lg border border-[#222A35] overflow-hidden">
+                <button
+                  onClick={() => {
+                    isUserClickRef.current = true; // Mark as user click to prevent sync loop
+                    setEnergyMode("heating");
+                    setSeasonMode("heating"); // Update both directly
+                  }}
+                  className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${
+                    energyMode === "heating"
+                      ? "bg-[#1E4CFF] text-white"
+                      : "bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C]"
+                  }`}
+                >
+                  <Flame size={16} /> Heating
+                </button>
+                <button
+                  onClick={() => {
+                    isUserClickRef.current = true; // Mark as user click to prevent sync loop
+                    setEnergyMode("cooling");
+                    setSeasonMode("cooling"); // Update both directly
+                  }}
+                  className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${
+                    energyMode === "cooling"
+                      ? "bg-[#1E4CFF] text-white"
+                      : "bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C]"
+                  }`}
+                >
+                  <ThermometerSun size={16} /> Cooling
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-3 seven-day-cost-forecaster">
         {/* Hidden off-screen share card for image generation */}
         <div style={{ position: "fixed", top: "-9999px", left: "-9999px" }}>
           {roiData && (
@@ -1945,108 +1989,130 @@ const SevenDayCostForecaster = () => {
             onClose={() => setToast(null)}
           />
         )}
-        {/* Dashboard Link */}
-        <div className="flex flex-col gap-2 mb-2">
-          <div className="flex justify-end">
-            <DashboardLink />
-          </div>
-          <div className="bg-gradient-to-br from-blue-100/40 via-purple-100/30 to-blue-100/40 dark:from-blue-900/30 dark:via-purple-900/30 dark:to-blue-900/30 rounded-2xl border-2 border-blue-300 dark:border-blue-600 shadow-xl p-4 sm:p-6 lg:p-8">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-              <div className="bg-gradient-to-br from-blue-600 to-purple-600 dark:from-blue-500 dark:to-purple-500 rounded-full p-3 shadow-lg">
-                <Zap size={24} className="text-white" />
+
+        {/* Card A - This week at a glance - Show right after section navigation, before schedule */}
+        {weeklyMetrics && !forecastLoading && !forecastError && foundLocationName && (
+          <div id="summary" className="mb-10">
+            <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-8">
+              <h2 className="text-xl font-semibold text-[#E8EDF3] mb-6">Next 7 days – {energyMode === "cooling" ? "Cooling" : "Heating"} cost forecast</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                {/* Daily Cost - Primary Metric */}
+                <div>
+                  <div className="text-[56px] font-semibold text-[#FFFFFF] leading-none mb-2">
+                    $
+                    {((energyMode === "cooling"
+                        ? (weeklyMetrics?.totalCost ?? 0)
+                        : primarySystem === "gasFurnace"
+                        ? (weeklyGasMetrics?.totalCost ?? 0)
+                        : (breakdownView === "withAux"
+                            ? weeklyMetrics.totalCostWithAux
+                            : weeklyMetrics.totalCost
+                          )) / 7).toFixed(2)}
+                  </div>
+                  <div className="text-lg text-[#A7B0BA] mb-1">/day</div>
+                  <div className="text-sm text-[#7C8894]">Estimated average over the next 7 days</div>
+                </div>
+                
+                {/* Daily Energy - Secondary Metric */}
+                <div>
+                  <div className="text-[36px] font-semibold text-[#FFFFFF] mb-2">
+                    {(() => {
+                      const dailyKWh = (
+                        energyMode === "cooling"
+                          ? (weeklyMetrics?.totalEnergy ?? 0)
+                          : primarySystem === "gasFurnace"
+                          ? (weeklyGasMetrics?.totalTherms ?? 0) * 29.3 // Convert therms to kWh for display
+                          : (breakdownView === "withAux"
+                              ? weeklyMetrics.summary.reduce(
+                                  (acc, d) => acc + d.energyWithAux,
+                                  0
+                                )
+                              : weeklyMetrics.totalEnergy
+                            )
+                      ) / 7;
+                      if (primarySystem === "gasFurnace") {
+                        return `${(dailyKWh / 29.3).toFixed(2)} therms / day`;
+                      }
+                      // Use international unit system formatting, or nerd mode if enabled
+                      const energyDisplayMode = isNerdMode ? "nerd" : "user";
+                      if (energyDisplayMode === "nerd") {
+                        return formatEnergyFromKwh(dailyKWh, "intl", { decimals: 1 }) + " / day";
+                      }
+                      return formatEnergy(kWhToJ(dailyKWh), { mode: "user", precision: 1 }) + " / day";
+                    })()}
+                  </div>
+                  <div className="text-base text-[#A7B0BA] mb-1">
+                    {/* Unit indicator - empty for now */}
+                  </div>
+                  <div className="text-sm text-[#7C8894]">Estimated {primarySystem === "gasFurnace" ? "gas" : "electric"} usage ({primarySystem === "gasFurnace" ? "gas" : "heat pump only"})</div>
+                </div>
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                  Ask Joule
-                </h3>
-                <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300">
-                  Natural language commands, what-if scenarios, and insights
+              
+              {/* In plain English paragraph */}
+              <div className="mt-6 pt-6 border-t border-[#222A35]">
+                <p className="text-sm text-[#A7B0BA] leading-relaxed">
+                  {(() => {
+                    const dailyCost = (energyMode === "cooling"
+                      ? (weeklyMetrics?.totalCost ?? 0)
+                      : primarySystem === "gasFurnace"
+                      ? (weeklyGasMetrics?.totalCost ?? 0)
+                      : (breakdownView === "withAux"
+                          ? weeklyMetrics.totalCostWithAux
+                          : weeklyMetrics.totalCost
+                        )) / 7;
+                    const weeklyCost = dailyCost * 7;
+                    return `Based on your schedule, system size, and the 7-day weather forecast, you'll spend about $${dailyCost.toFixed(2)} per day ($${weeklyCost.toFixed(2)} this week) on ${energyMode === "cooling" ? "cooling" : "heating"}.`;
+                  })()}
+                  {savingsVsBaseline !== null && savingsVsBaseline > 0 && (
+                    <span className="block mt-2 text-[#1E4CFF]">
+                      Your schedule saves you ${(savingsVsBaseline / 7).toFixed(2)}/day vs keeping a constant {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}.
+                    </span>
+                  )}
                 </p>
               </div>
-            </div>
-            <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-gray-200 dark:border-gray-700">
-              <AskJoule
-                hasLocation={!!foundLocationName}
-                disabled={false}
-                userSettings={userSettings}
-                userLocation={
-                  foundLocationName
-                    ? {
-                        city: foundLocationName.split(",")[0],
-                        state: foundLocationName.split(",")[1]?.trim(),
-                        elevation: locationElevation,
-                      }
-                    : null
-                }
-                annualEstimate={
-                  weeklyMetrics
-                    ? {
-                        totalCost: weeklyMetrics.totalCost * 52,
-                        heatingCost: weeklyMetrics.totalCost * 52 * 0.7, // Estimate
-                        coolingCost: weeklyMetrics.totalCost * 52 * 0.3,
-                      }
-                    : null
-                }
-                recommendations={recommendations}
-                onNavigate={(path) => {
-                  if (path) navigate(path);
-                }}
-                onSettingChange={(key, value, meta = {}) => {
-                  // Prefer using outlet setUserSetting so App-level audit and persistence are used
-                  if (typeof setUserSetting === "function") {
-                    setUserSetting(key, value, {
-                      ...meta,
-                      source: meta?.source || "AskJoule",
-                    });
-                  } else {
-                    if (key === "winterThermostat") setIndoorTemp(value);
-                    if (key === "summerThermostat") setIndoorTemp(value);
-                  }
-                }}
-                auditLog={outlet.auditLog}
-                onUndo={(id) => outlet.undoChange && outlet.undoChange(id)}
-                onParsed={(params) => {
-                  // Minimal, non-invasive apply: set parsed fields and trigger location search if provided.
-                  const {
-                    cityName,
-                    squareFeet,
-                    insulationLevel,
-                    indoorTemp,
-                    primarySystem,
-                  } = params || {};
-                  try {
-                    if (typeof squareFeet === "number")
-                      setSquareFeet(squareFeet);
-                    if (typeof insulationLevel === "number")
-                      setInsulationLevel(insulationLevel);
-                    if (typeof indoorTemp === "number")
-                      setIndoorTemp(indoorTemp);
-                    if (
-                      primarySystem === "heatPump" ||
-                      primarySystem === "gasFurnace"
-                    )
-                      setPrimarySystem(primarySystem);
-                  } catch {
-                    /* Intentionally empty */
-                  }
-                  if (cityName && cityName !== (ui?.cityName || "")) {
-                    dispatch({
-                      type: "SET_LOCATION_FIELD",
-                      field: "cityName",
-                      value: cityName,
-                    });
-                    setAutoAdvanceOnboarding(false);
-                    handleCitySearch();
-                  }
-                  // Reveal answer card after query; parent will compute costs when forecast completes
-                  setShowAnswerCard(true);
-                }}
-              />
+              
+              {/* Location - Inline with Summary */}
+              {foundLocationName && (
+                <div className="mt-6 pt-6 border-t border-[#222A35] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MapPin size={18} className="text-[#1E4CFF]" />
+                    <div>
+                      <div className="text-sm font-medium text-[#E8EDF3]">
+                        {foundLocationName}
+                        {locationElevation > 0 && (
+                          <span className="ml-2 text-[#7C8894] font-normal">
+                            ({locationElevation.toLocaleString()} ft)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setOnboardingStep(1);
+                      setShowOnboarding(true);
+                    }}
+                    className="text-sm text-[#1E4CFF] hover:text-[#1a3fcc] font-medium"
+                  >
+                    Change Location
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Thermostat Clock Controls - Dual-Period Schedule */}
-          <div className="mb-6">
+        {/* Card B - Your schedule & daily breakdown */}
+        <div className="mb-10" id="schedule">
+          <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-8">
+            <div className="mb-6">
+              <h2 className="text-[24px] font-medium text-[#E8EDF3] mb-2">Your schedule</h2>
+              <p className="text-sm text-[#A7B0BA]">
+                This is the thermostat schedule we'll use for the forecast. Adjust it here, or match what you're really running.
+              </p>
+            </div>
+            
             <ThermostatScheduleCard
               indoorTemp={indoorTemp}
               daytimeTime={daytimeTime}
@@ -2059,58 +2125,64 @@ const SevenDayCostForecaster = () => {
               setUserSetting={setUserSetting}
             />
             
-            {/* ASHRAE Standards Button */}
-            <div className="mt-4 flex items-center justify-center">
-              <button
-                onClick={() => {
-                  // Determine if heating or cooling season based on current month
-                  const currentMonth = new Date().getMonth() + 1; // 1-12
-                  const isHeatingSeason = currentMonth >= 10 || currentMonth <= 4; // Oct-Apr
-                  
-                  // ASHRAE Standard 55 recommendations (50% RH):
-                  // Winter heating: 68.5-74.5°F (use 70°F as middle)
-                  // Summer cooling: 73-79°F (use 76°F as middle)
-                  // Sleep/unoccupied: 68°F for heating, 78°F for cooling
-                  
-                  if (isHeatingSeason || energyMode === "heating") {
-                    // Heating season: Set to ASHRAE winter recommendations
-                    setIndoorTemp(70); // ASHRAE Standard 55: 70°F for winter (middle of 68.5-74.5°F range)
-                    setNighttimeTemp(68); // ASHRAE Standard 55: 68°F for sleep/unoccupied in winter
-                    setUserSetting("winterThermostat", 70);
-                    setUserSetting("summerThermostat", 76); // Also set summer for when season changes
-                  } else {
-                    // Cooling season: Set to ASHRAE summer recommendations
-                    setIndoorTemp(76); // ASHRAE Standard 55: 76°F for summer (middle of 73-79°F range)
-                    setNighttimeTemp(78); // ASHRAE Standard 55: 78°F for sleep/unoccupied in summer
-                    setUserSetting("summerThermostat", 76);
-                    setUserSetting("winterThermostat", 70); // Also set winter for when season changes
-                  }
-                  
-                  // Show success message (toast will be handled by parent component if available)
-                  console.log(`Applied ASHRAE Standard 55 temperatures: ${isHeatingSeason || energyMode === "heating" ? "70°F day / 68°F night (heating)" : "76°F day / 78°F night (cooling)"}`);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                title="Apply ASHRAE Standard 55 thermal comfort recommendations"
-              >
-                <CheckCircle2 size={16} />
-                Apply ASHRAE Standard 55
-              </button>
-              <a
-                href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-3 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                title="Learn more about ASHRAE standards"
-              >
-                Learn more
-              </a>
+            {/* Single Schedule Summary - No Duplication */}
+            <div className="mt-6 pt-6 border-t border-[#222A35]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-[#7C8894] mb-2">Current Schedule</div>
+                  <div className="text-base text-[#E8EDF3] font-medium">
+                    {(() => {
+                      const dayMins = timeToMinutes(daytimeTime);
+                      const nightMins = timeToMinutes(nighttimeTime);
+                      const formatTime = (time) => {
+                        const [h, m] = time.split(':').map(Number);
+                        const period = h >= 12 ? 'PM' : 'AM';
+                        const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+                        return `${hour12}:${m.toString().padStart(2, '0')} ${period}`;
+                      };
+                      
+                      if (dayMins < nightMins) {
+                        return `${formatTime(daytimeTime)}–${formatTime(nighttimeTime)} at ${formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} • ${formatTime(nighttimeTime)}–${formatTime(daytimeTime)} at ${formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })}`;
+                      } else {
+                        return `${formatTime(daytimeTime)}–${formatTime(nighttimeTime)} at ${formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} • ${formatTime(nighttimeTime)}–${formatTime(daytimeTime)} at ${formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })}`;
+                      }
+                    })()}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const currentMonth = new Date().getMonth() + 1;
+                    const isHeatingSeason = currentMonth >= 10 || currentMonth <= 4;
+                    
+                    if (isHeatingSeason || energyMode === "heating") {
+                      setIndoorTemp(70);
+                      setNighttimeTemp(68);
+                      setUserSetting("winterThermostat", 70);
+                      setUserSetting("summerThermostat", 76);
+                    } else {
+                      setIndoorTemp(76);
+                      setNighttimeTemp(78);
+                      setUserSetting("summerThermostat", 76);
+                      setUserSetting("winterThermostat", 70);
+                    }
+                  }}
+                  className="px-4 py-2 bg-[#1E4CFF] hover:bg-[#1a3fcc] text-white rounded-lg font-medium text-sm transition-colors"
+                >
+                  Apply Smart Baseline
+                </button>
+              </div>
+              <p className="text-xs text-[#7C8894] italic mt-3">
+                <em>Tip:</em> Big night setbacks on heat pumps can trigger strip heat in the morning.
+              </p>
             </div>
-            <p className="mt-2 text-xs text-center text-gray-500 dark:text-gray-400">
-              ASHRAE Standard 55 provides thermal comfort recommendations: 70°F (winter) / 76°F (summer) for occupied spaces at 50% relative humidity
-            </p>
           </div>
+        </div>
 
-          {showAnswerCard && (
+        {/* Daily Breakdown Section - Part of Card B */}
+        <div id="daily-breakdown" className="mb-10">
+        </div>
+
+        {showAnswerCard && (
             <AnswerCard
               loading={forecastLoading}
               location={foundLocationName}
@@ -2139,1271 +2211,133 @@ const SevenDayCostForecaster = () => {
               energyMode={energyMode}
               primarySystem={primarySystem}
               roiSavings={roiData?.annualSavings ?? 0}
-              onOpenDashboard={() => {
-                try {
-                  setShowOnboarding(false);
-                  const el =
-                    document.querySelector("#daily-breakdown-section") ||
-                    document.querySelector(".seven-day-cost-forecaster");
-                  if (el)
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
-                } catch {
-                  /* Intentionally empty */
-                }
-              }}
             />
           )}
         </div>
 
-        {/* First-Time User Onboarding Overlay */}
-        {showOnboarding && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Onboarding setup"
-            onClick={handleOnboardingSkip}
-          >
-            <div
-              className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 relative dark:border dark:border-gray-700"
-              onClick={(e) => e.stopPropagation()}
+        {/* First-Time User Onboarding - Extracted Component */}
+        <OnboardingWizard
+          show={showOnboarding}
+          onSkip={handleOnboardingSkip}
+          onComplete={completeOnboarding}
+          currentStep={onboardingStep}
+          setStep={setOnboardingStep}
+          totalSteps={totalSteps}
+          hvacSubstep={hvacSubstep}
+          setHvacSubstep={setHvacSubstep}
+          autoAdvanceOnboarding={autoAdvanceOnboarding}
+          setAutoAdvanceOnboarding={setAutoAdvanceOnboarding}
+          cityName={cityName}
+          setCityName={(value) => dispatch({ type: "SET_LOCATION_FIELD", field: "cityName", value })}
+          foundLocationName={foundLocationName}
+          onCitySearch={handleCitySearch}
+          forecastLoading={forecastLoading}
+          dispatch={dispatch}
+          ui={ui}
+          squareFeet={squareFeet}
+          setSquareFeet={setSquareFeet}
+          homeShape={homeShape}
+          setHomeShape={setHomeShape}
+          ceilingHeight={ceilingHeight}
+          setCeilingHeight={setCeilingHeight}
+          insulationLevel={insulationLevel}
+          setInsulationLevel={setInsulationLevel}
+          globalHomeElevation={globalHomeElevation}
+          setHomeElevation={setHomeElevation}
+          primarySystem={primarySystem}
+          setPrimarySystem={setPrimarySystem}
+          capacity={capacity}
+          setCapacity={setCapacity}
+          efficiency={efficiency}
+          setEfficiency={setEfficiency}
+          hspf2={hspf2}
+          setHspf2={setHspf2}
+          afue={afue}
+          setAfue={setAfue}
+          coolingSystem={coolingSystem}
+          setCoolingSystem={setCoolingSystem}
+          coolingCapacity={coolingCapacity}
+          setCoolingCapacity={setCoolingCapacity}
+          groqApiKey={groqApiKey}
+          setGroqApiKey={setGroqApiKey}
+          welcomeTheme={welcomeTheme}
+          customHeroUrl={customHeroUrl}
+          utilityCost={utilityCost}
+          gasCost={gasCost}
+          onNext={handleOnboardingNext}
+          onBack={() => setOnboardingStep(Math.max(0, onboardingStep - 1))}
+        />
+
+        {/* ONBOARDING: Extracted to OnboardingWizard component
+            See: src/features/forecaster/components/OnboardingWizard.jsx 
+            ~700 lines of inline JSX removed during refactoring */}
+
+        {/* Detailed Forecast Section - Only show if location is set */}
+        {!foundLocationName ? (
+          <div className="mb-10 bg-[#151A21] border border-[#222A35] rounded-xl p-12 text-center">
+            <div className="text-5xl mb-4">ðŸ“</div>
+            <h3 className="text-xl font-medium text-[#E8EDF3] mb-3">
+              Get Your First Forecast
+            </h3>
+            <p className="text-sm text-[#A7B0BA] mb-6 max-w-md mx-auto">
+              Set your location to see accurate weather-based cost estimates.
+            </p>
+            <button
+              onClick={() => {
+                setOnboardingStep(0);
+                setShowOnboarding(true);
+              }}
+              className="px-6 py-3 bg-[#1E4CFF] hover:bg-[#1a3fcc] text-white rounded-lg font-medium transition-colors"
             >
-              {/* Skip button - Removed: Building details are required for Ask Joule to function */}
-              {/* Users must complete onboarding to ensure Ask Joule has necessary data */}
-
-              {/* Progress indicator */}
-              <div
-                className="flex items-center justify-center gap-2 mb-6"
-                aria-label={`Step ${Math.min(
-                  onboardingStep + 1,
-                  totalSteps
-                )} of ${totalSteps}`}
-              >
-                {Array.from({ length: totalSteps }).map((_, step) => (
-                  <div
-                    key={step}
-                    className={`h-2 w-16 rounded-full transition-all ${
-                      step <= Math.min(onboardingStep, totalSteps - 1)
-                        ? "bg-blue-600"
-                        : "bg-gray-200 dark:bg-gray-700"
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Step 0: Welcome (soft landing) */}
-              {onboardingStep === 0 && (
-                <div className="text-center">
-                  <div className="rounded-2xl overflow-hidden mb-6 border dark:border-gray-800 h-48 md:h-56">
-                    {/* High-DPI support: prefer PNG with @2x, then fall back to SVG */}
-                    {welcomeTheme === "custom" ? (
-                      customHeroUrl ? (
-                        <img
-                          src={customHeroUrl}
-                          alt="Custom welcome background"
-                          className="w-full h-full object-cover"
-                          loading="eager"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-                          Welcome
-                        </div>
-                      )
-                    ) : (
-                      <img
-                        src={
-                          WELCOME_THEMES[welcomeTheme]?.file
-                            ? buildPublicPath(WELCOME_THEMES[welcomeTheme].file)
-                            : ""
-                        }
-                        fetchpriority="high"
-                        alt={`${WELCOME_THEMES[welcomeTheme]?.label} calming background`}
-                        className="w-full h-full object-cover"
-                        loading="eager"
-                      />
-                    )}
-                  </div>
-                  <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-                    Welcome — take a breath
-                  </h2>
-                  <p className="text-lg text-gray-500 dark:text-gray-400 mb-4">
-                    to the Energy Cost Forecaster
-                  </p>
-                  <p className="sr-only">Welcome to Energy Cost Forecaster</p>
-                  <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6 max-w-xl mx-auto">
-                    We’ll guide you step by step. No rush, no jargon—just a
-                    simple path to understanding your energy costs.
-                  </p>
-
-                  {/* Quick vs Custom toggle */}
-                  <div className="mb-6">
-                    <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
-                      <button
-                        onClick={() => setOnboardingMode("quick")}
-                        className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                          onboardingMode === "quick"
-                            ? "bg-emerald-600 text-white"
-                            : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        Quick Setup
-                      </button>
-                      <button
-                        onClick={() => setOnboardingMode("custom")}
-                        className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                          onboardingMode === "custom"
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        Custom Setup
-                      </button>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      {onboardingMode === "quick" ? (
-                        <span>
-                          Quick uses sensible defaults. You'll still confirm your home details for accurate estimates.
-                        </span>
-                      ) : (
-                        <span>
-                          We'll walk through all building/system inputs now for best accuracy.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-6 mb-6">
-                    Want to change this image later?{" "}
-                    <Link
-                      to="/settings#personalization"
-                      onClick={() => setShowOnboarding(false)}
-                      className="underline text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-                    >
-                      Customize in Settings
-                    </Link>
-                  </p>
-
-                  <button
-                    onClick={handleOnboardingNext}
-                    className="btn btn-primary px-8 py-3 text-lg"
-                  >
-                    Let’s Begin
-                  </button>
-                </div>
-              )}
-
-              {/* Step 1: Location */}
-              {onboardingStep === 1 && (
-                <div className="text-center">
-                  <div className="mb-4">
-                    <MapPin
-                      size={48}
-                      className="mx-auto text-blue-600 dark:text-blue-400"
-                    />
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                    STEP {Math.min(onboardingStep + 1, totalSteps)} OF{" "}
-                    {totalSteps}
-                  </p>
-                  <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-                    Where do you live?
-                  </h2>
-                  <p className="text-base text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
-                    We use this for local weather and utility rate data.
-                  </p>
-
-                  <div className="bg-blue-50 dark:bg-blue-950 dark:border dark:border-blue-800 rounded-xl p-6 mb-6">
-                    <input
-                      type="text"
-                      value={cityName}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_LOCATION_FIELD",
-                          field: "cityName",
-                          value: e.target.value,
-                        })
-                      }
-                      placeholder="Enter city, state (e.g., Denver, CO or Atlanta, GA)"
-                      className={fullInputClasses}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && cityName) {
-                          // Validate input contains comma and state
-                          const needsComma =
-                            needsCommaBetweenCityAndState(cityName);
-                          const hasComma = cityName.includes(",");
-                          let hasState = false;
-                          if (hasComma) {
-                            const parts = cityName.split(",");
-                            if (
-                              parts.length > 1 &&
-                              parts[1].trim().length > 0
-                            ) {
-                              hasState = true;
-                            }
-                          }
-                          if (needsComma) {
-                            const message =
-                              'Please separate city and state with a comma (example: "Denver, CO").';
-                            dispatch({
-                              type: "SET_UI_FIELD",
-                              field: "error",
-                              value: message,
-                            });
-                            return;
-                          }
-                          if (!hasComma || !hasState) {
-                            const message =
-                              'Please enter both city and state, separated by a comma (e.g., "Denver, Colorado").';
-                            dispatch({
-                              type: "SET_UI_FIELD",
-                              field: "error",
-                              value: message,
-                            });
-                            return;
-                          }
-                          dispatch({
-                            type: "SET_UI_FIELD",
-                            field: "error",
-                            value: null,
-                          });
-                          handleCitySearch();
-                        }
-                      }}
-                      aria-invalid={!!ui.error}
-                      aria-describedby={
-                        ui.error ? "city-input-error" : undefined
-                      }
-                    />
-                    <p className="text-xs text-gray-600 dark:text-gray-300 mb-3">
-                      Format: <span className="font-semibold">City, State</span>{" "}
-                      (e.g., <span className="italic">Denver, CO</span>).{" "}
-                      <span className="font-semibold">Include a comma</span>{" "}
-                      between city and state for best results.
-                    </p>
-
-                    {ui.error && (
-                      <div
-                        id="city-input-error"
-                        className="flex items-center gap-2 mt-3 mb-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 9v2m0 4h.01M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"
-                          />
-                        </svg>
-                        <span className="text-sm font-medium">{ui.error}</span>
-                      </div>
-                    )}
-                    {foundLocationName && !forecastLoading && (
-                      <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-900/30 dark:border-green-700">
-                        <p className="text-green-800 text-sm dark:text-green-400">
-                          ✓ Found: {foundLocationName}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      if (!cityName.trim()) {
-                        alert("⚠️ Please enter your location first.");
-                        return;
-                      }
-                      // Validate and fetch if not already confirmed
-                      if (!foundLocationName) {
-                        const needsComma =
-                          needsCommaBetweenCityAndState(cityName);
-                        if (needsComma) {
-                          const message =
-                            'Please separate city and state with a comma (example: "Denver, CO").';
-                          dispatch({
-                            type: "SET_UI_FIELD",
-                            field: "error",
-                            value: message,
-                          });
-                          window.alert(message);
-                          return;
-                        }
-                        dispatch({
-                          type: "SET_UI_FIELD",
-                          field: "error",
-                          value: null,
-                        });
-                        setAutoAdvanceOnboarding(true);
-                        handleCitySearch();
-                      } else {
-                        handleOnboardingNext();
-                      }
-                    }}
-                    disabled={forecastLoading}
-                    className="btn btn-primary px-8 py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {forecastLoading ? "Loading..." : "Next →"}
-                  </button>
-                </div>
-              )}
-
-              {/* Step 2: Split into a two-step wizard (Building -> System) */}
-              {onboardingStep === 2 && (
-                <div className="text-center">
-                  <div className="mb-4">
-                    {hvacSubstep === 1 ? (
-                      <Home
-                        size={48}
-                        className="mx-auto text-blue-600 dark:text-blue-400"
-                      />
-                    ) : (
-                      <Thermometer
-                        size={48}
-                        className="mx-auto text-blue-600 dark:text-blue-400"
-                      />
-                    )}
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                    STEP {onboardingStep + 1} OF 5
-                  </p>
-                  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">
-                    {hvacSubstep === 1
-                      ? "Tell us about your home"
-                      : "Tell us about your HVAC system"}
-                  </h2>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 mb-3">
-                    Part {hvacSubstep} of 2
-                  </p>
-                  <div className="flex items-center justify-center gap-2 mb-5">
-                    {[1, 2].map((step) => (
-                      <div
-                        key={step}
-                        className={`h-1.5 w-16 rounded-full ${
-                          step <= hvacSubstep
-                            ? "bg-blue-600"
-                            : "bg-gray-300 dark:bg-gray-700"
-                        }`}
-                      ></div>
-                    ))}
-                  </div>
-
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl p-5 mb-6 text-left">
-                    {hvacSubstep === 1 ? (
-                      <div className="space-y-6">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">
-                            Home Size
-                          </label>
-                          <div className="flex items-center gap-4">
-                            <input
-                              type="range"
-                              min="800"
-                              max="4000"
-                              step="100"
-                              value={squareFeet}
-                              onChange={(e) =>
-                                setSquareFeet(Number(e.target.value))
-                              }
-                              className="flex-grow"
-                            />
-                            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 min-w-[120px]">
-                              {squareFeet.toLocaleString()} sq ft
-                            </span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                              Building Type
-                            </label>
-                            <select
-                              value={homeShape}
-                              onChange={(e) =>
-                                setHomeShape(Number(e.target.value))
-                              }
-                              className={selectClasses}
-                            >
-                              <option value={1.1}>Ranch / Single-Story</option>
-                              <option value={0.9}>Two-Story</option>
-                              <option value={1.0}>Split-Level</option>
-                              <option value={1.25}>Cabin / A-Frame</option>
-                              <option value={1.15}>Manufactured Home</option>
-                            </select>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Affects surface area exposure
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                              Ceiling Height
-                            </label>
-                            <select
-                              value={ceilingHeight}
-                              onChange={(e) =>
-                                setCeilingHeight(Number(e.target.value))
-                              }
-                              className={selectClasses}
-                            >
-                              <option value={8}>8 feet (standard)</option>
-                              <option value={9}>9 feet</option>
-                              <option value={10}>10 feet</option>
-                              <option value={12}>12 feet (vaulted)</option>
-                              <option value={16}>16+ feet (cathedral)</option>
-                            </select>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Average ceiling height
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                            How well insulated is your home?
-                          </label>
-                          <select
-                            value={insulationLevel}
-                            onChange={(e) =>
-                              setInsulationLevel(Number(e.target.value))
-                            }
-                            className={selectClasses}
-                          >
-                            <option value={1.4}>
-                              Poor (older home, drafty)
-                            </option>
-                            <option value={1.0}>Average (typical home)</option>
-                            <option value={0.65}>
-                              Good (well-insulated, newer)
-                            </option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">
-                            Elevation
-                          </label>
-                          <div className="flex items-center gap-4">
-                            <input
-                              type="range"
-                              min="0"
-                              max="8000"
-                              step="100"
-                              value={globalHomeElevation || 0}
-                              onChange={(e) =>
-                                setHomeElevation(Number(e.target.value))
-                              }
-                              className="flex-grow"
-                            />
-                            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 min-w-[120px]">
-                              {(globalHomeElevation || 0).toLocaleString()} ft
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Higher elevation increases heating costs (thinner
-                            air, less efficient heat pumps)
-                          </p>
-                        </div>
-                        <div className="flex gap-3 justify-center pt-2">
-                          <button
-                            onClick={() => setOnboardingStep(1)}
-                            className="btn btn-outline px-6 py-3"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={() => setHvacSubstep(2)}
-                            className="btn btn-primary px-8 py-3 text-lg"
-                          >
-                            Next →
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                            Primary Heating System
-                          </label>
-                          <div className="inline-flex rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 p-1">
-                            <button
-                              onClick={() => setPrimarySystem("heatPump")}
-                              className={`px-6 py-2 rounded-md font-semibold transition-all ${
-                                primarySystem === "heatPump"
-                                  ? "bg-blue-600 text-white shadow-md"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                              }`}
-                            >
-                              ⚡ Heat Pump
-                            </button>
-                            <button
-                              onClick={() => setPrimarySystem("gasFurnace")}
-                              className={`px-6 py-2 rounded-md font-semibold transition-all ${
-                                primarySystem === "gasFurnace"
-                                  ? "bg-blue-600 text-white shadow-md"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                              }`}
-                            >
-                              🔥 Gas Furnace
-                            </button>
-                          </div>
-                        </div>
-                        {primarySystem === "heatPump" && (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                Heating Efficiency (HSPF2)
-                                <span
-                                  className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                  title="Heating Seasonal Performance Factor — a heating efficiency rating. Higher is better."
-                                >
-                                  ⓘ
-                                </span>
-                              </label>
-                              <input
-                                type="number"
-                                min={6}
-                                max={13}
-                                step={0.1}
-                                value={hspf2}
-                                onChange={(e) =>
-                                  setHspf2(
-                                    Math.min(
-                                      13,
-                                      Math.max(6, Number(e.target.value))
-                                    )
-                                  )
-                                }
-                                className={inputClasses}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                Cooling Efficiency (SEER2)
-                                <span
-                                  className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                  title="Seasonal Energy Efficiency Ratio — a cooling efficiency rating. Higher is better."
-                                >
-                                  ⓘ
-                                </span>
-                              </label>
-                              <input
-                                type="number"
-                                min={14}
-                                max={22}
-                                step={1}
-                                value={efficiency}
-                                onChange={(e) =>
-                                  setEfficiency(
-                                    Math.min(
-                                      22,
-                                      Math.max(14, Number(e.target.value))
-                                    )
-                                  )
-                                }
-                                className={inputClasses}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                Capacity (kBTU)
-                              </label>
-                              <select
-                                value={displayCapacity}
-                                onChange={(e) =>
-                                  setCapacity(Number(e.target.value))
-                                }
-                                className={selectClasses}
-                              >
-                                {[18, 24, 30, 36, 42, 48, 60].map((bt) => (
-                                  <option key={bt} value={bt}>
-                                    {bt}k BTU (
-                                    {
-                                      {
-                                        18: 1.5,
-                                        24: 2,
-                                        30: 2.5,
-                                        36: 3,
-                                        42: 3.5,
-                                        48: 4,
-                                        60: 5,
-                                      }[bt]
-                                    }{" "}
-                                    tons)
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        )}
-                        {primarySystem === "heatPump" && (
-                          <div className="mt-3 text-left">
-                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                              Electric auxiliary heat (backup)
-                            </label>
-                            <div className="inline-flex items-center gap-3">
-                              <label className="inline-flex items-center gap-2 text-sm">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4"
-                                  checked={!!useElectricAuxHeatSetting}
-                                  onChange={(e) =>
-                                    setUseElectricAuxHeat(!!e.target.checked)
-                                  }
-                                  aria-label="Include electric auxiliary resistance heat in electricity & cost estimates"
-                                  title="When enabled, electric auxiliary resistance backup heat will be counted in your electricity estimates"
-                                />
-                                Count electric resistance backup heat toward
-                                electricity estimates (if enabled, aux heat will
-                                increase monthly kWh and cost)
-                              </label>
-                            </div>
-                          </div>
-                        )}
-                        {primarySystem === "gasFurnace" && (
-                          <>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                AFUE (Efficiency)
-                                <span
-                                  className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                  title="Annual Fuel Utilization Efficiency — how much of your fuel becomes usable heat. Higher is better."
-                                >
-                                  ⓘ
-                                </span>
-                              </label>
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="range"
-                                  min="0.60"
-                                  max="0.99"
-                                  step="0.01"
-                                  value={typeof afue === "number" ? afue : 0.95}
-                                  onChange={(e) =>
-                                    setAfue(
-                                      Math.min(
-                                        0.99,
-                                        Math.max(0.6, Number(e.target.value))
-                                      )
-                                    )
-                                  }
-                                  className="flex-grow"
-                                />
-                                <span className="text-xl font-bold text-blue-600 dark:text-blue-400 min-w-[90px]">
-                                  {Math.round((afue ?? 0.95) * 100)}%
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                Typical range: 60%–99%. Default 95%.
-                              </p>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                Cooling System
-                              </label>
-                              <div className="inline-flex rounded-lg border-2 border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 p-1">
-                                <button
-                                  onClick={() => setCoolingSystem("centralAC")}
-                                  className={`px-4 py-2 rounded-md text-xs font-semibold ${
-                                    coolingSystem === "centralAC"
-                                      ? "bg-indigo-600 text-white shadow"
-                                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                  }`}
-                                >
-                                  ❄️ Central A/C
-                                </button>
-                                <button
-                                  onClick={() => setCoolingSystem("dualFuel")}
-                                  className={`px-4 py-2 rounded-md text-xs font-semibold ${
-                                    coolingSystem === "dualFuel"
-                                      ? "bg-indigo-600 text-white shadow"
-                                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                  }`}
-                                >
-                                  ⚡ Dual-Fuel HP
-                                </button>
-                                <button
-                                  onClick={() => setCoolingSystem("none")}
-                                  className={`px-4 py-2 rounded-md text-xs font-semibold ${
-                                    coolingSystem === "none"
-                                      ? "bg-indigo-600 text-white shadow"
-                                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                  }`}
-                                >
-                                  None
-                                </button>
-                              </div>
-                            </div>
-                            {coolingSystem === "centralAC" && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                    A/C SEER2
-                                    <span
-                                      className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                      title="Cooling efficiency rating. Higher is better."
-                                    >
-                                      ⓘ
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={13}
-                                    max={22}
-                                    step={1}
-                                    value={efficiency}
-                                    onChange={(e) =>
-                                      setEfficiency(
-                                        Math.min(
-                                          22,
-                                          Math.max(13, Number(e.target.value))
-                                        )
-                                      )
-                                    }
-                                    className={inputClasses}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                    A/C Capacity (kBTU)
-                                  </label>
-                                  <select
-                                    value={coolingCapacity}
-                                    onChange={(e) =>
-                                      setCoolingCapacity(Number(e.target.value))
-                                    }
-                                    className={selectClasses}
-                                  >
-                                    {[18, 24, 30, 36, 42, 48, 60].map((bt) => (
-                                      <option key={bt} value={bt}>
-                                        {bt}k BTU (
-                                        {
-                                          {
-                                            18: 1.5,
-                                            24: 2,
-                                            30: 2.5,
-                                            36: 3,
-                                            42: 3.5,
-                                            48: 4,
-                                            60: 5,
-                                          }[bt]
-                                        }{" "}
-                                        tons)
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                            {coolingSystem === "dualFuel" && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                    HP Heating (HSPF2)
-                                    <span
-                                      className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                      title="Heating efficiency rating. Higher is better."
-                                    >
-                                      ⓘ
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={6}
-                                    max={13}
-                                    step={0.1}
-                                    value={hspf2}
-                                    onChange={(e) =>
-                                      setHspf2(
-                                        Math.min(
-                                          13,
-                                          Math.max(6, Number(e.target.value))
-                                        )
-                                      )
-                                    }
-                                    className={inputClasses}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-                                    HP Cooling (SEER2)
-                                    <span
-                                      className="ml-1 text-blue-600 dark:text-blue-400 cursor-help"
-                                      title="Cooling efficiency rating. Higher is better."
-                                    >
-                                      ⓘ
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={14}
-                                    max={22}
-                                    step={1}
-                                    value={efficiency}
-                                    onChange={(e) =>
-                                      setEfficiency(
-                                        Math.min(
-                                          22,
-                                          Math.max(14, Number(e.target.value))
-                                        )
-                                      )
-                                    }
-                                    className={inputClasses}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                                    HP Capacity (kBTU)
-                                  </label>
-                                  <select
-                                    value={coolingCapacity}
-                                    onChange={(e) =>
-                                      setCoolingCapacity(Number(e.target.value))
-                                    }
-                                    className={selectClasses}
-                                  >
-                                    {[18, 24, 30, 36, 42, 48, 60].map((bt) => (
-                                      <option key={bt} value={bt}>
-                                        {bt}k BTU (
-                                        {
-                                          {
-                                            18: 1.5,
-                                            24: 2,
-                                            30: 2.5,
-                                            36: 3,
-                                            42: 3.5,
-                                            48: 4,
-                                            60: 5,
-                                          }[bt]
-                                        }{" "}
-                                        tons)
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        <div className="flex gap-3 justify-center pt-2">
-                          <button
-                            onClick={() => setHvacSubstep(1)}
-                            className="btn btn-outline px-6 py-3"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={handleOnboardingNext}
-                            className="btn btn-primary px-8 py-3 text-lg"
-                          >
-                            Next →
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Step 3: Groq API Key (Optional) */}
-              {onboardingStep === 3 && (
-                <div className="text-center">
-                  <div className="mb-4">
-                    <Zap
-                      size={48}
-                      className="mx-auto text-purple-600 dark:text-purple-400"
-                    />
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                    STEP {onboardingStep + 1} OF 5
-                  </p>
-                  <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-                    Enable Ask Joule AI (Optional)
-                  </h2>
-                  <p className="text-base text-gray-600 dark:text-gray-400 leading-relaxed mb-2">
-                    Ask Joule is your AI assistant for natural language queries
-                    like "What if I had a 10 HSPF system?" or "Set winter to
-                    68".
-                  </p>
-                  <p className="text-sm text-purple-600 dark:text-purple-400 font-semibold mb-6">
-                    ✨ This step is completely optional — you can skip if you
-                    don't need AI features.
-                  </p>
-
-                  <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-xl shadow-md p-6 mb-6 text-left border-2 border-purple-200 dark:border-purple-800">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                      <span>🔑</span> Free Groq API Key
-                    </h3>
-                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                      Groq provides{" "}
-                      <strong className="text-purple-600 dark:text-purple-400">
-                        free API access
-                      </strong>{" "}
-                      with generous limits. Get your key in 60 seconds:
-                    </p>
-                    <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300 mb-4 list-decimal list-inside">
-                      <li>
-                        Visit{" "}
-                        <a
-                          href="https://console.groq.com/keys"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300"
-                        >
-                          console.groq.com/keys
-                        </a>{" "}
-                        (opens in new tab)
-                      </li>
-                      <li>Sign up with Google/GitHub (takes 30 seconds)</li>
-                      <li>Click "Create API Key" and copy it</li>
-                      <li>
-                        Paste it below or save it in{" "}
-                        <Link
-                          to="/settings#api-keys"
-                          className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300"
-                        >
-                          Settings
-                        </Link>{" "}
-                        later
-                      </li>
-                    </ol>
-                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-blue-800 dark:text-blue-200">
-                        <strong>💡 Recommended Model:</strong>{" "}
-                        <code className="bg-white dark:bg-gray-800 px-2 py-0.5 rounded">
-                          llama-3.3-70b-versatile
-                        </code>
-                        <br />
-                        <span className="text-[10px] text-blue-600 dark:text-blue-300">
-                          Fast, accurate, and free. If deprecated, we'll suggest
-                          the latest model.
-                        </span>
-                      </p>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Paste your Groq API key here (optional)"
-                      className="w-full p-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-800 transition-all"
-                      defaultValue={(() => {
-                        try {
-                          return localStorage.getItem("groq_api_key") || "";
-                        } catch {
-                          return "";
-                        }
-                      })()}
-                      onChange={(e) => {
-                        try {
-                          if (e.target.value.trim()) {
-                            localStorage.setItem(
-                              "groq_api_key",
-                              e.target.value.trim()
-                            );
-                          } else {
-                            localStorage.removeItem("groq_api_key");
-                          }
-                        } catch {
-                          /* Intentionally empty */
-                        }
-                      }}
-                    />
-                  </div>
-
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6 text-left">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>🔒 Privacy:</strong> Your API key stays on your
-                      device. We never send it to our servers.
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3 justify-center">
-                    <button
-                      onClick={() => setOnboardingStep(2)}
-                      className="btn btn-outline px-6 py-3"
-                    >
-                      ← Back
-                    </button>
-                    <button
-                      onClick={handleOnboardingNext}
-                      className="btn btn-outline px-6 py-3"
-                    >
-                      Skip This Step
-                    </button>
-                    <button
-                      onClick={handleOnboardingNext}
-                      className="btn btn-primary px-8 py-3 text-lg"
-                    >
-                      Next →
-                    </button>
-                  </div>
-
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-6">
-                    Need detailed instructions? Visit{" "}
-                    <Link
-                      to="/settings#api-keys"
-                      className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300"
-                    >
-                      Settings → API Keys
-                    </Link>{" "}
-                    for a complete step-by-step guide.
-                  </p>
-                </div>
-              )}
-
-              {/* Step 4: Confirmation */}
-              {onboardingStep === 4 && (
-                <div className="text-center">
-                  <div className="text-7xl mb-6 text-green-600">
-                    <CheckCircle2 size={64} />
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                    STEP {onboardingStep + 1} OF 5
-                  </p>
-                  <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-                    You're all set!
-                  </h2>
-                  <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-8 max-w-xl mx-auto">
-                    We have everything we need to create your personalized
-                    energy cost forecast.
-                  </p>
-
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl shadow-md p-6 mb-6 text-left border-2 border-blue-200 dark:border-blue-800">
-                    <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                      Quick summary:
-                    </h3>
-                    <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 dark:text-green-400 mt-0.5">
-                          ✓
-                        </span>
-                        <span>
-                          <strong>Location:</strong>{" "}
-                          {foundLocationName || "Set"}
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 dark:text-green-400 mt-0.5">
-                          ✓
-                        </span>
-                        <span>
-                          <strong>Home:</strong> {squareFeet.toLocaleString()}{" "}
-                          sq ft,{" "}
-                          {insulationLevel === 1.4
-                            ? "Poor"
-                            : insulationLevel === 1.0
-                            ? "Average"
-                            : "Good"}{" "}
-                          insulation
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 dark:text-green-400 mt-0.5">
-                          ✓
-                        </span>
-                        <span>
-                          <strong>System:</strong>{" "}
-                          {primarySystem === "heatPump"
-                            ? "Heat Pump"
-                            : "Gas Furnace"}
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 dark:text-green-400 mt-0.5">
-                          ✓
-                        </span>
-                        <span>
-                          <strong>Ask Joule AI:</strong>{" "}
-                          {(() => {
-                            try {
-                              return localStorage.getItem("groq_api_key")
-                                ? "Enabled ✨"
-                                : "Skipped (can enable later)";
-                            } catch {
-                              return "Skipped";
-                            }
-                          })()}
-                        </span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="flex gap-3 justify-center">
-                    <button
-                      onClick={() => setOnboardingStep(3)}
-                      className="btn btn-outline px-6 py-3"
-                    >
-                      ← Back
-                    </button>
-                    <button
-                      onClick={completeOnboarding}
-                      className="btn btn-primary px-8 py-3 text-lg"
-                    >
-                      Go to Overview
-                    </button>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl shadow-md p-6 mt-6 text-center border-2 border-blue-200 dark:border-blue-800">
-                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                      Want a quick tour of all the features?
-                    </p>
-                    <button
-                      onClick={() => {
-                        // Complete onboarding without navigating away so the tour component remains mounted
-                        completeOnboarding({ navigateHome: false });
-                        // Start the tour after a brief delay to allow UI to settle
-                        setTimeout(() => setTourActive(true), 500);
-                      }}
-                      className="btn btn-outline px-6 py-2 text-sm"
-                    >
-                      🎯 Show Feature Tour
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Legacy steps (3–5) removed: electricity/gas cost, auto-fetch rates, preview. Rates can be adjusted post-onboarding in settings. */}
-            </div>
+              Set Location
+            </button>
           </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {weeklyMetrics && (
-              <span className="badge badge-accent">Forecast Ready</span>
-            )}
-            {!isFirstTimeUser && (
+        ) : (
+          <div className="mb-10">
+            {/* Tabs for Forecast vs Custom Scenario */}
+            <div className="flex gap-2 mb-6 border-b border-[#222A35]">
               <button
-                onClick={() => {
-                  // When editing home details from the main header, open the onboarding at the Location step
-                  setOnboardingStep(1);
-                  setShowOnboarding(true);
-                }}
-                className="text-sm text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 underline"
+                onClick={() =>
+                  dispatch({
+                    type: "SET_UI_FIELD",
+                    field: "activeTab",
+                    value: "forecast",
+                  })
+                }
+                className={`px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === "forecast"
+                    ? "text-[#1E4CFF] border-b-2 border-[#1E4CFF]"
+                    : "text-[#A7B0BA] hover:text-[#E8EDF3]"
+                }`}
               >
-                Edit Home Details
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} />
+                  7-Day Forecast
+                </div>
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Cost Estimates Section - MOVED TO TOP FOR EMPHASIS */}
-        <div className="card card-hover p-6 fade-in">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 mb-2">
-            <TrendingUp
-              size={24}
-              className="text-green-600 dark:text-green-400"
-            />
-            Cost Estimates
-          </h2>
-          <p className="text-sm text-gray-700 dark:text-gray-300 mb-6">
-            Get accurate 7-day forecasts based on real weather data or test
-            custom scenarios
-          </p>
-          <div className="flex gap-2 mb-6 border-b">
-            <button
-              onClick={() =>
-                dispatch({
-                  type: "SET_UI_FIELD",
-                  field: "activeTab",
-                  value: "forecast",
-                })
-              }
-              className={`px-4 py-2 font-semibold transition-colors ${
-                activeTab === "forecast"
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Calendar size={18} />
-                7-Day Forecast
-              </div>
-            </button>
-            <button
-              onClick={() =>
-                dispatch({
-                  type: "SET_UI_FIELD",
-                  field: "activeTab",
-                  value: "manual",
-                })
-              }
-              className={`px-4 py-2 font-semibold transition-colors ${
-                activeTab === "manual"
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Settings size={18} />
-                Custom Scenario
-              </div>
-            </button>
-          </div>
-          {activeTab === "forecast" && (
-            <div>
-              {/* Hybrid Setup Wizard / Location Summary */}
-              {!foundLocationName ? (
-                /* First-Time User: Clean Setup Wizard Button */
-                <div className="mb-6 p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-950 dark:to-indigo-900 rounded-2xl border-2 border-blue-300 dark:border-blue-700 shadow-lg text-center">
-                  <div className="text-6xl mb-4">🧙‍♂️</div>
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-                    Let's Get Your First Forecast
-                  </h3>
-                  <p className="text-lg text-gray-700 dark:text-gray-300 mb-6 max-w-xl mx-auto">
-                    We just need your location to get started with accurate
-                    weather data and cost estimates
-                  </p>
-                  <button
-                    onClick={() => {
-                      setOnboardingStep(0);
-                      setShowOnboarding(true);
-                    }}
-                    className="btn btn-primary px-10 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all"
-                  >
-                    Launch Setup Wizard
-                  </button>
+              <button
+                onClick={() =>
+                  dispatch({
+                    type: "SET_UI_FIELD",
+                    field: "activeTab",
+                    value: "manual",
+                  })
+                }
+                className={`px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === "manual"
+                    ? "text-[#1E4CFF] border-b-2 border-[#1E4CFF]"
+                    : "text-[#A7B0BA] hover:text-[#E8EDF3]"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Settings size={16} />
+                  Custom Scenario
                 </div>
-              ) : (
-                /* Returning User: Compact Location Summary with Edit */
-                <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <MapPin
-                        size={20}
-                        className="text-blue-600 dark:text-blue-400"
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">
-                          Forecasting for:
-                        </p>
-                        <p className="text-lg font-bold text-gray-900 dark:text-white">
-                          {foundLocationName || "No location set"}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Elevation: {locationElevation > 0 ? locationElevation.toLocaleString() : "Not set"} ft
-                          {globalHomeElevation && globalHomeElevation !== locationElevation && (
-                            <span className="ml-2 text-blue-600 dark:text-blue-400">
-                              (Home: {globalHomeElevation.toLocaleString()} ft)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        // When editing a location, jump to the Location step (step 1)
-                        setOnboardingStep(1);
-                        setShowOnboarding(true);
-                      }}
-                      className="btn btn-outline px-4 py-2 text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
-                    >
-                      Change Location
-                    </button>
-                  </div>
-                </div>
-              )}
-
+              </button>
+            </div>
+            
+            {activeTab === "forecast" && (
+              <div>
               {/* STEP 1: Configure Your Forecast (Inputs Section) - REMOVED (was dead code with `foundLocationName && false`) */}
 
               {/* Loading State */}
@@ -3454,7 +2388,7 @@ const SevenDayCostForecaster = () => {
                             {anomaly.description}
                           </p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                            💰 {anomaly.impact}
+                            ðŸ’° {anomaly.impact}
                           </p>
                           {anomaly.startDate && (
                             <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
@@ -3488,161 +2422,7 @@ const SevenDayCostForecaster = () => {
 
               {weeklyMetrics && !forecastLoading && !forecastError && (
                 <div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div
-                      id="weekly-energy-card"
-                      className="bg-gradient-to-br from-blue-50 via-cyan-50 to-blue-100 dark:from-blue-900 dark:via-cyan-900 dark:to-blue-950 border-2 border-blue-400 dark:border-blue-600 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 card-lift group"
-                    >
-                      <div className="flex items-center gap-2 mb-3">
-                        <Zap
-                          size={20}
-                          className="text-blue-600 dark:text-blue-400"
-                        />
-                        <h3 className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest">
-                          {energyMode === "cooling"
-                            ? "Total Cooling Energy"
-                            : primarySystem === "gasFurnace"
-                            ? "Total Therms"
-                            : "Total Heating Energy"}
-                        </h3>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-6xl md:text-7xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent animate-count-up">
-                          {energyMode === "cooling"
-                            ? (weeklyMetrics?.totalEnergy ?? 0).toFixed(1)
-                            : primarySystem === "gasFurnace"
-                            ? (weeklyGasMetrics?.totalTherms ?? 0).toFixed(2)
-                            : (breakdownView === "withAux"
-                                ? weeklyMetrics.summary.reduce(
-                                    (acc, d) => acc + d.energyWithAux,
-                                    0
-                                  )
-                                : weeklyMetrics.totalEnergy
-                              ).toFixed(1)}
-                        </p>
-                        <span className="text-2xl text-gray-600 dark:text-gray-300 font-bold">
-                          {energyMode === "cooling"
-                            ? "kWh"
-                            : primarySystem === "gasFurnace"
-                            ? "therms"
-                            : "kWh"}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 font-medium">
-                        Next 7 days
-                      </p>
-                    </div>
-                    <div
-                      id="weekly-cost-card"
-                      className="bg-gradient-to-br from-green-50 via-emerald-50 to-green-100 dark:from-green-900 dark:via-emerald-900 dark:to-green-950 border-2 border-green-400 dark:border-green-600 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 card-lift group"
-                    >
-                      <div className="flex items-center gap-2 mb-3">
-                        <DollarSign
-                          size={20}
-                          className="text-green-600 dark:text-green-400"
-                        />
-                        <h3 className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest">
-                          Weekly Cost
-                        </h3>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-6xl md:text-7xl font-black bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-400 dark:to-emerald-400 bg-clip-text text-transparent animate-count-up">
-                          $
-                          {energyMode === "cooling"
-                            ? (weeklyMetrics?.totalCost ?? 0).toFixed(2)
-                            : primarySystem === "gasFurnace"
-                            ? (weeklyGasMetrics?.totalCost ?? 0).toFixed(2)
-                            : (breakdownView === "withAux"
-                                ? weeklyMetrics.totalCostWithAux
-                                : weeklyMetrics.totalCost
-                              ).toFixed(2)}
-                        </p>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 font-medium">
-                        Estimated for 7 days
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                        {energyMode === "cooling" ? (
-                          <>
-                            @ ${utilityCost.toFixed(3)}/kWh{" "}
-                            <button
-                              onClick={() =>
-                                dispatch({
-                                  type: "SET_UI_FIELD",
-                                  field: "activeTab",
-                                  value: "forecast",
-                                })
-                              }
-                              className="italic text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                            >
-                              (edit rate)
-                            </button>
-                          </>
-                        ) : primarySystem === "gasFurnace" ? (
-                          <>@ ${gasCost.toFixed(2)}/therm</>
-                        ) : (
-                          <>
-                            @ ${utilityCost.toFixed(3)}/kWh{" "}
-                            <button
-                              onClick={() =>
-                                dispatch({
-                                  type: "SET_UI_FIELD",
-                                  field: "activeTab",
-                                  value: "forecast",
-                                })
-                              }
-                              className="italic text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                            >
-                              (edit rate)
-                            </button>
-                          </>
-                        )}
-                      </p>
-                      {/* CO2 Footprint */}
-                      <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Estimated CO2 Footprint:{" "}
-                          <span className="font-semibold text-gray-700 dark:text-gray-300">
-                            {(() => {
-                              const co2Lbs =
-                                primarySystem === "gasFurnace"
-                                  ? calculateGasCO2(
-                                      weeklyGasMetrics?.totalTherms ?? 0
-                                    ).lbs
-                                  : calculateElectricityCO2(
-                                      energyMode === "cooling"
-                                        ? weeklyMetrics?.totalEnergy ?? 0
-                                        : (breakdownView === "withAux"
-                                            ? weeklyMetrics?.totalEnergyWithAux
-                                            : weeklyMetrics?.totalEnergy) ?? 0,
-                                      stateName
-                                    ).lbs;
-                              const equivalent = getBestEquivalent(co2Lbs);
-                              // Show '< 1 lb' if 0 <= co2Lbs < 1, 'N/A' if invalid, else formatCO2
-                              let co2Display;
-                              if (!Number.isFinite(co2Lbs) || co2Lbs < 0) {
-                                co2Display = "N/A";
-                              } else if (co2Lbs >= 0 && co2Lbs < 1) {
-                                co2Display = "< 1 lb";
-                              } else {
-                                co2Display = formatCO2(co2Lbs);
-                              }
-                              return (
-                                <>
-                                  {co2Display}
-                                  {co2Lbs > 10 && Number.isFinite(co2Lbs) && (
-                                    <span className="block text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-normal">
-                                      ≈ {equivalent.text}
-                                    </span>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Cost cards moved to top - removed duplicates here */}
 
                   {/* ROI Widget (only for heat pump mode AND heating mode) */}
                   {primarySystem === "heatPump" &&
@@ -3707,6 +2487,7 @@ const SevenDayCostForecaster = () => {
                                     const node =
                                       document.getElementById("share-card");
                                     if (!node) return;
+                                    const html2canvas = await loadHtml2Canvas();
                                     const canvas = await html2canvas(node, {
                                       useCORS: true,
                                       backgroundColor: null,
@@ -3717,6 +2498,7 @@ const SevenDayCostForecaster = () => {
                                     setShowShareModal(true);
                                   }, 0);
                                 } else {
+                                  const html2canvas = await loadHtml2Canvas();
                                   const canvas = await html2canvas(el, {
                                     useCORS: true,
                                     backgroundColor: null,
@@ -3768,7 +2550,7 @@ const SevenDayCostForecaster = () => {
                             onClick={() => setShowUpgradeModal(true)}
                             className="mt-2 px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700"
                           >
-                            See Upgrade Options →
+                            See Upgrade Options â†’
                           </button>
                         </div>
                       </div>
@@ -3811,7 +2593,7 @@ const SevenDayCostForecaster = () => {
                             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             aria-label="Close share dialog"
                           >
-                            ✕
+                            âœ•
                           </button>
                         </div>
                         <div className="p-4">
@@ -3823,7 +2605,7 @@ const SevenDayCostForecaster = () => {
                             />
                           ) : (
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              Generating image…
+                              Generating imageâ€¦
                             </p>
                           )}
                           <div className="mt-4 flex flex-wrap gap-2">
@@ -4096,9 +2878,10 @@ const SevenDayCostForecaster = () => {
                                         </span>
                                       )}
                                       {": "}
-                                      <span className="font-mono">{heatLossFactor.toFixed(1)}</span> BTU/hr/°F{" "}
+                                      <span className="font-mono">{formatHeatLossFactor(heatLossFactor, unitSystem, { decimals: 1 })}</span>{" "}
                                       <span className="text-gray-500 dark:text-gray-400">•</span>{" "}
-                                      <span className="font-mono">{heatLossAt70F.toLocaleString()}</span> BTU/hr @ 70°F ΔT
+                                      <span className="font-mono">{formatCapacityFromKbtuh(heatLossAt70F / 1000, unitSystem, { decimals: 0 })}</span>{" "}
+                                      @ {formatTemperatureFromF(70, unitSystem, { decimals: 0, withUnit: false })}°{unitSystem === "intl" ? "C" : "F"} ΔT
                                       <br />
                                       <span className="text-gray-600 dark:text-gray-400 text-[10px] italic">
                                         {dataSourceLabel}
@@ -4120,11 +2903,52 @@ const SevenDayCostForecaster = () => {
                               </div>
                             </div>
                           )}
+                          
+                          {/* Weather Data Source Attribution */}
+                          {forecastDataSource && (
+                            <div className="mb-3 p-3 bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 border-2 border-blue-300 dark:border-blue-600 rounded-lg shadow-sm">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                                <MapPin size={16} className="text-blue-600 dark:text-blue-400" />
+                                <span>Weather Forecast Data Source</span>
+                              </p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300">
+                                {forecastDataSource === 'NWS' ? (
+                                  <>
+                                    <strong className="text-blue-700 dark:text-blue-300">National Weather Service (NWS)</strong>
+                                    {' '}— Official US government forecast from{' '}
+                                    <a 
+                                      href="https://www.weather.gov/" 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline font-medium"
+                                    >
+                                      weather.gov
+                                    </a>
+                                  </>
+                                ) : (
+                                  <>
+                                    <strong className="text-indigo-700 dark:text-indigo-300">Open-Meteo</strong>
+                                    {' '}— Global weather API (used when NWS unavailable). Data from{' '}
+                                    <a 
+                                      href="https://open-meteo.com/" 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 underline font-medium"
+                                    >
+                                      open-meteo.com
+                                    </a>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          
                           <DailyBreakdownTable
                             summary={weeklyMetrics.summary}
                             indoorTemp={indoorTemp}
                             viewMode={breakdownView}
                             awayModeDays={awayModeDays}
+                            unitSystem={unitSystem}
                             onToggleAwayMode={(dayString) => {
                               setAwayModeDays((prev) => {
                                 const newSet = new Set(prev);
@@ -4137,161 +2961,11 @@ const SevenDayCostForecaster = () => {
                               });
                             }}
                           />
-                          
-                          {/* Live Calculation Worksheet */}
-                          {primarySystem === "heatPump" && weeklyMetrics && (
-                            <details className="mt-6 border rounded-lg dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                              <summary className="p-4 cursor-pointer font-semibold text-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors flex items-center gap-2 list-none">
-                                <HelpCircle size={20} />
-                                <span>Live Calculation Worksheet</span>
-                                <span className="ml-auto text-sm text-gray-600 dark:text-gray-400">Click to expand</span>
-                              </summary>
-                              <div className="p-4 border-t dark:border-gray-700">
-                                <div className="space-y-4 text-sm font-mono">
-                                {/* System Parameters */}
-                                <div className="bg-white dark:bg-gray-900 p-3 rounded border dark:border-gray-700">
-                                  <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-2">System Parameters:</h4>
-                                  <div className="space-y-1 text-xs">
-                                    <div>Capacity = {capacity} kBTU = {tons.toFixed(1)} tons</div>
-                                    <div>HSPF2 = {hspf2.toFixed(1)}</div>
-                                    <div>SEER2 = {efficiency.toFixed(1)}</div>
-                                    <div>Compressor Power = {compressorPower.toFixed(2)} kW</div>
-                                    <div>Heat Loss = {effectiveHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT</div>
-                                    <div>Indoor Temp = {indoorTemp}°F</div>
-                                    <div>Utility Cost = ${utilityCost.toFixed(3)}/kWh</div>
-                                  </div>
-                                </div>
-
-                                {/* Heat Loss Calculation */}
-                                <div className="bg-white dark:bg-gray-900 p-3 rounded border dark:border-gray-700">
-                                  <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Heat Loss Calculation:</h4>
-                                  <div className="space-y-1 text-xs">
-                                    {(() => {
-                                      const useManualHeatLoss = Boolean(userSettings?.useManualHeatLoss);
-                                      const useAnalyzerHeatLoss = Boolean(userSettings?.useAnalyzerHeatLoss);
-                                      const heatLossFactor = effectiveHeatLoss / 70;
-                                      
-                                      if (useManualHeatLoss) {
-                                        const manualValue = Number(userSettings?.manualHeatLoss) || 0;
-                                        return (
-                                          <>
-                                            <div className="mb-2 font-semibold text-blue-600 dark:text-blue-400">Source: Manual Entry</div>
-                                            <div>Manual Heat Loss = {manualValue.toFixed(1)} BTU/hr/°F</div>
-                                            <div className="font-bold">= {effectiveHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT</div>
-                                            <div>BTU Loss per °F = {effectiveHeatLoss.toLocaleString()} ÷ 70 = {heatLossFactor.toFixed(1)} BTU/hr/°F</div>
-                                          </>
-                                        );
-                                      }
-                                      
-                                      if (useAnalyzerHeatLoss) {
-                                        const analyzerValue = Number(userSettings?.analyzerHeatLoss) || heatLossFactor;
-                                        return (
-                                          <>
-                                            <div className="mb-2 font-semibold text-blue-600 dark:text-blue-400">Source: Analyzer Data (CSV Import)</div>
-                                            <div>Analyzer Heat Loss = {analyzerValue.toFixed(1)} BTU/hr/°F</div>
-                                            <div className="font-bold">= {effectiveHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT</div>
-                                            <div>BTU Loss per °F = {effectiveHeatLoss.toLocaleString()} ÷ 70 = {heatLossFactor.toFixed(1)} BTU/hr/°F</div>
-                                          </>
-                                        );
-                                      }
-                                      
-                                      // Calculated (DoE) method
-                                      return (
-                                        <>
-                                          <div className="mb-2 font-semibold text-blue-600 dark:text-blue-400">Source: Calculated (Department of Energy Data)</div>
-                                          <div>Base BTU/sqft = 22.67</div>
-                                          <div>Square Feet = {squareFeet.toLocaleString()}</div>
-                                          <div>Insulation Factor = {insulationLevel.toFixed(2)}</div>
-                                          <div>Home Shape Factor = {homeShape.toFixed(2)}</div>
-                                          <div>Ceiling Multiplier = 1 + ({ceilingHeight} - 8) × 0.1 = {(1 + (ceilingHeight - 8) * 0.1).toFixed(2)}</div>
-                                          <div>Design Heat Loss = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(2)}</div>
-                                          <div className="font-bold">= {effectiveHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT</div>
-                                          <div>BTU Loss per °F = {effectiveHeatLoss.toLocaleString()} ÷ 70 = {heatLossFactor.toFixed(1)} BTU/hr/°F</div>
-                                        </>
-                                      );
-                                    })()}
-                                  </div>
-                                </div>
-
-                                {/* Hourly Performance Calculation (Example for first hour) */}
-                                {adjustedForecast && adjustedForecast.length > 0 && (() => {
-                                  const firstHour = adjustedForecast[0];
-                                  const tempDiff = Math.max(1, indoorTemp - firstHour.temp);
-                                  const buildingHeatLossBtu = (effectiveHeatLoss / 70) * tempDiff;
-                                  const capacityFactor = heatUtils.getCapacityFactor(firstHour.temp);
-                                  const heatpumpOutputBtu = tons * 3.517 * capacityFactor * 3412.14;
-                                  const powerFactor = 1 / Math.max(0.7, capacityFactor);
-                                  const baseElectricalKw = compressorPower * powerFactor;
-                                  const defrostPenalty = heatUtils.getDefrostPenalty(firstHour.temp, firstHour.humidity);
-                                  const electricalKw = baseElectricalKw * defrostPenalty;
-                                  const runtime = heatpumpOutputBtu > 0 ? (buildingHeatLossBtu / heatpumpOutputBtu) * 100 : 100;
-                                  const deficitBtu = Math.max(0, buildingHeatLossBtu - heatpumpOutputBtu);
-                                  const auxKw = deficitBtu / 3412.14;
-                                  const energyForHour = electricalKw * (Math.min(100, Math.max(0, runtime)) / 100);
-                                  const hourRate = computeHourlyRate(firstHour.time, localRates, utilityCost);
-                                  const hourCost = energyForHour * hourRate;
-                                  const auxCost = (breakdownView === "withAux" && useElectricAuxHeatSetting) ? auxKw * hourRate : 0;
-
-                                  return (
-                                    <div className="bg-white dark:bg-gray-900 p-3 rounded border dark:border-gray-700">
-                                      <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Hourly Performance Calculation (Example: {firstHour.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}):</h4>
-                                      <div className="space-y-1 text-xs">
-                                        <div>Outdoor Temp = {firstHour.temp.toFixed(1)}°F</div>
-                                        <div>Humidity = {firstHour.humidity.toFixed(0)}%</div>
-                                        <div>Temp Difference = {indoorTemp} - {firstHour.temp.toFixed(1)} = {tempDiff.toFixed(1)}°F</div>
-                                        <div>Building Heat Loss = {(effectiveHeatLoss / 70).toFixed(1)} × {tempDiff.toFixed(1)} = {buildingHeatLossBtu.toFixed(0)} BTU/hr</div>
-                                        <div className="mt-2 font-semibold">Capacity Factor:</div>
-                                        <div>Capacity Factor = {capacityFactor.toFixed(3)} (from temp {firstHour.temp.toFixed(1)}°F)</div>
-                                        <div>Heat Pump Output = {tons.toFixed(1)} × 3.517 × {capacityFactor.toFixed(3)} × 3412.14 = {heatpumpOutputBtu.toFixed(0)} BTU/hr</div>
-                                        <div className="mt-2 font-semibold">Electrical Power:</div>
-                                        <div>Power Factor = 1 ÷ max(0.7, {capacityFactor.toFixed(3)}) = {powerFactor.toFixed(3)}</div>
-                                        <div>Base Electrical = {compressorPower.toFixed(2)} × {powerFactor.toFixed(3)} = {baseElectricalKw.toFixed(2)} kW</div>
-                                        <div>Defrost Penalty = {defrostPenalty.toFixed(3)}</div>
-                                        <div>Electrical Power = {baseElectricalKw.toFixed(2)} × {defrostPenalty.toFixed(3)} = {electricalKw.toFixed(2)} kW</div>
-                                        <div className="mt-2 font-semibold">Runtime:</div>
-                                        <div>Runtime % = ({buildingHeatLossBtu.toFixed(0)} ÷ {heatpumpOutputBtu.toFixed(0)}) × 100 = {Math.min(100, Math.max(0, runtime)).toFixed(1)}%</div>
-                                        <div>Energy for Hour = {electricalKw.toFixed(2)} × ({Math.min(100, Math.max(0, runtime)).toFixed(1)} ÷ 100) = {energyForHour.toFixed(3)} kWh</div>
-                                        <div className="mt-2 font-semibold">Auxiliary Heat:</div>
-                                        <div>Deficit BTU = max(0, {buildingHeatLossBtu.toFixed(0)} - {heatpumpOutputBtu.toFixed(0)}) = {deficitBtu.toFixed(0)} BTU</div>
-                                        <div>Aux Power = {deficitBtu.toFixed(0)} ÷ 3412.14 = {auxKw.toFixed(2)} kW</div>
-                                        <div className="mt-2 font-semibold">Cost:</div>
-                                        <div>Hourly Rate = ${hourRate.toFixed(3)}/kWh</div>
-                                        <div>HP Cost = {energyForHour.toFixed(3)} × ${hourRate.toFixed(3)} = ${hourCost.toFixed(2)}</div>
-                                        {breakdownView === "withAux" && useElectricAuxHeatSetting && (
-                                          <div>Aux Cost = {auxKw.toFixed(2)} × ${hourRate.toFixed(3)} = ${auxCost.toFixed(2)}</div>
-                                        )}
-                                        <div className="font-bold mt-1">Total Hourly Cost = ${(hourCost + auxCost).toFixed(2)}</div>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Weekly Summary */}
-                                <div className="bg-white dark:bg-gray-900 p-3 rounded border dark:border-gray-700">
-                                  <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Weekly Summary:</h4>
-                                  <div className="space-y-1 text-xs">
-                                    <div>Total HP Energy = {weeklyMetrics.totalEnergy.toFixed(1)} kWh</div>
-                                    <div>Total Aux Energy = {weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0).toFixed(1)} kWh</div>
-                                    {breakdownView === "withAux" && useElectricAuxHeatSetting && (
-                                      <>
-                                        <div>Total Energy (with Aux) = {(weeklyMetrics.totalEnergy + weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0)).toFixed(1)} kWh</div>
-                                        <div className="font-bold">Total Cost (with Aux) = ${weeklyMetrics.totalCostWithAux.toFixed(2)}</div>
-                                      </>
-                                    )}
-                                    {breakdownView === "noAux" && (
-                                      <div className="font-bold">Total Cost (HP Only) = ${weeklyMetrics.totalCost.toFixed(2)}</div>
-                                    )}
-                                    <div className="mt-2">Average Daily Cost = ${((breakdownView === "withAux" && useElectricAuxHeatSetting ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost) / 7).toFixed(2)}</div>
-                                  </div>
-                                </div>
-                                </div>
-                              </div>
-                            </details>
-                          )}
                         </div>
                       )}
                     </div>
                   )}
+                  
                   {primarySystem === "gasFurnace" && (
                     <div className="border rounded-lg dark:border-gray-700 mb-6 p-4 bg-gray-50 dark:bg-gray-800">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -4489,270 +3163,47 @@ const SevenDayCostForecaster = () => {
                       )}
                     </div>
                   )}
-
-                  {/* Live Math Calculations Pulldown */}
-                  {weeklyMetrics && primarySystem === "heatPump" && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
-                      <button
-                        onClick={() => setShowCalculations(!showCalculations)}
-                        className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
-                            <Calculator size={24} className="text-white" />
-                          </div>
-                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Math Calculations</h3>
-                        </div>
-                        {showCalculations ? (
-                          <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-                        ) : (
-                          <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-                        )}
-                      </button>
-
-                      {showCalculations && (
-                        <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-                          {/* Building Characteristics */}
-                          <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Characteristics</h4>
-                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                              <div className="flex justify-between">
-                                <span>Square Feet:</span>
-                                <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Insulation Level:</span>
-                                <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Home Shape Factor:</span>
-                                <span className="font-bold">{homeShape.toFixed(2)}x</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Ceiling Height:</span>
-                                <span className="font-bold">{ceilingHeight} ft</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Ceiling Multiplier:</span>
-                                <span className="font-bold">{(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x</span>
-                              </div>
-                              <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
-                                <div className="flex justify-between">
-                                  <span>Design Heat Loss @ 70°F ΔT:</span>
-                                  <span className="font-bold text-blue-600 dark:text-blue-400">
-                                    {Math.round(squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1) / 1000) * 1000} BTU/hr
-                                  </span>
-                                </div>
-                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                  = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}
-                                </div>
-                              </div>
-                              <div className="pt-2">
-                                <div className="flex justify-between">
-                                  <span>BTU Loss per °F:</span>
-                                  <span className="font-bold text-blue-600 dark:text-blue-400">
-                                    {((squareFeet * 22.67 * insulationLevel * homeShape * (1 + (ceilingHeight - 8) * 0.1)) / 70).toFixed(1)} BTU/hr/°F
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* System Configuration */}
-                          <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
-                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">System Configuration</h4>
-                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                              <div className="flex justify-between">
-                                <span>Primary System:</span>
-                                <span className="font-bold">Heat Pump</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Capacity:</span>
-                                <span className="font-bold">{capacity}k BTU</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Tons:</span>
-                                <span className="font-bold">{tons.toFixed(1)} tons</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>HSPF2:</span>
-                                <span className="font-bold">{hspf2.toFixed(1)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Compressor Power:</span>
-                                <span className="font-bold">{compressorPower.toFixed(2)} kW</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Electricity Rate:</span>
-                                <span className="font-bold">${utilityCost.toFixed(3)} / kWh</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Temperature Settings */}
-                          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                            <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Temperature Settings</h4>
-                            <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                              <div className="flex justify-between">
-                                <span>Indoor Temp:</span>
-                                <span className="font-bold">{indoorTemp}°F</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Daytime Temp:</span>
-                                <span className="font-bold">{indoorTemp}°F</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Nighttime Temp:</span>
-                                <span className="font-bold">{nighttimeTemp}°F</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Example Hour Calculation */}
-                          {adjustedForecast && adjustedForecast.length > 0 && (() => {
-                            const firstHour = adjustedForecast[0];
-                            const tempDiff = Math.max(1, indoorTemp - firstHour.temp);
-                            const heatLossFactor = effectiveHeatLoss / 70;
-                            const buildingHeatLossBtu = heatLossFactor * tempDiff;
-                            const capacityFactor = heatUtils.getCapacityFactor(firstHour.temp);
-                            const heatpumpOutputBtu = tons * 3.517 * capacityFactor * 3412.14;
-                            const powerFactor = 1 / Math.max(0.7, capacityFactor);
-                            const baseElectricalKw = compressorPower * powerFactor;
-                            const defrostPenalty = heatUtils.getDefrostPenalty(firstHour.temp, firstHour.humidity);
-                            const electricalKw = baseElectricalKw * defrostPenalty;
-                            const runtime = heatpumpOutputBtu > 0 ? (buildingHeatLossBtu / heatpumpOutputBtu) * 100 : 100;
-                            const deficitBtu = Math.max(0, buildingHeatLossBtu - heatpumpOutputBtu);
-                            const auxKw = deficitBtu / 3412.14;
-                            const energyForHour = electricalKw * (Math.min(100, Math.max(0, runtime)) / 100);
-                            const hourRate = computeHourlyRate(firstHour.time, localRates, utilityCost);
-                            const hourCost = energyForHour * hourRate;
-                            const auxCost = (breakdownView === "withAux" && useElectricAuxHeatSetting) ? auxKw * hourRate : 0;
-
-                            return (
-                              <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
-                                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Example Hour Calculation ({firstHour.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {firstHour.temp.toFixed(1)}°F outdoor)</h4>
-                                <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                                  <div className="flex justify-between">
-                                    <span>Temperature Difference:</span>
-                                    <span className="font-bold">{tempDiff.toFixed(1)}°F</span>
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    = {indoorTemp}°F - {firstHour.temp.toFixed(1)}°F
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Building Heat Loss:</span>
-                                    <span className="font-bold text-orange-600 dark:text-orange-400">{buildingHeatLossBtu.toFixed(0)} BTU/hr</span>
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    = {heatLossFactor.toFixed(1)} BTU/hr/°F × {tempDiff.toFixed(1)}°F
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Capacity Factor:</span>
-                                    <span className="font-bold">{capacityFactor.toFixed(3)}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Heat Pump Output:</span>
-                                    <span className="font-bold text-orange-600 dark:text-orange-400">{heatpumpOutputBtu.toFixed(0)} BTU/hr</span>
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    = {tons.toFixed(1)} tons × 3.517 × {capacityFactor.toFixed(3)} × 3412.14
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Runtime:</span>
-                                    <span className="font-bold text-orange-600 dark:text-orange-400">{Math.min(100, Math.max(0, runtime)).toFixed(1)}%</span>
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    = ({buildingHeatLossBtu.toFixed(0)} ÷ {heatpumpOutputBtu.toFixed(0)}) × 100
-                                  </div>
-                                  {deficitBtu > 0 && (
-                                    <>
-                                      <div className="flex justify-between">
-                                        <span>Aux Heat Needed:</span>
-                                        <span className="font-bold text-red-600 dark:text-red-400">{auxKw.toFixed(2)} kW</span>
-                                      </div>
-                                      <div className="text-xs text-gray-600 dark:text-gray-400">
-                                        = {deficitBtu.toFixed(0)} BTU ÷ 3412.14
-                                      </div>
-                                    </>
-                                  )}
-                                  <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
-                                    <div className="flex justify-between">
-                                      <span>Energy for Hour:</span>
-                                      <span className="font-bold text-orange-600 dark:text-orange-400">{energyForHour.toFixed(3)} kWh</span>
-                                    </div>
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                                      = {electricalKw.toFixed(2)} kW × ({Math.min(100, Math.max(0, runtime)).toFixed(1)} ÷ 100)
-                                    </div>
-                                    <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
-                                      <div className="flex justify-between">
-                                        <span>Hourly Cost:</span>
-                                        <span className="font-bold text-orange-600 dark:text-orange-400">${(hourCost + auxCost).toFixed(2)}</span>
-                                      </div>
-                                      <div className="text-xs text-gray-600 dark:text-gray-400">
-                                        = {energyForHour.toFixed(3)} kWh × ${hourRate.toFixed(3)}/kWh
-                                        {auxCost > 0 && ` + ${auxKw.toFixed(2)} kW aux × $${hourRate.toFixed(3)}/kWh`}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                          {/* Weekly Summary */}
-                          {weeklyMetrics && (
-                            <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                              <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">7-Day Summary</h4>
-                              <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
-                                <div className="flex justify-between">
-                                  <span>Total HP Energy:</span>
-                                  <span className="font-bold text-green-600 dark:text-green-400">{weeklyMetrics.totalEnergy.toFixed(1)} kWh</span>
-                                </div>
-                                {breakdownView === "withAux" && useElectricAuxHeatSetting && (
-                                  <>
-                                    <div className="flex justify-between">
-                                      <span>Total Aux Energy:</span>
-                                      <span className="font-bold text-green-600 dark:text-green-400">
-                                        {weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0).toFixed(1)} kWh
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Total Energy (with Aux):</span>
-                                      <span className="font-bold text-green-600 dark:text-green-400">
-                                        {(weeklyMetrics.totalEnergy + weeklyMetrics.summary.reduce((acc, d) => acc + d.auxEnergy, 0)).toFixed(1)} kWh
-                                      </span>
-                                    </div>
-                                  </>
-                                )}
-                                <div className="pt-2 border-t border-green-300 dark:border-green-700">
-                                  <div className="flex justify-between">
-                                    <span>Total 7-Day Cost:</span>
-                                    <span className="font-bold text-green-600 dark:text-green-400">
-                                      ${(breakdownView === "withAux" && useElectricAuxHeatSetting ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between pt-2">
-                                    <span>Average Daily Cost:</span>
-                                    <span className="font-bold text-green-600 dark:text-green-400">
-                                      ${((breakdownView === "withAux" && useElectricAuxHeatSetting ? weeklyMetrics.totalCostWithAux : weeklyMetrics.totalCost) / 7).toFixed(2)}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           )}
+              </div>
+            )}
 
-          {activeTab === "manual" && (
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+          {/* View Calculation Methodology - Extracted Component */}
+          {weeklyMetrics && primarySystem === "heatPump" && (
+            <Methodology
+              show={showCalculations}
+              onToggle={() => setShowCalculations(!showCalculations)}
+              squareFeet={squareFeet}
+              insulationLevel={insulationLevel}
+              homeShape={homeShape}
+              ceilingHeight={ceilingHeight}
+              capacity={capacity}
+              tons={tons}
+              hspf2={hspf2}
+              compressorPower={compressorPower}
+              utilityCost={utilityCost}
+              indoorTemp={indoorTemp}
+              nighttimeTemp={nighttimeTemp}
+              foundLocationName={foundLocationName}
+              locationElevation={locationElevation}
+              energyMode={energyMode}
+              adjustedForecast={adjustedForecast}
+              effectiveHeatLoss={effectiveHeatLoss}
+              weeklyMetrics={weeklyMetrics}
+              breakdownView={breakdownView}
+              useElectricAuxHeatSetting={useElectricAuxHeatSetting}
+              localRates={localRates}
+              useCalculatedHeatLoss={userSettings?.useCalculatedHeatLoss}
+              useManualHeatLoss={userSettings?.useManualHeatLoss}
+              useAnalyzerHeatLoss={userSettings?.useAnalyzerHeatLoss}
+            />
+          )}
+            
+            {activeTab === "manual" && (
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                 Test a specific temperature and humidity scenario.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
@@ -4867,8 +3318,8 @@ const SevenDayCostForecaster = () => {
                   </div>
                   <div className="mt-2">
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Heat loss at <strong>{designTemp ?? 0}°F</strong> (ΔT ={" "}
-                      {Math.max(0, indoorTemp - (designTemp ?? 0))}°F)
+                      Heat loss at <strong>{formatTemperatureFromF(designTemp ?? 0, unitSystem, { decimals: 0 })}</strong> (ΔT ={" "}
+                      {formatTemperatureFromF(Math.max(0, indoorTemp - (designTemp ?? 0)), unitSystem, { decimals: 0, withUnit: false })}°{unitSystem === "intl" ? "C" : "F"})
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                       Normalized: <strong>{perDegree.toFixed(1)}</strong>{" "}
@@ -4905,7 +3356,7 @@ const SevenDayCostForecaster = () => {
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                           {userSettings?.useManualHeatLoss 
                             ? "Using manually entered heat loss factor."
-                            : "This is calculated from building specs — real-world dynamic effects like solar gains, infiltration, or internal heat loads can change results."}
+                            : "This is calculated from building specs â€” real-world dynamic effects like solar gains, infiltration, or internal heat loads can change results."}
                         </p>
                         <button
                           type="button"
@@ -5003,7 +3454,7 @@ const SevenDayCostForecaster = () => {
                             heating needed.
                           </li>
                           <li>
-                            Improve insulation/air‑sealing → lower BTU/hr/°F →
+                            Improve insulation/air-sealing → lower BTU/hr/°F →
                             lower bills.
                           </li>
                         </ul>
@@ -5050,7 +3501,7 @@ const SevenDayCostForecaster = () => {
               {/* Expanded Defrost & Humidity Mechanics (collapsible) */}
               <details className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg group">
                 <summary className="cursor-pointer text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
-                  🧊 Defrost & Humidity Mechanics{" "}
+                  ❄️ Defrost & Humidity Mechanics{" "}
                   <span className="text-[10px] font-normal text-blue-700 dark:text-blue-400 cursor-pointer">
                     (click to expand)
                   </span>
@@ -5224,7 +3675,7 @@ const SevenDayCostForecaster = () => {
                 {stateName && (
                   <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
                     <p className="text-blue-800 dark:text-blue-200">
-                      <strong>💡 State Average for {stateName}:</strong> $
+                      <strong>ðŸ’¡ State Average for {stateName}:</strong> $
                       {getStateGasRate(stateName).toFixed(2)}/therm (currently
                       applied)
                     </p>
@@ -5404,7 +3855,7 @@ const SevenDayCostForecaster = () => {
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                         Annual Fuel Utilization Efficiency. Typical range
-                        60%–99%.
+                        60%â€“99%.
                       </p>
                     </div>
                     <div>
@@ -5420,7 +3871,7 @@ const SevenDayCostForecaster = () => {
                               : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           }`}
                         >
-                          ❄️ Central A/C
+                          â„ï¸ Central A/C
                         </button>
                         <button
                           onClick={() => setCoolingSystem("dualFuel")}
@@ -5430,7 +3881,7 @@ const SevenDayCostForecaster = () => {
                               : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           }`}
                         >
-                          ⚡ Dual-Fuel HP
+                          âš¡ Dual-Fuel HP
                         </button>
                         <button
                           onClick={() => setCoolingSystem("none")}
@@ -5579,289 +4030,251 @@ const SevenDayCostForecaster = () => {
             )}
           </div>
 
-          {/* Upgrade Scenario Modal */}
-          {showUpgradeModal && upgradeScenario && (
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-              onClick={() => setShowUpgradeModal(false)}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="upgrade-modal-title"
-            >
-              <div
-                className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2
-                      id="upgrade-modal-title"
-                      className="text-2xl font-bold text-gray-800 dark:text-gray-100"
-                    >
-                      Upgrade Scenario Comparison
-                    </h2>
-                    <button
-                      onClick={() => setShowUpgradeModal(false)}
-                      className="text-gray-500 hover:text-gray-700 text-2xl"
-                    >
-                      &times;
-                    </button>
-                  </div>
+          {/* Upgrade Scenario Modal - Extracted Component */}
+          <UpgradeModal
+            show={showUpgradeModal}
+            onClose={() => setShowUpgradeModal(false)}
+            upgradeScenario={upgradeScenario}
+            currentSystem={{ capacity, tons, efficiency }}
+          />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div className="border-2 border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-4">
-                      <h3 className="font-semibold text-gray-700 dark:text-gray-100 mb-2">
-                        Current System
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Capacity:{" "}
-                        <span className="font-bold">
-                          {capacity}k BTU ({tons} tons)
-                        </span>
+          {/* Card C - Under the hood (optional) */}
+          {weeklyMetrics && !forecastLoading && (
+            <div id="assumptions" className="mt-10 mb-10">
+              <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-8">
+                <button
+                  onClick={() => setShowAssumptions(!showAssumptions)}
+                  className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+                >
+                  <h2 className="text-xl font-semibold text-[#E8EDF3]">Assumptions, system settings & thermostat details</h2>
+                  {showAssumptions ? (
+                    <ChevronUp className="w-6 h-6 text-[#7C8894]" />
+                  ) : (
+                    <ChevronDown className="w-6 h-6 text-[#7C8894]" />
+                  )}
+                </button>
+                
+                {showAssumptions && (
+                  <div className="space-y-6 pt-6 border-t border-[#222A35]">
+                    {/* Building heat loss */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#E8EDF3] mb-3">Building heat loss</h3>
+                      <p className="text-sm text-[#A7B0BA] mb-2">
+                        Heat loss factor: <strong className="text-[#E8EDF3]">{formatHeatLossFactor((effectiveHeatLoss || 0) / 70, unitSystem, { decimals: 1 })}</strong>
                       </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Efficiency:{" "}
-                        <span className="font-bold">{efficiency} SEER2</span>
+                      <p className="text-sm text-[#A7B0BA]">
+                        Total heat loss @ {formatTemperatureFromF(70, unitSystem, { decimals: 0, withUnit: false })}°{unitSystem === "intl" ? "C" : "F"} ΔT: <strong className="text-[#E8EDF3]">{formatCapacityFromKbtuh((effectiveHeatLoss || 0) / 1000, unitSystem, { decimals: 0 })}</strong>
                       </p>
-                      <div className="mt-3 pt-3 border-t dark:border-gray-600">
-                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          ${upgradeScenario.currentCost.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          7-day cost
-                        </p>
-                      </div>
                     </div>
-
-                    <div className="border-2 border-purple-400 dark:border-purple-700 bg-purple-50 dark:bg-purple-900 rounded-lg p-4">
-                      <h3 className="font-semibold text-purple-800 dark:text-purple-200 mb-2">
-                        Upgraded System
-                      </h3>
-                      <p className="text-sm text-purple-700 dark:text-purple-200">
-                        Capacity:{" "}
-                        <span className="font-bold">
-                          {upgradeScenario.capacity}k BTU (
-                          {upgradeScenario.tons} tons)
-                        </span>
+                    
+                    {/* Heat pump configuration */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#E8EDF3] mb-3">Heat pump configuration</h3>
+                      <p className="text-sm text-[#A7B0BA] mb-2">
+                        Capacity: <strong className="text-[#E8EDF3]">{capacity}k BTU ({tons} tons)</strong>
                       </p>
-                      <p className="text-sm text-purple-700 dark:text-purple-200">
-                        Efficiency:{" "}
-                        <span className="font-bold">
-                          {upgradeScenario.efficiency} SEER2
-                        </span>
+                      {energyMode === "heating" ? (
+                        <p className="text-sm text-[#A7B0BA]">
+                          HSPF2: <strong className="text-[#E8EDF3]">{hspf2.toFixed(1)}</strong>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-[#A7B0BA]">
+                          SEER2: <strong className="text-[#E8EDF3]">{efficiency}</strong>
+                        </p>
+                      )}
+                    </div>
+                    
+                    {/* Thermostat settings */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#E8EDF3] mb-3">Thermostat settings</h3>
+                      <p className="text-sm text-[#A7B0BA]">
+                        Daytime: <strong className="text-[#E8EDF3]">{indoorTemp}°F</strong> • Nighttime: <strong className="text-[#E8EDF3]">{nighttimeTemp}°F</strong>
                       </p>
-                      <div className="mt-3 pt-3 border-t border-purple-300 dark:border-purple-600">
-                        <p className="text-2xl font-bold text-purple-700 dark:text-purple-200">
-                          ${upgradeScenario.upgradedCost.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-purple-600 dark:text-purple-300">
-                          7-day cost
-                        </p>
-                      </div>
+                    </div>
+                    
+                    {/* Weekly summary */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#E8EDF3] mb-3">Weekly summary</h3>
+                      <p className="text-sm text-[#A7B0BA] mb-2">
+                        Total cost: <strong className="text-[#E8EDF3]">${weeklyMetrics.totalCost.toFixed(2)}</strong>
+                      </p>
+                      <p className="text-sm text-[#A7B0BA]">
+                        Total energy: <strong className="text-[#E8EDF3]">
+                          {(() => {
+                            const energyDisplayMode = isNerdMode ? "nerd" : (unitSystem === "intl" ? "intl" : "user");
+                            if (energyDisplayMode === "intl" || energyDisplayMode === "nerd") {
+                              return formatEnergyFromKwh(weeklyMetrics.totalEnergy, unitSystem, { decimals: 1 });
+                            }
+                            return formatEnergy(kWhToJ(weeklyMetrics.totalEnergy), { mode: "user", precision: 1 });
+                          })()}
+                        </strong>
+                      </p>
                     </div>
                   </div>
-
-                  {/* Annual Savings - Primary KPI */}
-                  {(() => {
-                    const currentAnnualCost =
-                      upgradeScenario.currentCost * (365 / 7);
-                    const upgradedAnnualCost =
-                      upgradeScenario.upgradedCost * (365 / 7);
-                    const annualSavings =
-                      currentAnnualCost - upgradedAnnualCost;
-                    const percentageReduction =
-                      currentAnnualCost > 0
-                        ? (annualSavings / currentAnnualCost) * 100
-                        : 0;
-                    const UPGRADE_COST_PER_TON = 3500; // rough heuristic used for payback estimate
-                    const estimatedUpgradeCost =
-                      (upgradeScenario.tons || 1) * UPGRADE_COST_PER_TON;
-                    const paybackYears =
-                      annualSavings > 0
-                        ? estimatedUpgradeCost / annualSavings
-                        : null;
-                    return (
-                      <div className="bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg p-6 mb-4 text-center">
-                        <h4 className="font-semibold text-green-800 dark:text-green-200 mb-2">
-                          Projected Annual Savings
-                        </h4>
-                        <p className="text-6xl font-extrabold text-green-700 dark:text-green-200 my-2">
-                          ${Math.max(0, Math.round(annualSavings))}
-                        </p>
-                        <p className="text-sm text-green-600 dark:text-green-200 mb-3">
-                          That's a{" "}
-                          {percentageReduction
-                            ? `${percentageReduction.toFixed(0)}%`
-                            : "—"}{" "}
-                          reduction in yearly costs
-                        </p>
-                        <div className="flex items-center justify-center gap-6">
-                          <div className="text-center">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Estimated Payback Period
-                            </p>
-                            <p className="font-semibold text-gray-700 dark:text-gray-100">
-                              {paybackYears && isFinite(paybackYears)
-                                ? `${Math.round(paybackYears)} years`
-                                : "—"}
-                            </p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Upgrade Cost Estimate
-                            </p>
-                            <p className="font-semibold text-gray-700 dark:text-gray-100">
-                              ${estimatedUpgradeCost.toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Side-by-side annual comparison & optional weekly details */}
-                  <div className="p-6">
-                    <h4 className="font-semibold text-gray-700 dark:text-white mb-4 text-center">
-                      Annual Cost Comparison
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="text-center p-4 border rounded-lg dark:border-gray-700">
-                        <p className="font-semibold">Current System</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {capacity}k BTU ({tons} tons) · {efficiency} SEER2
-                        </p>
-                        <p className="text-2xl font-bold mt-2">
-                          $
-                          {Math.round(
-                            upgradeScenario.currentCost * (365 / 7)
-                          ).toLocaleString()}
-                          /yr
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          ${upgradeScenario.currentCost.toFixed(2)}/week
-                        </p>
-                      </div>
-
-                      <div className="text-center p-4 border rounded-lg dark:border-gray-700 bg-purple-50 dark:bg-purple-900/30">
-                        <p className="font-semibold text-purple-700 dark:text-purple-300">
-                          Upgraded System
-                        </p>
-                        <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                          {upgradeScenario.capacity}k BTU (
-                          {upgradeScenario.tons} tons) ·{" "}
-                          {upgradeScenario.efficiency} SEER2
-                        </p>
-                        <p className="text-2xl font-bold mt-2">
-                          $
-                          {Math.round(
-                            upgradeScenario.upgradedCost * (365 / 7)
-                          ).toLocaleString()}
-                          /yr
-                        </p>
-                        <p className="text-xs text-purple-600 mt-1">
-                          ${upgradeScenario.upgradedCost.toFixed(2)}/week
-                        </p>
-                      </div>
-                    </div>
-                    {upgradeScenario.metrics && (
-                      <div className="mt-4 text-sm text-gray-700 dark:text-white">
-                        <h5 className="font-semibold mb-2">
-                          Upgraded System Summary (weekly)
-                        </h5>
-                        <p>
-                          Total Energy:{" "}
-                          <span className="font-bold">
-                            {upgradeScenario.metrics.summary
-                              .reduce((acc, d) => acc + d.energyWithAux, 0)
-                              .toFixed(1)}{" "}
-                            kWh
-                          </span>
-                        </p>
-                        <p>
-                          Aux Heat Energy:{" "}
-                          <span className="font-bold">
-                            {upgradeScenario.metrics.summary
-                              .reduce((acc, d) => acc + d.auxEnergy, 0)
-                              .toFixed(1)}{" "}
-                            kWh
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t">
-                    <p className="text-xs text-gray-500 italic">
-                      Note: Savings estimate based on current 7-day forecast.
-                      Actual savings vary with weather, usage patterns, and
-                      installation quality. Consult a qualified HVAC
-                      professional for detailed assessment and installation
-                      costs.
-                    </p>
-                    <p className="text-xs text-gray-500 italic mt-2">
-                      *Estimated payback uses an assumed upgrade cost of $3,500
-                      per ton. Actual installation costs vary widely by location
-                      and installer.
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}
 
-          <button
-            onClick={() => setTourActive(true)}
-            className="btn btn-primary mb-4"
-            id="tour-button"
-          >
-            <span className="flex items-center gap-2">
-              <HelpCircle size={18} />
-              Show Feature Tour
-            </span>
-          </button>
-          <Joyride
-            steps={steps}
-            run={tourActive}
-            continuous
-            showSkipButton
-            showProgress
-            scrollToFirstStep
-            disableOverlayClose
-            spotlightClicks
-            spotlightPadding={8}
-            floaterProps={{
-              disableAnimation: false,
-              styles: {
-                floater: {
-                  filter: "drop-shadow(0 10px 30px rgba(0, 0, 0, 0.3))",
-                },
-                arrow: {
-                  length: 12,
-                  spread: 16,
-                },
-              },
-            }}
-            styles={joyrideStyles}
-            locale={{
-              back: "Back",
-              close: "Close",
-              last: "Finish",
-              next: "Next",
-              skip: "Skip Tour",
-            }}
-            callback={(data) => {
-              const { status, action } = data;
-              if (status === "finished" || status === "skipped") {
-                setTourActive(false);
-              }
-              // Log tour progress for debugging
-              console.log("Tour event:", { status, action, step: data.index });
-            }}
-          />
+          {/* Raw Calculation Block */}
+          {weeklyMetrics && !forecastLoading && (
+            <div id="calculations" className="mt-8 bg-[#11161e] border border-[#1f2937] rounded-xl shadow-lg overflow-hidden">
+              <button
+                onClick={() => setShowLiveMath(!showLiveMath)}
+                className="w-full flex items-center justify-between p-6 hover:bg-[#0c1218] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                    <Calculator size={24} className="text-white" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-bold text-white">Raw calculation trace (for auditors & nerds)</h3>
+                    <p className="text-sm text-gray-400 mt-1">These are the exact numbers the forecast used. They're export-ready if you ever need to show your contractor, utility, or a spreadsheet.</p>
+                  </div>
+                </div>
+                {showLiveMath ? (
+                  <ChevronUp className="w-6 h-6 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-6 h-6 text-gray-400" />
+                )}
+              </button>
+
+              {showLiveMath && (
+                <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+                    We simulate your system hour-by-hour using real physics and your forecast. Here's how the numbers work:
+                  </p>
+
+                  {/* Building Heat Loss */}
+                  <div>
+                    <h4 className="font-bold text-lg mb-3 text-white">Building Heat Loss</h4>
+                    <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                      Base BTU/sq ft: 22.67 BTU/hr/°F per sq ft<br />
+                      Square Feet: {squareFeet.toLocaleString()} sq ft<br />
+                      Insulation Factor: {insulationLevel.toFixed(2)}x<br />
+                      {homeShape !== 1.0 && <>Home Shape Factor: {homeShape.toFixed(2)}x<br /></>}
+                      Ceiling Height Multiplier: {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x<br />
+                      <br />
+                      Total Heat Loss @ 70°F ΔT: <strong>{(effectiveHeatLoss || 0).toLocaleString()} BTU/hr</strong><br />
+                      {homeShape !== 1.0 ? (
+                        <>
+                          = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {homeShape.toFixed(2)} * {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}<br />
+                        </>
+                      ) : (
+                        <>
+                          = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}<br />
+                        </>
+                      )}
+                      <br />
+                      BTU Loss per °F: <strong>{((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F</strong>
+                    </code>
+                  </div>
+
+                  {/* Heat Pump System */}
+                  {primarySystem === "heatPump" && (
+                    <div>
+                      <h4 className="font-bold text-lg mb-3 text-white">Heat Pump System</h4>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        Capacity: {capacity}k BTU ({tons} tons)<br />
+                        {energyMode === "heating" ? (
+                          <>
+                            HSPF2: {hspf2.toFixed(1)}<br />
+                            Compressor Power: <strong>{(compressorPower || 0).toFixed(2)} kW</strong><br />
+                            = {tons} tons * 1.0 * (15 / {efficiency})<br />
+                          </>
+                        ) : (
+                          <>
+                            SEER2: {efficiency}<br />
+                            Compressor Power: <strong>{(compressorPower || 0).toFixed(2)} kW</strong><br />
+                          </>
+                        )}
+                        <br />
+                        Performance at {currentOutdoorTemp?.toFixed(0) || 35}°F (current outdoor temp):<br />
+                        {(() => {
+                          const exampleTemp = currentOutdoorTemp || 35;
+                          const exampleHumidity = 65;
+                          const examplePerf = getPerformanceAtTemp(exampleTemp, exampleHumidity);
+                          const tempDiff = Math.max(1, indoorTemp - exampleTemp);
+                          const buildingHeatLossBtu = ((effectiveHeatLoss || 0) / 70) * tempDiff;
+                          // Calculate capacity factor (same logic as heatUtils)
+                          let capacityFactor = 1.0;
+                          if (exampleTemp < 47) capacityFactor = 1.0 - (47 - exampleTemp) * 0.01;
+                          if (exampleTemp < 17) capacityFactor = 0.70 - (17 - exampleTemp) * 0.0074;
+                          capacityFactor = Math.max(0.3, capacityFactor);
+                          // Calculate heat output
+                          const KW_PER_TON_OUTPUT = 3.517;
+                          const BTU_PER_KWH = 3412.14;
+                          const heatpumpOutputBtu = tons * KW_PER_TON_OUTPUT * capacityFactor * BTU_PER_KWH;
+                          return (
+                            <>
+                              Capacity Factor: <strong>{capacityFactor.toFixed(3)}</strong><br />
+                              Defrost Penalty: <strong>{(examplePerf.defrostPenalty || 1.0).toFixed(3)}</strong><br />
+                              Electrical Power: <strong>{(examplePerf.electricalKw || 0).toFixed(2)} kW</strong><br />
+                              Heat Output: <strong>{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                              Building Heat Loss: <strong>{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
+                              Runtime: <strong>{(examplePerf.runtime || 0).toFixed(1)}%</strong><br />
+                              {examplePerf.auxKw > 0 && (
+                                <>
+                                  Aux Heat: <strong>{(examplePerf.auxKw || 0).toFixed(2)} kW</strong><br />
+                                </>
+                              )}
+                              <br />
+                              Hourly Cost @ {(examplePerf.runtime || 0).toFixed(1)}%: <strong>${((examplePerf.electricalKw || 0) * (examplePerf.runtime || 0) / 100 * utilityCost).toFixed(3)}</strong><br />
+                              = {(examplePerf.electricalKw || 0).toFixed(2)} kW * ({(examplePerf.runtime || 0).toFixed(1)}% / 100) * ${utilityCost.toFixed(2)}/kWh
+                            </>
+                          );
+                        })()}
+                      </code>
+                    </div>
+                  )}
+
+                  {/* Weekly Summary */}
+                  {weeklyMetrics && (
+                    <div>
+                      <h4 className="font-bold text-lg mb-3 text-white">Weekly Summary</h4>
+                      <code className="block p-4 bg-[#1a1a1a] text-[#00ff9d] rounded-lg text-xs overflow-x-auto border border-gray-700" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, 'Menlo', 'Courier New', monospace" }}>
+                        Total Cost (7 days): <strong>${weeklyMetrics.totalCost.toFixed(2)}</strong><br />
+                        Total Energy (7 days): <strong>{weeklyMetrics.totalEnergy.toFixed(1)} kWh</strong><br />
+                        Average Daily Cost: <strong>${(weeklyMetrics.totalCost / 7).toFixed(2)}</strong><br />
+                        Average Daily Energy: <strong>{(weeklyMetrics.totalEnergy / 7).toFixed(1)} kWh</strong><br />
+                        <br />
+                        {breakdownView === "withAux" && weeklyMetrics.totalCostWithAux && (
+                          <>
+                            Total Cost with Aux Heat: <strong>${weeklyMetrics.totalCostWithAux.toFixed(2)}</strong><br />
+                            Aux Heat Cost: <strong>${(weeklyMetrics.totalCostWithAux - weeklyMetrics.totalCost).toFixed(2)}</strong><br />
+                          </>
+                        )}
+                        Electricity Rate: <strong>${utilityCost.toFixed(2)} / kWh</strong><br />
+                        Location: <strong>{foundLocationName || "Not set"}</strong><br />
+                        {locationElevation && (
+                          <>
+                            Elevation: <strong>{locationElevation.toFixed(0)} ft</strong><br />
+                          </>
+                        )}
+                      </code>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    These calculations update in real-time as you adjust settings. Share this with your installer if they want the details.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-    </div>
-    </div>
+    );
+  };
+
+  return (
+    <SeasonProvider 
+      thermostatMode={thermostatMode}
+      outdoorTemp={currentOutdoorTemp}
+      defaultMode="auto"
+    >
+      <SevenDayCostForecasterContent />
+    </SeasonProvider>
   );
 };
 

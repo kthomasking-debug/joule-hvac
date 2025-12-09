@@ -1,0 +1,668 @@
+/**
+ * Print Stylesheet for Professional Reports
+ * 
+ * Purpose: Transform analysis pages into clean, professional PDF-ready documents
+ * that can be shared with HVAC contractors, spouses, or saved for records.
+ * 
+ * Usage: Import this file in pages that need print functionality
+ */
+
+@media print {
+  /* ============================================
+     GLOBAL PRINT RESET
+     ============================================ */
+  
+  /* Force white background and black text */
+  * {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+  
+  html.dark * {
+    background: white !important;
+    color: black !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 12pt !important;
+    line-height: 1.5 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  html {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  /* ============================================
+     HIDE NAVIGATION & UI ELEMENTS
+     ============================================ */
+  
+  /* Hide all navigation - more comprehensive */
+  .app-header,
+  .app-header-bar,
+  .mobile-nav,
+  .app-nav,
+  nav,
+  header,
+  .dashboard-link,
+  .page-gradient-overlay::before,
+  .page-gradient-overlay::after,
+  [class*="app-header"],
+  [class*="mobile-nav"],
+  [class*="app-nav"],
+  [role="navigation"],
+  [aria-label*="navigation"],
+  [aria-label*="Navigation"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Hide DashboardLink component and all links to home */
+  a[href="/"],
+  a[href="/home"],
+  .dashboard-link,
+  [class*="DashboardLink"],
+  a[href*="dashboard"],
+  a[title*="Dashboard"],
+  a[title*="Back to"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* Hide breadcrumbs */
+  .breadcrumb,
+  [class*="breadcrumb"],
+  [aria-label*="breadcrumb"] {
+    display: none !important;
+  }
+  
+  /* Hide all interactive elements */
+  button,
+  .btn,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  .file-upload-section,
+  .upload-section,
+  input[type="file"],
+  input[type="range"],
+  .copy-to-clipboard,
+  .joule-fab,
+  .ask-joule,
+  .mode-toggle {
+    display: none !important;
+  }
+  
+  /* Hide tooltips */
+  [role="tooltip"],
+  [class*="tooltip"],
+  [data-tooltip] {
+    display: none !important;
+  }
+  
+  /* Hide help text paragraphs that appear after inputs (like "Find this on your nameplate") */
+  input + p.text-xs,
+  select + p.text-xs,
+  textarea + p.text-xs,
+  input ~ p.text-xs.mt-2,
+  select ~ p.text-xs.mt-2 {
+    display: none !important;
+  }
+  
+  /* Hide informational help boxes (like "Where to find HSPF2" or "About AFUE") */
+  div.bg-blue-50,
+  div.bg-orange-50,
+  div.bg-blue-950,
+  div.bg-orange-950,
+  div[class*="bg-blue-50"],
+  div[class*="bg-orange-50"] {
+    display: none !important;
+  }
+  
+  /* But keep result cards and important content boxes */
+  .result-card,
+  .analysis-results,
+  [class*="result"] {
+    display: block !important;
+  }
+  
+  /* Hide helper class elements */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Hide error/success messages that aren't part of the report */
+  .error-message,
+  .success-message:not(.report-include),
+  .loading-spinner,
+  .progress-bar {
+    display: none !important;
+  }
+  
+  /* ============================================
+     PAGE LAYOUT
+     ============================================ */
+  
+  @page {
+    size: letter;
+    margin: 0.75in;
+  }
+  
+  .page,
+  .page-gradient-overlay,
+  .mx-auto {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  
+  /* Remove scaling wrapper for print */
+  .app-scale-wrapper {
+    transform: none !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+  
+  /* ============================================
+     TYPOGRAPHY
+     ============================================ */
+  
+  h1, h2, h3, h4, h5, h6 {
+    color: black !important;
+    page-break-after: avoid;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+  }
+  
+  h1 {
+    font-size: 24pt;
+    border-bottom: 2px solid black;
+    padding-bottom: 0.25em;
+  }
+  
+  h2 {
+    font-size: 18pt;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.2em;
+  }
+  
+  h3 {
+    font-size: 14pt;
+  }
+  
+  p {
+    color: black !important;
+    margin: 0.5em 0;
+  }
+  
+  /* ============================================
+     CARDS & CONTAINERS
+     ============================================ */
+  
+  .card,
+  .bg-white,
+  .bg-gray-800,
+  .rounded-xl,
+  .shadow-lg,
+  .shadow-2xl,
+  [class*="bg-"],
+  [class*="dark:bg-"] {
+    background: white !important;
+    border: 1px solid #ddd !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    margin-bottom: 1em;
+    padding: 1em !important;
+  }
+  
+  /* Remove gradient backgrounds */
+  [class*="gradient"],
+  [class*="from-"],
+  [class*="to-"] {
+    background: white !important;
+  }
+  
+  /* ============================================
+     ANALYSIS RESULTS SECTION
+     ============================================ */
+  
+  /* Make result cards print-friendly */
+  .result-card,
+  .analysis-results,
+  .bg-blue-900,
+  .bg-green-900,
+  .bg-yellow-900,
+  .bg-red-900 {
+    background: white !important;
+    border: 2px solid black !important;
+    color: black !important;
+    page-break-inside: avoid;
+  }
+  
+  /* Result numbers should be prominent */
+  .text-5xl,
+  .text-4xl,
+  .text-3xl {
+    font-size: 24pt !important;
+    font-weight: bold;
+    color: black !important;
+  }
+  
+  /* Labels and descriptions */
+  .text-sm,
+  .text-xs {
+    font-size: 10pt !important;
+    color: black !important;
+  }
+  
+  /* ============================================
+     CHARTS & GRAPHS
+     ============================================ */
+  
+  /* Force charts to print properly */
+  .recharts-wrapper,
+  .recharts-surface,
+  svg[class*="recharts"],
+  canvas,
+  svg {
+    max-width: 100% !important;
+    break-inside: avoid;
+    display: block !important;
+    page-break-inside: avoid;
+  }
+  
+  /* Ensure chart containers don't break */
+  [class*="ResponsiveContainer"],
+  [class*="chart"],
+  .glass,
+  .glass-dark {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  /* Show chart data as tables instead (if available) */
+  .chart-data-table {
+    display: table !important;
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+  }
+  
+  .chart-data-table th,
+  .chart-data-table td {
+    border: 1px solid #333;
+    padding: 0.5em;
+    text-align: left;
+  }
+  
+  .chart-data-table th {
+    background: #f0f0f0 !important;
+    font-weight: bold;
+  }
+  
+  /* ============================================
+     METHODOLOGY SECTION
+     ============================================ */
+  
+  /* Make calculation methodology readable */
+  .math-block,
+  .calculation-methodology,
+  code,
+  pre {
+    background: #f5f5f5 !important;
+    border: 1px solid #ccc !important;
+    color: black !important;
+    font-family: 'Courier New', monospace;
+    font-size: 10pt;
+    padding: 0.5em;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  
+  /* ============================================
+     TABLES
+     ============================================ */
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    page-break-inside: avoid;
+    margin: 1em 0;
+  }
+  
+  table th,
+  table td {
+    border: 1px solid #333;
+    padding: 0.5em;
+    text-align: left;
+  }
+  
+  table th {
+    background: #f0f0f0 !important;
+    font-weight: bold;
+    color: black !important;
+  }
+  
+  table tr {
+    page-break-inside: avoid;
+  }
+  
+  /* ============================================
+     LISTS & RECOMMENDATIONS
+     ============================================ */
+  
+  ul, ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+  
+  li {
+    margin: 0.25em 0;
+    color: black !important;
+  }
+  
+  /* Recommendation cards */
+  .recommendation,
+  .action-item {
+    border: 1px solid #333 !important;
+    background: white !important;
+    margin: 0.5em 0;
+    padding: 0.75em;
+    page-break-inside: avoid;
+  }
+  
+  /* ============================================
+     UTILITY CLASSES FOR PRINT
+     ============================================ */
+  
+  /* Show elements marked for print */
+  .print-only {
+    display: block !important;
+  }
+  
+  /* Hide elements that shouldn't print */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Force page breaks */
+  .page-break-before {
+    page-break-before: always;
+  }
+  
+  .page-break-after {
+    page-break-after: always;
+  }
+  
+  .page-break-inside-avoid {
+    page-break-inside: avoid;
+  }
+  
+  /* ============================================
+     FOOTER & HEADER (for multi-page)
+     ============================================ */
+  
+  @page {
+    @top-center {
+      content: "System Performance Analysis Report";
+      font-size: 10pt;
+      color: #666;
+    }
+    
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 10pt;
+      color: #666;
+    }
+  }
+  
+  /* ============================================
+     SPECIFIC PAGE OVERRIDES
+     ============================================ */
+  
+  /* System Performance Analyzer specific */
+  .system-performance-analyzer {
+    /* Ensure all result cards print */
+  }
+  
+  /* Hide upload sections */
+  .upload-section,
+  [class*="upload"],
+  input[type="file"] + * {
+    display: none !important;
+  }
+  
+  /* Show only the results section */
+  .analysis-results,
+  .results-history {
+    display: block !important;
+  }
+  
+  /* ============================================
+     COLOR OVERRIDES
+     ============================================ */
+  
+  /* Remove all color classes, use black text */
+  [class*="text-blue"],
+  [class*="text-green"],
+  [class*="text-red"],
+  [class*="text-yellow"],
+  [class*="text-purple"],
+  [class*="text-indigo"],
+  [class*="text-gray"],
+  [class*="text-white"] {
+    color: black !important;
+  }
+  
+  /* Keep some semantic meaning with borders */
+  .text-green-600::before {
+    content: "✓ ";
+  }
+  
+  .text-red-600::before {
+    content: "⚠ ";
+  }
+  
+  /* ============================================
+     SPACING & LAYOUT
+     ============================================ */
+  
+  /* Remove excessive padding/margins */
+  .p-6, .p-8, .px-6, .py-6 {
+    padding: 1em !important;
+  }
+  
+  .mb-6, .mb-8, .mt-6, .mt-8 {
+    margin: 0.5em 0 !important;
+  }
+  
+  /* Grid layouts become single column */
+  .grid {
+    display: block !important;
+  }
+  
+  .grid > * {
+    margin-bottom: 1em;
+  }
+  
+  /* Flex layouts become vertical */
+  .flex {
+    display: block !important;
+  }
+  
+  /* ============================================
+     ICONS & DECORATIVE ELEMENTS
+     ============================================ */
+  
+  /* Hide icon containers but keep text (except chart SVGs) */
+  [class*="icon"]:not([class*="recharts"]):not(svg[class*="recharts"]),
+  .lucide:not([class*="recharts"]),
+  [class*="lucide-"]:not([class*="recharts"]) {
+    display: none !important;
+  }
+  
+  /* Hide icons in buttons and links */
+  button svg:not([class*="recharts"]),
+  a svg:not([class*="recharts"]),
+  [role="button"] svg:not([class*="recharts"]) {
+    display: none !important;
+  }
+  
+  /* Show icon text alternatives */
+  [aria-label]::after {
+    content: " [" attr(aria-label) "]";
+    font-size: 0.8em;
+    color: #666;
+  }
+  
+  /* ============================================
+     FIX SPECIFIC PRINT ISSUES
+     ============================================ */
+  
+  /* Fix cards to not break across pages */
+  .card, 
+  .p-6,
+  [class*="rounded-lg"],
+  [class*="rounded-xl"] {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 20px !important;
+  }
+  
+  /* Ensure content expands to full width */
+  #root, 
+  .app-container, 
+  main,
+  [class*="container"],
+  .page,
+  .page-gradient-overlay,
+  .mx-auto {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    position: relative !important;
+  }
+  
+  /* Fix any fixed or absolute positioned elements */
+  [style*="position: fixed"],
+  [style*="position:fixed"],
+  [class*="fixed"],
+  [class*="absolute"]:not([class*="recharts"]) {
+    position: relative !important;
+  }
+  
+  /* Remove any transforms that might break layout */
+  [style*="transform"],
+  [class*="transform"] {
+    transform: none !important;
+  }
+  
+  /* Hide links but keep their text content */
+  a[href] {
+    color: black !important;
+    text-decoration: none !important;
+  }
+  
+  /* Hide specific problematic elements */
+  [class*="Chevron"],
+  [class*="chevron"],
+  [class*="ChevronUp"],
+  [class*="ChevronDown"] {
+    display: none !important;
+  }
+  
+  /* Ensure all content is visible and printable */
+  .heat-pump-energy-flow,
+  .detailed-view,
+  [class*="energy-flow"],
+  [class*="analysis"] {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0.5in !important;
+    opacity: 1 !important;
+  }
+  
+  /* Make sure all divs are visible */
+  div:not(.no-print):not([class*="no-print"]) {
+    visibility: visible !important;
+    display: block !important;
+  }
+  
+  /* Ensure text content is visible */
+  p, h1, h2, h3, h4, h5, h6, span, div {
+    color: black !important;
+    visibility: visible !important;
+  }
+  
+  /* Fix any flex/grid layouts for print */
+  .grid,
+  .flex {
+    display: block !important;
+  }
+  
+  .grid > *,
+  .flex > * {
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 1em !important;
+    page-break-inside: avoid;
+  }
+  
+  /* Ensure charts and graphs print */
+  .recharts-wrapper,
+  .recharts-surface,
+  svg[class*="recharts"],
+  canvas[class*="recharts"],
+  [class*="ResponsiveContainer"] {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Remove any backdrop filters that might cause issues */
+  [style*="backdrop-filter"],
+  [class*="backdrop"],
+  .glass,
+  .glass-dark {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: white !important;
+  }
+  
+  /* Ensure text is readable */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
+
+
+
