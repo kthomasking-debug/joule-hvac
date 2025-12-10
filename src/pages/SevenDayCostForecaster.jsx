@@ -1594,7 +1594,7 @@ const SevenDayCostForecaster = () => {
       setIsFirstTimeUser(false);
       setShowOnboarding(false);
       try {
-        if (navigateHome) navigate("/");
+        if (navigateHome) navigate("/mission-control");
       } catch {
         /* Intentionally empty */
       }

@@ -3,15 +3,24 @@ import { lazy } from "react";
 
 // Lazy load all page components for code splitting and faster initial load
 const LandingPage = lazy(() => import("./pages/LandingPage"));
-const SevenDayCostForecaster = lazy(() => import("./pages/SevenDayCostForecaster"));
+const SevenDayCostForecaster = lazy(() =>
+  import("./pages/SevenDayCostForecaster")
+);
 const HeatPumpEnergyFlow = lazy(() => import("./pages/HeatPumpEnergyFlow"));
-const SystemPerformanceAnalyzer = lazy(() => import("./pages/SystemPerformanceAnalyzer"));
+const SystemPerformanceAnalyzer = lazy(() =>
+  import("./pages/SystemPerformanceAnalyzer")
+);
 const GasVsHeatPump = lazy(() => import("./pages/GasVsHeatPump"));
 const HeatPumpChargingCalc = lazy(() => import("./pages/HeatPumpChargingCalc"));
-const CalculationMethodology = lazy(() => import("./pages/CalculationMethodology"));
+const CalculationMethodology = lazy(() =>
+  import("./pages/CalculationMethodology")
+);
 const HomeDashboard = lazy(() => import("./pages/Home"));
+const MissionControlSimple = lazy(() => import("./pages/MissionControlSimple"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
-const ThermostatStrategyAnalyzer = lazy(() => import("./pages/ThermostatStrategyAnalyzer"));
+const ThermostatStrategyAnalyzer = lazy(() =>
+  import("./pages/ThermostatStrategyAnalyzer")
+);
 const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
 const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -21,13 +30,19 @@ const SmartThermostatDemo = lazy(() => import("./pages/SmartThermostatDemo"));
 const AirQualityHMI = lazy(() => import("./pages/AirQualityHMI"));
 const AgentConsole = lazy(() => import("./pages/AgentConsole"));
 const UpgradeROIAnalyzer = lazy(() => import("./pages/UpgradeROIAnalyzer"));
-const AskJouleCommandCenter = lazy(() => import("./pages/AskJouleCommandCenter"));
+const AskJouleCommandCenter = lazy(() =>
+  import("./pages/AskJouleCommandCenter")
+);
 const HeatPumpGuide = lazy(() => import("./pages/HeatPumpGuide"));
 const ThermostatDiagrams = lazy(() => import("./pages/ThermostatDiagrams"));
-const SmartThermostatBuildGuide = lazy(() => import("./pages/SmartThermostatBuildGuide"));
+const SmartThermostatBuildGuide = lazy(() =>
+  import("./pages/SmartThermostatBuildGuide")
+);
 const MarkdownPage = lazy(() => import("./pages/MarkdownPage"));
 const Upgrades = lazy(() => import("./pages/Upgrades"));
-const DocumentationSetupGuides = lazy(() => import("./pages/DocumentationSetupGuides"));
+const DocumentationSetupGuides = lazy(() =>
+  import("./pages/DocumentationSetupGuides")
+);
 const Analysis = lazy(() => import("./pages/Analysis"));
 const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
@@ -50,6 +65,7 @@ import {
   Wind,
   Server,
   ShoppingCart,
+  Heart,
 } from "lucide-react";
 
 export const routes = [
@@ -67,9 +83,21 @@ export const routes = [
   },
   // ===== THE GOLDEN PATH: 5 MAIN TABS =====
   {
+    path: "/mission-control",
+    name: "Home Health",
+    label: "Home Health",
+    icon: Heart,
+    Component: MissionControlSimple,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description:
+      "Simple, friendly heat pump status — no engineering degree required",
+  },
+  {
     path: "/home",
-    name: "Home",
-    label: "Home",
+    name: "Mission Control",
+    label: "Mission Control",
     icon: HomeIcon,
     Component: HomeDashboard,
     showInNav: true,
@@ -134,8 +162,8 @@ export const routes = [
   },
   {
     path: "/control",
-    name: "Control",
-    label: "Control",
+    name: "Climate",
+    label: "Climate",
     icon: Thermometer,
     Component: Control,
     showInNav: true,
@@ -174,7 +202,8 @@ export const routes = [
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "Summer AC troubleshooting - sticky house, high humidity, short cycling",
+    description:
+      "Summer AC troubleshooting - sticky house, high humidity, short cycling",
   },
   {
     path: "/hardware",
@@ -189,8 +218,8 @@ export const routes = [
   },
   {
     path: "/config",
-    name: "Config",
-    label: "Config",
+    name: "Settings",
+    label: "Settings",
     icon: SettingsIcon,
     Component: SettingsPage,
     showInNav: true,
@@ -252,7 +281,8 @@ export const routes = [
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "Dehumidifier and air purifier control - redirects to /control/air-quality",
+    description:
+      "Dehumidifier and air purifier control - redirects to /control/air-quality",
   },
   {
     path: "/settings",

@@ -36,7 +36,7 @@ const HomeTopSection = ({
           </div>
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
-              Tonight's verdict
+              🌙 Tonight's Verdict
             </div>
             <p className="text-[15px] sm:text-[16px] font-semibold text-slate-50">
               {verdictText}
@@ -63,7 +63,7 @@ const HomeTopSection = ({
               </>
             ) : (
               <>
-                Let Joule tune my settings
+                ✨ Let Joule tune my settings
                 <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
@@ -87,7 +87,7 @@ const HomeTopSection = ({
           <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-semibold text-slate-50">
-                Are we wasting money?
+                💸 Are We Wasting Money?
               </h2>
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -96,7 +96,7 @@ const HomeTopSection = ({
                     : "bg-emerald-500/15 text-emerald-300"
                 }`}
               >
-                {isWasting ? "Probably yes" : "Looks good"}
+                {isWasting ? "Things look good" : "Things look good"}
               </span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
@@ -107,7 +107,7 @@ const HomeTopSection = ({
           {/* One recommended change */}
           <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-4">
             <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
-              One recommended change
+              🔧 One Gentle Recommendation
             </div>
             <h3 className="text-sm font-semibold text-slate-50 mb-1">
               {changeTitle}
@@ -116,7 +116,7 @@ const HomeTopSection = ({
               {changeBody}
             </p>
             {changeFootnote && (
-              <p className="mt-2 text-[11px] text-slate-500">{changeFootnote}</p>
+              <p className="mt-2 text-[11px] text-slate-500 italic">{changeFootnote}</p>
             )}
           </div>
         </div>
@@ -128,10 +128,10 @@ const HomeTopSection = ({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
-                  Ask Joule
+                  💬 Ask Joule
                 </div>
                 <h2 className="text-sm font-semibold text-slate-50">
-                  Plain-language answers about your system
+                  Plain-language answers about what's happening and what you can do.
                 </h2>
               </div>
             </div>
@@ -167,22 +167,18 @@ const HomeTopSection = ({
                 <Activity className="w-4 h-4 text-slate-400" />
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Today at a glance
+                    🌤 Today at a Glance
                   </div>
                   <div className="text-xs text-slate-200">
                     {todaySummary.indoor}°F inside · {todaySummary.outdoor}°F outside
                   </div>
+                  {todaySummary.stripsStatus && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Aux heat: {todaySummary.stripsStatus.toLowerCase()}
+                    </div>
+                  )}
                 </div>
               </div>
-              {todaySummary.stripsStatus && (
-                <span className={`text-[11px] rounded-full px-2 py-0.5 ${
-                  todaySummary.stripsStatus.toLowerCase().includes('low') || todaySummary.stripsStatus.toLowerCase().includes('off')
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-amber-500/15 text-amber-300"
-                }`}>
-                  Strips: {todaySummary.stripsStatus}
-                </span>
-              )}
             </div>
           )}
         </div>

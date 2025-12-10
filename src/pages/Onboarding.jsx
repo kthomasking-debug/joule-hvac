@@ -381,7 +381,7 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/app");
+    navigate("/mission-control");
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
@@ -502,7 +502,7 @@ export default function Onboarding() {
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
-            onClick={() => navigate("/app")}
+            onClick={() => navigate("/mission-control")}
             className="btn btn-primary px-8 py-3 text-lg"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />

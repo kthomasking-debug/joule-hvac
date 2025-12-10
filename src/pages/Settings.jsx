@@ -635,8 +635,8 @@ const ZoneManagementSection = ({ setToast }) => {
   return (
     <Section title="Zone Management" icon={<Home size={20} />}>
       <div className="space-y-4">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Manage multiple thermostats/zones. Each zone can have its own CSV data upload and analysis.
+        <p className="text-sm text-gray-600 dark:text-gray-400 italic">
+          If you have multiple thermostats or zones, you can manage them here. Each zone can have its own settings and analysis.
         </p>
         
         <div className="space-y-3">
@@ -726,8 +726,8 @@ const ZoneManagementSection = ({ setToast }) => {
           Add Zone / Thermostat
         </button>
 
-        <p className="text-xs text-[#A7B0BA] max-w-2xl leading-relaxed">
-          💡 Tip: If you have multiple thermostats, create a zone for each. Upload CSV data for each zone separately in the System Performance Analyzer.
+        <p className="text-xs text-[#A7B0BA] max-w-2xl leading-relaxed italic">
+          If you have multiple thermostats, create a zone for each one. You can upload data for each zone separately in the System Performance Analyzer.
         </p>
       </div>
     </Section>
@@ -770,8 +770,8 @@ const ByzantineModeToggle = ({ setToast }) => {
           <p className="font-semibold text-[#E8EDF3] flex items-center gap-2">
             🕯️ Byzantine Liturgical Mode
           </p>
-          <p className="text-xs text-[#A7B0BA] mt-1">
-            Joule responds in the style of Orthodox liturgical chants
+          <p className="text-xs text-[#A7B0BA] mt-1 italic">
+            When enabled, Joule responds in the style of Orthodox liturgical chants — an easter egg for those who want something different.
           </p>
           {enabled && (
             <p className="text-xs text-purple-400 mt-2 italic">

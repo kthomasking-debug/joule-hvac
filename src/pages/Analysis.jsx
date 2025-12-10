@@ -64,9 +64,9 @@ const Analysis = () => {
   // Tab descriptions for context
   const tabDescriptions = {
     forecast: "See what you'll spend this week based on your schedule and weather.",
-    budget: "Plan your monthly energy budget and see how different strategies affect costs.",
+    budget: "Plan your monthly energy budget and explore how different strategies affect your costs.",
     compare: "Compare heat pump vs gas furnace costs for your home and climate.",
-    analyzer: "Upload ecobee CSV files to see how hard your system is working — and where it's wasting money.",
+    analyzer: "Upload your thermostat data to see how your system is performing — and where it might need attention.",
   };
 
   return (
@@ -75,8 +75,8 @@ const Analysis = () => {
         {/* Page Header */}
         <header className="mb-6">
           <h1 className="text-2xl font-semibold text-white mb-1">Analysis</h1>
-          <p className="text-sm text-[#A7B0BA]">
-            Forecast costs, compare heat pump vs gas, and dig into raw thermostat data.
+          <p className="text-sm text-[#A7B0BA] italic">
+            Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
           </p>
         </header>
 

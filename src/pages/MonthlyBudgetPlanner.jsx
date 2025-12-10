@@ -145,9 +145,33 @@ function estimateTypicalHDDCost(params) {
   
   console.log('HDD calculation:', { annualHDD, monthIndex, monthHDD, monthlyHDDDistValue: monthlyHDDDist[monthIndex] });
   
-  // Calculate temperature multiplier (same as annual breakdown)
-  const winterDayTemp = params.userSettings?.winterThermostatDay ?? 70;
-  const winterNightTemp = params.userSettings?.winterThermostatNight ?? 68;
+  // Calculate temperature multiplier - use actual thermostat settings first
+  // Priority: 1) userSettings.winterThermostatDay/Night, 2) thermostatSettings comfortSettings, 3) defaults
+  let winterDayTemp = params.userSettings?.winterThermostatDay;
+  let winterNightTemp = params.userSettings?.winterThermostatNight;
+  
+  // If not in userSettings, check thermostat settings
+  if (winterDayTemp === undefined || winterNightTemp === undefined) {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      const comfortSettings = thermostatSettings?.comfortSettings;
+      
+      if (winterDayTemp === undefined) {
+        winterDayTemp = comfortSettings?.home?.heatSetPoint ?? 70;
+      }
+      if (winterNightTemp === undefined) {
+        winterNightTemp = comfortSettings?.sleep?.heatSetPoint ?? 66; // Default is 66, not 68
+      }
+    } catch {
+      // Fallback to defaults if thermostat settings can't be loaded
+      if (winterDayTemp === undefined) {
+        winterDayTemp = 70;
+      }
+      if (winterNightTemp === undefined) {
+        winterNightTemp = 66; // Default is 66, not 68 (from thermostatSettings.js)
+      }
+    }
+  }
   const avgWinterIndoorTemp = (winterDayTemp * 16 + winterNightTemp * 8) / 24;
   const baseWinterOutdoorTemp = 35;
   const baseWinterDelta = 65 - baseWinterOutdoorTemp; // 30°F
@@ -1459,10 +1483,9 @@ const MonthlyBudgetPlanner = () => {
         {/* Page Header - Hero Level */}
         <div className="mb-16 animate-fade-in-up pt-6 pb-8">
           {/* Description at the top */}
-          <p className="text-muted text-base leading-relaxed mb-4">
-            Estimate your typical{" "}
-            {energyMode === "cooling" ? "cooling" : "heating"} bill for any month
-            using 30-year historical climate data
+          <p className="text-muted text-base leading-relaxed mb-4 italic">
+            See what your typical{" "}
+            {energyMode === "cooling" ? "cooling" : "heating"} bill might look like for any month, using 30-year historical climate data.
           </p>
           <div className="flex items-center gap-4 mb-4">
             <div className="icon-container icon-container-gradient">
@@ -1660,7 +1683,8 @@ const MonthlyBudgetPlanner = () => {
       <div className="mb-12">
         <div className="flex items-center gap-2 mb-6">
           <Settings className="w-5 h-5 text-blue-500" />
-          <h2 className="text-lg font-bold text-high-contrast">Inputs we're using</h2>
+          <h2 className="text-lg font-bold text-high-contrast">⚙️ Settings</h2>
+          <p className="text-xs text-muted mb-4 italic">Here's what we're using for your estimate. You can adjust these to match your home and preferences.</p>
         </div>
         
         {/* Group inputs in 2x2 grid on desktop */}
@@ -2295,8 +2319,8 @@ const MonthlyBudgetPlanner = () => {
               <span className="text-2xl">⬇️</span>
               <span>Want to lower this number?</span>
             </h2>
-            <p className="text-muted text-base">
-              Change your thermostat, change your bill
+            <p className="text-muted text-base italic">
+              Small thermostat adjustments can make a meaningful difference in your monthly costs.
             </p>
           </div>
 
@@ -2315,7 +2339,7 @@ const MonthlyBudgetPlanner = () => {
                     </p>
                     {potentialSavings && potentialSavings.dollars > 0.5 && (
                       <p className="text-sm text-green-500 dark:text-green-400 font-medium mt-2">
-                        💰 Switching to our recommended schedule would make this month about <strong>${potentialSavings.dollars.toFixed(2)}</strong> cheaper.
+                        💰 If you switch to our recommended schedule, this month would cost about <strong>${potentialSavings.dollars.toFixed(2)}</strong> less.
                       </p>
                     )}
                   </div>

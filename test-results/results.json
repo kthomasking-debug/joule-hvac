@@ -108,10 +108,10 @@
     "version": "1.57.0",
     "workers": 4,
     "webServer": {
-      "command": "npm run dev",
-      "url": "http://localhost:5173",
+      "command": "cross-env PLAYWRIGHT_TEST=true npm run build && npm run preview",
+      "port": 4173,
       "reuseExistingServer": true,
-      "timeout": 120000,
+      "timeout": 180000,
       "stdout": "pipe",
       "stderr": "pipe"
     }
@@ -127,7 +127,7 @@
         {
           "title": "Application Navigation",
           "file": "app.spec.js",
-          "line": 98,
+          "line": 169,
           "column": 6,
           "specs": [
             {
@@ -146,12 +146,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5135,
+                      "duration": 3347,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:14.768Z",
+                      "startTime": "2025-12-10T18:17:56.897Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -161,7 +161,7 @@
               ],
               "id": "a510cc93a867214a2ea0-d33d601e8cdd0f67d2bf",
               "file": "app.spec.js",
-              "line": 99,
+              "line": 170,
               "column": 3
             },
             {
@@ -180,12 +180,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 16829,
+                      "duration": 11044,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:25.020Z",
+                      "startTime": "2025-12-10T18:18:05.503Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -195,7 +195,7 @@
               ],
               "id": "a510cc93a867214a2ea0-fa717a79045ed0ec3960",
               "file": "app.spec.js",
-              "line": 120,
+              "line": 255,
               "column": 3
             },
             {
@@ -212,14 +212,14 @@
                   "results": [
                     {
                       "workerIndex": 4,
-                      "parallelIndex": 1,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 6058,
+                      "duration": 4610,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:51.501Z",
+                      "startTime": "2025-12-10T18:18:23.256Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -229,7 +229,7 @@
               ],
               "id": "a510cc93a867214a2ea0-7f4334b91bf1b22081e7",
               "file": "app.spec.js",
-              "line": 99,
+              "line": 170,
               "column": 3
             },
             {
@@ -246,14 +246,14 @@
                   "results": [
                     {
                       "workerIndex": 4,
-                      "parallelIndex": 1,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 21546,
+                      "duration": 11130,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:11.805Z",
+                      "startTime": "2025-12-10T18:18:37.564Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -263,7 +263,7 @@
               ],
               "id": "a510cc93a867214a2ea0-03f9d92f25ab7efb3747",
               "file": "app.spec.js",
-              "line": 120,
+              "line": 255,
               "column": 3
             },
             {
@@ -280,14 +280,14 @@
                   "results": [
                     {
                       "workerIndex": 8,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 4576,
+                      "duration": 4126,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:43.995Z",
+                      "startTime": "2025-12-10T18:18:58.403Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -297,7 +297,7 @@
               ],
               "id": "a510cc93a867214a2ea0-2d103677255f9767469a",
               "file": "app.spec.js",
-              "line": 99,
+              "line": 170,
               "column": 3
             },
             {
@@ -314,14 +314,14 @@
                   "results": [
                     {
                       "workerIndex": 8,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 17489,
+                      "duration": 10996,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:53.490Z",
+                      "startTime": "2025-12-10T18:19:06.200Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -331,7 +331,7 @@
               ],
               "id": "a510cc93a867214a2ea0-cc4b9d5a84669546c583",
               "file": "app.spec.js",
-              "line": 120,
+              "line": 255,
               "column": 3
             },
             {
@@ -348,14 +348,14 @@
                   "results": [
                     {
                       "workerIndex": 12,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 3778,
+                      "duration": 3876,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:16.662Z",
+                      "startTime": "2025-12-10T18:19:26.775Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -365,7 +365,7 @@
               ],
               "id": "a510cc93a867214a2ea0-0eec5a978bed63624358",
               "file": "app.spec.js",
-              "line": 99,
+              "line": 170,
               "column": 3
             },
             {
@@ -382,14 +382,14 @@
                   "results": [
                     {
                       "workerIndex": 12,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 14262,
+                      "duration": 10315,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:24.181Z",
+                      "startTime": "2025-12-10T18:19:33.144Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -399,7 +399,7 @@
               ],
               "id": "a510cc93a867214a2ea0-41ddf5977548963c5672",
               "file": "app.spec.js",
-              "line": 120,
+              "line": 255,
               "column": 3
             }
           ]
@@ -407,7 +407,7 @@
         {
           "title": "Ask Joule",
           "file": "app.spec.js",
-          "line": 157,
+          "line": 301,
           "column": 6,
           "specs": [
             {
@@ -426,12 +426,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4743,
+                      "duration": 3198,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:42.009Z",
+                      "startTime": "2025-12-10T18:18:16.567Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -441,7 +441,7 @@
               ],
               "id": "a510cc93a867214a2ea0-9b1bfd842afef0f2b706",
               "file": "app.spec.js",
-              "line": 158,
+              "line": 302,
               "column": 3
             },
             {
@@ -460,12 +460,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3960,
+                      "duration": 2437,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:46.846Z",
+                      "startTime": "2025-12-10T18:18:19.786Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -475,7 +475,7 @@
               ],
               "id": "a510cc93a867214a2ea0-7c4a88e25269d95aa62c",
               "file": "app.spec.js",
-              "line": 200,
+              "line": 357,
               "column": 3
             },
             {
@@ -492,14 +492,14 @@
                   "results": [
                     {
                       "workerIndex": 4,
-                      "parallelIndex": 1,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 3664,
+                      "duration": 2928,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:33.389Z",
+                      "startTime": "2025-12-10T18:18:48.726Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -509,7 +509,7 @@
               ],
               "id": "a510cc93a867214a2ea0-9bfe06852ed06c17e0d1",
               "file": "app.spec.js",
-              "line": 158,
+              "line": 302,
               "column": 3
             },
             {
@@ -526,14 +526,14 @@
                   "results": [
                     {
                       "workerIndex": 4,
-                      "parallelIndex": 1,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 3401,
+                      "duration": 1866,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:37.096Z",
+                      "startTime": "2025-12-10T18:18:51.679Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -543,7 +543,7 @@
               ],
               "id": "a510cc93a867214a2ea0-00a7988c17e729a3304d",
               "file": "app.spec.js",
-              "line": 200,
+              "line": 357,
               "column": 3
             },
             {
@@ -560,14 +560,14 @@
                   "results": [
                     {
                       "workerIndex": 8,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 4514,
+                      "duration": 4094,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:11.028Z",
+                      "startTime": "2025-12-10T18:19:17.227Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -577,7 +577,7 @@
               ],
               "id": "a510cc93a867214a2ea0-858f75fdd77cd7555446",
               "file": "app.spec.js",
-              "line": 158,
+              "line": 302,
               "column": 3
             },
             {
@@ -594,14 +594,14 @@
                   "results": [
                     {
                       "workerIndex": 8,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 3925,
+                      "duration": 2920,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:15.591Z",
+                      "startTime": "2025-12-10T18:19:21.345Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -611,7 +611,7 @@
               ],
               "id": "a510cc93a867214a2ea0-9e0bcd12e90493a705bb",
               "file": "app.spec.js",
-              "line": 200,
+              "line": 357,
               "column": 3
             },
             {
@@ -628,14 +628,14 @@
                   "results": [
                     {
                       "workerIndex": 12,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 4749,
+                      "duration": 3481,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:38.478Z",
+                      "startTime": "2025-12-10T18:19:43.478Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -645,7 +645,7 @@
               ],
               "id": "a510cc93a867214a2ea0-08e49cd50f4b18d618f8",
               "file": "app.spec.js",
-              "line": 158,
+              "line": 302,
               "column": 3
             },
             {
@@ -662,14 +662,14 @@
                   "results": [
                     {
                       "workerIndex": 12,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 5026,
+                      "duration": 2612,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:43.264Z",
+                      "startTime": "2025-12-10T18:19:46.977Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -679,7 +679,7 @@
               ],
               "id": "a510cc93a867214a2ea0-fdbbc5992616cffc4ecf",
               "file": "app.spec.js",
-              "line": 200,
+              "line": 357,
               "column": 3
             }
           ]
@@ -687,7 +687,7 @@
         {
           "title": "Settings Page",
           "file": "app.spec.js",
-          "line": 232,
+          "line": 401,
           "column": 6,
           "specs": [
             {
@@ -706,12 +706,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 5365,
+                      "duration": 3345,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:14.655Z",
+                      "startTime": "2025-12-10T18:17:56.778Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -721,7 +721,7 @@
               ],
               "id": "a510cc93a867214a2ea0-f545cd34030a7a44dc33",
               "file": "app.spec.js",
-              "line": 233,
+              "line": 402,
               "column": 3
             },
             {
@@ -738,14 +738,14 @@
                   "results": [
                     {
                       "workerIndex": 5,
-                      "parallelIndex": 2,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8023,
+                      "duration": 5406,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:52.212Z",
+                      "startTime": "2025-12-10T18:18:25.119Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -755,7 +755,7 @@
               ],
               "id": "a510cc93a867214a2ea0-ae5e040630fb0d823558",
               "file": "app.spec.js",
-              "line": 233,
+              "line": 402,
               "column": 3
             },
             {
@@ -772,14 +772,14 @@
                   "results": [
                     {
                       "workerIndex": 9,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 6529,
+                      "duration": 4005,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:45.783Z",
+                      "startTime": "2025-12-10T18:19:01.146Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -789,7 +789,7 @@
               ],
               "id": "a510cc93a867214a2ea0-83ee42449f651c406435",
               "file": "app.spec.js",
-              "line": 233,
+              "line": 402,
               "column": 3
             },
             {
@@ -806,14 +806,14 @@
                   "results": [
                     {
                       "workerIndex": 13,
-                      "parallelIndex": 1,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4508,
+                      "duration": 4056,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:20.431Z",
+                      "startTime": "2025-12-10T18:19:30.836Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -823,7 +823,7 @@
               ],
               "id": "a510cc93a867214a2ea0-a7d39926f6ac94310fc0",
               "file": "app.spec.js",
-              "line": 233,
+              "line": 402,
               "column": 3
             }
           ]
@@ -831,7 +831,7 @@
         {
           "title": "7-Day Cost Forecaster",
           "file": "app.spec.js",
-          "line": 256,
+          "line": 432,
           "column": 6,
           "specs": [
             {
@@ -850,12 +850,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 4835,
+                      "duration": 2727,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:24.932Z",
+                      "startTime": "2025-12-10T18:18:05.316Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -865,7 +865,7 @@
               ],
               "id": "a510cc93a867214a2ea0-6d6dada9cc53ae4c7191",
               "file": "app.spec.js",
-              "line": 257,
+              "line": 433,
               "column": 3
             },
             {
@@ -882,14 +882,14 @@
                   "results": [
                     {
                       "workerIndex": 5,
-                      "parallelIndex": 2,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4623,
+                      "duration": 2885,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:10.463Z",
+                      "startTime": "2025-12-10T18:18:39.104Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -899,7 +899,7 @@
               ],
               "id": "a510cc93a867214a2ea0-efa356710cea97222006",
               "file": "app.spec.js",
-              "line": 257,
+              "line": 433,
               "column": 3
             },
             {
@@ -916,14 +916,14 @@
                   "results": [
                     {
                       "workerIndex": 9,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 3422,
+                      "duration": 3218,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:57.477Z",
+                      "startTime": "2025-12-10T18:19:08.067Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -933,7 +933,7 @@
               ],
               "id": "a510cc93a867214a2ea0-5bd29fbd454f63f4e91c",
               "file": "app.spec.js",
-              "line": 257,
+              "line": 433,
               "column": 3
             },
             {
@@ -950,14 +950,14 @@
                   "results": [
                     {
                       "workerIndex": 13,
-                      "parallelIndex": 1,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3766,
+                      "duration": 2911,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:29.048Z",
+                      "startTime": "2025-12-10T18:19:37.432Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -967,7 +967,7 @@
               ],
               "id": "a510cc93a867214a2ea0-4769297b0a9d64dab3e8",
               "file": "app.spec.js",
-              "line": 257,
+              "line": 433,
               "column": 3
             }
           ]
@@ -975,7 +975,7 @@
         {
           "title": "System Performance Analyzer",
           "file": "app.spec.js",
-          "line": 297,
+          "line": 477,
           "column": 6,
           "specs": [
             {
@@ -994,12 +994,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 6132,
+                      "duration": 3114,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:29.825Z",
+                      "startTime": "2025-12-10T18:18:08.067Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1009,7 +1009,7 @@
               ],
               "id": "a510cc93a867214a2ea0-7f8e949c993356041fa1",
               "file": "app.spec.js",
-              "line": 298,
+              "line": 478,
               "column": 3
             },
             {
@@ -1026,14 +1026,14 @@
                   "results": [
                     {
                       "workerIndex": 5,
-                      "parallelIndex": 2,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4059,
+                      "duration": 2504,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:15.127Z",
+                      "startTime": "2025-12-10T18:18:42.022Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1043,7 +1043,7 @@
               ],
               "id": "a510cc93a867214a2ea0-3198bdc170fc7ae2e9ed",
               "file": "app.spec.js",
-              "line": 298,
+              "line": 478,
               "column": 3
             },
             {
@@ -1060,14 +1060,14 @@
                   "results": [
                     {
                       "workerIndex": 9,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 4059,
+                      "duration": 2939,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:00.938Z",
+                      "startTime": "2025-12-10T18:19:11.313Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1077,7 +1077,7 @@
               ],
               "id": "a510cc93a867214a2ea0-8311c90477176deef80e",
               "file": "app.spec.js",
-              "line": 298,
+              "line": 478,
               "column": 3
             },
             {
@@ -1094,14 +1094,14 @@
                   "results": [
                     {
                       "workerIndex": 13,
-                      "parallelIndex": 1,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4493,
+                      "duration": 3172,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:32.855Z",
+                      "startTime": "2025-12-10T18:19:40.369Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1111,7 +1111,7 @@
               ],
               "id": "a510cc93a867214a2ea0-09541506383d93197053",
               "file": "app.spec.js",
-              "line": 298,
+              "line": 478,
               "column": 3
             }
           ]
@@ -1119,7 +1119,7 @@
         {
           "title": "Energy Flow Page",
           "file": "app.spec.js",
-          "line": 338,
+          "line": 563,
           "column": 6,
           "specs": [
             {
@@ -1138,12 +1138,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 6251,
+                      "duration": 3183,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:36.091Z",
+                      "startTime": "2025-12-10T18:18:11.209Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1153,7 +1153,7 @@
               ],
               "id": "a510cc93a867214a2ea0-5689057a80e74d9448bb",
               "file": "app.spec.js",
-              "line": 339,
+              "line": 564,
               "column": 3
             },
             {
@@ -1170,14 +1170,14 @@
                   "results": [
                     {
                       "workerIndex": 5,
-                      "parallelIndex": 2,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5692,
+                      "duration": 3634,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:19.227Z",
+                      "startTime": "2025-12-10T18:18:44.545Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1187,7 +1187,7 @@
               ],
               "id": "a510cc93a867214a2ea0-5c56608ba2d2a84e340d",
               "file": "app.spec.js",
-              "line": 339,
+              "line": 564,
               "column": 3
             },
             {
@@ -1204,14 +1204,14 @@
                   "results": [
                     {
                       "workerIndex": 9,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 6716,
+                      "duration": 4084,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:05.039Z",
+                      "startTime": "2025-12-10T18:19:14.289Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1221,7 +1221,7 @@
               ],
               "id": "a510cc93a867214a2ea0-5ba72544ac245996b129",
               "file": "app.spec.js",
-              "line": 339,
+              "line": 564,
               "column": 3
             },
             {
@@ -1238,14 +1238,14 @@
                   "results": [
                     {
                       "workerIndex": 13,
-                      "parallelIndex": 1,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5360,
+                      "duration": 3420,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:37.400Z",
+                      "startTime": "2025-12-10T18:19:43.564Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1255,7 +1255,7 @@
               ],
               "id": "a510cc93a867214a2ea0-1eb670b81467bce4821f",
               "file": "app.spec.js",
-              "line": 339,
+              "line": 564,
               "column": 3
             }
           ]
@@ -1263,7 +1263,7 @@
         {
           "title": "Monthly Budget Planner",
           "file": "app.spec.js",
-          "line": 364,
+          "line": 602,
           "column": 6,
           "specs": [
             {
@@ -1282,12 +1282,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 5588,
+                      "duration": 3475,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:15.001Z",
+                      "startTime": "2025-12-10T18:17:56.922Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1297,7 +1297,7 @@
               ],
               "id": "a510cc93a867214a2ea0-a695da948879f4b24f74",
               "file": "app.spec.js",
-              "line": 365,
+              "line": 603,
               "column": 3
             },
             {
@@ -1314,14 +1314,14 @@
                   "results": [
                     {
                       "workerIndex": 6,
-                      "parallelIndex": 3,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 5483,
+                      "duration": 3640,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:54.057Z",
+                      "startTime": "2025-12-10T18:18:25.253Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1331,7 +1331,7 @@
               ],
               "id": "a510cc93a867214a2ea0-4df284867a9a6730f53b",
               "file": "app.spec.js",
-              "line": 365,
+              "line": 603,
               "column": 3
             },
             {
@@ -1347,15 +1347,15 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 10,
-                      "parallelIndex": 2,
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4513,
+                      "duration": 4055,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:46.201Z",
+                      "startTime": "2025-12-10T18:19:04.359Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1365,7 +1365,7 @@
               ],
               "id": "a510cc93a867214a2ea0-c7b28262d59767379f46",
               "file": "app.spec.js",
-              "line": 365,
+              "line": 603,
               "column": 3
             },
             {
@@ -1382,14 +1382,14 @@
                   "results": [
                     {
                       "workerIndex": 14,
-                      "parallelIndex": 2,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 4393,
+                      "duration": 3703,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:20.852Z",
+                      "startTime": "2025-12-10T18:19:32.890Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1399,7 +1399,7 @@
               ],
               "id": "a510cc93a867214a2ea0-75b853383daa18af6c0d",
               "file": "app.spec.js",
-              "line": 365,
+              "line": 603,
               "column": 3
             }
           ]
@@ -1407,7 +1407,7 @@
         {
           "title": "Upgrade ROI Calculator",
           "file": "app.spec.js",
-          "line": 407,
+          "line": 680,
           "column": 6,
           "specs": [
             {
@@ -1426,12 +1426,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 5935,
+                      "duration": 2622,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:25.883Z",
+                      "startTime": "2025-12-10T18:18:05.425Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1441,7 +1441,7 @@
               ],
               "id": "a510cc93a867214a2ea0-b81644e1fe34c556f45f",
               "file": "app.spec.js",
-              "line": 408,
+              "line": 681,
               "column": 3
             },
             {
@@ -1458,14 +1458,14 @@
                   "results": [
                     {
                       "workerIndex": 6,
-                      "parallelIndex": 3,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 4292,
+                      "duration": 2323,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:13.819Z",
+                      "startTime": "2025-12-10T18:18:39.085Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1475,7 +1475,7 @@
               ],
               "id": "a510cc93a867214a2ea0-494f0c8790f0ee043088",
               "file": "app.spec.js",
-              "line": 408,
+              "line": 681,
               "column": 3
             },
             {
@@ -1491,15 +1491,15 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 10,
-                      "parallelIndex": 2,
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4321,
+                      "duration": 3244,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:55.911Z",
+                      "startTime": "2025-12-10T18:19:11.523Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1509,7 +1509,7 @@
               ],
               "id": "a510cc93a867214a2ea0-d250549f5a532c355991",
               "file": "app.spec.js",
-              "line": 408,
+              "line": 681,
               "column": 3
             },
             {
@@ -1526,14 +1526,14 @@
                   "results": [
                     {
                       "workerIndex": 14,
-                      "parallelIndex": 2,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 4896,
+                      "duration": 2769,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:29.393Z",
+                      "startTime": "2025-12-10T18:19:40.506Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1543,7 +1543,7 @@
               ],
               "id": "a510cc93a867214a2ea0-467d43e75c2b8694909c",
               "file": "app.spec.js",
-              "line": 408,
+              "line": 681,
               "column": 3
             }
           ]
@@ -1551,7 +1551,7 @@
         {
           "title": "Responsive Design",
           "file": "app.spec.js",
-          "line": 434,
+          "line": 711,
           "column": 6,
           "specs": [
             {
@@ -1570,12 +1570,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 6131,
+                      "duration": 4586,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:31.882Z",
+                      "startTime": "2025-12-10T18:18:08.073Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1585,7 +1585,7 @@
               ],
               "id": "a510cc93a867214a2ea0-74eebc6e34c300a98e7a",
               "file": "app.spec.js",
-              "line": 435,
+              "line": 712,
               "column": 3
             },
             {
@@ -1604,12 +1604,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 5416,
+                      "duration": 2595,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:38.095Z",
+                      "startTime": "2025-12-10T18:18:12.689Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1619,7 +1619,7 @@
               ],
               "id": "a510cc93a867214a2ea0-6be59d2ce53e8ef2bbf6",
               "file": "app.spec.js",
-              "line": 460,
+              "line": 756,
               "column": 3
             },
             {
@@ -1636,14 +1636,14 @@
                   "results": [
                     {
                       "workerIndex": 6,
-                      "parallelIndex": 3,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 3777,
+                      "duration": 3939,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:18.173Z",
+                      "startTime": "2025-12-10T18:18:41.434Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1653,7 +1653,7 @@
               ],
               "id": "a510cc93a867214a2ea0-865eecce5399df78053e",
               "file": "app.spec.js",
-              "line": 435,
+              "line": 712,
               "column": 3
             },
             {
@@ -1670,14 +1670,14 @@
                   "results": [
                     {
                       "workerIndex": 6,
-                      "parallelIndex": 3,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 3832,
+                      "duration": 2239,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:22.008Z",
+                      "startTime": "2025-12-10T18:18:45.401Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1687,7 +1687,7 @@
               ],
               "id": "a510cc93a867214a2ea0-b87842d953ba8c3533b5",
               "file": "app.spec.js",
-              "line": 460,
+              "line": 756,
               "column": 3
             },
             {
@@ -1703,15 +1703,15 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 10,
-                      "parallelIndex": 2,
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4526,
+                      "duration": 4743,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:00.270Z",
+                      "startTime": "2025-12-10T18:19:14.794Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1721,7 +1721,7 @@
               ],
               "id": "a510cc93a867214a2ea0-330cd6cb7886005a3a14",
               "file": "app.spec.js",
-              "line": 435,
+              "line": 712,
               "column": 3
             },
             {
@@ -1737,15 +1737,15 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 10,
-                      "parallelIndex": 2,
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4624,
+                      "duration": 2719,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:04.835Z",
+                      "startTime": "2025-12-10T18:19:19.566Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1755,7 +1755,7 @@
               ],
               "id": "a510cc93a867214a2ea0-371d9efbbce10d77a592",
               "file": "app.spec.js",
-              "line": 460,
+              "line": 756,
               "column": 3
             },
             {
@@ -1772,14 +1772,14 @@
                   "results": [
                     {
                       "workerIndex": 14,
-                      "parallelIndex": 2,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 5512,
+                      "duration": 4414,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:34.326Z",
+                      "startTime": "2025-12-10T18:19:43.311Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1789,7 +1789,7 @@
               ],
               "id": "a510cc93a867214a2ea0-15127d57c2b0dd56f9d8",
               "file": "app.spec.js",
-              "line": 435,
+              "line": 712,
               "column": 3
             },
             {
@@ -1806,14 +1806,14 @@
                   "results": [
                     {
                       "workerIndex": 14,
-                      "parallelIndex": 2,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 6409,
+                      "duration": 3412,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:39.882Z",
+                      "startTime": "2025-12-10T18:19:47.751Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1823,7 +1823,7 @@
               ],
               "id": "a510cc93a867214a2ea0-1e05f29e6168c6dd7780",
               "file": "app.spec.js",
-              "line": 460,
+              "line": 756,
               "column": 3
             }
           ]
@@ -1831,7 +1831,7 @@
         {
           "title": "Dark Mode",
           "file": "app.spec.js",
-          "line": 485,
+          "line": 786,
           "column": 6,
           "specs": [
             {
@@ -1850,12 +1850,12 @@
                       "workerIndex": 3,
                       "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 5680,
+                      "duration": 2905,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:14.815Z",
+                      "startTime": "2025-12-10T18:17:56.810Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1865,7 +1865,7 @@
               ],
               "id": "a510cc93a867214a2ea0-8411b962a25c803048b4",
               "file": "app.spec.js",
-              "line": 486,
+              "line": 787,
               "column": 3
             },
             {
@@ -1882,14 +1882,14 @@
                   "results": [
                     {
                       "workerIndex": 7,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 4616,
+                      "duration": 2188,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:55.689Z",
+                      "startTime": "2025-12-10T18:18:28.795Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1899,7 +1899,7 @@
               ],
               "id": "a510cc93a867214a2ea0-201bda0c5b7bb2e3fb4a",
               "file": "app.spec.js",
-              "line": 486,
+              "line": 787,
               "column": 3
             },
             {
@@ -1915,15 +1915,15 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 11,
+                      "workerIndex": 10,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 4392,
+                      "duration": 3264,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:51.931Z",
+                      "startTime": "2025-12-10T18:19:01.842Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1933,7 +1933,7 @@
               ],
               "id": "a510cc93a867214a2ea0-5c54df9895cf420bb069",
               "file": "app.spec.js",
-              "line": 486,
+              "line": 787,
               "column": 3
             },
             {
@@ -1950,14 +1950,14 @@
                   "results": [
                     {
                       "workerIndex": 15,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 5026,
+                      "duration": 3219,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:25.063Z",
+                      "startTime": "2025-12-10T18:19:34.251Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1967,7 +1967,7 @@
               ],
               "id": "a510cc93a867214a2ea0-58ac51a5ff9a0b23630a",
               "file": "app.spec.js",
-              "line": 486,
+              "line": 787,
               "column": 3
             }
           ]
@@ -2003,7 +2003,7 @@
                       "workerIndex": 3,
                       "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 7528,
+                      "duration": 4455,
                       "errors": [],
                       "stdout": [
                         {
@@ -2045,7 +2045,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:25.894Z",
+                      "startTime": "2025-12-10T18:18:04.876Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2072,9 +2072,9 @@
                   "results": [
                     {
                       "workerIndex": 7,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 7205,
+                      "duration": 4633,
                       "errors": [],
                       "stdout": [
                         {
@@ -2116,7 +2116,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:15.745Z",
+                      "startTime": "2025-12-10T18:18:40.575Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2142,10 +2142,10 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 11,
+                      "workerIndex": 10,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 6742,
+                      "duration": 5569,
                       "errors": [],
                       "stdout": [
                         {
@@ -2187,7 +2187,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:01.581Z",
+                      "startTime": "2025-12-10T18:19:07.963Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2214,9 +2214,9 @@
                   "results": [
                     {
                       "workerIndex": 15,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 8087,
+                      "duration": 4749,
                       "errors": [],
                       "stdout": [
                         {
@@ -2258,7 +2258,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:34.316Z",
+                      "startTime": "2025-12-10T18:19:41.024Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2304,118 +2304,16 @@
                       "workerIndex": 3,
                       "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 7652,
+                      "duration": 4537,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "\n📊 SUMMARY:\n"
-                        },
-                        {
-                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
-                        },
-                        {
-                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
-                        },
-                        {
-                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   💥 Errors: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
-                        },
-                        {
-                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
-                        },
-                        {
-                          "text": "   setWinterTemp: 14\n"
-                        },
-                        {
-                          "text": "   navigate: 10\n"
-                        },
-                        {
-                          "text": "   offlineAnswer: 8\n"
-                        },
-                        {
-                          "text": "   setMode: 7\n"
-                        },
-                        {
-                          "text": "   increaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   decreaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   showScore: 4\n"
-                        },
-                        {
-                          "text": "   funResponse: 4\n"
-                        },
-                        {
-                          "text": "   setSquareFeet: 3\n"
-                        },
-                        {
-                          "text": "   showSavings: 3\n"
-                        },
-                        {
-                          "text": "   setSummerTemp: 2\n"
-                        },
-                        {
-                          "text": "   presetSleep: 2\n"
-                        },
-                        {
-                          "text": "   presetAway: 2\n"
-                        },
-                        {
-                          "text": "   presetHome: 2\n"
-                        },
-                        {
-                          "text": "   help: 2\n"
-                        },
-                        {
-                          "text": "   educate: 2\n"
-                        },
-                        {
-                          "text": "   compareSystem: 2\n"
-                        },
-                        {
-                          "text": "   systemStatus: 1\n"
-                        },
-                        {
-                          "text": "   queryHvacStatus: 1\n"
-                        },
-                        {
-                          "text": "   setInsulationLevel: 1\n"
-                        },
-                        {
-                          "text": "   setHSPF: 1\n"
-                        },
-                        {
-                          "text": "   setSEER: 1\n"
-                        },
-                        {
-                          "text": "   setUtilityCost: 1\n"
-                        },
-                        {
-                          "text": "   savingsAnalysis: 1\n"
-                        },
-                        {
-                          "text": "   calculateHeatLoss: 1\n"
-                        },
-                        {
-                          "text": "   showDiagnostics: 1\n"
-                        },
-                        {
-                          "text": "   checkAuxHeat: 1\n"
-                        },
-                        {
-                          "text": "   setHeatDifferential: 1\n"
+                          "text": "\n⏭️  Test skipped: Source files not available in production build\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:33.591Z",
+                      "startTime": "2025-12-10T18:18:09.385Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2442,120 +2340,18 @@
                   "results": [
                     {
                       "workerIndex": 7,
-                      "parallelIndex": 0,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 6531,
+                      "duration": 4888,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "\n📊 SUMMARY:\n"
-                        },
-                        {
-                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
-                        },
-                        {
-                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
-                        },
-                        {
-                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   💥 Errors: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
-                        },
-                        {
-                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
-                        },
-                        {
-                          "text": "   setWinterTemp: 14\n"
-                        },
-                        {
-                          "text": "   navigate: 10\n"
-                        },
-                        {
-                          "text": "   offlineAnswer: 8\n"
-                        },
-                        {
-                          "text": "   setMode: 7\n"
-                        },
-                        {
-                          "text": "   increaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   decreaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   showScore: 4\n"
-                        },
-                        {
-                          "text": "   funResponse: 4\n"
-                        },
-                        {
-                          "text": "   setSquareFeet: 3\n"
-                        },
-                        {
-                          "text": "   showSavings: 3\n"
-                        },
-                        {
-                          "text": "   setSummerTemp: 2\n"
-                        },
-                        {
-                          "text": "   presetSleep: 2\n"
-                        },
-                        {
-                          "text": "   presetAway: 2\n"
-                        },
-                        {
-                          "text": "   presetHome: 2\n"
-                        },
-                        {
-                          "text": "   help: 2\n"
-                        },
-                        {
-                          "text": "   educate: 2\n"
-                        },
-                        {
-                          "text": "   compareSystem: 2\n"
-                        },
-                        {
-                          "text": "   systemStatus: 1\n"
-                        },
-                        {
-                          "text": "   queryHvacStatus: 1\n"
-                        },
-                        {
-                          "text": "   setInsulationLevel: 1\n"
-                        },
-                        {
-                          "text": "   setHSPF: 1\n"
-                        },
-                        {
-                          "text": "   setSEER: 1\n"
-                        },
-                        {
-                          "text": "   setUtilityCost: 1\n"
-                        },
-                        {
-                          "text": "   savingsAnalysis: 1\n"
-                        },
-                        {
-                          "text": "   calculateHeatLoss: 1\n"
-                        },
-                        {
-                          "text": "   showDiagnostics: 1\n"
-                        },
-                        {
-                          "text": "   checkAuxHeat: 1\n"
-                        },
-                        {
-                          "text": "   setHeatDifferential: 1\n"
+                          "text": "\n⏭️  Test skipped: Source files not available in production build\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:23.059Z",
+                      "startTime": "2025-12-10T18:18:45.253Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2581,121 +2377,19 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 11,
+                      "workerIndex": 10,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 7182,
+                      "duration": 5158,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "\n📊 SUMMARY:\n"
-                        },
-                        {
-                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
-                        },
-                        {
-                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
-                        },
-                        {
-                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   💥 Errors: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
-                        },
-                        {
-                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
-                        },
-                        {
-                          "text": "   setWinterTemp: 14\n"
-                        },
-                        {
-                          "text": "   navigate: 10\n"
-                        },
-                        {
-                          "text": "   offlineAnswer: 8\n"
-                        },
-                        {
-                          "text": "   setMode: 7\n"
-                        },
-                        {
-                          "text": "   increaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   decreaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   showScore: 4\n"
-                        },
-                        {
-                          "text": "   funResponse: 4\n"
-                        },
-                        {
-                          "text": "   setSquareFeet: 3\n"
-                        },
-                        {
-                          "text": "   showSavings: 3\n"
-                        },
-                        {
-                          "text": "   setSummerTemp: 2\n"
-                        },
-                        {
-                          "text": "   presetSleep: 2\n"
-                        },
-                        {
-                          "text": "   presetAway: 2\n"
-                        },
-                        {
-                          "text": "   presetHome: 2\n"
-                        },
-                        {
-                          "text": "   help: 2\n"
-                        },
-                        {
-                          "text": "   educate: 2\n"
-                        },
-                        {
-                          "text": "   compareSystem: 2\n"
-                        },
-                        {
-                          "text": "   systemStatus: 1\n"
-                        },
-                        {
-                          "text": "   queryHvacStatus: 1\n"
-                        },
-                        {
-                          "text": "   setInsulationLevel: 1\n"
-                        },
-                        {
-                          "text": "   setHSPF: 1\n"
-                        },
-                        {
-                          "text": "   setSEER: 1\n"
-                        },
-                        {
-                          "text": "   setUtilityCost: 1\n"
-                        },
-                        {
-                          "text": "   savingsAnalysis: 1\n"
-                        },
-                        {
-                          "text": "   calculateHeatLoss: 1\n"
-                        },
-                        {
-                          "text": "   showDiagnostics: 1\n"
-                        },
-                        {
-                          "text": "   checkAuxHeat: 1\n"
-                        },
-                        {
-                          "text": "   setHeatDifferential: 1\n"
+                          "text": "\n⏭️  Test skipped: Source files not available in production build\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:08.418Z",
+                      "startTime": "2025-12-10T18:19:13.597Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2722,120 +2416,18 @@
                   "results": [
                     {
                       "workerIndex": 15,
-                      "parallelIndex": 3,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 6193,
+                      "duration": 4517,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "\n📊 SUMMARY:\n"
-                        },
-                        {
-                          "text": "   ✅ Commands recognized: 88 (85.4%)\n"
-                        },
-                        {
-                          "text": "   ❓ Questions detected: 15 (14.6%)\n"
-                        },
-                        {
-                          "text": "   ❌ Unrecognized: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   💥 Errors: 0 (0.0%)\n"
-                        },
-                        {
-                          "text": "   🤖 Requires LLM: 14 (13.6%)\n"
-                        },
-                        {
-                          "text": "\n📈 BREAKDOWN BY ACTION TYPE:\n"
-                        },
-                        {
-                          "text": "   setWinterTemp: 14\n"
-                        },
-                        {
-                          "text": "   navigate: 10\n"
-                        },
-                        {
-                          "text": "   offlineAnswer: 8\n"
-                        },
-                        {
-                          "text": "   setMode: 7\n"
-                        },
-                        {
-                          "text": "   increaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   decreaseTemp: 5\n"
-                        },
-                        {
-                          "text": "   showScore: 4\n"
-                        },
-                        {
-                          "text": "   funResponse: 4\n"
-                        },
-                        {
-                          "text": "   setSquareFeet: 3\n"
-                        },
-                        {
-                          "text": "   showSavings: 3\n"
-                        },
-                        {
-                          "text": "   setSummerTemp: 2\n"
-                        },
-                        {
-                          "text": "   presetSleep: 2\n"
-                        },
-                        {
-                          "text": "   presetAway: 2\n"
-                        },
-                        {
-                          "text": "   presetHome: 2\n"
-                        },
-                        {
-                          "text": "   help: 2\n"
-                        },
-                        {
-                          "text": "   educate: 2\n"
-                        },
-                        {
-                          "text": "   compareSystem: 2\n"
-                        },
-                        {
-                          "text": "   systemStatus: 1\n"
-                        },
-                        {
-                          "text": "   queryHvacStatus: 1\n"
-                        },
-                        {
-                          "text": "   setInsulationLevel: 1\n"
-                        },
-                        {
-                          "text": "   setHSPF: 1\n"
-                        },
-                        {
-                          "text": "   setSEER: 1\n"
-                        },
-                        {
-                          "text": "   setUtilityCost: 1\n"
-                        },
-                        {
-                          "text": "   savingsAnalysis: 1\n"
-                        },
-                        {
-                          "text": "   calculateHeatLoss: 1\n"
-                        },
-                        {
-                          "text": "   showDiagnostics: 1\n"
-                        },
-                        {
-                          "text": "   checkAuxHeat: 1\n"
-                        },
-                        {
-                          "text": "   setHeatDifferential: 1\n"
+                          "text": "\n⏭️  Test skipped: Source files not available in production build\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:42.644Z",
+                      "startTime": "2025-12-10T18:19:45.827Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2881,7 +2473,7 @@
                       "workerIndex": 3,
                       "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 7387,
+                      "duration": 4585,
                       "errors": [],
                       "stdout": [
                         {
@@ -2923,7 +2515,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:55:41.531Z",
+                      "startTime": "2025-12-10T18:18:13.974Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2949,10 +2541,10 @@
                   "projectName": "firefox",
                   "results": [
                     {
-                      "workerIndex": 5,
-                      "parallelIndex": 2,
+                      "workerIndex": 6,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 7968,
+                      "duration": 4585,
                       "errors": [],
                       "stdout": [
                         {
@@ -2994,7 +2586,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:56:24.993Z",
+                      "startTime": "2025-12-10T18:18:47.695Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3020,10 +2612,10 @@
                   "projectName": "webkit",
                   "results": [
                     {
-                      "workerIndex": 10,
-                      "parallelIndex": 2,
+                      "workerIndex": 9,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 6349,
+                      "duration": 5969,
                       "errors": [],
                       "stdout": [
                         {
@@ -3065,7 +2657,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:09.539Z",
+                      "startTime": "2025-12-10T18:19:18.447Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3092,9 +2684,9 @@
                   "results": [
                     {
                       "workerIndex": 13,
-                      "parallelIndex": 1,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6790,
+                      "duration": 4750,
                       "errors": [],
                       "stdout": [
                         {
@@ -3136,7 +2728,7 @@
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2025-12-09T03:57:42.876Z",
+                      "startTime": "2025-12-10T18:19:47.049Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3152,13 +2744,574 @@
           ]
         }
       ]
+    },
+    {
+      "title": "smoke.spec.js",
+      "file": "smoke.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Smoke Tests - Production Build",
+          "file": "smoke.spec.js",
+          "line": 46,
+          "column": 6,
+          "specs": [
+            {
+              "title": "home page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 3274,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:14.452Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-5010f55272719af148d4",
+              "file": "smoke.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "analyzer page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4267,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:15.331Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-07ac1016a37f96aeefe6",
+              "file": "smoke.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "budget page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4592,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:17.758Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-393ec45c1e80dad7cac8",
+              "file": "smoke.spec.js",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "forecast page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 7142,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:18.614Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-b39277cf09835a4ef49c",
+              "file": "smoke.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "home page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4060,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:48.220Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-7d3f479d677d94573bb0",
+              "file": "smoke.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "analyzer page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 5249,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:50.210Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-3c767ecfbb3d9b8beb2e",
+              "file": "smoke.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "budget page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6018,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:52.307Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-80ac1367e78c7591c614",
+              "file": "smoke.spec.js",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "forecast page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6034,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:18:52.336Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-82b7c24724ae05a88c18",
+              "file": "smoke.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "home page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4766,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:18.828Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-538e623d24ceb915d164",
+              "file": "smoke.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "analyzer page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5015,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:22.350Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-0f6555c7d479e7a5402b",
+              "file": "smoke.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "budget page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 5279,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:23.623Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-54e05eb17d7ca96a65ca",
+              "file": "smoke.spec.js",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "forecast page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5571,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:24.317Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-26782266d095ee89df5f",
+              "file": "smoke.spec.js",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "home page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 3335,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:49.640Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-85ba675983c9bc1b8f5d",
+              "file": "smoke.spec.js",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "analyzer page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 4338,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:50.399Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-df7cb852c607a8f71304",
+              "file": "smoke.spec.js",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "budget page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 4422,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:51.209Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-aeaafe4439c8b45f48bb",
+              "file": "smoke.spec.js",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "forecast page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium-mobile",
+                  "projectName": "chromium-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5022,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-12-10T18:19:51.843Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2c14808d47b386fba9eb-22afa3e5be21c68ac3cc",
+              "file": "smoke.spec.js",
+              "line": 200,
+              "column": 3
+            }
+          ]
+        }
+      ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2025-12-09T03:55:10.559Z",
-    "duration": 159398.048,
-    "expected": 64,
+    "startTime": "2025-12-10T18:17:25.101Z",
+    "duration": 152566.34900000002,
+    "expected": 80,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

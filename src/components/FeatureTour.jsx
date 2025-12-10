@@ -50,9 +50,10 @@ const FeatureTour = () => {
             retryCount++;
             setTimeout(checkTargetsAndStart, 500);
           } else {
-            // Give up after max retries - targets might not exist on this page
-            if (import.meta.env.DEV) {
-              console.warn("FeatureTour: Target elements not found after retries, skipping tour");
+            // Silently skip tour if targets don't exist - this is expected on some pages
+            // Only log in DEV mode with a debug-level message
+            if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_FEATURE_TOUR === 'true') {
+              console.debug("FeatureTour: Target elements not found after retries, skipping tour");
             }
           }
         };
@@ -239,8 +240,13 @@ const FeatureTour = () => {
     }
   };
 
-  // Only show tour on home/dashboard page
+  // Only show tour on home/dashboard page (not on mission-control or other pages)
   if (location.pathname !== "/" && location.pathname !== "/home") {
+    return null;
+  }
+  
+  // Don't attempt tour on mission-control or other simplified pages that don't have tour targets
+  if (location.pathname === "/mission-control") {
     return null;
   }
 

@@ -66,8 +66,8 @@ export default function SystemHealthAlerts({
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-50">System Health</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <h3 className="text-sm font-semibold text-slate-50">💙 System Health</h3>
+            <p className="text-xs text-slate-400 mt-0.5 italic">
               Everything looks normal based on recent data.
             </p>
           </div>
@@ -85,9 +85,9 @@ export default function SystemHealthAlerts({
             <AlertCircle className="w-4 h-4 text-amber-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-50">System Health</h3>
+            <h3 className="text-sm font-semibold text-slate-50">💙 System Health</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              {activeAlerts.length} {activeAlerts.length === 1 ? "thing" : "things"} worth a look
+              <strong className="text-slate-200">{activeAlerts.length}</strong> {activeAlerts.length === 1 ? "thing" : "things"} worth a look
             </p>
           </div>
         </div>

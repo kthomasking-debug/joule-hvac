@@ -14,7 +14,10 @@ async function loadPreGeneratedTTS() {
 }
 
 // ElevenLabs TTS integration
-const ELEVENLABS_API_KEY = "sk_6f2db1886a416f1985025b6ef997d9ddf27c1985b228e580";
+// API key can be overridden via environment variable or localStorage
+const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY || 
+  (typeof localStorage !== 'undefined' ? localStorage.getItem('elevenLabsApiKey') : null) ||
+  null; // Set to null to disable ElevenLabs if no key is available
 
 // Function to get voice ID from localStorage or use default
 function getElevenLabsVoiceId() {
@@ -71,6 +74,16 @@ async function initializeAbsinthaVoice() {
 
 // Function to fetch available voices from ElevenLabs API
 async function fetchElevenLabsVoices(apiKey = ELEVENLABS_API_KEY) {
+  // Don't make the request if no API key is provided
+  if (!apiKey || apiKey.trim() === '') {
+    return [];
+  }
+  
+  // Basic validation: ElevenLabs API keys should start with "sk_"
+  if (!apiKey.startsWith('sk_')) {
+    return [];
+  }
+  
   try {
     const response = await fetch("https://api.elevenlabs.io/v1/voices", {
       method: "GET",
@@ -81,9 +94,13 @@ async function fetchElevenLabsVoices(apiKey = ELEVENLABS_API_KEY) {
     if (response.ok) {
       const data = await response.json();
       return data.voices || [];
+    } else if (response.status === 401) {
+      // Invalid API key - silently fail and don't log to console
+      return [];
     }
   } catch (error) {
-    console.warn("Failed to fetch ElevenLabs voices:", error);
+    // Silently fail - don't log network errors to console
+    // The browser will still show the error in Network tab, but we won't spam console
   }
   return [];
 }
@@ -356,9 +373,10 @@ export function useSpeechSynthesis(options = {}) {
 
   // Initialize Absintha voice on mount (non-blocking)
   useEffect(() => {
-    if (useElevenLabs && ELEVENLABS_API_KEY && !voiceIdCache) {
+    // Only initialize if we have a valid API key
+    if (useElevenLabs && ELEVENLABS_API_KEY && ELEVENLABS_API_KEY.startsWith('sk_') && !voiceIdCache) {
       initializeAbsinthaVoice().catch(() => {
-        // Silently fail - will use default voice ID
+        // Silently fail - will use default voice ID or browser TTS
       });
     }
   }, [useElevenLabs]);
@@ -707,7 +725,8 @@ export function useSpeechSynthesis(options = {}) {
       }
 
       // Step 3: Try ElevenLabs API (for non-dynamic content without pre-generated audio)
-      if (useElevenLabs && ELEVENLABS_API_KEY) {
+      // Only try if we have a valid API key
+      if (useElevenLabs && ELEVENLABS_API_KEY && ELEVENLABS_API_KEY.startsWith('sk_')) {
         // Double-check: if ElevenLabs is already playing, don't start another
         if (usingElevenLabsRef.current || audioRef.current) {
           console.warn("ElevenLabs audio already playing, skipping new request");

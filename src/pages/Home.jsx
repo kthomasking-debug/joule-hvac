@@ -701,12 +701,23 @@ const HomeDashboard = () => {
         
         {/* Page Header */}
         <header className="mb-6">
-          <h1 className="text-[24px] sm:text-[28px] font-semibold text-white">
-            Mission Control
-          </h1>
-          <p className="text-sm text-[#A7B0BA] mt-1 max-w-2xl">
-            Explain what your heat pump is doing, whether it's wasting money, and what to change — in plain language.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-[24px] sm:text-[28px] font-semibold text-white">
+                Mission Control
+              </h1>
+              <p className="text-sm text-[#A7B0BA] mt-1 max-w-2xl italic">
+                Understand what your heat pump is doing, how it's feeling, and where it might need a little support — all in plain, human language.
+              </p>
+            </div>
+            <Link
+              to="/mission-control"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2"
+            >
+              Simple View
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </header>
 
         {/* Demo Mode Banner (subtle) */}
@@ -715,7 +726,7 @@ const HomeDashboard = () => {
             <div className="flex items-center gap-3">
               <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />
               <span className="text-sm text-slate-300">
-                Demo mode — <Link to="/config#joule-bridge" className="text-blue-400 hover:text-blue-300 font-medium">Connect your thermostat</Link> for live data.
+                <Link to="/config#joule-bridge" className="text-blue-400 hover:text-blue-300 font-medium">Demo mode — Connect your thermostat</Link> for live data.
               </span>
             </div>
             <button
@@ -911,20 +922,20 @@ const HomeDashboard = () => {
           
           // Build wasting summary
           const wastingSummaryText = hasOptimizerSchedule && isEfficient
-            ? `Optimizations are active. Your heat pump should stay off strips with the optimized schedule.`
+            ? `Your optimization settings are active, and the schedule should help your heat pump stay off auxiliary heat tonight.`
             : !isEfficient
-            ? `Your heat pump is running in ${systemStatus === "HEAT ON" ? "heating" : systemStatus === "COOL ON" ? "cooling" : "auto"} mode but still hitting the electric strips on cold nights. That's the most expensive way to heat the house.`
-            : `For tonight's forecast, your heat pump should stay off strips if you keep the schedule as-is.`;
+            ? `Using more energy than earlier this season. This can happen when surfaces like the filter or coil need a little attention. It's not urgent — just something to be aware of. If a technician has already checked your system, you can safely dismiss this.`
+            : `Things look good. Your optimization settings are active, and the schedule should help your heat pump stay off auxiliary heat tonight.`;
           
           // Build change recommendation
-          const changeTitle = `Keep your nighttime setpoint within 2°F of daytime when it's below ${balancePoint}°F outside.`;
-          const changeBody = `Tonight, try ${recommendedSetpoint}°F day / ${Math.max(66, recommendedSetpoint - 2)}°F night instead of dropping to ${currentSetpoint - 4}°F.\nThis keeps the heat pump running instead of waking up the strips at 3 AM.`;
-          const changeFootnote = "You can always nudge it down later if guests are comfortable.";
+          const changeTitle = `When the temperature drops below ${balancePoint}°F, your heat pump stays happier when the night and day settings are closer together.`;
+          const changeBody = `Tonight, try:\n\n${recommendedSetpoint}°F during the day → ${Math.max(66, recommendedSetpoint - 2)}°F at night\n\ninstead of dropping to ${currentSetpoint - 4}°F.\n\nThis helps the system stay efficient without waking up the strips in the early morning hours.`;
+          const changeFootnote = "If everyone feels comfortable, you can always adjust it down later.";
           
           // Build last optimization summary
           const lastOptimization = optimizationResults ? {
             ranAt: `Today · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-            resultSummary: `Strips reduced on cold nights, comfort unchanged.`
+            resultSummary: `Your system is running more efficiently.`
           } : null;
           
           // Build today summary
@@ -1088,9 +1099,9 @@ const HomeDashboard = () => {
           <div id="active-intelligence-feed-tour-target" className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
             <div className="mb-4">
               <h3 className="text-[18px] font-medium text-[#E8EDF3] mb-1">
-                Active Intelligence Feed
+                🔎 Active Intelligence Feed
               </h3>
-              <p className="text-sm text-slate-400">What happened and what to do about it</p>
+              <p className="text-sm text-slate-400 italic">What happened today — and what it means for you</p>
             </div>
             <div 
               ref={eventLogRef}
@@ -1117,17 +1128,17 @@ const HomeDashboard = () => {
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed pl-6">
-                        {event.details || "System operating normally."}
+                        {event.details || "Everything checked out. Your system passed its routine health check and is running efficiently. No action needed."}
                       </p>
                       <div className="pl-6 mt-2">
                         {event.type === "success" ? (
-                          <span className="text-xs text-emerald-400 font-medium">✅ No action needed</span>
+                          <span className="text-xs text-slate-500 italic">Just keep an eye on things; nothing to worry about.</span>
                         ) : event.type === "warning" ? (
                           <span className="text-xs text-amber-400 font-medium">
-                            👉 Recommended: Raise nighttime setpoint from {(settings.winterThermostat || 70) - 4}°F → {settings.winterThermostat || 70}°F when it's below 25°F outside.
+                            👉 <span className="italic">Gentle tip:</span> When it's below <strong>25°F</strong>, raising your nighttime setpoint from <strong>{(settings.winterThermostat || 70) - 4}°F → {settings.winterThermostat || 70}°F</strong> can help avoid extra aux usage. This is normal in colder weather.
                           </span>
                         ) : (
-                          <span className="text-xs text-blue-400 font-medium">ℹ️ Monitor for changes</span>
+                          <span className="text-xs text-slate-500 italic">This is normal. Just keep an eye on things.</span>
                         )}
                       </div>
                     </div>
@@ -1147,7 +1158,7 @@ const HomeDashboard = () => {
         <div id="system-status-tour-target" className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
           {/* Header */}
           <div className="mb-5">
-            <h2 className="text-[20px] font-medium text-[#E8EDF3]">System Status</h2>
+            <h2 className="text-[20px] font-medium text-[#E8EDF3]">🌡 System Status</h2>
           </div>
           
           {/* Two Column Layout */}
@@ -1158,7 +1169,7 @@ const HomeDashboard = () => {
                 {currentTemp.toFixed(1)}°F
               </div>
               <div className="text-base text-[#A7B0BA] mb-5 font-medium">
-                Indoor Temperature {settings.winterThermostat && `(Optimal: ${settings.winterThermostat}°F)`}
+                Indoor temperature {settings.winterThermostat && `(Optimal: ${settings.winterThermostat}°F)`}
               </div>
               
               {/* Mode + Status Row 1 */}
@@ -1184,7 +1195,7 @@ const HomeDashboard = () => {
                   const hourlyCost = (heatLossFactor * utilityCost) / hspf2;
                   return (
                     <div className="text-xs text-[#7C8894]">
-                      Est. Cost: ${hourlyCost.toFixed(2)}/hr
+                      Estimated cost right now: <strong className="text-white">${hourlyCost.toFixed(2)}/hour</strong>
                     </div>
                   );
             } catch {
@@ -1195,6 +1206,7 @@ const HomeDashboard = () => {
 
             {/* Right Column: Temperature Trend Chart - Enhanced */}
             <div>
+              <p className="text-xs text-slate-500 mb-3 italic">Temperature trends will appear here as Joule learns more.</p>
               <div className="text-base font-semibold text-[#E8EDF3] mb-3">Temperature Trend (4 hours)</div>
               <div className="h-40 bg-slate-950 border border-slate-800 rounded-lg p-4 relative overflow-hidden">
                 {/* Y-axis labels */}
@@ -1279,7 +1291,7 @@ const HomeDashboard = () => {
                     const bp = Math.round(balancePoint.balancePoint);
                     return (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[#7C8894]">Balance Point:</span>
+                        <span className="text-[#7C8894]">Balance point:</span>
                         <span className="text-[#FFFFFF] font-medium">{bp}°F</span>
                         </div>
                       );
@@ -1290,7 +1302,7 @@ const HomeDashboard = () => {
               
               {/* Outdoor Temp */}
               <div className="flex items-center gap-1.5">
-                <span className="text-[#7C8894]">Outdoor:</span>
+                <span className="text-[#7C8894]">Outdoor temperature:</span>
                 <span className="text-[#FFFFFF] font-medium">{outdoorTemp}°F</span>
               </div>
               
@@ -1351,7 +1363,7 @@ const HomeDashboard = () => {
                       if (balancePoint && balancePoint.balancePoint && outdoorTemp < balancePoint.balancePoint) {
                         return (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-amber-400 font-medium">⚠ Aux Heat Needed</span>
+                        <span className="text-amber-400 font-medium">Aux heat: active</span>
                       </div>
                     );
                   }
@@ -1662,14 +1674,13 @@ const HomeDashboard = () => {
               <div>
                 <div className="mb-2">
                   <h3 className="text-[22px] font-semibold text-white mb-1">
-                    What this year will roughly cost
+                    💵 What This Year May Cost
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 italic">
                     {optimizationResults 
-                      ? "If you keep Joule's optimized schedule, this year will roughly cost:"
-                      : "If you keep today's strategy, this year will roughly cost:"}
+                      ? "If you continue with Joule's optimized schedule, your estimated yearly cost is:"
+                      : "If you continue with today's strategy, your estimated yearly cost is:"}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Annual Energy Cost Estimate</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <span
@@ -1735,6 +1746,7 @@ const HomeDashboard = () => {
                         </strong>
                       </span>
                     </div>
+                    <p className="text-xs text-slate-500 mt-2 italic">This estimate adjusts as Joule learns more about your home, weather, and comfort patterns.</p>
                   </div>
                 )}
                 <div className="mt-4">
@@ -1812,10 +1824,10 @@ const HomeDashboard = () => {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-sm sm:text-base font-semibold text-slate-100">
-                Want to go deeper?
+                🧠 Want to explore more?
               </h2>
-              <p className="text-xs text-[#A7B0BA] mt-1 max-w-xl">
-                Use these tools if you like graphs, what-ifs, and nerd knobs.
+              <p className="text-xs text-[#A7B0BA] mt-1 max-w-xl italic">
+                Here are some tools if you enjoy looking deeper into the data or trying "what if" scenarios.
               </p>
             </div>
           </div>
@@ -1837,16 +1849,12 @@ const HomeDashboard = () => {
                       7-Day Cost Forecaster
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      See what your current schedule will cost this week.
+                      See how your current schedule affects cost throughout the week.
                     </p>
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-slate-500" />
               </div>
-              <p className="mt-2 text-xs text-[#A7B0BA]">
-                Uses real weather data, your heat loss, and your rates to
-                estimate heating and cooling cost day-by-day.
-              </p>
             </button>
 
             {/* Thermostat Strategy */}
@@ -1865,15 +1873,14 @@ const HomeDashboard = () => {
                       Thermostat Strategy
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Compare constant temp vs nighttime setback.
+                      Compare constant temperatures vs nighttime setbacks.
                     </p>
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-slate-500" />
               </div>
               <p className="mt-2 text-xs text-[#A7B0BA]">
-                See how much you really save—or lose—by dropping the setpoint
-                at night for your specific home and weather.
+                Find the balance between comfort and savings for your home.
               </p>
             </button>
           </div>
@@ -1883,7 +1890,7 @@ const HomeDashboard = () => {
             onClick={() => navigate("/analysis")}
             className="mt-3 text-[11px] text-[#A7B0BA] hover:text-slate-100 inline-flex items-center gap-1"
           >
-            View full toolbox in Analysis
+            View the full toolbox in Analysis
             <ArrowRight className="h-3 w-3" />
           </button>
         </section>
