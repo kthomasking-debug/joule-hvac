@@ -1,20 +1,17 @@
-import React from 'react';
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
-} from 'recharts';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp, AlertTriangle, BarChart3, Zap, Home, Settings, ChevronDown, Wind, Fan } from 'lucide-react';
 
 const SHORT_CYCLE_THRESHOLD = 300; // seconds
+
+// Loading fallback for charts
+const ChartLoadingFallback = () => (
+  <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-gray-900 rounded-lg">
+    <div className="text-center">
+      <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-blue-600 dark:border-blue-400 mb-2"></div>
+      <p className="text-sm text-gray-500 dark:text-gray-400">Loading chart...</p>
+    </div>
+  </div>
+);
 
 export default function AnalysisGraphs({
   heatDifferentialData,
@@ -29,6 +26,80 @@ export default function AnalysisGraphs({
   currentTempCol,
   parsedCsvRows,
 }) {
+  // Dynamically load recharts to avoid bundler initialization issues
+  const [Recharts, setRecharts] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Ensure React is available before loading recharts
+    // Recharts depends on React, so we need to wait for React to be fully initialized
+    const loadRecharts = async () => {
+      try {
+        // Wait for React to be fully initialized
+        // Use requestAnimationFrame to ensure we're after React's initialization
+        await new Promise(resolve => {
+          // Check multiple times to ensure React is ready
+          const checkReact = () => {
+            // React should be available via the module system
+            // If we're in a React component, React is already loaded
+            // Just wait one frame to ensure everything is initialized
+            requestAnimationFrame(() => {
+              setTimeout(resolve, 0);
+            });
+          };
+          checkReact();
+        });
+
+        // Now safely import recharts
+        // The dynamic import will resolve React dependencies correctly
+        const module = await import('recharts');
+        setRecharts({
+          LineChart: module.LineChart,
+          Line: module.Line,
+          BarChart: module.BarChart,
+          Bar: module.Bar,
+          XAxis: module.XAxis,
+          YAxis: module.YAxis,
+          CartesianGrid: module.CartesianGrid,
+          Tooltip: module.Tooltip,
+          Legend: module.Legend,
+          ResponsiveContainer: module.ResponsiveContainer,
+          ReferenceLine: module.ReferenceLine,
+        });
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to load recharts:', error);
+        setIsLoading(false);
+      }
+    };
+
+    loadRecharts();
+  }, []);
+
+  // Show loading state while recharts is loading
+  if (isLoading || !Recharts) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-200 dark:border-gray-700 mt-8">
+        <ChartLoadingFallback />
+      </div>
+    );
+  }
+
+  // Destructure recharts components for easier use
+  const {
+    LineChart,
+    Line,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend,
+    ResponsiveContainer,
+    ReferenceLine,
+  } = Recharts;
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-200 dark:border-gray-700 mt-8">
       {/* Note: Warning removed - CSV data now persists in IndexedDB and auto-restores */}

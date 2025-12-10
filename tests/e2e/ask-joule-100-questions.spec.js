@@ -166,9 +166,22 @@ test.describe('Ask Joule Questions - 100 Questions Test', () => {
 
   test('should send 100 questions to LLM, not intercept as commands', async ({ page }) => {
     // Test the parser directly via browser console
+    // The parser is exposed on window.parseAskJoule for E2E tests
     const results = await page.evaluate(async (testQuestions) => {
-      const module = await import('/src/utils/askJouleParser.js');
-      const parseAskJoule = module.parseAskJoule || module.default;
+      // Wait for parser to be available on window (it's loaded asynchronously)
+      let parseAskJoule = window.parseAskJoule;
+      if (!parseAskJoule) {
+        // Wait up to 5 seconds for parser to load
+        for (let i = 0; i < 50; i++) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          parseAskJoule = window.parseAskJoule;
+          if (parseAskJoule) break;
+        }
+      }
+      
+      if (!parseAskJoule) {
+        throw new Error('parseAskJoule not available on window object');
+      }
       
       const results = {
         questions: 0,

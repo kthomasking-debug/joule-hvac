@@ -28,8 +28,8 @@ import { getAnnualHDD, getAnnualCDD, calculateAnnualHeatingCostFromHDD, calculat
 import { saveCsvData, loadCsvData, hasCsvData, getCsvMetadata, getStorageStats, listAllCsvData } from '../lib/csvDatabase';
 import '../styles/print.css';
 
-// NOTE: Recharts is imported by AnalysisGraphs component, not duplicated here
-// to avoid bundler issues ("Cannot access 'Q' before initialization")
+// NOTE: Recharts is dynamically imported by AnalysisGraphs component using useEffect
+// to avoid bundler initialization order issues ("Cannot access 'Q' before initialization")
 
 // analyzeThermostatData has been moved to src/utils/coastDownPhysics.js
 // Imported at the top of the file

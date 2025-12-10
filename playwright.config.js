@@ -24,7 +24,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:4173",
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
     /* Screenshot on failure */
@@ -57,15 +57,19 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
+  /* Run production build server before starting the tests */
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    // Build first, then serve the production build
+    // Set PLAYWRIGHT_TEST env var to disable minification and enable source maps for debugging
+    // Clear dist folder to ensure fresh build without cached artifacts
+    command: "cross-env PLAYWRIGHT_TEST=true npm run build && npm run preview",
+    port: 4173,
+    reuseExistingServer: !process.env.CI, // Allow reusing server in local dev, but always fresh in CI
+    timeout: 180 * 1000, // Longer timeout for build + serve (3 minutes)
     stdout: "pipe",
     stderr: "pipe",
-    // Wait for the server to be ready by checking for a specific response
-    // This ensures the server is fully started before tests run
+    // Playwright waits for the port to be available and the server to respond
+    // Vite preview server listens on port 4173 by default
+    // The server is ready when it starts listening on the port
   },
 });

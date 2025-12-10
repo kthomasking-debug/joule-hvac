@@ -99,10 +99,19 @@ test.describe("Ask Joule Questions - LLM Fallback Test", () => {
   test("should send questions to LLM, not intercept as commands", async ({
     page,
   }) => {
+    // Wait for parseAskJoule to be exposed on window (it's exposed in main.jsx)
+    await page.waitForFunction(() => typeof window.parseAskJoule === "function", {
+      timeout: 10000,
+    });
+
     // Test the parser directly via browser console
     const results = await page.evaluate(async (testQuestions) => {
-      const module = await import("/src/utils/askJouleParser.js");
-      const parseAskJoule = module.parseAskJoule || module.default;
+      // Use the parser exposed on window (set up in main.jsx)
+      const parseAskJoule = window.parseAskJoule;
+      
+      if (!parseAskJoule) {
+        throw new Error("parseAskJoule not available on window object");
+      }
 
       const results = {
         questions: 0,

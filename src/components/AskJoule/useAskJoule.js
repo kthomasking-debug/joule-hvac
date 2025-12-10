@@ -55,6 +55,16 @@ export function useAskJoule({
 }) {
   const navigate = useNavigate();
 
+  // Expose parseAskJoule on window for E2E tests (fallback if main.jsx dynamic import fails)
+  useEffect(() => {
+    if (typeof window !== "undefined" && 
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      if (!window.parseAskJoule) {
+        window.parseAskJoule = parseAskJoule;
+      }
+    }
+  }, []);
+
   // --- State ---
   const [value, setValue] = useState("");
   const [error, setError] = useState("");

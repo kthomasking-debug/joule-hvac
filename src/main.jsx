@@ -9,6 +9,23 @@ import "./styles/print.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { routes } from "./navConfig.js";
 
+// Expose parser for E2E tests (production build)
+// This allows tests to access parseAskJoule without dynamic imports
+// Note: Only expose on localhost to avoid exposing internals in production deployments
+if (typeof window !== "undefined" && 
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+  // Import and expose the parser - use dynamic import to avoid loading it in production
+  // but it will be available in the bundle since useAskJoule imports it
+  import("./utils/askJouleParser.js")
+    .then((module) => {
+      window.parseAskJoule = module.parseAskJoule || module.default;
+    })
+    .catch(() => {
+      // Silently fail - parser might not be available in some build configurations
+      // Tests will wait for it to be available via waitForFunction
+    });
+}
+
 // Loading fallback component for lazy-loaded routes
 const RouteLoadingFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-white dark:bg-gray-900">
