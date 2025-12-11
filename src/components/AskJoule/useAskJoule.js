@@ -643,9 +643,31 @@ export function useAskJoule({
             result.balancePoint !== null &&
             isFinite(result.balancePoint)
           ) {
+            // Add context about where balance point comes from and how it relates to settings
+            const sourceInfo = result.source === "analyzer" 
+              ? " (calculated from your thermostat data)" 
+              : " (calculated from your system capacity and building heat loss)";
+            const compressorLockout = userSettings?.thresholds?.compressorMinOutdoorTemp;
+            const auxLockout = userSettings?.thresholds?.auxHeatMaxOutdoorTemp;
+            
+            // Check if balance point seems unrealistic
+            let warningNote = "";
+            if (result.balancePoint < 15) {
+              warningNote = ` Note: A balance point below 15°F is unusual. Most systems in your area have balance points of 20-30°F. This suggests your system may be very oversized, or you may need to verify your system capacity and home details in Settings.`;
+            }
+            
+            let settingsNote = "";
+            if (compressorLockout || auxLockout) {
+              settingsNote = ` Your compressor lockout is set to ${compressorLockout || 'auto'}°F, and aux heat max outdoor temp is ${auxLockout || 'auto'}°F.`;
+              // Add note if balance point differs significantly from compressor lockout
+              if (compressorLockout && Math.abs(result.balancePoint - compressorLockout) > 10) {
+                settingsNote += ` Your balance point (${result.balancePoint.toFixed(1)}°F) differs significantly from your compressor lockout setting (${compressorLockout}°F). The compressor lockout should typically be set near your balance point.`;
+              }
+            }
+            
             const message = `Your balance point is ${result.balancePoint.toFixed(
               1
-            )}°F. This is the outdoor temperature where your heat pump output equals your building's heat loss.`;
+            )}°F${sourceInfo}. This is the outdoor temperature where your heat pump output equals your building's heat loss.${warningNote}${settingsNote}`;
             setOutput({ message, status: "info" });
             // Note: setOutput automatically handles TTS, so no need to call speak() again
             return true;
@@ -1528,7 +1550,9 @@ Amen.`);
       const localBackendUrl =
         (typeof window !== "undefined" &&
           localStorage.getItem("localBackendUrl")) ||
-        "http://raspberrypi.local:3002";
+        (typeof window !== "undefined" &&
+          localStorage.getItem("jouleBridgeUrl")) ||
+        "http://localhost:3002";
 
       if (useLocalBackend) {
         // Use local backend (Raspberry Pi)
@@ -1585,6 +1609,12 @@ Amen.`);
           return;
         } catch (error) {
           console.error("[AskJoule] Local backend error:", error);
+          console.error("[AskJoule] Attempted URL:", `${localBackendUrl}/api/ask-joule`);
+          console.error("[AskJoule] Error details:", {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          });
           const errorMsg = `Local backend unavailable: ${error.message}. Falling back to Groq.`;
           setError(errorMsg);
           setOutputStatus("error");

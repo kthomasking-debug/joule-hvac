@@ -132,7 +132,12 @@ jobs:
           api-level: 28
           arch: x86_64
           target: google_apis
-          emulator-options: '-no-window -noaudio -no-boot-anim'
+          profile: Nexus 6
+          emulator-options: '-no-window -noaudio -no-boot-anim -no-snapshot-save -wipe-data -gpu swiftshader_indirect'
+          emulator-boot-timeout: 600
+          disable-animations: true
+          disable-spellchecker: true
+          disable-linux-hw-accel: true
           script: |
             echo "Emulator is ready"
             # The emulator will be available for subsequent steps

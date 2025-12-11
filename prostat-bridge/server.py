@@ -25,7 +25,13 @@ import aiohttp_cors
 import serial
 import serial.tools.list_ports
 from datetime import datetime
-from blueair_api import get_blueair_account
+from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
+# Blueair API import (optional - service works without it)
+try:
+    from blueair_api import get_devices
+    BLUEAIR_AVAILABLE = True
+except ImportError:
+    BLUEAIR_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Global controller instance
 controller = None
+async_zeroconf = None  # Global AsyncZeroconf instance
 pairings = {}  # device_id -> pairing object
 device_info = {}  # device_id -> device info cache
 
@@ -87,17 +94,60 @@ ECOBEE_CURRENT_STATE = 13  # Current Heating Cooling State
 
 async def init_controller():
     """Initialize the HomeKit controller"""
-    global controller
-    controller = Controller()
-    await controller.async_start()
-    logger.info("HomeKit controller initialized")
-    return controller
+    global controller, async_zeroconf
+    try:
+        # Create AsyncZeroconf instance explicitly to avoid initialization issues
+        if async_zeroconf is None:
+            logger.info("Creating AsyncZeroconf instance...")
+            async_zeroconf = AsyncZeroconf()
+            logger.info(f"AsyncZeroconf instance created: {async_zeroconf}")
+            logger.info(f"AsyncZeroconf has zeroconf attr: {hasattr(async_zeroconf, 'zeroconf')}")
+            if hasattr(async_zeroconf, 'zeroconf'):
+                logger.info(f"AsyncZeroconf.zeroconf value: {async_zeroconf.zeroconf}")
+            
+            # Create AsyncServiceBrowser for _hap._tcp.local. BEFORE starting controller
+            # This is required because IpController.async_start() looks for an existing browser
+            logger.info("Creating AsyncServiceBrowser for _hap._tcp.local...")
+            from zeroconf.asyncio import AsyncListener
+            from aiohomekit.zeroconf import HAP_TYPE_TCP
+            
+            class HomeKitServiceListener(AsyncListener):
+                """Dummy listener for HomeKit services"""
+                async def async_add_service(self, zc, service_type, name):
+                    pass
+                async def async_remove_service(self, zc, service_type, name):
+                    pass
+                async def async_update_service(self, zc, service_type, name):
+                    pass
+            
+            listener = HomeKitServiceListener()
+            hap_browser = AsyncServiceBrowser(async_zeroconf.zeroconf, HAP_TYPE_TCP, listener=listener)
+            logger.info(f"AsyncServiceBrowser created for {HAP_TYPE_TCP}")
+        
+        # Create Controller with explicit AsyncZeroconf instance
+        logger.info(f"Creating HomeKit Controller with AsyncZeroconf: {async_zeroconf}")
+        controller = Controller(async_zeroconf_instance=async_zeroconf)
+        logger.info(f"Controller created. Controller._async_zeroconf_instance: {controller._async_zeroconf_instance}")
+        logger.info("Starting HomeKit controller...")
+        await controller.async_start()
+        logger.info("HomeKit controller initialized successfully")
+        return controller
+    except Exception as e:
+        logger.warning(f"HomeKit controller initialization failed: {e}")
+        logger.warning("Server will continue without HomeKit support. Some endpoints may not work.")
+        import traceback
+        logger.warning(f"Full traceback: {traceback.format_exc()}")
+        controller = None
+        return None
 
 
 async def discover_devices():
     """Discover HomeKit devices on the local network"""
     if not controller:
         await init_controller()
+    
+    if not controller:
+        raise RuntimeError("HomeKit controller is not available")
     
     logger.info("Scanning for HomeKit devices...")
     devices = await controller.async_discover()
@@ -130,6 +180,9 @@ async def pair_device(device_id: str, pairing_code: str):
     """
     if not controller:
         await init_controller()
+    
+    if not controller:
+        raise RuntimeError("HomeKit controller is not available")
     
     # Remove dashes from pairing code
     code = pairing_code.replace('-', '')
@@ -639,6 +692,11 @@ async def init_blueair():
     """Initialize Blueair connection"""
     global blueair_account, blueair_devices, blueair_connected
     
+    if not BLUEAIR_AVAILABLE:
+        logger.info("Blueair API not available - Blueair features disabled")
+        blueair_connected = False
+        return False
+    
     try:
         # Get credentials from environment or config
         import os
@@ -646,16 +704,24 @@ async def init_blueair():
         password = os.getenv('BLUEAIR_PASSWORD')
         
         if not username or not password:
-            logger.warning("Blueair credentials not set. Set BLUEAIR_USERNAME and BLUEAIR_PASSWORD environment variables.")
+            logger.info("Blueair credentials not set. Blueair features will be disabled.")
+            logger.info("Set BLUEAIR_USERNAME and BLUEAIR_PASSWORD environment variables to enable.")
+            blueair_connected = False
             return False
         
-        blueair_account = await get_blueair_account(username=username, password=password)
-        blueair_devices = blueair_account.devices
-        blueair_connected = True
-        logger.info(f"Blueair connected: {len(blueair_devices)} device(s) found")
-        return True
+        # Try to get devices using available API
+        try:
+            blueair_devices = await get_devices(username=username, password=password)
+            blueair_account = None  # Not needed with new API
+            blueair_connected = True
+            logger.info(f"Blueair connected: {len(blueair_devices)} device(s) found")
+            return True
+        except Exception as api_error:
+            logger.warning(f"Blueair API error: {api_error}. Blueair features will be disabled.")
+            blueair_connected = False
+            return False
     except Exception as e:
-        logger.error(f"Failed to connect to Blueair: {e}")
+        logger.warning(f"Failed to initialize Blueair: {e}. Blueair features will be disabled.")
         blueair_connected = False
         return False
 
@@ -988,6 +1054,12 @@ async def main():
         logger.info("Shutting down...")
     finally:
         await runner.cleanup()
+        # Cleanup AsyncZeroconf
+        global async_zeroconf
+        if async_zeroconf:
+            logger.info("Closing AsyncZeroconf...")
+            await async_zeroconf.async_close()
+            async_zeroconf = None
 
 
 if __name__ == '__main__':

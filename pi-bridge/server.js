@@ -26,6 +26,10 @@ function searchDocuments(query, maxResults = 3) {
     const files = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.txt') || f.endsWith('.md'));
     const results = [];
     
+    if (files.length === 0) {
+        return '';
+    }
+    
     for (const file of files) {
         try {
             const content = fs.readFileSync(path.join(DOCS_DIR, file), 'utf-8');
@@ -58,11 +62,17 @@ function searchDocuments(query, maxResults = 3) {
         }
     }
     
-    return results
+    const finalResults = results
         .sort((a, b) => b.score - a.score)
-        .slice(0, maxResults)
-        .map(r => r.text)
-        .join('\n');
+        .slice(0, maxResults);
+    
+    if (finalResults.length > 0) {
+        console.log(`🔍 RAG: Found ${finalResults.length} match(es) from ${finalResults.map(r => r.file).join(', ')}`);
+    } else {
+        console.log(`🔍 RAG: No matches found in ${files.length} document(s)`);
+    }
+    
+    return finalResults.map(r => r.text).join('\n');
 }
 
 /**
@@ -133,8 +143,10 @@ ${ragContext ? `\nRELEVANT CONTEXT FROM DOCUMENTATION:\n${ragContext}\n` : ''}
 ${context.userSettings ? `\nUSER SETTINGS:\n${JSON.stringify(context.userSettings, null, 2)}\n` : ''}
 ${context.userLocation ? `\nUSER LOCATION:\n${JSON.stringify(context.userLocation, null, 2)}\n` : ''}`;
         
+        console.log(`🤖 Calling Ollama with model: ${MODEL}`);
         // Call Ollama
         const response = await callOllama(query, systemPrompt);
+        console.log(`💬 Response length: ${response.length} characters`);
         
         return {
             success: true,
@@ -144,7 +156,7 @@ ${context.userLocation ? `\nUSER LOCATION:\n${JSON.stringify(context.userLocatio
             usedRAG: !!ragContext
         };
     } catch (error) {
-        console.error('Error handling Ask Joule query:', error);
+        console.error('❌ Error handling Ask Joule query:', error);
         return {
             success: false,
             error: true,
@@ -157,15 +169,25 @@ ${context.userLocation ? `\nUSER LOCATION:\n${JSON.stringify(context.userLocatio
  * HTTP Server
  */
 const server = http.createServer(async (req, res) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    const startTime = Date.now();
+    const timestamp = new Date().toISOString();
     
+    // CORS headers - set on all responses
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    
+    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
         return;
+    }
+    
+    // Log incoming requests (except health checks to reduce noise)
+    if (req.url !== '/health') {
+        console.log(`\n[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
     }
     
     // Health check
@@ -187,11 +209,18 @@ const server = http.createServer(async (req, res) => {
         req.on('end', async () => {
             try {
                 const { query, context } = JSON.parse(body);
+                console.log(`📝 Query: "${query.substring(0, 60)}${query.length > 60 ? '...' : ''}"`);
+                
                 const response = await handleAskJoule(query, context || {});
+                
+                const duration = Date.now() - startTime;
+                console.log(`✅ Response generated in ${duration}ms (RAG: ${response.usedRAG ? 'yes' : 'no'})`);
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(response));
             } catch (error) {
+                const duration = Date.now() - startTime;
+                console.error(`❌ Error after ${duration}ms:`, error.message);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
                     success: false, 
@@ -213,9 +242,12 @@ const server = http.createServer(async (req, res) => {
                 const safeFilename = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
                 fs.writeFileSync(path.join(DOCS_DIR, safeFilename), content);
                 
+                console.log(`📄 Ingested document: ${safeFilename} (${content.length} bytes)`);
+                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, filename: safeFilename }));
             } catch (error) {
+                console.error(`❌ Ingest error:`, error.message);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, error: error.message }));
             }
@@ -224,6 +256,7 @@ const server = http.createServer(async (req, res) => {
     }
     
     // 404
+    console.log(`⚠️  404: ${req.method} ${req.url}`);
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
 });

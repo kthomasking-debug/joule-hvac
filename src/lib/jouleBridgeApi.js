@@ -6,7 +6,7 @@
  */
 
 const JOULE_BRIDGE_URL =
-  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:8080";
+  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:3002";
 
 /**
  * Get Joule Bridge URL from settings or use default
@@ -14,7 +14,9 @@ const JOULE_BRIDGE_URL =
 function getBridgeUrl() {
   try {
     const url = localStorage.getItem("jouleBridgeUrl");
-    return url || JOULE_BRIDGE_URL;
+    const finalUrl = url || JOULE_BRIDGE_URL;
+    // Normalize URL - remove trailing slash
+    return finalUrl.replace(/\/$/, '');
   } catch {
     return JOULE_BRIDGE_URL;
   }
@@ -205,17 +207,71 @@ export async function setMode(deviceId, mode) {
 
 /**
  * Check if Joule Bridge is available
+ * @returns {Promise<boolean>} True if bridge is available, false otherwise
+ * @throws {Error} If there's a specific error that should be displayed to the user
  */
 export async function checkBridgeHealth() {
+  const url = getBridgeUrl();
+  
+  // Validate URL format
   try {
-    const url = getBridgeUrl();
+    new URL(url);
+  } catch (e) {
+    throw new Error(`Invalid URL format: ${url}. Use format: http://hostname:port`);
+  }
+  
+  // Create AbortController for timeout (more compatible than AbortSignal.timeout)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+  
+  try {
     const response = await fetch(`${url}/health`, {
       method: "GET",
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      signal: controller.signal,
+      headers: {
+        "Accept": "application/json",
+      },
+      // Don't include credentials for local requests
+      credentials: "omit",
     });
-    return response.ok;
-  } catch (error) {
-    return false;
+    
+    clearTimeout(timeoutId);
+    
+    // Check if response is ok (status 200-299)
+    if (!response.ok) {
+      throw new Error(`Health check failed with status ${response.status}. The bridge may be running but returned an error.`);
+    }
+    
+    // Try to parse JSON to ensure it's a valid response
+    try {
+      const data = await response.json();
+      // Check if response has expected structure (status: 'ok' or 'healthy')
+      // But also accept any valid JSON response with 200 status as success
+      return true;
+    } catch (parseError) {
+      // If we can't parse JSON, but got a 200 response, still consider it ok
+      return response.ok;
+    }
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    
+    // If it's an abort error, it's a timeout
+    if (fetchError.name === 'AbortError') {
+      throw new Error('Connection timeout - bridge did not respond within 5 seconds. Make sure the bridge is running.');
+    }
+    
+    // Check for common network errors
+    if (fetchError.message && (
+      fetchError.message.includes('Failed to fetch') ||
+      fetchError.message.includes('ERR_CONNECTION_REFUSED') ||
+      fetchError.message.includes('NetworkError') ||
+      fetchError.message.includes('ERR_NETWORK')
+    )) {
+      throw new Error(`Cannot connect to bridge at ${url}. Make sure the bridge is running and the URL is correct.`);
+    }
+    
+    // Re-throw with context for better error messages
+    throw fetchError;
   }
 }
 

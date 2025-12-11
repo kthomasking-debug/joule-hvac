@@ -9,11 +9,12 @@ const CONSTANTS = {
 
 export function calculateBalancePoint(userSettings = {}) {
   // Priority 1: Use analyzer balance point if available (most accurate - from real thermostat data)
+  // BUT: Only use it if it's in a reasonable range (10-60°F) - reject unrealistic values like 0.1°F
   if (
     userSettings.analyzerBalancePoint != null &&
     Number.isFinite(userSettings.analyzerBalancePoint) &&
-    userSettings.analyzerBalancePoint > -50 && // Valid range check
-    userSettings.analyzerBalancePoint < 100
+    userSettings.analyzerBalancePoint >= 10 && // Minimum reasonable balance point (most systems are 15-40°F)
+    userSettings.analyzerBalancePoint <= 60   // Maximum reasonable balance point
   ) {
     // Use the analyzer's calculated balance point directly
     // This is based on actual thermostat data showing when aux heat engaged
@@ -403,8 +404,8 @@ export function calculateBalancePoint(userSettings = {}) {
           testTemp += (testHeatLoss - testOutput) / (btuLossPerDegF * 10);
         }
 
-        // Clamp to reasonable range
-        testTemp = Math.max(-20, Math.min(80, testTemp));
+        // Clamp to reasonable range (balance points are typically 5-60°F, but allow down to -10°F for calculation)
+        testTemp = Math.max(-10, Math.min(80, testTemp));
       }
 
       if (balancePoint === null && bestError < 1000) {
@@ -417,12 +418,35 @@ export function calculateBalancePoint(userSettings = {}) {
   const designData = data.find((d) => d.outdoorTemp === designOutdoorTemp);
   const auxHeatNeeded = designData ? Math.max(0, -designData.surplus) : 0;
 
+  // Validate balance point: if it's below 10°F, the calculation likely found an extremely oversized system
+  // or there's an issue with the inputs. For practical purposes, most balance points are 15-40°F.
+  // If calculated below 10°F, warn the user by setting a minimum reasonable value
+  let validatedBalancePoint = balancePoint;
+  if (balancePoint !== null && balancePoint < 10) {
+    // If balance point is very low, it suggests either:
+    // 1. System is extremely oversized (unlikely)
+    // 2. Inputs are incorrect (more likely)
+    // Use design temp or compressor lockout as a fallback, or estimate from typical values
+    const fallbackTemp = userSettings.thresholds?.compressorMinOutdoorTemp || 
+                         userSettings.compressorMinOutdoorTemp || 
+                         designOutdoorTemp || 20;
+    // Only use fallback if calculated value is absurdly low (< 5°F)
+    if (balancePoint < 5) {
+      validatedBalancePoint = fallbackTemp;
+    } else {
+      // Between 5-10°F, keep it but it's borderline
+      validatedBalancePoint = balancePoint;
+    }
+  }
+
   return {
-    balancePoint: balancePoint ? Math.round(balancePoint * 10) / 10 : null,
+    balancePoint: validatedBalancePoint ? Math.round(validatedBalancePoint * 10) / 10 : null,
     auxHeatAtDesign: Math.round(auxHeatNeeded),
     copAtDesign: designData ? Math.round(designData.cop * 100) / 100 : null,
     heatLossFactor: Math.round(btuLossPerDegF),
-    interpretation: getBalancePointInterpretation(balancePoint),
+    interpretation: getBalancePointInterpretation(validatedBalancePoint),
+    calculatedRaw: balancePoint, // Keep original for debugging
+    wasAdjusted: balancePoint !== null && balancePoint < 10 && validatedBalancePoint !== balancePoint,
   };
 }
 

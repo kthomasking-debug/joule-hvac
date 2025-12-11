@@ -802,11 +802,31 @@ const LocalLLMSettings = () => {
   });
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem("localBackendUrl") || localStorage.getItem("jouleBridgeUrl") || "http://raspberrypi.local:3002";
+      return localStorage.getItem("localBackendUrl") || localStorage.getItem("jouleBridgeUrl") || "http://localhost:3002";
     } catch {
-      return "http://raspberrypi.local:3002";
+      return "http://localhost:3002";
     }
   });
+
+  // Sync with jouleBridgeUrl when it changes
+  useEffect(() => {
+    const syncUrl = () => {
+      try {
+        const jouleUrl = localStorage.getItem("jouleBridgeUrl");
+        if (jouleUrl && jouleUrl !== bridgeUrl) {
+          setBridgeUrl(jouleUrl);
+          localStorage.setItem("localBackendUrl", jouleUrl);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+    
+    // Check on mount and set up interval to sync
+    syncUrl();
+    const interval = setInterval(syncUrl, 1000);
+    return () => clearInterval(interval);
+  }, [bridgeUrl]);
   const [model, setModel] = useState(() => {
     try {
       return localStorage.getItem("localLLMModel") || "llama3.2:1b";
@@ -888,7 +908,7 @@ const LocalLLMSettings = () => {
             Use Local LLM (Joule Bridge/Core)
           </label>
           <p className="text-xs text-[#A7B0BA] mb-3 max-w-2xl leading-relaxed">
-            Run RAG locally on Raspberry Pi (Zero 2 W or Pi 5). Zero 2 W uses Groq API for fast inference (500+ t/s). Pi 5 runs fully local with Ollama. Both keep your data private.
+            Uses the same Joule Bridge server as HomeKit control above. Run RAG locally on Raspberry Pi (Zero 2 W or Pi 5). Zero 2 W uses Groq API for fast inference (500+ t/s). Pi 5 runs fully local with Ollama. Both keep your data private.
           </p>
         </div>
         <label className="inline-flex items-center gap-3">
@@ -905,22 +925,21 @@ const LocalLLMSettings = () => {
         <>
           <div>
             <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-              Raspberry Pi Bridge URL
+              Bridge URL (same as HomeKit Bridge above)
             </label>
             <input
               type="text"
               value={bridgeUrl}
               onChange={handleBridgeUrlChange}
-              placeholder="http://raspberrypi.local:3002"
+              placeholder="http://localhost:3002"
               className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              aria-label="Raspberry Pi Bridge URL"
+              aria-label="Bridge URL"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              URL of your Raspberry Pi 5 running the Joule Local RAG Bridge. 
-              Use <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">raspberrypi.local</code> or the Pi's IP address.
+              This should match the Joule Bridge URL in the HomeKit section above. Automatically synced.
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">
-              Default: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://raspberrypi.local:3002</code>
+              Default: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://localhost:3002</code> (or <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://raspberrypi.local:3002</code> for Pi on network)
             </p>
           </div>
 
@@ -2618,10 +2637,11 @@ const SettingsPage = () => {
       </div>
 
       {/* Advanced Settings Section */}
-      <div className="bg-[#0C1118] border border-slate-800 rounded-xl">
+      <div className="bg-[#0C1118] border border-slate-800 rounded-xl" data-advanced-settings>
         <button
           onClick={() => setAdvancedSettingsExpanded(!advancedSettingsExpanded)}
           className="w-full p-6 flex items-center justify-between hover:bg-slate-900/50 transition-colors"
+          aria-expanded={advancedSettingsExpanded}
         >
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
