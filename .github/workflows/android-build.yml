@@ -42,8 +42,8 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      - name: Install Android SDK (platform-tools & build-tools)
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
         with:
           api-level: 33
           build-tools: '33.0.2'
@@ -133,6 +133,9 @@ jobs:
           arch: x86_64
           target: google_apis
           emulator-options: '-no-window -noaudio -no-boot-anim'
+          script: |
+            echo "Emulator is ready"
+            # The emulator will be available for subsequent steps
 
       - name: Wait for device/emulator
         run: |
