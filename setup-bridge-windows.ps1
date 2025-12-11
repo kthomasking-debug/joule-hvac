@@ -9,7 +9,8 @@ Write-Host "Checking Node.js..." -ForegroundColor Yellow
 try {
     $nodeVersion = node --version
     Write-Host "✅ Node.js installed: $nodeVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "❌ Node.js not found. Please install from https://nodejs.org/" -ForegroundColor Red
     exit 1
 }
@@ -19,7 +20,8 @@ Write-Host "Checking Ollama..." -ForegroundColor Yellow
 try {
     $ollamaVersion = ollama --version
     Write-Host "✅ Ollama installed: $ollamaVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "⚠️  Ollama not found. Installing Ollama is required for Local LLM Bridge." -ForegroundColor Yellow
     Write-Host "   Download from: https://ollama.com/download" -ForegroundColor Yellow
     $installOllama = Read-Host "Continue anyway? (y/n)"
@@ -35,7 +37,8 @@ try {
     ollama list | Select-String "llama3.2:3b" | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Model llama3.2:3b is installed" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "⚠️  Model llama3.2:3b not found" -ForegroundColor Yellow
         $pullModel = Read-Host "Pull the model now? (~2GB download) (y/n)"
         if ($pullModel -eq "y") {
@@ -43,13 +46,15 @@ try {
             ollama pull llama3.2:3b
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "✅ Model downloaded successfully" -ForegroundColor Green
-            } else {
+            }
+            else {
                 Write-Host "❌ Failed to download model" -ForegroundColor Red
                 exit 1
             }
         }
     }
-} catch {
+}
+catch {
     Write-Host "⚠️  Could not check Ollama models" -ForegroundColor Yellow
 }
 
@@ -59,12 +64,14 @@ Write-Host "Installing bridge dependencies..." -ForegroundColor Yellow
 Set-Location pi-bridge
 if (Test-Path "node_modules") {
     Write-Host "✅ Dependencies already installed" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "Installing npm packages..." -ForegroundColor Yellow
     npm install
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Dependencies installed" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "❌ Failed to install dependencies" -ForegroundColor Red
         exit 1
     }
@@ -82,7 +89,8 @@ Write-Host "Testing Ollama connection..." -ForegroundColor Yellow
 try {
     $healthCheck = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -ErrorAction Stop
     Write-Host "✅ Ollama is running" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "⚠️  Ollama is not running or not accessible" -ForegroundColor Yellow
     Write-Host "   Make sure Ollama is running (check Start Menu or run 'ollama serve')" -ForegroundColor Yellow
 }

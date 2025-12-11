@@ -85,3 +85,6 @@ export function jToKWh(joules: number): number {
 
 
 
+
+
+

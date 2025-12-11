@@ -5,7 +5,10 @@ import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
 import { useWakeWord } from "../../hooks/useWakeWord";
 import { executeCommand } from "../../utils/nlp/commandExecutor";
 import { parseAskJoule } from "../../utils/askJouleParser";
-import { answerWithAgent, MARKETING_SITE_SYSTEM_PROMPT } from "../../lib/groqAgent";
+import {
+  answerWithAgent,
+  MARKETING_SITE_SYSTEM_PROMPT,
+} from "../../lib/groqAgent";
 // EBAY_STORE_URL is now lazy loaded - access via salesFAQ module when needed
 // For now, use a constant if needed elsewhere
 export const EBAY_STORE_URL = "https://www.ebay.com/usr/firehousescorpions";
@@ -57,8 +60,11 @@ export function useAskJoule({
 
   // Expose parseAskJoule on window for E2E tests (fallback if main.jsx dynamic import fails)
   useEffect(() => {
-    if (typeof window !== "undefined" && 
-        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    if (
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1")
+    ) {
       if (!window.parseAskJoule) {
         window.parseAskJoule = parseAskJoule;
       }
@@ -129,30 +135,36 @@ export function useAskJoule({
 
   // Check for pending TTS messages on mount (e.g., after navigation)
   useEffect(() => {
-    const pendingTTS = sessionStorage.getItem('askJoule_pendingTTS');
-    const pendingTimestamp = sessionStorage.getItem('askJoule_pendingTTS_timestamp');
-    
+    const pendingTTS = sessionStorage.getItem("askJoule_pendingTTS");
+    const pendingTimestamp = sessionStorage.getItem(
+      "askJoule_pendingTTS_timestamp"
+    );
+
     if (pendingTTS && pendingTimestamp) {
       const timestamp = parseInt(pendingTimestamp);
       const age = Date.now() - timestamp;
-      
+
       // If the message is recent (within 3 seconds) and TTS is enabled, continue speaking
       if (age < 3000 && speechEnabled && speak) {
         // Check if TTS is still speaking (it might have continued during navigation)
-        if (typeof window !== 'undefined' && window.speechSynthesis && !window.speechSynthesis.speaking) {
+        if (
+          typeof window !== "undefined" &&
+          window.speechSynthesis &&
+          !window.speechSynthesis.speaking
+        ) {
           // TTS was interrupted, restart it
           setTimeout(() => {
             speak(pendingTTS);
           }, 100);
         }
-        
+
         // Clean up the pending TTS flag
-        sessionStorage.removeItem('askJoule_pendingTTS');
-        sessionStorage.removeItem('askJoule_pendingTTS_timestamp');
+        sessionStorage.removeItem("askJoule_pendingTTS");
+        sessionStorage.removeItem("askJoule_pendingTTS_timestamp");
       } else if (age >= 3000) {
         // Message is stale, clean it up
-        sessionStorage.removeItem('askJoule_pendingTTS');
-        sessionStorage.removeItem('askJoule_pendingTTS_timestamp');
+        sessionStorage.removeItem("askJoule_pendingTTS");
+        sessionStorage.removeItem("askJoule_pendingTTS_timestamp");
       }
     }
   }, [speak, speechEnabled]);
@@ -414,7 +426,7 @@ export function useAskJoule({
       if (shouldSpeak) {
         // Use speakText if provided, otherwise format message for TTS
         let ttsMessage = speakText || message;
-        
+
         // Format message for TTS: remove markdown, emojis, and format units
         ttsMessage = ttsMessage
           .replace(/^✓\s*/, "") // Remove checkmark
@@ -668,7 +680,7 @@ export function useAskJoule({
         // Check if we have efficiency drop data from alerts
         let efficiencyDrop = null;
         let hasEfficiencyAlert = false;
-        
+
         try {
           // Check for efficiency drop alert data
           // Try to get latestAnalysis from props, or from localStorage
@@ -676,7 +688,9 @@ export function useAskJoule({
           if (!analysisData) {
             try {
               // Try to get from resultsHistory (same way Home.jsx does it)
-              const resultsHistory = JSON.parse(localStorage.getItem("spa_resultsHistory") || "[]");
+              const resultsHistory = JSON.parse(
+                localStorage.getItem("spa_resultsHistory") || "[]"
+              );
               if (resultsHistory && resultsHistory.length > 0) {
                 analysisData = resultsHistory[resultsHistory.length - 1];
               }
@@ -684,8 +698,15 @@ export function useAskJoule({
               // Ignore
             }
           }
-          const alerts = getSystemHealthAlerts(userSettings || {}, analysisData || null, "HEAT ON", 32);
-          const efficiencyAlert = alerts.find(a => a.id === "efficiency-drop");
+          const alerts = getSystemHealthAlerts(
+            userSettings || {},
+            analysisData || null,
+            "HEAT ON",
+            32
+          );
+          const efficiencyAlert = alerts.find(
+            (a) => a.id === "efficiency-drop"
+          );
           if (efficiencyAlert && efficiencyAlert.metricSummary) {
             // Extract the percentage from metricSummary like "~25% more kWh/HDD"
             const match = efficiencyAlert.metricSummary.match(/(\d+)%/);
@@ -712,7 +733,7 @@ export function useAskJoule({
           message += `• Evaporator coil: Check for visible dirt, ice, or frost buildup\n`;
           message += `• Outdoor coil: Clear any debris, leaves, or ice accumulation\n\n`;
           message += `**Expected improvement:** After cleaning/replacing, you should see energy usage return to baseline within a few days. If the problem persists, have your contractor check refrigerant levels and system charge.`;
-          
+
           // TTS-friendly version: replace bullets with periods
           speakMessage = `Yes, a dirty filter or coil could definitely explain why your system is using ${efficiencyDrop}% more energy per heating degree-day. `;
           speakMessage += `How it works: A dirty air filter restricts airflow, forcing your heat pump to work harder to move the same amount of air. `;
@@ -738,7 +759,7 @@ export function useAskJoule({
           message += `• Have your contractor inspect and clean coils annually\n`;
           message += `• Check for ice buildup, especially in defrost-prone conditions (36-40°F with high humidity)\n\n`;
           message += `If you're seeing a 20%+ increase in energy usage compared to earlier in the season, filter/coil maintenance is often the culprit.`;
-          
+
           // TTS-friendly version: replace bullets with periods
           speakMessage = `Yes, a dirty filter or coil can definitely cause your system to use more energy. `;
           speakMessage += `How it works: A dirty air filter restricts airflow, forcing the heat pump to work harder. This increases energy consumption while reducing heating capacity. `;
@@ -754,10 +775,10 @@ export function useAskJoule({
           speakMessage += `If you're seeing a 20% or more increase in energy usage compared to earlier in the season, filter and coil maintenance is often the culprit.`;
         }
 
-        setOutput({ 
-          message, 
+        setOutput({
+          message,
           status: "info",
-          speakText: speakMessage // Provide TTS-friendly version
+          speakText: speakMessage, // Provide TTS-friendly version
         });
         // Note: setOutput automatically handles TTS, so no need to call speak() again
         return true;
@@ -927,6 +948,35 @@ export function useAskJoule({
         callbacks
       );
       if (res?.handled) return true;
+    }
+
+    // 3.5. Emergency Comfort (Fixed +5°F or -5°F)
+    if (
+      parsed.action === "emergencyHeatBoost" ||
+      parsed.action === "emergencyCoolBoost"
+    ) {
+      const direction = parsed.action === "emergencyHeatBoost" ? "up" : "down";
+      const currentWinter = userSettings.winterThermostat || 68;
+      // Emergency actions use fixed 5-degree adjustment
+      const res = handleTempAdjustment(
+        direction,
+        5, // Fixed emergency boost value
+        currentWinter,
+        callbacks
+      );
+      if (res?.handled) {
+        // Add friendly message for emergency actions
+        const message =
+          parsed.action === "emergencyHeatBoost"
+            ? "🔥 Emergency heat boost activated! Temperature increased by 5°F."
+            : "❄️ Emergency cool boost activated! Temperature decreased by 5°F.";
+        setAnswer(message);
+        setOutputStatus("success");
+        if (speak && speechEnabled) {
+          speak(message);
+        }
+        return true;
+      }
     }
 
     // 4. Navigation
@@ -1336,7 +1386,7 @@ Amen.`);
       const parsed = await parseAskJoule(input, {
         groqApiKey: groqApiKeyForParser,
       });
-      
+
       // Enhanced logging to debug parser issues
       if (import.meta.env.DEV) {
         console.log("[AskJoule] Parsed query:", {
@@ -1353,7 +1403,7 @@ Amen.`);
       // Check if this is a command FIRST - before any other checks
       // A command is identified by either isCommand === true OR having an action property
       const isCommand = parsed && (parsed.isCommand === true || parsed.action);
-      
+
       if (import.meta.env.DEV) {
         console.log("[AskJoule] Command detection:", {
           input,
@@ -1409,8 +1459,9 @@ Amen.`);
       // Check if this is a command - either explicitly marked or has an action (which indicates a command)
       // Use the isCommand variable we calculated above for consistency
       // Also double-check: if parsed has an action property, it's definitely a command
-      const definitelyCommand = isCommand || (parsed && parsed.action && !parsed.isSalesQuery);
-      
+      const definitelyCommand =
+        isCommand || (parsed && parsed.action && !parsed.isSalesQuery);
+
       if (definitelyCommand) {
         if (import.meta.env.DEV) {
           console.log("[AskJoule] Attempting to handle command:", parsed);
@@ -1424,7 +1475,16 @@ Amen.`);
           // Check if we have a response to show (answer or error should be set by command handlers)
           const hasResponse = answer || error || agenticResponse;
           if (!hasResponse && import.meta.env.DEV) {
-            console.warn("[AskJoule] Command handled but no response set. Command:", parsed, "Answer:", answer, "Error:", error, "AgenticResponse:", agenticResponse);
+            console.warn(
+              "[AskJoule] Command handled but no response set. Command:",
+              parsed,
+              "Answer:",
+              answer,
+              "Error:",
+              error,
+              "AgenticResponse:",
+              agenticResponse
+            );
           }
           setIsLoadingGroq(false);
           setLoadingMessage(""); // Clear loading
@@ -1432,7 +1492,12 @@ Amen.`);
           if (onParsed) onParsed(parsed); // Notify parent
           return;
         } else if (import.meta.env.DEV) {
-          console.warn("[AskJoule] Command not handled. Parsed:", parsed, "Action:", parsed?.action);
+          console.warn(
+            "[AskJoule] Command not handled. Parsed:",
+            parsed,
+            "Action:",
+            parsed?.action
+          );
         }
         // Command was parsed but not handled - this shouldn't happen for valid commands
         // Commands are handled by the parser, not the LLM
@@ -1447,10 +1512,13 @@ Amen.`);
         }
         return;
       }
-      
+
       // If we get here, it's not a command - send to LLM
       if (import.meta.env.DEV) {
-        console.log("[AskJoule] Not a command, sending to LLM. Parsed:", parsed);
+        console.log(
+          "[AskJoule] Not a command, sending to LLM. Parsed:",
+          parsed
+        );
       }
 
       // 2. Check if local backend is enabled
@@ -1530,23 +1598,39 @@ Amen.`);
       // 3. Try to answer simple questions without API key using available data
       const lowerInput = input.toLowerCase();
       let fallbackAnswer = null;
-      
+
       // Check for common question patterns and provide basic answers
-      if (lowerInput.includes("strips") || lowerInput.includes("strip") || lowerInput.includes("auxiliary") || lowerInput.includes("aux heat")) {
+      if (
+        lowerInput.includes("strips") ||
+        lowerInput.includes("strip") ||
+        lowerInput.includes("auxiliary") ||
+        lowerInput.includes("aux heat")
+      ) {
         // Questions about auxiliary/strip heat
-        const winterTemp = userSettings?.winterThermostat || userSettings?.indoorTemp || 70;
-        const nighttimeTemp = userSettings?.nighttimeTemp || userSettings?.winterThermostat || 70;
-        const outdoorTemp = userLocation ? (() => {
-          // Try to get current outdoor temp from forecast or use a default
-          try {
-            const forecast = JSON.parse(localStorage.getItem("lastForecast") || "{}");
-            if (forecast.currentTemp) return forecast.currentTemp;
-          } catch {}
-          return null;
-        })() : null;
-        
-        if (lowerInput.includes("why") || lowerInput.includes("when") || lowerInput.includes("last night")) {
-          fallbackAnswer = `Auxiliary heat (strips) typically runs when:\n\n` +
+        const winterTemp =
+          userSettings?.winterThermostat || userSettings?.indoorTemp || 70;
+        const nighttimeTemp =
+          userSettings?.nighttimeTemp || userSettings?.winterThermostat || 70;
+        const outdoorTemp = userLocation
+          ? (() => {
+              // Try to get current outdoor temp from forecast or use a default
+              try {
+                const forecast = JSON.parse(
+                  localStorage.getItem("lastForecast") || "{}"
+                );
+                if (forecast.currentTemp) return forecast.currentTemp;
+              } catch {}
+              return null;
+            })()
+          : null;
+
+        if (
+          lowerInput.includes("why") ||
+          lowerInput.includes("when") ||
+          lowerInput.includes("last night")
+        ) {
+          fallbackAnswer =
+            `Auxiliary heat (strips) typically runs when:\n\n` +
             `• The outdoor temperature is very cold (usually below your heat pump's balance point, around 20-30°F)\n` +
             `• Your heat pump can't keep up with the heating demand\n` +
             `• You have a large temperature setback at night (your nighttime temp is ${nighttimeTemp}°F vs daytime ${winterTemp}°F)\n\n` +
@@ -1556,29 +1640,43 @@ Amen.`);
             `• Checking your heat pump's balance point in Settings\n\n` +
             `💡 For more detailed analysis, add a Groq API key in Settings to get AI-powered answers.`;
         } else {
-          fallbackAnswer = `Auxiliary heat (electric resistance strips) provides backup heating when your heat pump can't keep up. ` +
+          fallbackAnswer =
+            `Auxiliary heat (electric resistance strips) provides backup heating when your heat pump can't keep up. ` +
             `It typically activates when outdoor temps drop below your system's balance point (usually 20-30°F) or during large temperature recoveries.`;
         }
-      } else if (lowerInput.includes("bill") || lowerInput.includes("cost") || lowerInput.includes("save money") || lowerInput.includes("lower")) {
+      } else if (
+        lowerInput.includes("bill") ||
+        lowerInput.includes("cost") ||
+        lowerInput.includes("save money") ||
+        lowerInput.includes("lower")
+      ) {
         // Questions about bills and savings
         const winterTemp = userSettings?.winterThermostat || 70;
         const nighttimeTemp = userSettings?.nighttimeTemp || winterTemp;
         const tempDiff = Math.abs(winterTemp - nighttimeTemp);
-        
-        fallbackAnswer = `To lower your heating bill:\n\n` +
+
+        fallbackAnswer =
+          `To lower your heating bill:\n\n` +
           `• Reduce temperature setbacks: Your current settings show ${winterTemp}°F day / ${nighttimeTemp}°F night (${tempDiff}°F difference). ` +
           `Smaller setbacks (1-2°F) use less energy than large ones.\n` +
           `• Avoid large nighttime setbacks with heat pumps - they can trigger expensive auxiliary heat in the morning\n` +
-          `• Set your nighttime temp closer to your daytime temp (try ${winterTemp - 1}°F instead of ${nighttimeTemp}°F)\n` +
+          `• Set your nighttime temp closer to your daytime temp (try ${
+            winterTemp - 1
+          }°F instead of ${nighttimeTemp}°F)\n` +
           `• Check your insulation and air sealing - better insulation = lower bills\n\n` +
           `💡 Use the Forecast page to see how different schedules affect your weekly costs.`;
-      } else if (lowerInput.includes("nighttime") || lowerInput.includes("night temp") || lowerInput.includes("set my night")) {
+      } else if (
+        lowerInput.includes("nighttime") ||
+        lowerInput.includes("night temp") ||
+        lowerInput.includes("set my night")
+      ) {
         // Questions about nighttime temperature
         const winterTemp = userSettings?.winterThermostat || 70;
         const currentNighttime = userSettings?.nighttimeTemp || winterTemp;
         const recommended = Math.max(winterTemp - 2, 66);
-        
-        fallbackAnswer = `Recommended nighttime temperature: ${recommended}°F\n\n` +
+
+        fallbackAnswer =
+          `Recommended nighttime temperature: ${recommended}°F\n\n` +
           `Your current nighttime setting: ${currentNighttime}°F\n\n` +
           `💡 Tips:\n` +
           `• For heat pumps, keep setbacks small (1-2°F) to avoid triggering auxiliary heat\n` +
@@ -1586,7 +1684,7 @@ Amen.`);
           `• Larger setbacks (3+°F) can cause your system to use expensive strip heat in the morning\n\n` +
           `You can adjust this in Settings under Thermostat Behavior.`;
       }
-      
+
       // If we have a fallback answer, use it
       if (fallbackAnswer) {
         setAgenticResponse({
@@ -1628,7 +1726,9 @@ Amen.`);
         setShowGroqPrompt(true);
         // Speak the error message
         if (speak && speechEnabled) {
-          speak("API key not configured. Please add your Groq API key in Settings, or enable local backend.");
+          speak(
+            "API key not configured. Please add your Groq API key in Settings, or enable local backend."
+          );
         }
         return;
       }
@@ -1795,9 +1895,12 @@ Amen.`);
   useEffect(() => {
     const handleAskJouleQuestion = (event) => {
       const question = event.detail?.question || event.detail?.text;
-      if (question && typeof question === 'string') {
+      if (question && typeof question === "string") {
         if (import.meta.env.DEV) {
-          console.log("[AskJoule] Received external question request:", question);
+          console.log(
+            "[AskJoule] Received external question request:",
+            question
+          );
         }
         // Set the value and submit
         setValue(question);
@@ -1815,7 +1918,7 @@ Amen.`);
     // Handle custom event to set question value (for suggested questions)
     const handleSetQuestion = (event) => {
       const question = event.detail?.question || event.detail;
-      if (question && typeof question === 'string') {
+      if (question && typeof question === "string") {
         setValue(question);
         inputRef.current?.focus();
         // Optionally auto-submit if requested
@@ -1827,13 +1930,15 @@ Amen.`);
       }
     };
 
-    window.addEventListener('askJouleSubmitQuestion', handleAskJouleQuestion);
-    window.addEventListener('askJouleSetQuestion', handleSetQuestion);
+    window.addEventListener("askJouleSubmitQuestion", handleAskJouleQuestion);
+    window.addEventListener("askJouleSetQuestion", handleSetQuestion);
     return () => {
-      window.removeEventListener('askJouleSubmitQuestion', handleAskJouleQuestion);
-      window.removeEventListener('askJouleSetQuestion', handleSetQuestion);
+      window.removeEventListener(
+        "askJouleSubmitQuestion",
+        handleAskJouleQuestion
+      );
+      window.removeEventListener("askJouleSetQuestion", handleSetQuestion);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSubmit, setValue, inputRef]); // setValue is stable, handleSubmit changes
 
   // Speak the agentic response when it arrives (including error messages)

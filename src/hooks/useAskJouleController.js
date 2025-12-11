@@ -425,6 +425,18 @@ export function useAskJouleController(props) {
         return result.handled;
       }
 
+      // Emergency comfort actions (fixed +5°F or -5°F)
+      if (action === "emergencyHeatBoost" || action === "emergencyCoolBoost") {
+        const currentTemp = effectiveUserSettings.winterThermostat || 68;
+        const result = handleTempAdjustment(
+          action === "emergencyHeatBoost" ? "up" : "down",
+          5, // Fixed emergency boost value
+          currentTemp,
+          commandCallbacks
+        );
+        return result.handled;
+      }
+
       // Presets
       if (
         action === "presetSleep" ||
@@ -606,11 +618,16 @@ export function useAskJouleController(props) {
           let message;
           if (!effectiveUserLocation) {
             message = "Set your location to see system status.";
-          } else if (!effectiveUserSettings.hspf2 && !effectiveUserSettings.efficiency) {
-            message = "Set your system efficiency (HSPF2 and/or SEER2) to see status.";
+          } else if (
+            !effectiveUserSettings.hspf2 &&
+            !effectiveUserSettings.efficiency
+          ) {
+            message =
+              "Set your system efficiency (HSPF2 and/or SEER2) to see status.";
           } else if (!annualEstimate) {
             // Location is set but annualEstimate is null - need building details
-            message = "Set your building details (square footage, insulation level, etc.) in Settings to calculate your annual costs.";
+            message =
+              "Set your building details (square footage, insulation level, etc.) in Settings to calculate your annual costs.";
           } else {
             message = "Unable to calculate status. Please check your settings.";
           }
@@ -916,4 +933,3 @@ export function useAskJouleController(props) {
     navigate,
   };
 }
-

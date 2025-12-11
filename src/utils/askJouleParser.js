@@ -21,7 +21,7 @@
  *    - Only called when input is NOT a command
  *
  * FLOW:
- * Input → Regex (is this a command?) 
+ * Input → Regex (is this a command?)
  *   → Yes: Execute immediately
  *   → No: Looks like command? → LLM Function Calling
  *   → No: It's a question → LLM Question Answering
@@ -85,19 +85,120 @@ const INSULATION_MAP = {
   good: 0.65,
 };
 
+// Temperature limits - used throughout parser for validation
+const TEMP_LIMITS = {
+  MIN: 45, // Minimum valid temperature (°F)
+  MAX: 85, // Maximum valid temperature (°F)
+  MIN_EXTENDED: 40, // Extended minimum (for some commands)
+  MAX_EXTENDED: 100, // Extended maximum (for some commands)
+  MIN_OUTDOOR: -20, // Minimum outdoor temperature
+  MAX_OUTDOOR: 60, // Maximum outdoor temperature
+  MIN_AUX_LOCKOUT: 20, // Minimum aux heat lockout
+  MAX_AUX_LOCKOUT: 50, // Maximum aux heat lockout
+};
+
+// Common regex pattern components - extracted for maintainability
+// These patterns are used repeatedly throughout the parser
+const REGEX_PATTERNS = {
+  // Temperature-related keywords
+  TEMP_KEYWORDS: "(?:temp|temperature|thermostat)",
+
+  // Common prefixes for commands
+  SET_PREFIX: "(?:set|change)\\s+(?:my\\s+|the\\s+)?",
+  MAKE_PREFIX: "(?:make|turn)\\s+(?:it|the)?\\s*",
+
+  // Temperature value patterns
+  TEMP_VALUE: "(\\d{2})", // Two-digit temperature
+  TEMP_VALUE_EXTENDED: "(\\d{2,3})", // Two or three-digit temperature
+
+  // Mode keywords
+  MODE_KEYWORDS: "(?:heat|cool|auto|off)",
+
+  // Action verbs
+  ACTION_VERBS:
+    "(?:set|change|make|turn|switch|activate|enable|disable|drop|lower|raise|increase|decrease|optimize|keep|put|run|stop|start|reset|undo|use|show|tell|explain|calculate|check|analyze|adjust|bump)",
+
+  // Question words
+  QUESTION_WORDS:
+    "(?:how|what|why|when|where|who|which|can\\s+i|should\\s+i|do\\s+i|does|is|are|will|would|could|can\\s+you)",
+
+  // Polite prefixes
+  POLITE_PREFIX: "(?:can\\s+you\\s+|please\\s+)?",
+
+  // Time patterns
+  TIME_12H: "(\\d{1,2})\\s*(am|pm)",
+  TIME_24H: "(\\d{1,2}):(\\d{2})",
+
+  // Square footage keywords
+  SQFT_KEYWORDS: "(?:sq\\s*?ft|square\\s*feet|sf|sq\\.\\s*ft\\.?)",
+};
+
+/**
+ * Pattern builder functions - construct regex patterns from components
+ * This makes patterns more maintainable and readable
+ */
+function buildSetTempPattern(includePolite = false) {
+  const polite = includePolite ? REGEX_PATTERNS.POLITE_PREFIX : "";
+  return new RegExp(
+    `${polite}${REGEX_PATTERNS.SET_PREFIX}${REGEX_PATTERNS.TEMP_KEYWORDS}(?:\\s+to)?\\s+${REGEX_PATTERNS.TEMP_VALUE}\\b`,
+    "i"
+  );
+}
+
+function buildModePattern() {
+  // Mode pattern with capture group for the mode value
+  return new RegExp(
+    `(?:set\\s+(?:it|mode|thermostat|system)\\s+to|switch\\s+to|change\\s+to|turn\\s+on)\\s+(${REGEX_PATTERNS.MODE_KEYWORDS})\\b`,
+    "i"
+  );
+}
+
 function parseSquareFeet(q) {
-  // Matches: 2,000 sq ft | 1800 square feet | 1.8k sf
-  const re =
-    /((?:\d{1,3}(?:,\d{3})+)|\d{3,6}|\d+(?:\.\d+)?\s*k)\s*(?:sq\s*?ft|square\s*feet|sf)\b/i;
-  const m = q.match(re);
-  if (!m) return undefined;
-  let raw = m[1].toLowerCase().replace(/,/g, "").trim();
-  if (raw.endsWith("k")) {
-    const n = parseFloat(raw.slice(0, -1));
-    if (!isNaN(n)) return Math.round(n * 1000);
+  // Matches: 2,000 sq ft | 1800 square feet | 1.8k sf | 2200sqft | 2.3ksqft | squarefeet (one word)
+  // Pattern 1: With space: "2,000 sq ft", "1800 square feet", "1.8k sf"
+  let re =
+    /((?:\d{1,3}(?:,\d{3})+)|\d{3,6}|\d+(?:\.\d+)?\s*k)\s+(?:sq\s*?ft|square\s*feet|sf|sq\.\s*ft\.?)\b/i;
+  let m = q.match(re);
+  if (m) {
+    let raw = m[1].toLowerCase().replace(/,/g, "").trim();
+    if (raw.endsWith("k")) {
+      const n = parseFloat(raw.slice(0, -1));
+      if (!isNaN(n)) return Math.round(n * 1000);
+    }
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n)) return n;
   }
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) ? n : undefined;
+
+  // Pattern 2: No space: "2200sqft", "2.3ksqft", "1800squarefeet", "2,100sq ft", "2k sqft"
+  // Handle comma-separated numbers: "2,100sqft", "2,100sq ft"
+  // Also handle "2k sqft" (k with optional space before sqft)
+  re =
+    /(\d{1,3}(?:,\d{3})+|\d{3,6}|\d+(?:\.\d+)?)\s*k(?:\s+)?(?:sqft|squarefeet|sf)/i;
+  m = q.match(re);
+  if (m) {
+    let raw = m[1].toLowerCase().replace(/,/g, "").trim();
+    if (raw.endsWith("k")) {
+      const n = parseFloat(raw.slice(0, -1));
+      if (!isNaN(n)) return Math.round(n * 1000);
+    }
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n)) return n;
+  }
+
+  // Pattern 3: "square foot" (singular)
+  re = /((?:\d{1,3}(?:,\d{3})+)|\d{3,6}|\d+(?:\.\d+)?\s*k)\s+square\s+foot\b/i;
+  m = q.match(re);
+  if (m) {
+    let raw = m[1].toLowerCase().replace(/,/g, "").trim();
+    if (raw.endsWith("k")) {
+      const n = parseFloat(raw.slice(0, -1));
+      if (!isNaN(n)) return Math.round(n * 1000);
+    }
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n)) return n;
+  }
+
+  return undefined;
 }
 
 function parseTemperature(q) {
@@ -139,6 +240,16 @@ function parseCity(q) {
   // Bare "City, ST" (avoid capturing leading words before city)
   const bareComma = q.match(/(^|\s)([A-Z][A-Za-z.\s-]+?,\s*[A-Z]{2})\b/);
   if (bareComma) return bareComma[2].trim();
+  // "City ST" (no comma) - e.g., "Dallas TX", "Miami,FL"
+  const cityStateNoComma = q.match(
+    /(?:^|\s|in\s+)([A-Z][A-Za-z.\s-]+?)\s+([A-Z]{2})\b/
+  );
+  if (
+    cityStateNoComma &&
+    !/(?:set|to|at|turn|change|make)/i.test(cityStateNoComma[1])
+  ) {
+    return `${cityStateNoComma[1].trim()} ${cityStateNoComma[2]}`;
+  }
   // Fallback: "in City" form (stop at comma or common keywords/numbers)
   const inCity = q.match(
     /\bin\s+([A-Za-z.\s-]+?)(?:,|\s+(?:at|to|set|with|for|on|keep|good|poor|excellent|bad|\d|$))/i
@@ -146,9 +257,11 @@ function parseCity(q) {
   if (inCity) return inCity[1].trim();
   // Start-of-string city heuristic: leading capitalized words before a stop word
   const startCity = q.match(
-    /^([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)\b(?=\s+(?:keep|set|at|to|with|for|on|\d|$))/
+    /^([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)\b(?=\s+(?:keep|set|at|to|with|for|on|turn|change|make|\d|$))/
   );
-  if (startCity) return startCity[1].trim();
+  if (startCity && !/(?:set|to|at|turn|change|make)/i.test(startCity[1])) {
+    return startCity[1].trim();
+  }
   return undefined;
 }
 
@@ -193,7 +306,7 @@ const OFFLINE_KNOWLEDGE = {
 function calculateOfflineAnswer(query) {
   // Normalize query to lowercase for pattern matching
   const q = query.toLowerCase().trim();
-  
+
   // 1. State of the Union (Data Fetching)
   // Only match queries asking for CURRENT temperature, not "what temperature should X be"
   // Match: "what's the temperature", "what's the current temp", "how hot is it"
@@ -207,7 +320,9 @@ function calculateOfflineAnswer(query) {
     return null;
   }
   if (
-    /what'?s?\s+(?:the\s+)?(?:current\s+)?(?:temp|temperature)(?:\s+now)?\s*[?]?$/.test(q) ||
+    /what'?s?\s+(?:the\s+)?(?:current\s+)?(?:temp|temperature)(?:\s+now)?\s*[?]?$/.test(
+      q
+    ) ||
     /how\s+(?:hot|cold|warm)\s+is\s+(?:it|the\s+room)/.test(q) ||
     /(?:current|right\s+now|now)\s+(?:temp|temperature)/.test(q)
   ) {
@@ -220,7 +335,10 @@ function calculateOfflineAnswer(query) {
     return { action: "offlineAnswer", type: "hvacStatus", needsContext: true };
   }
   // Handle all humidity queries as offline answers for consistency
-  if (/^what\s+is\s+the\s+humidity\s*[?]?$/.test(q) || /^what'?s?\s+(?:my\s+)?(?:humidity|relative\s+humidity)\s*[?]?$/.test(q)) {
+  if (
+    /^what\s+is\s+the\s+humidity\s*[?]?$/.test(q) ||
+    /^what'?s?\s+(?:my\s+)?(?:humidity|relative\s+humidity)\s*[?]?$/.test(q)
+  ) {
     return { action: "offlineAnswer", type: "humidity", needsContext: true };
   }
   if (/what'?s?\s+(?:the\s+)?(?:current\s+)?humidity/.test(q)) {
@@ -242,15 +360,29 @@ function calculateOfflineAnswer(query) {
       needsContext: true,
     };
   }
-  
+
   // Filter/Coil Efficiency Questions
   // Match questions about dirty filters/coils causing efficiency issues
+  // Also match statements like "my coils are iced up"
   if (
-    /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|old|worn)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)/.test(q) ||
-    /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|iced|frozen)\s+(?:coil|evaporator\s+coil|condenser\s+coil|indoor\s+coil|outdoor\s+coil)/.test(q) ||
-    /(?:dirty|clogged|filthy)\s+(?:filter|coil).*?(?:cause|explain|affect|impact|reduce|lower|decrease|hurt|waste|increase\s+energy|use\s+more\s+energy|efficiency|performance)/.test(q) ||
-    /(?:why|how).*?(?:using\s+more\s+energy|energy\s+usage|efficiency\s+drop|working\s+harder|consuming\s+more).*?(?:filter|coil)/.test(q) ||
-    /(?:filter|coil).*?(?:explain|cause|why).*?(?:more\s+energy|efficiency|kwh|energy\s+usage)/.test(q)
+    /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|old|worn)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)/.test(
+      q
+    ) ||
+    /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|iced|frozen)\s+(?:coil|evaporator\s+coil|condenser\s+coil|indoor\s+coil|outdoor\s+coil)/.test(
+      q
+    ) ||
+    /(?:my|the)\s+(?:coils?|filter).*?(?:are|is)\s+(?:iced\s+up|frozen|dirty|clogged)/i.test(
+      q
+    ) ||
+    /(?:dirty|clogged|filthy)\s+(?:filter|coil).*?(?:cause|explain|affect|impact|reduce|lower|decrease|hurt|waste|increase\s+energy|use\s+more\s+energy|efficiency|performance)/.test(
+      q
+    ) ||
+    /(?:why|how).*?(?:using\s+more\s+energy|energy\s+usage|efficiency\s+drop|working\s+harder|consuming\s+more).*?(?:filter|coil)/.test(
+      q
+    ) ||
+    /(?:filter|coil).*?(?:explain|cause|why).*?(?:more\s+energy|efficiency|kwh|energy\s+usage)/.test(
+      q
+    )
   ) {
     return {
       action: "offlineAnswer",
@@ -272,8 +404,8 @@ function calculateOfflineAnswer(query) {
   // Don't match: "why is my system short cycling" (specific problem - needs LLM context)
   if (
     (/^what\s+(?:is|causes?|does)\s+short\s+cycl/.test(q) ||
-     /^explain\s+short\s+cycl/.test(q) ||
-     (/short\s+cycl/.test(q) && /^what\s+(?:is|causes?)/.test(q))) &&
+      /^explain\s+short\s+cycl/.test(q) ||
+      (/short\s+cycl/.test(q) && /^what\s+(?:is|causes?)/.test(q))) &&
     !/^(?:why|how)\s+(?:is|are|does)\s+(?:my|the|your)/.test(q) // Exclude "why is my..." questions
   ) {
     return {
@@ -284,7 +416,9 @@ function calculateOfflineAnswer(query) {
   }
   // Setback - catch more variations including "how does a setback save money"
   if (
-    /(?:why|how|what|should)\s+(?:should\s+)?i\s+use\s+(?:a\s+)?setback/.test(q) ||
+    /(?:why|how|what|should)\s+(?:should\s+)?i\s+use\s+(?:a\s+)?setback/.test(
+      q
+    ) ||
     /(?:how|what|why)\s+does?\s+(?:a\s+)?setback/.test(q) ||
     /(?:what|explain)\s+(?:is|is\s+a)\s+setback/.test(q)
   ) {
@@ -296,7 +430,9 @@ function calculateOfflineAnswer(query) {
   }
   // Differential - catch more variations
   if (
-    /(?:what|which|how|should)\s+(?:is|should|do|can)\s+(?:i\s+use\s+)?(?:a\s+)?(?:good\s+)?differential/.test(q) ||
+    /(?:what|which|how|should)\s+(?:is|should|do|can)\s+(?:i\s+use\s+)?(?:a\s+)?(?:good\s+)?differential/.test(
+      q
+    ) ||
     /(?:what|explain)\s+(?:is|is\s+a)\s+(?:good\s+)?differential/.test(q) ||
     /(?:optimal|best)\s+differential/.test(q)
   ) {
@@ -308,8 +444,12 @@ function calculateOfflineAnswer(query) {
   }
   // Defrost cycle questions - catch more variations including "what does defrost mode mean"
   if (
-    /(?:what|why|how|explain)\s+(?:is|does|do)\s+(?:a\s+)?(?:defrost\s+cycle|defrost\s+mode)/.test(q) ||
-    /(?:what|explain)\s+(?:does|is)\s+(?:defrost\s+cycle|defrost\s+mode)\s+(?:mean|do)/.test(q) ||
+    /(?:what|why|how|explain)\s+(?:is|does|do)\s+(?:a\s+)?(?:defrost\s+cycle|defrost\s+mode)/.test(
+      q
+    ) ||
+    /(?:what|explain)\s+(?:does|is)\s+(?:defrost\s+cycle|defrost\s+mode)\s+(?:mean|do)/.test(
+      q
+    ) ||
     (/(?:defrost\s+cycle|defrost\s+mode)/.test(q) &&
       /(?:what|why|how|explain|mean)/.test(q))
   ) {
@@ -321,7 +461,9 @@ function calculateOfflineAnswer(query) {
   }
   // Balance point questions - catch "what is balance point" (without "a")
   if (
-    /(?:what|explain)\s+(?:is|is\s+a)\s+(?:balance\s+point|balance\s+point\s+temp)/.test(q) ||
+    /(?:what|explain)\s+(?:is|is\s+a)\s+(?:balance\s+point|balance\s+point\s+temp)/.test(
+      q
+    ) ||
     /^what\s+is\s+balance\s+point/.test(q) ||
     /(?:what|explain)\s+balance\s+point/.test(q)
   ) {
@@ -333,7 +475,9 @@ function calculateOfflineAnswer(query) {
   }
   // Filter questions - catch "which filter should I buy" but NOT "how often should I change my filter" (that's a question for LLM)
   if (
-    /(?:which|what)\s+(?:filter|air\s+filter)\s+(?:should|do|can)\s+i\s+(?:buy|get|use)/.test(q)
+    /(?:which|what)\s+(?:filter|air\s+filter)\s+(?:should|do|can)\s+i\s+(?:buy|get|use)/.test(
+      q
+    )
   ) {
     return {
       action: "offlineAnswer",
@@ -343,7 +487,9 @@ function calculateOfflineAnswer(query) {
   }
   // Reversing valve questions
   if (
-    /(?:what|why|explain)\s+(?:is|does)\s+(?:a\s+)?(?:reversing\s+valve|swoosh\s+sound)/.test(q)
+    /(?:what|why|explain)\s+(?:is|does)\s+(?:a\s+)?(?:reversing\s+valve|swoosh\s+sound)/.test(
+      q
+    )
   ) {
     return {
       action: "offlineAnswer",
@@ -353,8 +499,12 @@ function calculateOfflineAnswer(query) {
   }
   // Stack effect questions
   if (
-    /(?:why|how)\s+(?:is|are)\s+(?:the\s+)?(?:upstairs|second\s+floor)\s+(?:so\s+)?(?:hot|cold)/.test(q) ||
-    /(?:what|explain)\s+(?:is|is\s+the)\s+(?:stack\s+effect|stratification)/.test(q)
+    /(?:why|how)\s+(?:is|are)\s+(?:the\s+)?(?:upstairs|second\s+floor)\s+(?:so\s+)?(?:hot|cold)/.test(
+      q
+    ) ||
+    /(?:what|explain)\s+(?:is|is\s+the)\s+(?:stack\s+effect|stratification)/.test(
+      q
+    )
   ) {
     return {
       action: "offlineAnswer",
@@ -366,7 +516,9 @@ function calculateOfflineAnswer(query) {
   // Weather model questions - only match explicit questions about models themselves
   // Don't match questions about weather events that happen to mention models
   const isExplicitModelQuestion =
-    /(?:what|explain|tell\s+me\s+about|how\s+do|what\s+are)\s+(?:the\s+)?(?:big\s+4|weather\s+models?|forecast\s+models?)/.test(q) ||
+    /(?:what|explain|tell\s+me\s+about|how\s+do|what\s+are)\s+(?:the\s+)?(?:big\s+4|weather\s+models?|forecast\s+models?)/.test(
+      q
+    ) ||
     /\b(?:EC|CMC|GEFS)\s+(?:model|forecast)/.test(q) ||
     /(?:AI\s+ensemble|machine\s+learning\s+model)/.test(q) ||
     /weather\s+model\s+(?:is|are|work|used|use)/.test(q);
@@ -437,9 +589,7 @@ function calculateOfflineAnswer(query) {
       answer: `${f}°F = ${c.toFixed(1)}°C`,
     };
   }
-  const btuMatch = q.match(
-    /how\s+many\s+btus?\s+is\s+(\d+(?:\.\d+)?)\s+tons?/
-  );
+  const btuMatch = q.match(/how\s+many\s+btus?\s+is\s+(\d+(?:\.\d+)?)\s+tons?/);
   if (btuMatch) {
     const tons = parseFloat(btuMatch[1]);
     const btus = tons * 12000;
@@ -498,9 +648,17 @@ function calculateOfflineAnswer(query) {
 /**
  * Clean and normalize user input
  * Removes polite prefixes, wake words, and other fluff that confuses command parsing
+ * Also adds basic input validation for security
  */
 function cleanInput(q) {
   if (!q) return "";
+
+  // Input validation: limit length to prevent DoS attacks
+  const MAX_INPUT_LENGTH = 500;
+  if (q.length > MAX_INPUT_LENGTH) {
+    q = q.substring(0, MAX_INPUT_LENGTH);
+  }
+
   let clean = String(q).toLowerCase().trim();
 
   // Remove Wake Words
@@ -513,6 +671,18 @@ function cleanInput(q) {
   // Remove trailing punctuation that might confuse parsing
   clean = clean.replace(/[.!?]+$/, "");
 
+  // Remove null bytes and other control characters (security)
+  // Use String.fromCharCode to avoid linter issues with control chars in regex
+  const controlChars = Array.from({ length: 32 }, (_, i) =>
+    String.fromCharCode(i)
+  ).concat([String.fromCharCode(127)]);
+  controlChars.forEach((char) => {
+    clean = clean.replace(
+      new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+      ""
+    );
+  });
+
   return clean.trim();
 }
 
@@ -520,7 +690,7 @@ function cleanInput(q) {
  * Check if input is an instructional question (How do I...)
  * These should NOT be treated as commands
  */
-function isInstructionalQuestion(cleanedQuery) {
+function _isInstructionalQuestion(cleanedQuery) {
   if (!cleanedQuery) return false;
 
   // Check for instructional intent patterns
@@ -573,6 +743,12 @@ function parseCommandLocal(query, context = {}) {
   // Currently unused in regex parser but kept for API compatibility
   void context; // Suppress lint warning - context reserved for future enhancements
 
+  // === FAST-PATH ROUTING (Future Optimization) ===
+  // TODO: Route to specific pattern groups based on first word to improve performance
+  // This would avoid testing all 100+ patterns for every query
+  // Example: if (q.startsWith('set ')) { /* only test set patterns */ }
+  // For now, we continue with full pattern matching for accuracy
+
   // === HIGH-PRIORITY LOCAL COMMANDS ===
   // Check commands FIRST before fun responses
   // This prevents fun response fallbacks from intercepting valid commands
@@ -610,7 +786,10 @@ function parseCommandLocal(query, context = {}) {
   if (/^what\s+is\s+the\s+status\s*$/i.test(q)) {
     return { action: "systemStatus" };
   }
-  if (/^(?:why|what|is|are)\s+(?:my\s+)?system/i.test(q) && !/^what\s+is\s+the\s+status/i.test(q)) {
+  if (
+    /^(?:why|what|is|are)\s+(?:my\s+)?system/i.test(q) &&
+    !/^what\s+is\s+the\s+status/i.test(q)
+  ) {
     // This is a question about a problem, not a status query - let it go to AI
     // Do nothing, continue parsing
   } else if (
@@ -672,22 +851,35 @@ function parseCommandLocal(query, context = {}) {
 
   // Schedule queries - must come before general question rejection
   // Match: "what is my schedule", "show me schedule", "schedule", "my schedule"
-  // Also match: "schedule for wednesday", "wednesday schedule", etc.
+  // Also match: "schedule for wednesday", "wednesday schedule", "schedule for wed", etc.
   if (!/^set\s+/i.test(q)) {
-    // Check for specific day first (more specific pattern)
-    const dayMatch = q.match(
-      /(?:schedule\s+(?:for\s+)?|(?:my\s+)?(?:schedule\s+for\s+)?)(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/i
-    );
+    // Check for specific day first (more specific pattern) - includes abbreviations
+    // Match: "schedule for wed", "schedule on sat", "wed schedule", etc.
+    // Use word boundaries to prevent matching "mon" in "money" or "sat" in "saturday"
+    const dayMatch =
+      q.match(
+        /(?:schedule\s+(?:for\s+)?|(?:my\s+)?(?:schedule\s+for\s+)?|schedule\s+on\s+|^)\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b(?:\s+schedule|\s*$)/i
+      ) ||
+      q.match(
+        /(?:schedule\s+(?:for\s+)?|(?:my\s+)?(?:schedule\s+for\s+)?|schedule\s+on\s+)\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i
+      );
     if (dayMatch) {
       const dayName = dayMatch[1].toLowerCase();
       const dayMap = {
         sunday: 0,
+        sun: 0,
         monday: 1,
+        mon: 1,
         tuesday: 2,
+        tue: 2,
         wednesday: 3,
+        wed: 3,
         thursday: 4,
+        thu: 4,
         friday: 5,
+        fri: 5,
         saturday: 6,
+        sat: 6,
       };
       return { action: "queryScheduleDay", day: dayMap[dayName] };
     }
@@ -707,61 +899,295 @@ function parseCommandLocal(query, context = {}) {
   // Check for questions FIRST, before command matching
   // This prevents questions from being intercepted as commands
   // Return null for questions so parseAskJoule knows to send them to LLM
-  
+
   // Check for "change to what" or "set to what" patterns - these are questions
   if (/^(change|set|switch|turn)\s+to\s+what/i.test(qLower)) {
     return null; // Send to LLM
   }
-  
-  const isQuestionPattern = /^(how|what|why|when|where|who|which|can\s+i|should\s+i|do\s+i|does|is|are|will|would|could|can\s+you)\b/i.test(qLower);
-  const isInstructionalQuestion = /^(how\s+(do|can|should|to)|what\s+(should|happens|is|does|can)|should\s+i|can\s+i)\s+/i.test(qLower);
-  
+
+  // CRITICAL: Check if it starts with an action verb FIRST - these are almost always commands
+  // This prevents commands like "Set temp = 68f in the living room" from being misclassified as questions
+  const startsWithActionVerb =
+    /^(set|change|make|turn|switch|activate|enable|disable|drop|lower|raise|increase|decrease|optimize|keep|put|run|stop|start|reset|undo|use|show|tell|explain|calculate|check|analyze|adjust|bump|heat|cool|auto|off|fan)\s+/i.test(
+      q
+    );
+
+  const isQuestionPattern =
+    /^(how|what|why|when|where|who|which|can\s+i|should\s+i|do\s+i|does|is|are|will|would|could|can\s+you)\b/i.test(
+      qLower
+    );
+  const isInstructionalQuestion =
+    /^(how\s+(do|can|should|to)|what\s+(should|happens|is|does|can)|should\s+i|can\s+i)\s+/i.test(
+      qLower
+    );
+
+  // If it starts with an action verb, it's almost certainly a command, not a question
+  // Skip question detection for these
+  const isLikelyCommand = startsWithActionVerb;
+
   // Special case: "can you" can be a polite command OR a question
   // "can you set temp to 70" = command (polite request) - BUT "can you set the temperature to 70" might be a question
   // "can you tell me..." = question
+  // Early return: If query only contains square feet or city (no command), treat as question
+  // This prevents "2200sqft" or "in dallas texas" from being treated as commands
+  const squareFeet = parseSquareFeet(q);
+  const cityName = parseCity(q);
+  // Check for command words (not at start, anywhere in string)
+  const hasCommandWord =
+    /\b(set|change|make|turn|switch|activate|enable|disable|show|query|explain|tell|calculate|check|analyze|optimize|start|stop|toggle|bump|drop|lower|raise|increase|decrease|heat|cool|auto|off|fan|schedule|keep|adjust)\b/i.test(
+      q
+    );
+  // Check for temperature values
+  const hasTemperature =
+    /\d+\s*(?:degrees?|°|F|C)/i.test(q) || /^(\d{2})\s*$/.test(q.trim());
+  // Check for action verbs
+  const hasAction = hasCommandWord || hasTemperature;
+
+  // If only square feet or city (no command), return data for context but not as command
+  // But allow if there's also a command word or temperature
+  if ((squareFeet || cityName) && !hasAction) {
+    // Return the data but mark as not a command (will be treated as question/context)
+    const result = {};
+    if (squareFeet) result.squareFeet = squareFeet;
+    if (cityName) result.cityName = cityName;
+    return result; // Return data, not null - let caller decide if it's a command
+  }
+
   // "can I switch to auto mode" = question (asking permission)
-  const isCanYouQuestion = /^can\s+you\s+(tell|explain|show|what|how|why)/i.test(qLower);
-  const isCanIQuestion = /^can\s+i\s+(switch|activate|set|change|turn|open|show|go|navigate)/i.test(qLower);
-  
+  const isCanYouQuestion =
+    /^can\s+you\s+(tell|explain|show|what|how|why)/i.test(qLower);
+  const isCanIQuestion =
+    /^can\s+i\s+(switch|activate|set|change|turn|open|show|go|navigate)/i.test(
+      qLower
+    );
+
   // "can you set the temperature to X" vs "can you set temp to X"
   // The longer form with "the temperature" is more likely to be a question
-  const isCanYouSetQuestion = /^can\s+you\s+set\s+(?:the\s+)?temperature\s+to/i.test(qLower);
-  
+  const isCanYouSetQuestion =
+    /^can\s+you\s+set\s+(?:the\s+)?temperature\s+to/i.test(qLower);
+
   // "can I switch to auto mode" = question (asking permission)
   // "can I set..." = question (asking permission)
-  const isCanICommandQuestion = /^can\s+i\s+(switch|set|change|turn|activate)\s+/i.test(qLower);
-  
+  const isCanICommandQuestion =
+    /^can\s+i\s+(switch|set|change|turn|activate)\s+/i.test(qLower);
+
   // Explicitly check for "can you set the temperature to X" - this is ALWAYS a question
   if (/^can\s+you\s+set\s+(?:the\s+)?temperature\s+to/i.test(qLower)) {
     return null; // Always a question, send to LLM
   }
-  
+
+  // Explicitly check for "can I switch to X mode" or "can I switch to X" - this is ALWAYS a question (asking permission)
+  // Must check BEFORE any mode switching patterns can match
+  if (
+    /^can\s+i\s+switch\s+to\s+(?:auto|heat|cool|off)(?:\s+mode)?/i.test(qLower)
+  ) {
+    return null; // Always a question, send to LLM
+  }
+
+  // Also catch "can you show me" patterns early - these are questions, not navigation commands
+  if (/^can\s+(?:you|i)\s+show\s+me/i.test(qLower)) {
+    return null; // Always a question, send to LLM
+  }
+
   // If it's clearly a question asking HOW/SHOULD/CAN I/WHAT HAPPENS, reject it early
-  if (isQuestionPattern && (isInstructionalQuestion || isCanIQuestion || isCanICommandQuestion || isCanYouQuestion || isCanYouSetQuestion)) {
+  // BUT skip this check if it starts with an action verb (it's a command, not a question)
+  if (
+    !isLikelyCommand &&
+    isQuestionPattern &&
+    (isInstructionalQuestion ||
+      isCanIQuestion ||
+      isCanICommandQuestion ||
+      isCanYouQuestion ||
+      isCanYouSetQuestion)
+  ) {
     // But allow "can you set temp to X" as a polite command (short form, without "the temperature")
-    const isPoliteCommand = /^can\s+you\s+(set|change|make|turn|switch|activate|open|go|navigate)\s+(?:temp|it|mode)\s+/i.test(qLower) &&
-                            !isCanYouQuestion &&
-                            !isCanYouSetQuestion;
-    
+    const isPoliteCommand =
+      /^can\s+you\s+(set|change|make|turn|switch|activate|open|go|navigate)\s+(?:temp|it|mode)\s+/i.test(
+        qLower
+      ) &&
+      !isCanYouQuestion &&
+      !isCanYouSetQuestion;
+
     if (!isPoliteCommand) {
       // Return null so parseAskJoule knows this is a question and should go to LLM
       return null;
     }
   }
 
-  // === TEMPERATURE SETTING COMMANDS ===
-  
-  // "Set heat to X" or "Set cool to X" - interpret as temperature setting (not mode)
-  // Also handles "heat to X please", "set heat X" (without "to")
-  // BUT NOT questions like "should I set heat to 70" or "what happens if I set heat to 70"
+  // === COMMAND PATTERNS THAT MIGHT BE MISCLASSIFIED AS QUESTIONS ===
+  // These commands don't start with obvious action verbs, so add them early
+
+  // "Make it run more efficiently" / "Make my system run better"
   if (
-    !isQuestionPattern &&
-    (/set\s+(?:heat|cool|ac)\s+(?:to\s+)?(\d{2})\b/i.test(q) || /^(?:heat|cool|ac)\s+to\s+(\d{2})\b/i.test(q))
+    /make\s+(?:it|my\s+system)\s+run\s+(?:more\s+)?(?:efficiently|better)/i.test(
+      q
+    )
   ) {
-    const match = q.match(/set\s+(?:heat|cool|ac)\s+(?:to\s+)?(\d{2})\b/i) || q.match(/^(?:heat|cool|ac)\s+to\s+(\d{2})\b/i);
+    return { action: "optimizeForEfficiency" };
+  }
+
+  // "Make sure strips stay off above X°F" / "Don't use aux heat unless it's below X°F"
+  if (/make\s+sure\s+strips?\s+stay\s+off\s+above\s+(\d+)\s*°?f?/i.test(q)) {
+    const match = q.match(
+      /make\s+sure\s+strips?\s+stay\s+off\s+above\s+(\d+)\s*°?f?/i
+    );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      return { action: "setAuxHeatMaxOutdoorTemp", value: temp };
+    }
+  }
+  if (
+    /don'?t\s+use\s+aux\s+heat\s+unless\s+it'?s\s+below\s+(\d+)\s*°?f?/i.test(q)
+  ) {
+    const match = q.match(
+      /don'?t\s+use\s+aux\s+heat\s+unless\s+it'?s\s+below\s+(\d+)\s*°?f?/i
+    );
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      return { action: "setAuxHeatMaxOutdoorTemp", value: temp };
+    }
+  }
+
+  // "Run fan for X minutes every hour" / "Stop the fan after this cycle"
+  if (/run\s+fan\s+for\s+(\d+)\s+minutes?\s+every\s+hour/i.test(q)) {
+    const match = q.match(/run\s+fan\s+for\s+(\d+)\s+minutes?\s+every\s+hour/i);
+    if (match) {
+      const minutes = parseInt(match[1], 10);
+      return { action: "setFanSchedule", minutes, frequency: "hourly" };
+    }
+  }
+  if (/stop\s+the\s+fan\s+after\s+this\s+cycle/i.test(q)) {
+    return { action: "fanControl", mode: "auto" }; // Return fan to auto mode
+  }
+
+  // "Don't preheat before Xam" / "Pre-warm the house to X by Yam" / "Pre-cool to X by Yam"
+  if (/don'?t\s+preheat\s+before\s+(\d{1,2})\s*(am|pm)/i.test(q)) {
+    // This is a schedule constraint - could be handled by schedule system
+    return { action: "setScheduleConstraint", noPreheatBefore: true };
+  }
+  if (
+    /pre-?warm\s+(?:the\s+house\s+to\s+)?(\d{2})\s+by\s+(\d{1,2})\s*(am|pm)/i.test(
+      q
+    )
+  ) {
+    const match = q.match(
+      /pre-?warm\s+(?:the\s+house\s+to\s+)?(\d{2})\s+by\s+(\d{1,2})\s*(am|pm)/i
+    );
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      const hour = parseInt(match[2], 10);
+      const period = match[3].toLowerCase();
+      return { action: "setPreWarmSchedule", temp, hour, period };
+    }
+  }
+  if (/pre-?cool\s+to\s+(\d{2})\s+by\s+(\d{1,2})\s*(am|pm)/i.test(q)) {
+    const match = q.match(
+      /pre-?cool\s+to\s+(\d{2})\s+by\s+(\d{1,2})\s*(am|pm)/i
+    );
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      const hour = parseInt(match[2], 10);
+      const period = match[3].toLowerCase();
+      return { action: "setPreCoolSchedule", temp, hour, period };
+    }
+  }
+
+  // "Use weather forecast to plan my schedule" / "Adjust tonight's schedule based on the cold front"
+  if (/use\s+weather\s+forecast\s+to\s+plan\s+(?:my\s+)?schedule/i.test(q)) {
+    return { action: "enableWeatherBasedScheduling" };
+  }
+  if (/adjust\s+(?:tonight'?s|today'?s)\s+schedule\s+based\s+on/i.test(q)) {
+    return { action: "adjustScheduleForWeather" };
+  }
+
+  // "Set upstairs to X and downstairs to Y"
+  if (
+    /set\s+upstairs\s+to\s+(\d{2})\s+and\s+downstairs\s+to\s+(\d{2})/i.test(q)
+  ) {
+    const match = q.match(
+      /set\s+upstairs\s+to\s+(\d{2})\s+and\s+downstairs\s+to\s+(\d{2})/i
+    );
+    if (match) {
+      const upstairs = parseInt(match[1], 10);
+      const downstairs = parseInt(match[2], 10);
+      return { action: "setZoneTemperatures", upstairs, downstairs };
+    }
+  }
+
+  // "Reset all thermostat settings to default"
+  if (/reset\s+all\s+thermostat\s+settings\s+to\s+default/i.test(q)) {
+    return { action: "resetToDefaults" };
+  }
+
+  // "Turn everything off when I say \"goodnight\"" - this is a voice command trigger
+  if (/turn\s+everything\s+off\s+when\s+i\s+say/i.test(q)) {
+    return {
+      action: "setVoiceCommand",
+      trigger: "goodnight",
+      commandAction: "switchMode",
+      mode: "off",
+    };
+  }
+
+  // "When I say \"I'm cold\", raise temp by 2 degrees" - voice command triggers
+  if (/when\s+i\s+say\s+["']i'?m\s+cold["']/i.test(q)) {
+    const match = q.match(/raise\s+temp\s+by\s+(\d+)\s+degrees?/i);
+    const delta = match ? parseInt(match[1], 10) : 2;
+    return {
+      action: "setVoiceCommand",
+      trigger: "i'm cold",
+      commandAction: "increaseTemp",
+      value: delta,
+    };
+  }
+  if (/when\s+i\s+say\s+["']i'?m\s+hot["']/i.test(q)) {
+    const match = q.match(/lower\s+temp\s+by\s+(\d+)\s+degrees?/i);
+    const delta = match ? parseInt(match[1], 10) : 2;
+    return {
+      action: "setVoiceCommand",
+      trigger: "i'm hot",
+      commandAction: "decreaseTemp",
+      value: delta,
+    };
+  }
+
+  // "Stop learning my behavior for now" / "Start learning again"
+  if (/stop\s+learning\s+(?:my\s+)?behavior/i.test(q)) {
+    return { action: "disableLearning" };
+  }
+  if (/start\s+learning\s+again/i.test(q)) {
+    return { action: "enableLearning" };
+  }
+
+  // "Help me tune settings for a heat pump, not a furnace"
+  if (/help\s+me\s+tune\s+settings\s+for\s+a\s+heat\s+pump/i.test(q)) {
+    return { action: "configureForHeatPump" };
+  }
+
+  // "Make my system \"run better\" today"
+  if (/make\s+my\s+system\s+["']run\s+better["']/i.test(q)) {
+    return { action: "optimizeForEfficiency" };
+  }
+
+  // === TEMPERATURE SETTING COMMANDS ===
+
+  // "Set heat to X" or "Set cool to X" - interpret as temperature setting (not mode)
+  // Also handles "heat to X please", "set heat X" (without "to"), "heat to72" (no space)
+  // BUT NOT questions like "should I set heat to 70" or "what happens if I set heat to 70"
+  // Skip question check if it starts with action verb (it's a command)
+  if (
+    (isLikelyCommand || !isQuestionPattern) &&
+    (/set\s+(?:heat|cool|ac)\s+(?:to\s+)?(\d{2})\b/i.test(q) ||
+      /^(?:heat|cool|ac)\s+to\s*(\d{2})\b/i.test(q) ||
+      /^(?:heat|cool|ac)\s+to(\d{2})\b/i.test(q)) // "heat to72" (no space)
+  ) {
+    const match =
+      q.match(/set\s+(?:heat|cool|ac)\s+(?:to\s+)?(\d{2})\b/i) ||
+      q.match(/^(?:heat|cool|ac)\s+to\s*(\d{2})\b/i) ||
+      q.match(/^(?:heat|cool|ac)\s+to(\d{2})\b/i);
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         // If it says "heat", set winter temp; if "cool" or "ac", set summer temp
         const isHeat = /(?:^|set\s+)heat/i.test(q);
         return {
@@ -777,7 +1203,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/set\s+ac\s+to\s+(\d{2})\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setSummerTemp", value: temp };
       }
     }
@@ -792,45 +1218,57 @@ function parseCommandLocal(query, context = {}) {
   // Explicitly reject "can you set the temperature to X" - this is a question, not a command
   if (
     // Check it's NOT a question first
-    !isQuestionPattern &&
+    (isLikelyCommand || !isQuestionPattern) &&
     !/^(should\s+i|what\s+happens|can\s+i)\s+/i.test(q) &&
     // Reject "can you set the temperature to X" (longer form = question)
     !/^can\s+you\s+set\s+(?:the\s+)?temperature\s+to/i.test(q) &&
     // Also reject if it starts with "can you set" and has "temperature" (not just "temp")
     !(/^can\s+you\s+set/i.test(q) && /temperature/i.test(q)) &&
-    /(?:can\s+you\s+)?set\s+(?:my\s+|the\s+)?(?:temp|temperature|thermostat|it)(?:\s+to)?\s+(\d{2,3})\b/i.test(
-      q
-    ) &&
+    buildSetTempPattern(true).test(q) &&
     !/(?:winter|summer|nighttime|daytime|night|day|sleep|home|compressor)/i.test(
       q
     )
   ) {
-    const match = q.match(
-      /(?:can\s+you\s+)?set\s+(?:my\s+|the\s+)?(?:temp|temperature|thermostat|it)(?:\s+to)?\s+(\d{2,3})\b/i
-    );
+    const match = q.match(buildSetTempPattern(true));
     if (match) {
       const temp = parseInt(match[1], 10);
       // Allow out-of-bounds temps - they'll be clamped by the handler
-      if (temp >= 40 && temp <= 100) {
-        if (import.meta.env.DEV) {
-          console.log("[parseCommandLocal] Matched 'set temp' command:", { action: "setWinterTemp", value: temp, input: q });
+      if (
+        temp >= TEMP_LIMITS.MIN_EXTENDED &&
+        temp <= TEMP_LIMITS.MAX_EXTENDED
+      ) {
+        if (import.meta.env?.DEV) {
+          console.log("[parseCommandLocal] Matched 'set temp' command:", {
+            action: "setWinterTemp",
+            value: temp,
+            input: q,
+          });
         }
         return { action: "setWinterTemp", value: temp };
       }
     }
   }
-  
+
   // Also handle bare "set temp to X" pattern (more flexible)
   if (
     /^set\s+temp(?:\s+to)?\s+(\d{2,3})\b/i.test(q) &&
-    !/(?:winter|summer|nighttime|daytime|night|day|sleep|home|compressor)/i.test(q)
+    !/(?:winter|summer|nighttime|daytime|night|day|sleep|home|compressor)/i.test(
+      q
+    )
   ) {
     const match = q.match(/^set\s+temp(?:\s+to)?\s+(\d{2,3})\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 40 && temp <= 100) {
-        if (import.meta.env.DEV) {
-          console.log("[parseCommandLocal] Matched bare 'set temp' command:", { action: "setWinterTemp", value: temp, input: q });
+      if (
+        temp >= TEMP_LIMITS.MIN_EXTENDED &&
+        temp <= TEMP_LIMITS.MAX_EXTENDED
+      ) {
+        if (import.meta.env?.DEV) {
+          console.log("[parseCommandLocal] Matched bare 'set temp' command:", {
+            action: "setWinterTemp",
+            value: temp,
+            input: q,
+          });
         }
         return { action: "setWinterTemp", value: temp };
       }
@@ -838,11 +1276,22 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // "set to X" - bare "set to 72" (assume winter temp for now, could be smarter with context)
+  // Also: "set temp = 68f" (with equals sign)
   if (/^set\s+to\s+(\d{2})\b/i.test(q)) {
     const match = q.match(/^set\s+to\s+(\d{2})\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
+        return { action: "setWinterTemp", value: temp };
+      }
+    }
+  }
+  // "set temp = 68f" or "set temp=68f" (with equals sign)
+  if (/set\s+temp\s*=\s*(\d{2})\s*f?\b/i.test(q)) {
+    const match = q.match(/set\s+temp\s*=\s*(\d{2})\s*f?\b/i);
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -853,7 +1302,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^change\s+(?:temperature|temp)\s+to\s+(\d{2})\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -863,7 +1312,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^change\s+to\s+(\d{2})\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -874,29 +1323,87 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^make\s+it\s+(\d{2})(?:\s+degrees?)?\b/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
+    }
+  }
+
+  // Bare number "73" - handle standalone temperature numbers
+  if (/^(\d{2})\s*$/.test(q.trim())) {
+    const temp = parseInt(q.trim(), 10);
+    if (temp >= TEMP_LIMITS.MIN && temp <= 90) {
+      return { action: "setWinterTemp", value: temp };
     }
   }
 
   // "set it to X degrees fahrenheit" or similar
-  if (/set\s+it\s+to\s+(\d{2})(?:\s+degrees?\s+(?:fahrenheit|f|celsius|c))?/i.test(q)) {
-    const match = q.match(/set\s+it\s+to\s+(\d{2})(?:\s+degrees?\s+(?:fahrenheit|f|celsius|c))?/i);
+  if (
+    /set\s+it\s+to\s+(\d{2})(?:\s+degrees?\s+(?:fahrenheit|f|celsius|c))?/i.test(
+      q
+    )
+  ) {
+    const match = q.match(
+      /set\s+it\s+to\s+(\d{2})(?:\s+degrees?\s+(?:fahrenheit|f|celsius|c))?/i
+    );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
   }
 
+  // "68F" or "72F" (no space, no degree symbol) - must come before other patterns
+  // Match standalone or with trailing text
+  if (/^(\d{2})F\b/i.test(q.trim())) {
+    const match = q.match(/^(\d{2})F\b/i);
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
+        return { action: "setWinterTemp", value: temp };
+      }
+    }
+  }
+
+  // "72 degrees Farenheit" (misspelling) or "72 degrees Fahrenheit"
+  if (/(\d{2})\s+degrees?\s+(?:farenheit|fahrenheit)/i.test(q)) {
+    const match = q.match(/(\d{2})\s+degrees?\s+(?:farenheit|fahrenheit)/i);
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
+        return { action: "setWinterTemp", value: temp };
+      }
+    }
+  }
+
+  // "72° F" or "72 ° F" (space before F) - more flexible matching
+  if (/(\d{2})\s*°\s*F\b/i.test(q)) {
+    const match = q.match(/(\d{2})\s*°\s*F\b/i);
+    if (match) {
+      const temp = parseInt(match[1], 10);
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
+        return { action: "setWinterTemp", value: temp };
+      }
+    }
+  }
+
+  // Reject Celsius explicitly
+  if (/\d+\s+degrees?\s+celsius/i.test(q)) {
+    return null; // Send to LLM to explain conversion
+  }
+
   // Bare number "72" or "set 68" - only if it's a standalone command (not part of a question)
-  if (/^(\d{2})\s*$/i.test(q) && !/^(how|what|why|when|where|who|which|can|should|do|does|is|are|will|would|could)\b/i.test(q)) {
+  if (
+    /^(\d{2})\s*$/i.test(q) &&
+    !/^(how|what|why|when|where|who|which|can|should|do|does|is|are|will|would|could)\b/i.test(
+      q
+    )
+  ) {
     const match = q.match(/^(\d{2})\s*$/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -906,7 +1413,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^set\s+(\d{2})\s*$/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -916,7 +1423,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^set\s+(\d{2})\s*$/i);
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setWinterTemp", value: temp };
       }
     }
@@ -936,7 +1443,7 @@ function parseCommandLocal(query, context = {}) {
 
   // Relative temperature adjustments
   // These must come BEFORE "make it comfortable" patterns to avoid conflicts
-  
+
   // "turn it up" / "turn it down" - simple directional commands
   if (/^turn\s+it\s+(up|down)\s*$/i.test(q)) {
     const isUp = /up/i.test(q);
@@ -947,21 +1454,94 @@ function parseCommandLocal(query, context = {}) {
   if (/^bump\s+it\s+up\s*$/i.test(q)) {
     return { action: "increaseTemp", value: 2 };
   }
+  // "bump it up X degrees" - with number (check BEFORE simple version to catch numbers)
+  if (/bump\s+it\s+up\s+(\d+)(?:\s+degrees?)?/i.test(q)) {
+    const match = q.match(/bump\s+it\s+up\s+(\d+)(?:\s+degrees?)?/i);
+    if (match) {
+      const delta = parseInt(match[1], 10);
+      return { action: "increaseTemp", value: delta };
+    }
+  }
   if (/^lower\s+it\s*$/i.test(q)) {
     return { action: "decreaseTemp", value: 2 };
   }
 
-  // "make it warmer/cooler" with optional "by X" or "X degrees"
+  // "drop it down X" or "drop it down by X" - handle "drop it down 2"
+  if (/drop\s+it\s+down(?:\s+by)?\s+(\d+)(?:\s+degrees?)?/i.test(q)) {
+    const match = q.match(
+      /drop\s+it\s+down(?:\s+by)?\s+(\d+)(?:\s+degrees?)?/i
+    );
+    if (match) {
+      const delta = parseInt(match[1], 10);
+      return { action: "decreaseTemp", value: delta };
+    }
+  }
+  // "drop it down" without number - default to 2
+  if (/^drop\s+it\s+down\s*$/i.test(q)) {
+    return { action: "decreaseTemp", value: 2 };
+  }
+
+  // "lower by X" or "lower by five" (spelled out numbers) - also "lower by five please"
+  if (
+    /lower\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i.test(
+      q
+    )
+  ) {
+    const match = q.match(
+      /lower\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i
+    );
+    if (match) {
+      const numWords = {
+        one: 1,
+        two: 2,
+        three: 3,
+        four: 4,
+        five: 5,
+        six: 6,
+        seven: 7,
+        eight: 8,
+        nine: 9,
+        ten: 10,
+      };
+      const delta = numWords[match[1].toLowerCase()] || parseInt(match[1], 10);
+      return { action: "decreaseTemp", value: delta };
+    }
+  }
+
+  // "cooler pls" or "cooler please" - default 2
+  if (/^cooler\s+(?:pls|please)?\s*$/i.test(q)) {
+    return { action: "decreaseTemp", value: 2 };
+  }
+
+  // "yo turn it down" or casual variations
+  if (/^(?:yo|hey|ok|alright)\s+turn\s+it\s+(up|down)/i.test(q)) {
+    const isUp = /up/i.test(q);
+    return { action: isUp ? "increaseTemp" : "decreaseTemp", value: 2 };
+  }
+
+  // "make it warmer/cooler" with optional "by X" or "X degrees" or "like X degrees"
   if (
     /(?:make\s+it|turn\s+it|make|turn)\s+(?:warmer|hotter|heat\s+up)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i.test(
       q
     ) ||
-    /^(?:warmer|hotter|heat\s+up)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?$/i.test(q) ||
-    /make\s+it\s+(\d+)\s+degrees?\s+warmer/i.test(q)
+    /^(?:warmer|hotter|heat\s+up)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?$/i.test(
+      q
+    ) ||
+    /make\s+it\s+(\d+)\s+degrees?\s+warmer/i.test(q) ||
+    /make\s+it\s+warmer.*?like\s+(\d+)\s+degrees?/i.test(q) ||
+    /make\s+it\s+warmer[^\d]*(\d+)\s+degrees?/i.test(q) // Handle "warmer… like 5 degrees" with ellipsis
   ) {
     let match = q.match(/make\s+it\s+(\d+)\s+degrees?\s+warmer/i);
     if (!match) {
-      match = q.match(/(?:warmer|hotter|heat\s+up)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i);
+      match = q.match(/make\s+it\s+warmer.*?like\s+(\d+)\s+degrees?/i);
+    }
+    if (!match) {
+      match = q.match(/make\s+it\s+warmer[^\d]*(\d+)\s+degrees?/i); // Catch "warmer… like 5"
+    }
+    if (!match) {
+      match = q.match(
+        /(?:warmer|hotter|heat\s+up)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i
+      );
     }
     const delta = match && match[1] ? parseInt(match[1], 10) : 2;
     return { action: "increaseTemp", value: delta };
@@ -970,15 +1550,36 @@ function parseCommandLocal(query, context = {}) {
     /(?:make\s+it|turn\s+it|make|turn)\s+(?:cooler|colder|cool\s+down)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i.test(
       q
     ) ||
-    /^(?:cooler|colder|cool\s+down)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?$/i.test(q) ||
+    /^(?:cooler|colder|cool\s+down)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?$/i.test(
+      q
+    ) ||
     /make\s+it\s+(\d+)\s+degrees?\s+cooler/i.test(q)
   ) {
     let match = q.match(/make\s+it\s+(\d+)\s+degrees?\s+cooler/i);
     if (!match) {
-      match = q.match(/(?:cooler|colder|cool\s+down)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i);
+      match = q.match(
+        /(?:cooler|colder|cool\s+down)(?:\s+by\s+(\d+)(?:\s+degrees?)?)?/i
+      );
     }
     const delta = match && match[1] ? parseInt(match[1], 10) : 2;
     return { action: "decreaseTemp", value: delta };
+  }
+
+  // Emergency comfort patterns - "I'm freezing" / "I'm roasting"
+  // Also: "it's getting hot in here", "yo it's getting hot", "it's getting cold"
+  if (
+    /i'?m\s+(?:freezing|dying\s+of\s+cold|so\s+cold|cold)/i.test(q) ||
+    /it'?s\s+getting\s+(?:really\s+)?cold/i.test(q) ||
+    /getting\s+(?:really\s+)?cold\s+(?:in\s+here|in\s+this\s+room)?/i.test(q)
+  ) {
+    return { action: "emergencyHeatBoost", value: +5 };
+  }
+  if (
+    /i'?m\s+(?:roasting|dying\s+of\s+heat|so\s+hot|sweating|hot)/i.test(q) ||
+    /it'?s\s+getting\s+(?:really\s+)?hot/i.test(q) ||
+    /getting\s+(?:really\s+)?hot\s+(?:in\s+here|in\s+this\s+room)?/i.test(q)
+  ) {
+    return { action: "emergencyCoolBoost", value: 5 };
   }
 
   // "heat it up by X degrees"
@@ -990,16 +1591,26 @@ function parseCommandLocal(query, context = {}) {
 
   // "turn it down by X" or "turn down by X"
   if (/turn\s+(?:it\s+)?down\s+by\s+(\d+)(?:\s+degrees?)?/i.test(q)) {
-    const match = q.match(/turn\s+(?:it\s+)?down\s+by\s+(\d+)(?:\s+degrees?)?/i);
+    const match = q.match(
+      /turn\s+(?:it\s+)?down\s+by\s+(\d+)(?:\s+degrees?)?/i
+    );
     const delta = match ? parseInt(match[1], 10) : 2;
     return { action: "decreaseTemp", value: delta };
   }
   // "turn up" (without "by X") - default to 2 degrees
-  if (/^turn\s+(?:it\s+)?up\s*$/i.test(q)) {
+  // Handle casual prefixes: "yo turn it up", "hey turn it up"
+  if (
+    /^(?:yo|hey|ok|alright|well)\s+turn\s+(?:it\s+)?up\s*$/i.test(q) ||
+    /^turn\s+(?:it\s+)?up\s*$/i.test(q)
+  ) {
     return { action: "increaseTemp", value: 2 };
   }
   // "turn down" (without "by X") - default to 2 degrees
-  if (/^turn\s+(?:it\s+)?down\s*$/i.test(q)) {
+  // Handle casual prefixes: "yo turn it down", "hey turn it down"
+  if (
+    /^(?:yo|hey|ok|alright|well)\s+turn\s+(?:it\s+)?down\s*$/i.test(q) ||
+    /^turn\s+(?:it\s+)?down\s*$/i.test(q)
+  ) {
     return { action: "decreaseTemp", value: 2 };
   }
 
@@ -1056,13 +1667,16 @@ function parseCommandLocal(query, context = {}) {
 
   // 1. Comfort Tuning - Problem Detection
   // "The heat turns on and off too much" / "It's cycling constantly"
+  // Only match if it's clearly a problem description, not a question
+  // Exclude questions like "short cycling???" which should go to knowledge base
   if (
-    /(?:heat|system|it|furnace|ac|air)\s+(?:turns?\s+)?(?:on\s+and\s+off|cycles?|cycling)\s+(?:too\s+)?(?:much|often|constantly|frequently)/i.test(
+    !/\?/.test(q) && // Don't match if it's a question (has question mark)
+    (/(?:heat|system|it|furnace|ac|air)\s+(?:turns?\s+)?(?:on\s+and\s+off|cycles?|cycling)\s+(?:too\s+)?(?:much|often|constantly|frequently)/i.test(
       q
     ) ||
-    /(?:short\s+)?cycling|turns?\s+on\s+and\s+off\s+too\s+much|cycles?\s+constantly/i.test(
-      q
-    )
+      /(?:short\s+)?cycling|turns?\s+on\s+and\s+off\s+too\s+much|cycles?\s+constantly/i.test(
+        q
+      ))
   ) {
     return {
       action: "setHeatDifferential",
@@ -1280,7 +1894,9 @@ function parseCommandLocal(query, context = {}) {
 
   // "Fix the short cycling" / "Check for short cycling"
   if (
-    /(?:fix|stop|prevent|solve|check\s+for)\s+(?:the\s+)?(?:short\s+)?cycling/i.test(q) ||
+    /(?:fix|stop|prevent|solve|check\s+for)\s+(?:the\s+)?(?:short\s+)?cycling/i.test(
+      q
+    ) ||
     /(?:short\s+)?cycling\s+(?:problem|issue|fix)/i.test(q)
   ) {
     // Apply short cycle fix: widen differential + increase min off time
@@ -1589,42 +2205,96 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // HVAC Mode Changes - Must come before generic "set temperature" patterns
-  // Match: "turn off" (special case - must come first)
-  if (/^turn\s+off\b/i.test(q)) {
-    return { action: "setMode", value: "off" };
+  // Match: "turn off", "shut it down", "turn everything off", "turn off the furnace", "turn off thermostat", "set thermostat to off" (special case - must come first)
+  if (
+    /^turn\s+off\b/i.test(q) ||
+    /^shut\s+it\s+down\s*$/i.test(q) ||
+    /^turn\s+everything\s+off\s*$/i.test(q) ||
+    /^turn\s+off\s+(?:the\s+)?(?:furnace|thermostat|system)\s*$/i.test(q) ||
+    /^set\s+thermostat\s+to\s+off\s*$/i.test(q) ||
+    /^turn\s+the\s+system\s+off\s*$/i.test(q)
+  ) {
+    return { action: "switchMode", mode: "off" };
   }
+
+  // "turn on AC" - AC means cool mode (MUST come before "turn on system")
+  if (/^turn\s+on\s+ac\b/i.test(q)) {
+    return { action: "switchMode", mode: "cool" };
+  }
+
+  // "turn on fan" - fan control (MUST come before "turn on system")
+  if (/^turn\s+on\s+fan\b/i.test(q)) {
+    return { action: "fanControl" };
+  }
+
+  // "turn the heat on" / "turn the heat off"
+  if (/^turn\s+(?:the\s+)?heat\s+on\s*$/i.test(q)) {
+    return { action: "switchMode", mode: "heat" };
+  }
+  if (/^turn\s+(?:the\s+)?heat\s+off\s*$/i.test(q)) {
+    return { action: "switchMode", mode: "off" };
+  }
+
+  // "auto mode please" or "auto mode" (MUST come before "turn on system")
+  // Also: "put the system in AUTO", "put system in auto"
+  if (
+    /^auto\s+mode(?:\s+please)?\s*$/i.test(q) ||
+    /^switch\s+back\s+to\s+auto\s*$/i.test(q) ||
+    /^put\s+(?:the\s+)?system\s+in\s+auto\s*$/i.test(q)
+  ) {
+    return { action: "switchMode", mode: "auto" };
+  }
+
   // Match: "turn on the system" or "turn the system on" - defaults to "heat" mode (per test expectation)
-  // This must come before "turn on heat" pattern to avoid conflicts
+  // This must come AFTER "turn on AC" and "turn on fan" to avoid conflicts
   // Only match if NOT followed by a mode word (heat, cool, auto)
   if (
     /^turn\s+on\s+(?:the\s+)?(?:system|hvac|thermostat)\b/i.test(q) ||
     /^turn\s+(?:the\s+)?(?:system|hvac|thermostat)\s+on\b/i.test(q) ||
-    (/^turn\s+on\b/i.test(q) && !/^turn\s+on\s+(?:heat|cool|auto)\b/i.test(q)) // Simple "turn on" without mode specified
+    (/^turn\s+on\b/i.test(q) &&
+      !/^turn\s+on\s+(?:heat|cool|auto|ac|fan)\b/i.test(q)) // Simple "turn on" without mode specified
   ) {
-    return { action: "setMode", value: "heat" };
+    return { action: "switchMode", mode: "heat" };
   }
+
   // Match: "set it to heat", "set mode to heat", "switch to heat", "change to heat", "turn on heat"
   // BUT NOT questions like "can I switch to auto mode" or "should I switch to heat"
+
   if (
-    !isQuestionPattern &&
+    (isLikelyCommand || !isQuestionPattern) &&
     !/^(can\s+i|should\s+i)\s+/i.test(q) &&
     // Explicitly reject "can I switch to" patterns - these are questions
     !/^can\s+i\s+switch\s+to/i.test(q) &&
     // Also reject "can I" followed by any mode-changing verb
-    !(/^can\s+i\s+(switch|change|set|turn|activate)/i.test(q) && /(?:to|mode)/i.test(q)) &&
-    /(?:set\s+(?:it|mode|thermostat|system)\s+to|switch\s+to|change\s+to|turn\s+on)\s+(heat|cool|auto)\b/i.test(
-      q
-    )
+    !(
+      /^can\s+i\s+(switch|change|set|turn|activate)/i.test(q) &&
+      /(?:to|mode)/i.test(q)
+    ) &&
+    (buildModePattern().test(q) ||
+      new RegExp(
+        `^set\\s+system\\s+mode\\s+to\\s+${REGEX_PATTERNS.MODE_KEYWORDS}\\s*$`,
+        "i"
+      ).test(q))
   ) {
-    const match = q.match(
-      /(?:set\s+(?:it|mode|thermostat|system)\s+to|switch\s+to|change\s+to|turn\s+on)\s+(heat|cool|auto)\b/i
-    );
+    let match = q.match(buildModePattern());
+    if (!match) {
+      const systemModePattern = new RegExp(
+        `^set\\s+system\\s+mode\\s+to\\s+${REGEX_PATTERNS.MODE_KEYWORDS}\\s*$`,
+        "i"
+      );
+      match = q.match(systemModePattern);
+    }
     if (match) {
       const mode = match[1].toLowerCase();
-      if (["heat", "cool", "auto"].includes(mode)) {
-        return { action: "setMode", value: mode };
+      if (["heat", "cool", "auto", "off"].includes(mode)) {
+        return { action: "switchMode", mode: mode };
       }
     }
+  }
+
+  // "change to cooling" - cooling = cool mode
+  if (/^change\s+to\s+cooling\b/i.test(q)) {
+    return { action: "switchMode", mode: "cool" };
   }
   // Also match: "set to heat", "go to heat", "put it in heat mode"
   if (
@@ -1638,7 +2308,7 @@ function parseCommandLocal(query, context = {}) {
     if (match) {
       const mode = match[1].toLowerCase();
       if (["heat", "cool", "auto", "off"].includes(mode)) {
-        return { action: "setMode", value: mode };
+        return { action: "switchMode", mode: mode };
       }
     }
   }
@@ -1651,7 +2321,7 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^(heat|cool|auto)\s+mode\s*$/i);
     if (match) {
       const mode = match[1].toLowerCase();
-      return { action: "setMode", value: mode };
+      return { action: "switchMode", mode: mode };
     }
   }
 
@@ -1664,12 +2334,20 @@ function parseCommandLocal(query, context = {}) {
     return { action: "presetSleep" };
   }
   // Away mode - improved pattern to catch "activate away mode" and other variations
+  // Also: "turn away mode off", "disable vacation mode"
   if (
     /(?:i'm|im|i\s+am)\s+(?:leaving|going\s+out|gone)\b/i.test(q) ||
     /(?:^|set\s+(?:to\s+)?|switch\s+to\s+|activate\s+)away\s+mode/i.test(q) ||
     /^away\s+mode$/i.test(q) ||
     /vacation\s+mode/i.test(q)
   ) {
+    // Check if it's "turn away mode off" or "disable vacation mode" first
+    if (
+      /turn\s+away\s+mode\s+off/i.test(q) ||
+      /disable\s+vacation\s+mode/i.test(q)
+    ) {
+      return { action: "presetHome" }; // Return to home mode
+    }
     return { action: "presetAway" };
   }
   // More specific: only match explicit "home mode" or "I'm home/back" (not "home's" or questions about "home")
@@ -1694,7 +2372,10 @@ function parseCommandLocal(query, context = {}) {
     return { action: "queryHvacStatus" };
   }
   // Query humidity: "what is the humidity" / "What is the humidity?"
-  if (/^what\s+is\s+the\s+humidity\s*[?]?$/i.test(q) || /^what'?s?\s+(?:my\s+)?(?:humidity|relative\s+humidity)\s*[?]?$/i.test(q)) {
+  if (
+    /^what\s+is\s+the\s+humidity\s*[?]?$/i.test(q) ||
+    /^what'?s?\s+(?:my\s+)?(?:humidity|relative\s+humidity)\s*[?]?$/i.test(q)
+  ) {
     return { action: "queryHumidity" };
   }
 
@@ -1991,7 +2672,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= -20 && temp <= 60) {
+      if (temp >= TEMP_LIMITS.MIN_OUTDOOR && temp <= TEMP_LIMITS.MAX_OUTDOOR) {
         return { action: "setCompressorLockout", value: temp };
       }
     }
@@ -2007,7 +2688,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= -20 && temp <= 60) {
+      if (temp >= TEMP_LIMITS.MIN_OUTDOOR && temp <= TEMP_LIMITS.MAX_OUTDOOR) {
         return { action: "setCompressorLockout", value: temp };
       }
     }
@@ -2414,12 +3095,23 @@ function parseCommandLocal(query, context = {}) {
     if (m) return { action: "setCompressorMinRuntime", value: Number(m[1]) };
   }
   // "set cycle off time to X minutes" / "set min off time to X seconds"
-  if (/set\s+cycle\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:minutes?|mins?|min)/i.test(q)) {
-    const m = q.match(/set\s+cycle\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:minutes?|mins?|min)/i);
-    if (m) return { action: "setCompressorMinCycleOff", value: Number(m[1]) * 60 };
+  if (
+    /set\s+cycle\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:minutes?|mins?|min)/i.test(
+      q
+    )
+  ) {
+    const m = q.match(
+      /set\s+cycle\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:minutes?|mins?|min)/i
+    );
+    if (m)
+      return { action: "setCompressorMinCycleOff", value: Number(m[1]) * 60 };
   }
-  if (/set\s+min\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?)/i.test(q)) {
-    const m = q.match(/set\s+min\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?)/i);
+  if (
+    /set\s+min\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?)/i.test(q)
+  ) {
+    const m = q.match(
+      /set\s+min\s+off\s+time\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?)/i
+    );
     if (m) return { action: "setCompressorMinCycleOff", value: Number(m[1]) };
   }
   // Heat Differential - handle "set differential", "set heat differential", "change heat diff"
@@ -2434,11 +3126,17 @@ function parseCommandLocal(query, context = {}) {
     if (m) return { action: "setHeatDifferential", value: parseFloat(m[1]) };
   }
   if (/change\s+heat\s+diff\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i.test(q)) {
-    const m = q.match(/change\s+heat\s+diff\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i);
+    const m = q.match(
+      /change\s+heat\s+diff\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i
+    );
     if (m) return { action: "setHeatDifferential", value: parseFloat(m[1]) };
   }
   // Cool Differential
-  if (/set\s+cool(?:ing)?\s+differential\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i.test(q)) {
+  if (
+    /set\s+cool(?:ing)?\s+differential\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i.test(
+      q
+    )
+  ) {
     const m = q.match(
       /set\s+cool(?:ing)?\s+differential\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*°?f?/i
     );
@@ -2586,7 +3284,9 @@ function parseCommandLocal(query, context = {}) {
   }
   // Heat Dissipation Time - handle "set dissipation to 60s"
   if (
-    /set\s+(?:heat\s+)?dissipation\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?|s\b)/i.test(q)
+    /set\s+(?:heat\s+)?dissipation\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?|s\b)/i.test(
+      q
+    )
   ) {
     const m = q.match(
       /set\s+(?:heat\s+)?dissipation\s+(?:to\s+)?(\d+)\s*(?:seconds?|secs?|s\b)/i
@@ -2601,7 +3301,9 @@ function parseCommandLocal(query, context = {}) {
     if (m) return { action: "setAuxHeatMaxOutdoorTemp", value: Number(m[1]) };
   }
   if (
-    /set\s+aux\s+(?:heat\s+)?lockout\s+(?:to\s+)?(\d+)\s*(?:degrees?|°f?)?/i.test(q)
+    /set\s+aux\s+(?:heat\s+)?lockout\s+(?:to\s+)?(\d+)\s*(?:degrees?|°f?)?/i.test(
+      q
+    )
   ) {
     const m = q.match(
       /set\s+aux\s+(?:heat\s+)?lockout\s+(?:to\s+)?(\d+)\s*(?:degrees?|°f?)?/i
@@ -2620,8 +3322,12 @@ function parseCommandLocal(query, context = {}) {
   }
   // Compressor Min Outdoor Temperature (lock out compressor below X)
   // Also handle "set balance point to X" (balance point = compressor lockout)
-  if (/set\s+balance\s+point\s+(?:to\s+)?(-?\d+)\s*(?:degrees?|°f?)?/i.test(q)) {
-    const m = q.match(/set\s+balance\s+point\s+(?:to\s+)?(-?\d+)\s*(?:degrees?|°f?)?/i);
+  if (
+    /set\s+balance\s+point\s+(?:to\s+)?(-?\d+)\s*(?:degrees?|°f?)?/i.test(q)
+  ) {
+    const m = q.match(
+      /set\s+balance\s+point\s+(?:to\s+)?(-?\d+)\s*(?:degrees?|°f?)?/i
+    );
     if (m) return { action: "setCompressorLockout", value: Number(m[1]) };
   }
   if (
@@ -2836,6 +3542,24 @@ function parseCommandLocal(query, context = {}) {
     return { action: "setCompressorReverseStaging", value: false };
   }
   // Optimization Commands
+  // "optimize my schedule for comfort first" / "optimize my schedule for savings first"
+  if (
+    /optimize\s+(?:my\s+)?schedule\s+for\s+(?:comfort|savings|efficiency)\s+(?:first)?/i.test(
+      q
+    )
+  ) {
+    const match = q.match(
+      /optimize\s+(?:my\s+)?schedule\s+for\s+(comfort|savings|efficiency)/i
+    );
+    if (match) {
+      const mode = match[1].toLowerCase();
+      if (mode === "comfort") {
+        return { action: "optimizeForComfort" };
+      } else {
+        return { action: "optimizeForEfficiency" };
+      }
+    }
+  }
   if (/optimize\s+for\s+efficiency/i.test(q)) {
     return { action: "optimizeForEfficiency" };
   }
@@ -2970,32 +3694,64 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // Set nighttime temperature / sleep temperature
+  // Also: "drop my nighttime setpoint to 65"
   if (
     /set\s+(?:nighttime|night|sleep)\s+temp(?:erature)?\s+(?:to\s+)?(\d{2})/i.test(
       q
+    ) ||
+    /drop\s+(?:my\s+)?(?:nighttime|night|sleep)\s+setpoint\s+(?:to\s+)?(\d{2})/i.test(
+      q
     )
   ) {
-    const match = q.match(
+    let match = q.match(
       /set\s+(?:nighttime|night|sleep)\s+temp(?:erature)?\s+(?:to\s+)?(\d{2})/i
     );
+    if (!match) {
+      match = q.match(
+        /drop\s+(?:my\s+)?(?:nighttime|night|sleep)\s+setpoint\s+(?:to\s+)?(\d{2})/i
+      );
+    }
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setNighttimeTemperature", value: temp };
       }
     }
   }
 
   // Set daytime temperature / home temperature
+  // Also: "set day temp to 70 and night temp to 66"
   if (
-    /set\s+(?:daytime|day|home)\s+temp(?:erature)?\s+(?:to\s+)?(\d{2})/i.test(q)
+    /set\s+(?:daytime|day|home)\s+temp(?:erature)?\s+(?:to\s+)?(\d{2})/i.test(
+      q
+    ) ||
+    /set\s+day\s+temp\s+to\s+(\d{2})\s+and\s+night\s+temp\s+to\s+(\d{2})/i.test(
+      q
+    )
   ) {
+    // Check for combined "day temp to X and night temp to Y" first
+    const combinedMatch = q.match(
+      /set\s+day\s+temp\s+to\s+(\d{2})\s+and\s+night\s+temp\s+to\s+(\d{2})/i
+    );
+    if (combinedMatch) {
+      const dayTemp = parseInt(combinedMatch[1], 10);
+      const nightTemp = parseInt(combinedMatch[2], 10);
+      if (
+        dayTemp >= 45 &&
+        dayTemp <= 85 &&
+        nightTemp >= 45 &&
+        nightTemp <= 85
+      ) {
+        // Return both - this might need special handling in the action handler
+        return { action: "setDayAndNightTemp", dayTemp, nightTemp };
+      }
+    }
     const match = q.match(
       /set\s+(?:daytime|day|home)\s+temp(?:erature)?\s+(?:to\s+)?(\d{2})/i
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setDaytimeTemperature", value: temp };
       }
     }
@@ -3012,7 +3768,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setNighttimeTemperature", value: temp };
       }
     }
@@ -3029,7 +3785,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setSleepCoolSetpoint", value: temp };
       }
     }
@@ -3046,7 +3802,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setDaytimeTemperature", value: temp };
       }
     }
@@ -3063,7 +3819,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setHomeCoolSetpoint", value: temp };
       }
     }
@@ -3080,7 +3836,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setAwayHeatSetpoint", value: temp };
       }
     }
@@ -3097,7 +3853,7 @@ function parseCommandLocal(query, context = {}) {
     );
     if (match) {
       const temp = parseInt(match[1], 10);
-      if (temp >= 45 && temp <= 85) {
+      if (temp >= TEMP_LIMITS.MIN && temp <= TEMP_LIMITS.MAX) {
         return { action: "setAwayCoolSetpoint", value: temp };
       }
     }
@@ -3284,7 +4040,10 @@ function parseCommandLocal(query, context = {}) {
   // This prevents "How do I set the temp to 72?" from being executed as a command
   // BUT only if no command pattern matched above
   // Check for instructional intent patterns
-  const isInstructionalPattern = /^(how\s+(do|can|should|to)|what\s+(should|happens|is|does|can)|should\s+i|can\s+i)\s+/i.test(cleaned);
+  const isInstructionalPattern =
+    /^(how\s+(do|can|should|to)|what\s+(should|happens|is|does|can)|should\s+i|can\s+i)\s+/i.test(
+      cleaned
+    );
   if (isInstructionalPattern) {
     // This is a question asking HOW to do something, not a command
     // Return null to send it to the LLM
@@ -3292,16 +4051,22 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // Helper: Check if this is a question (should not navigate)
+  // Include "can you" and "can I" patterns as questions when they're asking, not commanding
   const isQuestion =
     /^(?:what|how|why|when|where|is|are|can|does|do|will|would|should|tell\s+me|explain|describe)/i.test(
       q.trim()
-    );
+    ) ||
+    // "can you show me..." or "can I see..." are questions, not commands
+    /^can\s+(?:you|i)\s+(?:show|tell|explain|what|how|why)/i.test(q.trim());
 
   // Navigation commands - comprehensive tool support
   // Only navigate if it's an explicit navigation intent, not a question
   // 1. 7-Day Cost Forecaster
+  // Explicitly reject "can you show me" patterns - these are questions
+  const isCanYouShowQuestion = /^can\s+(?:you|i)\s+show\s+me/i.test(q.trim());
   if (
     !isQuestion &&
+    !isCanYouShowQuestion &&
     (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:me\s+)?(?:the\s+)?(?:forecast|7\s*day|weekly|cost\s+forecast)/i.test(
       q
     ) ||
@@ -3401,7 +4166,9 @@ function parseCommandLocal(query, context = {}) {
     (/(?:open|show|go\s+to|navigate\s+to|view|see)\s+(?:the\s+)?(?:settings|preferences|configuration|thermostat\s+settings)/i.test(
       q
     ) ||
-      /(?:settings|preferences|configuration|thermostat\s+settings)\s+(?:page|menu)/i.test(q) ||
+      /(?:settings|preferences|configuration|thermostat\s+settings)\s+(?:page|menu)/i.test(
+        q
+      ) ||
       /(?:adjust|change)\s+settings/i.test(q) ||
       /^open\s+thermostat\s+settings\s*$/i.test(q)) &&
     !/winter|summer|temp/.test(qLower)
@@ -3530,10 +4297,13 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // Calculate heat loss (general)
-  if (/^calculate\s+heat\s+loss\s*$/i.test(q) || /^calculate\s+my\s+heat\s+loss\s*$/i.test(q)) {
+  if (
+    /^calculate\s+heat\s+loss\s*$/i.test(q) ||
+    /^calculate\s+my\s+heat\s+loss\s*$/i.test(q)
+  ) {
     return { action: "calculateHeatLoss" };
   }
-  
+
   // Heat loss at specific temperature query
   // Matches: "What is my heat loss at 25 degrees?" or "heat loss at 30F" or "heat loss when it's 20°F"
   const heatLossTempMatch = q.match(
@@ -3615,9 +4385,14 @@ function parseCommandLocal(query, context = {}) {
   }
 
   // Fallback: "show me" commands
+  // But skip if it's a question like "show me what" or "can you show me..."
   if (/show\s+(?:me\s+)?(.+)/i.test(q)) {
     const match = q.match(/show\s+(?:me\s+)?(.+)/i);
     const target = match[1].toLowerCase();
+    // If target is a question word, this is a question, not a navigation command
+    if (/^(what|how|why|when|where|which|who)\b/i.test(target.trim())) {
+      return null; // Send to LLM as a question
+    }
     if (target.includes("forecast"))
       return { action: "navigate", target: "forecast" };
     if (target.includes("compar"))
@@ -3697,11 +4472,17 @@ function parseCommandLocal(query, context = {}) {
       const funResponse = funResponsesModule.checkFunResponse(q);
       if (funResponse) {
         // Check if it looks like a command - if so, don't return fun response
-        const looksLikeCommand = /^(set|change|make|turn|switch|activate|enable|disable|open|show|go|navigate|run|calculate|check|analyze|optimize|start|stop|toggle)/i.test(q);
-        
+        const looksLikeCommand =
+          /^(set|change|make|turn|switch|activate|enable|disable|open|show|go|navigate|run|calculate|check|analyze|optimize|start|stop|toggle)/i.test(
+            q
+          );
+
         // Check if it's a technical HVAC question (should go to LLM, not joke fallback)
-        const looksLikeTechnicalQuestion = /\b(filter|coil|efficiency|energy|kwh|hspf|seer|heat pump|thermostat|aux|auxiliary|balance point|defrost|refrigerant|btu|capacity|performance|consumption|usage|cost|bill|savings|waste|wasting|optimize|optimization|maintenance|dirty|clogged|frozen|icing|lockout|setback|setpoint|temperature|temp|heating|cooling|hvac|system|equipment)\b/i.test(q);
-        
+        const looksLikeTechnicalQuestion =
+          /\b(filter|coil|efficiency|energy|kwh|hspf|seer|heat pump|thermostat|aux|auxiliary|balance point|defrost|refrigerant|btu|capacity|performance|consumption|usage|cost|bill|savings|waste|wasting|optimize|optimization|maintenance|dirty|clogged|frozen|icing|lockout|setback|setpoint|temperature|temp|heating|cooling|hvac|system|equipment)\b/i.test(
+            q
+          );
+
         // Only return fun response if:
         // 1. It's an actual match (not a fallback), OR
         // 2. It's a fallback but doesn't look like a command AND doesn't look like a technical question
@@ -3740,7 +4521,7 @@ function parseCommandLocal(query, context = {}) {
  */
 function looksLikeCommand(input) {
   const q = input.toLowerCase().trim();
-  
+
   // Commands typically start with action verbs
   const commandPatterns = [
     /^(set|change|make|turn|switch|activate|enable|disable|open|show|go|navigate|run|calculate|check|analyze|optimize|start|stop|toggle)/i,
@@ -3750,42 +4531,49 @@ function looksLikeCommand(input) {
     /^(sleep|away|home)\s+mode/i,
     /^(optimize|save|calculate|check|analyze|show|run)/i,
   ];
-  
+
   // Questions typically start with question words
   const questionPatterns = [
     /^(what|how|why|when|where|is|are|can|does|do|will|would|should|tell\s+me|explain|describe)/i,
     /\?$/, // Ends with question mark
   ];
-  
+
   // If it matches question patterns strongly, it's likely a question
-  if (questionPatterns.some(pattern => pattern.test(q))) {
+  if (questionPatterns.some((pattern) => pattern.test(q))) {
     // Exception: "How do I set..." is instructional, not a command
-    if (/^(how\s+do\s+i|how\s+can\s+i|how\s+to)\s+(set|change|make|turn|switch)/i.test(q)) {
+    if (
+      /^(how\s+do\s+i|how\s+can\s+i|how\s+to)\s+(set|change|make|turn|switch)/i.test(
+        q
+      )
+    ) {
       return false; // Instructional question, not a command
     }
     // If it has a question word but also has command-like structure, it might be a command
     // e.g., "What is my score?" -> command (showScore)
     // e.g., "Why is my bill high?" -> question
-    if (commandPatterns.some(pattern => pattern.test(q))) {
+    if (commandPatterns.some((pattern) => pattern.test(q))) {
       return true; // Has command structure despite question word
     }
     return false; // Pure question
   }
-  
+
   // If it matches command patterns, it's likely a command
-  if (commandPatterns.some(pattern => pattern.test(q))) {
+  if (commandPatterns.some((pattern) => pattern.test(q))) {
     return true;
   }
-  
+
   // Default: if it's short and doesn't have question words, might be a command
   // e.g., "72 degrees" -> command (setTemp)
   if (q.length < 50 && !/\?/.test(q)) {
     // Check for temperature values or mode names
-    if (/\d+\s*(?:degrees?|°f?|°c?)/i.test(q) || /^(heat|cool|auto|off)$/i.test(q)) {
+    if (
+      /\d+\s*(?:degrees?|°f?|°c?)/i.test(q) ||
+      /^(heat|cool|auto|off)$/i.test(q)
+    ) {
       return true;
     }
   }
-  
+
   // Default to false (treat as question if uncertain)
   return false;
 }
@@ -3800,7 +4588,7 @@ export async function parseAskJoule(query, context = {}) {
     // This is a question, not a command - return empty to send to LLM
     return { isCommand: false };
   }
-  
+
   // Step 1: Clean the input (Polite Stripper)
   const cleaned = cleanInput(query);
   if (!cleaned) return {};
@@ -3847,10 +4635,18 @@ export async function parseAskJoule(query, context = {}) {
   // Use cleaned input for consistency
   // Always check for offline answers first - they handle knowledge questions
   // Only skip if it's a specific instructional question that needs LLM context
-  const isChangeToWhat = /^(change|set|switch|turn)\s+to\s+what/i.test(cleaned.toLowerCase());
-  const isInstructionalHowTo = /^how\s+(do|can|should|to)\s+i\s+(set|change|make|turn|switch|activate|open|show|go|navigate)/i.test(cleaned.toLowerCase());
-  const isCanICommandQuestion = /^can\s+i\s+(switch|activate|set|change|turn|open|show|go|navigate)/i.test(cleaned.toLowerCase());
-  
+  const isChangeToWhat = /^(change|set|switch|turn)\s+to\s+what/i.test(
+    cleaned.toLowerCase()
+  );
+  const isInstructionalHowTo =
+    /^how\s+(do|can|should|to)\s+i\s+(set|change|make|turn|switch|activate|open|show|go|navigate)/i.test(
+      cleaned.toLowerCase()
+    );
+  const isCanICommandQuestion =
+    /^can\s+i\s+(switch|activate|set|change|turn|open|show|go|navigate)/i.test(
+      cleaned.toLowerCase()
+    );
+
   // Check offline answers for all questions - they handle knowledge questions
   // Only skip if it's a specific instructional question that needs LLM context
   if (!isChangeToWhat && !isInstructionalHowTo && !isCanICommandQuestion) {
@@ -3865,8 +4661,15 @@ export async function parseAskJoule(query, context = {}) {
   // This is 100% accurate, 0ms latency, $0 cost
   const regexCommand = parseCommandLocal(cleaned, context);
   if (regexCommand) {
-    // Regex found a command - return immediately
-    return { ...regexCommand, isCommand: true };
+    // Regex found a command or data (like city/squareFeet)
+    // Only mark as command if there's an action
+    const cityName = parseCity(cleaned);
+    const result = { ...regexCommand, ...(cityName && { cityName }) };
+    // Only set isCommand: true if there's an actual action
+    if (regexCommand.action) {
+      result.isCommand = true;
+    }
+    return result;
   }
 
   // Regex didn't find a command - check if it looks like a command
@@ -3877,7 +4680,7 @@ export async function parseAskJoule(query, context = {}) {
     (typeof window !== "undefined"
       ? localStorage.getItem("groqApiKey")
       : null) ||
-    import.meta.env.VITE_GROQ_API_KEY;
+    import.meta.env?.VITE_GROQ_API_KEY;
 
   if (groqApiKey && looksLikeCommand(q)) {
     // Looks like a command but regex didn't catch it
