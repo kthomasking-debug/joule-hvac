@@ -93,6 +93,45 @@ ECOBEE_TARGET_STATE = 12   # Target Heating Cooling State (0=Off, 1=Heat, 2=Cool
 ECOBEE_CURRENT_STATE = 13  # Current Heating Cooling State
 
 
+def get_data_directory():
+    """
+    Get the data directory path for storing pairings and other persistent data.
+    
+    Priority order:
+    1. JOULE_BRIDGE_DATA_DIR environment variable (if set)
+    2. ~/.local/share/joule-bridge (standard user data directory)
+    3. ./data relative to server.py (fallback for backward compatibility)
+    
+    This ensures pairing data persists even if the code location changes.
+    """
+    import os
+    
+    # Option 1: Environment variable (highest priority)
+    env_data_dir = os.getenv('JOULE_BRIDGE_DATA_DIR')
+    if env_data_dir:
+        data_dir = os.path.expanduser(env_data_dir)
+        logger.info(f"Using data directory from JOULE_BRIDGE_DATA_DIR: {data_dir}")
+        return data_dir
+    
+    # Option 2: Standard user data directory (most robust)
+    user_data_dir = os.path.expanduser('~/.local/share/joule-bridge')
+    # Check if we should migrate from old location
+    old_data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    old_pairing_file = os.path.join(old_data_dir, 'pairings.json')
+    
+    # If old location has pairings but new location doesn't, use old location for now
+    # (migration can be added later if needed)
+    if os.path.exists(old_pairing_file) and os.path.getsize(old_pairing_file) > 2:
+        if not os.path.exists(os.path.join(user_data_dir, 'pairings.json')):
+            logger.info(f"Found existing pairings in old location: {old_data_dir}")
+            logger.info(f"Using old location for backward compatibility. Consider migrating to: {user_data_dir}")
+            return old_data_dir
+    
+    # Use standard location
+    logger.debug(f"Using standard data directory: {user_data_dir}")
+    return user_data_dir
+
+
 async def init_controller():
     """Initialize the HomeKit controller"""
     global controller, async_zeroconf
@@ -295,7 +334,7 @@ async def pair_device(device_id: str, pairing_code: str):
         # aiohomekit Controller.save_data() saves controller.pairings
         # We need to add the pairing to controller.pairings first
         import os
-        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        data_dir = get_data_directory()
         os.makedirs(data_dir, exist_ok=True)
         pairing_file = os.path.join(data_dir, 'pairings.json')
         
@@ -384,7 +423,7 @@ async def unpair_device(device_id: str):
         
         # Save the updated pairings to file
         import os
-        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        data_dir = get_data_directory()
         os.makedirs(data_dir, exist_ok=True)
         pairing_file = os.path.join(data_dir, 'pairings.json')
         controller.save_data(pairing_file)
@@ -1486,7 +1525,7 @@ async def main():
     
     # Load existing pairings if available
     import os
-    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    data_dir = get_data_directory()
     os.makedirs(data_dir, exist_ok=True)  # Ensure data directory exists
     pairing_file = os.path.join(data_dir, 'pairings.json')
     
