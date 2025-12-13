@@ -14,9 +14,16 @@
 
 /**
  * Check if we're in demo mode (no Ecobee connection)
+ * Also checks for Joule Bridge connection
  */
-export function isDemoMode() {
+export async function isDemoMode() {
   try {
+    // Check for manual override to disable demo mode
+    const demoModeDisabled = localStorage.getItem("demoModeDisabled");
+    if (demoModeDisabled === "true") {
+      return false; // User manually disabled demo mode
+    }
+
     const refreshToken = localStorage.getItem("ecobeeRefreshToken");
     const accessToken = localStorage.getItem("ecobeeAccessToken");
     const apiKey = localStorage.getItem("ecobeeApiKey");
@@ -26,11 +33,48 @@ export function isDemoMode() {
       return false;
     }
 
+    // Check for Joule Bridge connection
+    try {
+      const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
+      const response = await fetch(`${bridgeUrl}/api/paired`, {
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // If we have paired devices, we're not in demo mode
+        if (data.devices && data.devices.length > 0) {
+          return false;
+        }
+      }
+    } catch (error) {
+      // Bridge not available - that's fine, continue with demo mode check
+    }
+
     return true;
   } catch (error) {
     console.warn("Error checking demo mode:", error);
     return true; // Default to demo mode on error
   }
+}
+
+/**
+ * Set manual demo mode override
+ */
+export function setDemoModeDisabled(disabled) {
+  if (disabled) {
+    localStorage.setItem("demoModeDisabled", "true");
+  } else {
+    localStorage.removeItem("demoModeDisabled");
+  }
+  // Trigger a re-check by dispatching an event
+  window.dispatchEvent(new Event("demo-mode-changed"));
+}
+
+/**
+ * Check if demo mode is manually disabled
+ */
+export function isDemoModeManuallyDisabled() {
+  return localStorage.getItem("demoModeDisabled") === "true";
 }
 
 /**
@@ -95,6 +139,14 @@ export async function checkBridgePresence() {
     return true; // If we get here, bridge is present
   } catch (error) {
     // Network error means bridge is not present or not reachable
+    // This is expected when running locally - suppress console errors
+    // Only log if it's not a name resolution or network error
+    if (error.name !== 'AbortError' && 
+        !error.message?.includes('ERR_NAME_NOT_RESOLVED') &&
+        !error.message?.includes('Failed to fetch') &&
+        !error.message?.includes('NetworkError')) {
+      console.debug('Bridge presence check:', error.message);
+    }
     return false;
   } finally {
     clearTimeout(timeoutId);

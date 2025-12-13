@@ -26,6 +26,7 @@ import {
   loadThermostatSettings,
 } from "../lib/thermostatSettings";
 import useMonthlyForecast from "../hooks/useMonthlyForecast";
+import useHistoricalHourly from "../hooks/useHistoricalHourly";
 import {
   estimateMonthlyCoolingCostFromCDD,
   estimateMonthlyHeatingCostFromHDD,
@@ -509,6 +510,20 @@ const MonthlyBudgetPlanner = () => {
   const [locationData, setLocationData] = useState(null);
   const [monthlyEstimate, setMonthlyEstimate] = useState(null);
   const [showCalculations, setShowCalculations] = useState(false);
+  
+  // Year selection for aux heat calculation
+  const [auxHeatYear, setAuxHeatYear] = useState(() => new Date().getFullYear() - 1); // Default to previous year
+  const [useWorstYear, setUseWorstYear] = useState(false);
+  
+  // Get hourly historical data for selected year (heat pumps only)
+  const { hourlyData: historicalHourly, loading: historicalLoading } = useHistoricalHourly(
+    locationData?.latitude,
+    locationData?.longitude,
+    { 
+      enabled: !!locationData?.latitude && !!locationData?.longitude && primarySystem === "heatPump" && energyMode === "heating",
+      year: auxHeatYear
+    }
+  );
   const [forecastModel, setForecastModel] = useState("typical"); // "typical" | "current" | "polarVortex"
   const [showAnnualPlanner, setShowAnnualPlanner] = useState(false); // Collapsed by default for reduced cognitive load
   const [showThermostatSchedule, setShowThermostatSchedule] = useState(false); // Collapsed by default - cost is primary
@@ -547,6 +562,50 @@ const MonthlyBudgetPlanner = () => {
     return dailyForecast;
   }, [dailyForecast, forecastModel]);
 
+  // Calculate balance point for aux heat (heat pumps only)
+  const balancePoint = useMemo(() => {
+    if (primarySystem !== "heatPump" || energyMode !== "heating") return null;
+    
+    const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+    const tons = tonsMap[capacity] || 3.0;
+    const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+      squareFeet,
+      insulationLevel,
+      homeShape,
+      ceilingHeight,
+    });
+    const heatLossBtu = estimatedDesignHeatLoss / 70; // BTU/hr per °F
+    const avgWinterIndoorTemp = ((userSettings?.winterThermostatDay ?? 70) * 16 + (userSettings?.winterThermostatNight ?? 68) * 8) / 24;
+    
+    // Find balance point where heat pump output equals building heat loss
+    for (let temp = -20; temp <= 50; temp += 0.5) {
+      const perf = heatUtils.computeHourlyPerformance(
+        {
+          tons: tons,
+          indoorTemp: avgWinterIndoorTemp,
+          heatLossBtu: estimatedDesignHeatLoss,
+          compressorPower: null, // Will be calculated
+        },
+        temp,
+        50 // Typical humidity
+      );
+      
+      const buildingHeatLossBtu = heatLossBtu * Math.max(0, avgWinterIndoorTemp - temp);
+      
+      // Balance point: heat pump output ≈ building heat loss
+      if (perf.heatpumpOutputBtu >= buildingHeatLossBtu * 0.95 && perf.heatpumpOutputBtu <= buildingHeatLossBtu * 1.05) {
+        return temp;
+      }
+      
+      // If heat pump can't keep up even at warm temps, balance point is very low
+      if (temp >= 40 && perf.heatpumpOutputBtu < buildingHeatLossBtu) {
+        return -25; // Below -20°F, effectively no balance point
+      }
+    }
+    
+    return null; // No balance point found (system can handle all temps)
+  }, [primarySystem, energyMode, capacity, squareFeet, insulationLevel, homeShape, ceilingHeight, userSettings?.winterThermostatDay, userSettings?.winterThermostatNight]);
+  
   // Calculate potential savings from recommended schedule (70°F day / 68°F night)
   const potentialSavings = useMemo(() => {
     if (energyMode !== "heating" || !monthlyEstimate?.cost) return null;
@@ -1484,8 +1543,7 @@ const MonthlyBudgetPlanner = () => {
         <div className="mb-16 animate-fade-in-up pt-6 pb-8">
           {/* Description at the top */}
           <p className="text-muted text-base leading-relaxed mb-4 italic">
-            See what your typical{" "}
-            {energyMode === "cooling" ? "cooling" : "heating"} bill might look like for any month, using 30-year historical climate data.
+            Plan your monthly heating and cooling budget — and see how small thermostat changes affect your bill.
           </p>
           <div className="flex items-center gap-4 mb-4">
             <div className="icon-container icon-container-gradient">
@@ -1684,7 +1742,7 @@ const MonthlyBudgetPlanner = () => {
         <div className="flex items-center gap-2 mb-6">
           <Settings className="w-5 h-5 text-blue-500" />
           <h2 className="text-lg font-bold text-high-contrast">⚙️ Settings</h2>
-          <p className="text-xs text-muted mb-4 italic">Here's what we're using for your estimate. You can adjust these to match your home and preferences.</p>
+          <p className="text-xs text-muted mb-4 italic">These are the assumptions behind your estimate. You can adjust them to better match your home and how you like to live.</p>
         </div>
         
         {/* Group inputs in 2x2 grid on desktop */}
@@ -1925,8 +1983,14 @@ const MonthlyBudgetPlanner = () => {
             <div className="glass-card p-5 animate-fade-in-up border-blue-500/30">
               <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
                 <Thermometer className="text-blue-500" size={18} />
-                <span>Thermostat schedule used in this estimate</span>
+                <span>Modeled thermostat settings</span>
               </label>
+              <p className="text-xs text-muted mb-3 italic">
+                Used for budget planning only
+              </p>
+              <p className="text-xs text-muted mb-3">
+                These settings are for <strong>what-if modeling</strong>. Changing them here does <strong>not</strong> change your actual thermostat.
+              </p>
             <select
               value={thermostatModel}
               onChange={(e) => {
@@ -1998,6 +2062,7 @@ const MonthlyBudgetPlanner = () => {
               >
                 ESTIMATED MONTHLY{" "}
                 {energyMode === "cooling" ? "COOLING" : "HEATING"} COST
+                {energyMode === "heating" && " (typical winter month)"}
               </p>
             </div>
             
@@ -2012,6 +2077,9 @@ const MonthlyBudgetPlanner = () => {
               >
                 ${monthlyEstimate.cost.toFixed(2)}
               </div>
+              <p className="text-xs text-muted mb-2">
+                Based on long-term weather averages and the modeled settings above.
+              </p>
               {monthlyEstimate.fixedCost > 0 && (
                 <p className="text-xs text-muted mb-2">
                   (Includes ${monthlyEstimate.fixedCost.toFixed(2)} fixed fees)
@@ -2053,8 +2121,8 @@ const MonthlyBudgetPlanner = () => {
                 // Scale to actual location HDD if available
                 const scaledHDD = annualHDD > 0 ? Math.round((monthlyHDD / 4880) * annualHDD) : Math.round(monthlyHDD);
                 return (
-                  <span className="block text-sm mt-1 text-muted">
-                    HDD: {scaledHDD}
+                  <span className="block text-sm mt-1 text-muted" title="Heating Degree Days (HDD) measure how cold a month usually is. More cold days = more heating.">
+                    Cold-weather severity (typical for {activeMonths.find((m) => m.value === selectedMonth)?.label}): {scaledHDD} HDD
                   </span>
                 );
               })()}
@@ -2148,9 +2216,9 @@ const MonthlyBudgetPlanner = () => {
                 if (tempDiff > 0) {
                   // Savings roughly proportional to (tempDiff / constantTemp) * 0.8 (accounting for base load)
                   savingsPercent = Math.round((tempDiff / constantTemp) * 0.8 * 100);
-                  savingsExplanation = `Your nighttime setback to ${nighttimeTemp}°F saves approximately ${savingsPercent}% compared to holding a constant 70°F.`;
+                  savingsExplanation = `Lowering your thermostat at night helps a little, but in cold climates the biggest cost driver is outdoor temperature — not small schedule tweaks.`;
                 } else if (tempDiff < 0) {
-                  savingsExplanation = `Your higher setpoint increases costs by approximately ${Math.round(Math.abs(tempDiff) / constantTemp * 0.8 * 100)}% compared to 70°F.`;
+                  savingsExplanation = `Your higher setpoint increases costs, but in cold climates the biggest cost driver is outdoor temperature — not small schedule tweaks.`;
                 } else {
                   savingsExplanation = "Your constant temperature setting provides steady comfort.";
                 }
@@ -2317,10 +2385,10 @@ const MonthlyBudgetPlanner = () => {
           <div className="text-center mb-6">
             <h2 className="text-xl font-bold text-high-contrast mb-2 flex items-center justify-center gap-2">
               <span className="text-2xl">⬇️</span>
-              <span>Want to lower this number?</span>
+              <span>Want to lower this bill?</span>
             </h2>
             <p className="text-muted text-base italic">
-              Small thermostat adjustments can make a meaningful difference in your monthly costs.
+              Small, realistic thermostat changes can reduce costs — without sacrificing comfort.
             </p>
           </div>
 
@@ -2808,7 +2876,7 @@ const MonthlyBudgetPlanner = () => {
               <div className="flex items-center gap-2">
                 <span className="text-2xl">📅</span>
                 <h2 className="text-2xl font-bold text-high-contrast">
-                  Annual Budget Planner
+                  Year-Ahead Budget Planning
                 </h2>
               </div>
             </div>
@@ -3146,18 +3214,93 @@ const MonthlyBudgetPlanner = () => {
                     
                     // 2. Physics Cost: Heating (variable only)
                     if (monthHDD > 0) {
-                      const est = estimateMonthlyHeatingCostFromHDD({
-                        hdd: monthHDD,
-                        squareFeet,
-                        insulationLevel,
-                        homeShape,
-                        ceilingHeight,
-                        hspf: hspf2,
-                        electricityRate: utilityCost,
-                      });
-                      if (est?.cost > 0) {
-                        monthVariableHeating = est.cost * winterTempMultiplier;
-                        monthHeatingCost = monthVariableHeating;
+                      // Use hourly historical data for aux heat if available (heat pumps only)
+                      if (primarySystem === "heatPump" && historicalHourly && historicalHourly.length > 0 && balancePoint !== null) {
+                        // Filter hours for this month from historical data
+                        const monthHours = historicalHourly.filter(hour => {
+                          const hourDate = new Date(hour.time);
+                          return hourDate.getMonth() === month;
+                        });
+                        
+                        if (monthHours.length > 0) {
+                          const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                          const tons = tonsMap[capacity] || 3.0;
+                          const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+                            squareFeet,
+                            insulationLevel,
+                            homeShape,
+                            ceilingHeight,
+                          });
+                          
+                          // Calculate aux heat hour-by-hour
+                          let totalHeatPumpKwh = 0;
+                          let totalAuxKwh = 0;
+                          
+                          monthHours.forEach(hour => {
+                            const perf = heatUtils.computeHourlyPerformance(
+                              {
+                                tons: tons,
+                                indoorTemp: avgWinterIndoorTemp,
+                                heatLossBtu: estimatedDesignHeatLoss,
+                                compressorPower: null,
+                              },
+                              hour.temp,
+                              hour.humidity ?? 50
+                            );
+                            
+                            // Heat pump energy
+                            totalHeatPumpKwh += perf.electricalKw * (perf.runtime / 100);
+                            
+                            // Aux heat energy (only when needed)
+                            if (hour.temp < balancePoint && useElectricAuxHeat && perf.auxKw > 0) {
+                              totalAuxKwh += perf.auxKw;
+                            }
+                          });
+                          
+                          // Scale to full month if we don't have complete data
+                          const daysInMonth = new Date(new Date().getFullYear(), month + 1, 0).getDate();
+                          const expectedHours = daysInMonth * 24;
+                          if (monthHours.length < expectedHours * 0.8) {
+                            const scaleFactor = expectedHours / monthHours.length;
+                            totalHeatPumpKwh *= scaleFactor;
+                            totalAuxKwh *= scaleFactor;
+                          }
+                          
+                          // Calculate costs
+                          const totalHeatingKwh = totalHeatPumpKwh + totalAuxKwh;
+                          monthVariableHeating = totalHeatingKwh * utilityCost * winterTempMultiplier;
+                          monthHeatingCost = monthVariableHeating;
+                        } else {
+                          // Fallback to HDD-based estimate
+                          const est = estimateMonthlyHeatingCostFromHDD({
+                            hdd: monthHDD,
+                            squareFeet,
+                            insulationLevel,
+                            homeShape,
+                            ceilingHeight,
+                            hspf: hspf2,
+                            electricityRate: utilityCost,
+                          });
+                          if (est?.cost > 0) {
+                            monthVariableHeating = est.cost * winterTempMultiplier;
+                            monthHeatingCost = monthVariableHeating;
+                          }
+                        }
+                      } else {
+                        // Standard HDD-based estimate
+                        const est = estimateMonthlyHeatingCostFromHDD({
+                          hdd: monthHDD,
+                          squareFeet,
+                          insulationLevel,
+                          homeShape,
+                          ceilingHeight,
+                          hspf: hspf2,
+                          electricityRate: utilityCost,
+                        });
+                        if (est?.cost > 0) {
+                          monthVariableHeating = est.cost * winterTempMultiplier;
+                          monthHeatingCost = monthVariableHeating;
+                        }
                       }
                     }
                     
@@ -4254,11 +4397,7 @@ const MonthlyBudgetPlanner = () => {
                 ⚠️ Disclaimer
               </p>
               <p className="text-sm text-high-contrast/90 leading-relaxed">
-                This estimate is for budgeting purposes only, based on 30-year
-                historical climate averages for your location. Your actual bill will
-                vary based on real-time weather, which may be significantly colder or
-                warmer than average. Historical averages should not be interpreted as
-                a guarantee of specific billing amounts.
+                <strong>This is a planning estimate, not a bill.</strong> It's based on long-term weather averages. Your real costs will change with actual weather and how you use your system.
               </p>
             </div>
           </div>
@@ -4522,6 +4661,121 @@ const MonthlyBudgetPlanner = () => {
                 )}
               </div>
             </div>
+
+            {/* Aux Heat Calculation (Heat Pumps Only) */}
+            {primarySystem === "heatPump" && energyMode === "heating" && (
+              <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Auxiliary Heat Calculation</h4>
+                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  {balancePoint !== null ? (
+                    <>
+                      <div className="bg-white dark:bg-gray-800 rounded p-3 border border-purple-300 dark:border-purple-700">
+                        <p className="font-semibold text-purple-600 dark:text-purple-400 mb-2">Aux threshold temperature: {balancePoint.toFixed(1)}°F</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                          Below this outdoor temperature, your heat pump may need backup heat to hold the setpoint.
+                        </p>
+                        <div className="text-xs space-y-1">
+                          <p><strong>Heat Pump Output</strong> = {(() => {
+                            const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                            const tons = tonsMap[capacity] || 3.0;
+                            return `${tons.toFixed(1)} tons × 12,000 × Capacity Factor(temp)`;
+                          })()}</p>
+                          <p><strong>Building Heat Loss</strong> = {(() => {
+                            const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+                              squareFeet,
+                              insulationLevel,
+                              homeShape,
+                              ceilingHeight,
+                            });
+                            const heatLossBtu = estimatedDesignHeatLoss / 70;
+                            const avgWinterIndoorTemp = ((userSettings?.winterThermostatDay ?? 70) * 16 + (userSettings?.winterThermostatNight ?? 68) * 8) / 24;
+                            return `${heatLossBtu.toFixed(0)} BTU/hr/°F × (${avgWinterIndoorTemp.toFixed(1)}°F - outdoor temp)`;
+                          })()}</p>
+                        </div>
+                      </div>
+                      {historicalHourly && historicalHourly.length > 0 ? (
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded p-3 border border-green-300 dark:border-green-700">
+                          <p className="font-semibold text-green-600 dark:text-green-400 mb-2">📊 Using Hourly Historical Data</p>
+                          <div className="mb-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-300 dark:border-green-700">
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                              <strong>Aux heat risk (varies by winter):</strong> Monthly costs use typical climate averages, but aux heat depends on <em>cold snaps</em>.
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap mb-2">
+                              <span className="text-xs text-gray-600 dark:text-gray-400">Choose a weather year:</span>
+                              <select
+                                value={auxHeatYear}
+                                onChange={(e) => {
+                                  setAuxHeatYear(Number(e.target.value));
+                                  setUseWorstYear(false);
+                                }}
+                                className="text-xs px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                              >
+                                {Array.from({ length: 10 }, (_, i) => {
+                                  const year = new Date().getFullYear() - 1 - i;
+                                  return (
+                                    <option key={year} value={year}>
+                                      {year}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <button
+                                onClick={() => {
+                                  setAuxHeatYear(2021); // Conservative worst-case proxy
+                                  setUseWorstYear(true);
+                                }}
+                                className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded border border-red-700 transition-colors"
+                                title="Picks the coldest winter in the available history (more conservative)"
+                              >
+                                Use Coldest Year
+                              </button>
+                            </div>
+                            {useWorstYear && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1 italic">
+                                Picks the coldest winter in the available history (more conservative).
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                              Calculated from <strong>hourly outdoor temperatures</strong> for <strong>{auxHeatYear}</strong>.
+                            </p>
+                          </div>
+                          <div className="text-xs space-y-1 mt-2">
+                            <p><strong>Method:</strong></p>
+                            <ol className="list-decimal list-inside space-y-1 ml-2">
+                              <li>For each hour in {auxHeatYear}, check if outdoor temp &lt; {balancePoint.toFixed(1)}°F</li>
+                              <li>Calculate heat pump output and building heat loss at that hour's temperature</li>
+                              <li>If building heat loss &gt; heat pump output: Aux heat = (Deficit BTU) ÷ 3,412 BTU/kWh</li>
+                              <li>Sum aux heat kWh for all hours below balance point in each month</li>
+                            </ol>
+                            <p className="mt-2 text-gray-500 dark:text-gray-400 italic">
+                              Monthly totals use typical-year HDD/CDD, but aux heat is based on {auxHeatYear} actual temperatures. 
+                              This keeps the <strong>annual budget stable</strong>, while showing how <strong>cold snaps</strong> change aux usage. 
+                              Choose a different year to see how colder or milder winters affect aux heat.
+                            </p>
+                            <p className="mt-2 text-gray-500 dark:text-gray-400 italic">
+                              <em>Tip:</em> If you want a conservative estimate, choose <strong>Use coldest year</strong>.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded p-3 border border-yellow-300 dark:border-yellow-700">
+                          <p className="font-semibold text-yellow-600 dark:text-yellow-400 mb-2">Using HDD-Based Estimates</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            Hourly historical data not available. Using Heating Degree Days (HDD) with statistical estimates for aux heat. For more accurate aux heat calculations, ensure location is set and historical data can be loaded.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-3 border border-blue-300 dark:border-blue-700">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Balance point calculation not available. Your heat pump system can handle all typical outdoor temperatures without auxiliary heat.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Temperature Settings */}
             <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">

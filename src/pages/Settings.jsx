@@ -25,6 +25,9 @@ import {
   Plus,
   Edit2,
   Zap,
+  Search,
+  Info,
+  AlertCircle,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -55,6 +58,11 @@ import { getStorageUsage, cleanupOldAnalyses } from "../utils/storageCleanup";
 import { useAutoSave } from "../hooks/useAutoSave";
 import ValidatedInput from "../components/ValidatedInput";
 import UnitSystemToggle from "../components/UnitSystemToggle";
+import {
+  defaultFixedChargesByState,
+  defaultFallbackFixedCharges,
+  normalizeStateToAbbreviation,
+} from "../data/fixedChargesByState";
 
 const Section = ({ title, icon, description, children, ...props }) => (
   <div
@@ -83,9 +91,11 @@ const Section = ({ title, icon, description, children, ...props }) => (
 const ProCodeInput = () => {
   const [code, setCode] = useState(() => {
     try {
-      return localStorage.getItem('proCode') || '';
+      const stored = localStorage.getItem('proCode');
+      // Default to PRO-DEMO if nothing is stored
+      return stored || 'PRO-DEMO';
     } catch {
-      return '';
+      return 'PRO-DEMO';
     }
   });
   const [proAccess, setProAccess] = useState({ hasAccess: false, source: null });
@@ -93,6 +103,17 @@ const ProCodeInput = () => {
   const location = useLocation();
 
   useEffect(() => {
+    // Auto-save PRO-DEMO if no code is stored in localStorage
+    try {
+      const stored = localStorage.getItem('proCode');
+      if (!stored || stored === '') {
+        const defaultCode = 'PRO-DEMO';
+        setProCode(defaultCode);
+        setCode(defaultCode);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
     checkAccess();
   }, []);
 
@@ -142,10 +163,10 @@ const ProCodeInput = () => {
     <div className="space-y-4">
       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
         <p className="text-sm text-amber-900 dark:text-amber-200 font-semibold mb-1">
-          Hardware Owners
+          Hardware Owners (Optional)
         </p>
         <p className="text-xs text-amber-800 dark:text-amber-300">
-          Enter the code included with your Bridge ($129) or Sovereign ($299) device to unlock advanced features.
+          Unlock advanced analysis and local AI features included with Joule hardware.
         </p>
       </div>
 
@@ -636,7 +657,8 @@ const ZoneManagementSection = ({ setToast }) => {
     <Section title="Zone Management" icon={<Home size={20} />}>
       <div className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-400 italic">
-          If you have multiple thermostats or zones, you can manage them here. Each zone can have its own settings and analysis.
+          If you have more than one thermostat, set up a zone for each one.
+          Zones let Joule analyze each area separately — they <strong>do not</strong> control how your thermostats behave.
         </p>
         
         <div className="space-y-3">
@@ -734,64 +756,6 @@ const ZoneManagementSection = ({ setToast }) => {
   );
 };
 
-const ByzantineModeToggle = ({ setToast }) => {
-  const [enabled, setEnabled] = useState(() => {
-    try {
-      return localStorage.getItem("byzantineMode") === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const handleToggle = (e) => {
-    const newValue = e.target.checked;
-    setEnabled(newValue);
-    try {
-      localStorage.setItem("byzantineMode", newValue ? "true" : "false");
-    } catch {}
-    
-    if (newValue) {
-      setToast?.({
-        message: "🕯️ Rejoice, Oh Coil Unfrosted! Byzantine Mode activated.",
-        type: "success",
-      });
-    } else {
-      setToast?.({
-        message: "Byzantine Mode disabled. Joule returns to normal speech.",
-        type: "info",
-      });
-    }
-  };
-
-  return (
-    <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-semibold text-[#E8EDF3] flex items-center gap-2">
-            🕯️ Byzantine Liturgical Mode
-          </p>
-          <p className="text-xs text-[#A7B0BA] mt-1 italic">
-            When enabled, Joule responds in the style of Orthodox liturgical chants — an easter egg for those who want something different.
-          </p>
-          {enabled && (
-            <p className="text-xs text-purple-400 mt-2 italic">
-              "Rejoice, Oh Coil Unfrosted! Glory to Thee, Oh Scroll Compressor!"
-            </p>
-          )}
-        </div>
-        <label className="inline-flex items-center gap-3">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={enabled}
-            onChange={handleToggle}
-          />
-        </label>
-      </div>
-    </div>
-  );
-};
-
 const LocalLLMSettings = () => {
   const [enabled, setEnabled] = useState(() => {
     try {
@@ -802,9 +766,9 @@ const LocalLLMSettings = () => {
   });
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem("localBackendUrl") || localStorage.getItem("jouleBridgeUrl") || "http://localhost:3002";
+      return localStorage.getItem("localBackendUrl") || localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
     } catch {
-      return "http://localhost:3002";
+      return "http://localhost:8080";
     }
   });
 
@@ -931,7 +895,7 @@ const LocalLLMSettings = () => {
               type="text"
               value={bridgeUrl}
               onChange={handleBridgeUrlChange}
-              placeholder="http://localhost:3002"
+              placeholder="http://localhost:8080"
               className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
               aria-label="Bridge URL"
             />
@@ -939,7 +903,7 @@ const LocalLLMSettings = () => {
               This should match the Joule Bridge URL in the HomeKit section above. Automatically synced.
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">
-              Default: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://localhost:3002</code> (or <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://raspberrypi.local:3002</code> for Pi on network)
+              Default: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://localhost:8080</code> (or <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http://raspberrypi.local:8080</code> for Pi on network)
             </p>
           </div>
 
@@ -1389,6 +1353,9 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
 
   return (
     <Section title="Building Characteristics" icon={<Home size={20} />}>
+      <p className="text-xs text-[#A7B0BA] mb-4 italic">
+        These settings describe your home's construction. Joule uses them to estimate heat loss — they don't affect how your system runs day-to-day.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
@@ -1537,7 +1504,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
           Heat Loss Source
         </label>
         <p className="text-xs text-[#A7B0BA] mb-4 max-w-2xl leading-relaxed">
-          Select which method to use for heat loss calculations. Only one option can be active at a time.
+          Choose how Joule should <strong>estimate</strong> your home's heat loss. Only one option can be active at a time.
         </p>
         
         <div className="space-y-3">
@@ -1562,10 +1529,10 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                ○ Calculated (DOE Data) - Recommended
+                ○ Calculated (DOE Data) — Recommended
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Most accurate for typical homes. Based on square footage, insulation, home shape, and ceiling height.
+                A conservative estimate based on home size, insulation, and layout. Works well for most homes.
               </p>
               {(settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)) && (
                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 font-mono">
@@ -1601,10 +1568,10 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             </label>
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                ○ Manual Entry
+                ○ Manual Entry (Advanced)
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                For users with professional energy audits. Enter exact heat loss in BTU/hr/°F.
+                For homeowners with a professional energy audit.
               </p>
               {settings.useManualHeatLoss && (
                 <div className="mt-2">
@@ -1694,10 +1661,10 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                 </label>
                 <div className="flex-1">
                   <label className={`block text-xs font-semibold ${isDisabled ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
-                    ○ From CSV Analyzer
+                    ○ From Thermostat Data (Optional)
                   </label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
+                    Uses uploaded thermostat history to measure heat loss directly when available.
                   </p>
                   
                   {isDisabled && (
@@ -1714,14 +1681,8 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                         </span>
                       ) : (
                         <span>
-                          <strong>Unavailable:</strong> Your CSV data didn't contain a valid 3+ hour coast-down period. 
-                          Upload data with a longer "heat off" period to enable this option.{" "}
-                          <Link 
-                            to="/performance-analyzer" 
-                            className="text-blue-600 dark:text-blue-400 hover:underline"
-                          >
-                            Re-analyze in System Performance Analyzer →
-                          </Link>
+                          Not available yet — your data didn't include a long enough "system off" window.
+                          Joule will continue using a conservative estimate instead.
                         </span>
                       )}
                     </p>
@@ -1755,12 +1716,24 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
   const state = userSettings?.state || "US";
   const avgRate = state === "GA" ? 0.12 : state === "CA" ? 0.28 : state === "TX" ? 0.11 : 0.15;
   
+  // Get default fixed charge from state lookup
+  const defaultFixedCharge = useMemo(() => {
+    if (!state || state === "US") return defaultFallbackFixedCharges.electric;
+    const stateAbbr = normalizeStateToAbbreviation(state);
+    return stateAbbr && defaultFixedChargesByState[stateAbbr]
+      ? defaultFixedChargesByState[stateAbbr].electric
+      : defaultFallbackFixedCharges.electric;
+  }, [state]);
+  
   return (
     <Section 
       title="Cost Settings" 
       icon={<DollarSign size={20} />}
       description="Used for 7-day cost forecasts, annual estimates, and gas vs heat pump comparisons."
     >
+      <p className="text-xs text-[#A7B0BA] mb-4 italic">
+        These rates are used for budgeting and comparisons. They do not affect your utility bill or thermostat.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
@@ -1825,6 +1798,59 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
           {!location && (
             <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
               Used for gas furnace cost comparisons
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+            Fixed Monthly Charge ($)
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-[#A7B0BA]">$</span>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={0.01}
+              value={settings.fixedElectricCost != null ? settings.fixedElectricCost : defaultFixedCharge}
+              onChange={(e) => {
+                const inputVal = e.target.value;
+                // Allow empty input while typing
+                if (inputVal === '' || inputVal === '.') {
+                  onSettingChange("fixedElectricCost", null);
+                  return;
+                }
+                const val = Number(inputVal);
+                if (!isNaN(val)) {
+                  // Don't round during typing - just clamp the value
+                  const clamped = Math.min(50, Math.max(0, val));
+                  onSettingChange("fixedElectricCost", clamped);
+                }
+              }}
+              onBlur={(e) => {
+                // Format to 2 decimals on blur
+                const val = Number(e.target.value);
+                if (!isNaN(val) && val >= 0) {
+                  const clamped = Math.min(50, Math.max(0, val));
+                  const rounded = Math.round(clamped * 100) / 100;
+                  onSettingChange("fixedElectricCost", rounded);
+                } else if (settings.fixedElectricCost == null) {
+                  onSettingChange("fixedElectricCost", defaultFixedCharge);
+                }
+              }}
+              className="flex-1 px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={defaultFixedCharge.toFixed(2)}
+            />
+            <span className="text-xs text-[#7C8894]">/mo</span>
+          </div>
+          {location && (
+            <p className="text-xs text-blue-400 mt-1.5 max-w-md">
+              💡 {location}, {state} default: ${defaultFixedCharge.toFixed(2)}/mo (typical service charge)
+            </p>
+          )}
+          {!location && (
+            <p className="text-xs text-[#7C8894] mt-1.5 max-w-md">
+              Monthly service charge (meter fees, connection fees)
             </p>
           )}
         </div>
@@ -2267,12 +2293,20 @@ const SettingsPage = () => {
 
   const [activeSection, setActiveSection] = useState("home-setup");
   const [showPlans, setShowPlans] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedSections, setExpandedSections] = useState({
+    "home-setup": true,
+    "system-config": true,
+    "costs-rates": true,
+    "thermostat": true,
+    "bridge-ai": true,
+  });
   const sections = [
-    { id: "home-setup", label: "Home Setup", number: "1" },
-    { id: "system-config", label: "System Configuration", number: "2" },
-    { id: "costs-rates", label: "Costs & Rates", number: "3" },
-    { id: "thermostat", label: "Thermostat Behavior", number: "4" },
-    { id: "bridge-ai", label: "Bridge & AI", number: "5" },
+    { id: "home-setup", label: "Home Setup", number: "1", icon: Home, description: "Tell Joule about your home so estimates match reality" },
+    { id: "system-config", label: "System Configuration", number: "2", icon: Zap, description: "Describe your HVAC system so Joule can model it accurately" },
+    { id: "costs-rates", label: "Costs & Rates", number: "3", icon: DollarSign, description: "Set utility rates and pricing preferences" },
+    { id: "thermostat", label: "Thermostat Behavior", number: "4", icon: ThermometerSun, description: "Describe your typical thermostat behavior (for estimates only)" },
+    { id: "bridge-ai", label: "Bridge & AI", number: "5", icon: Server, description: "Connect hardware and configure AI features" },
   ];
 
   // Track active section on scroll
@@ -2300,43 +2334,79 @@ const SettingsPage = () => {
     <div className="min-h-screen bg-[#050B10]">
       <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-6">
         {/* Page Header */}
-        <header className="mb-6 flex justify-between items-center">
+        <header className="mb-8 flex justify-between items-center">
           <div>
-            <h1 className="text-[28px] font-semibold text-[#FFFFFF] mb-1">
+            <h1 className="text-[32px] font-bold text-[#FFFFFF] mb-2">
               Settings
             </h1>
-            <p className="text-sm text-[#A7B0BA]">
-              Configure your home, system, and preferences
+            <p className="text-sm text-[#A7B0BA] mb-1">
+              Set up how Joule <strong>models</strong> your home, system, and energy costs.
+            </p>
+            <p className="text-xs text-[#7C8894] italic">
+              These settings are used for estimates and analysis. Joule does not change your thermostat schedule or comfort settings.
+            </p>
+            <p className="text-xs text-[#7C8894] mt-2">
+              <strong>Joule estimates and explains — it doesn't override your comfort or control your home.</strong>
             </p>
           </div>
           <DashboardLink />
         </header>
 
+        {/* Search Bar */}
+        <div className="mb-8 relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A7B0BA]" />
+          <input
+            type="text"
+            placeholder="Search settings..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-[#0C1118] border border-slate-800 rounded-xl text-[#E8EDF3] placeholder-[#A7B0BA] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#A7B0BA] hover:text-white"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
         {/* Sticky Side Navigation */}
         <div className="hidden lg:block fixed left-4 top-1/2 -translate-y-1/2 z-40">
-          <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-3 shadow-lg">
-            <div className="space-y-1">
-              {sections.map((section) => (
-                <a
-                  key={section.id}
-                  href={`#${section.id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const element = document.getElementById(section.id);
-                    if (element) {
-                      element.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
-                  }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    activeSection === section.id
-                      ? "bg-[#1E4CFF] text-white"
-                      : "text-[#A7B0BA] hover:text-white hover:bg-slate-900"
-                  }`}
-                >
-                  <span className="text-xs font-medium w-5">{section.number}</span>
-                  <span className="font-medium">{section.label}</span>
-                </a>
-              ))}
+          <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-4 shadow-xl">
+            <div className="space-y-2">
+              <div className="px-2 pb-2 mb-2 border-b border-slate-800">
+                <h3 className="text-xs font-semibold text-[#A7B0BA] uppercase tracking-wider">Quick Nav</h3>
+              </div>
+              {sections.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <a
+                    key={section.id}
+                    href={`#${section.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const element = document.getElementById(section.id);
+                      if (element) {
+                        element.scrollIntoView({ behavior: "smooth", block: "start" });
+                        // Expand the section when navigating to it
+                        setExpandedSections(prev => ({ ...prev, [section.id]: true }));
+                      }
+                    }}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                      activeSection === section.id
+                        ? "bg-[#1E4CFF] text-white shadow-lg shadow-blue-500/20"
+                        : "text-[#A7B0BA] hover:text-white hover:bg-slate-900"
+                    }`}
+                    title={section.description}
+                  >
+                    <Icon className={`w-4 h-4 ${activeSection === section.id ? "text-white" : "text-slate-400"}`} />
+                    <span className="text-xs font-medium w-5">{section.number}</span>
+                    <span className="font-medium">{section.label}</span>
+                  </a>
+                );
+              })}
             </div>
           </nav>
         </div>
@@ -2498,67 +2568,152 @@ const SettingsPage = () => {
       </div>
 
       {/* Section 1: Home Setup */}
-      <div id="home-setup" className="mb-8 scroll-mt-24">
-        <div className="mb-5 pb-3 border-b border-slate-800">
-          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">1. Home Setup</h2>
-          <p className="text-sm text-[#A7B0BA]">Configure your home structure and zones</p>
+      <div id="home-setup" className="mb-12 scroll-mt-24">
+        <div className="mb-6 pb-4 border-b-2 border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                <Home className="w-6 h-6 text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">1. Home Setup</h2>
+                <p className="text-sm text-[#A7B0BA]">Tell Joule about your home so estimates match reality.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpandedSections(prev => ({ ...prev, "home-setup": !prev["home-setup"] }))}
+              className="text-[#A7B0BA] hover:text-white transition-colors"
+            >
+              {expandedSections["home-setup"] ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
-        <div className="space-y-5">
-          <ZoneManagementSection setToast={setToast} />
-          <BuildingCharacteristics
-            settings={userSettings}
-            onSettingChange={setUserSetting}
-            outletContext={outletCtx}
-          />
-        </div>
+        {expandedSections["home-setup"] && (
+          <div className="space-y-6">
+            <ZoneManagementSection setToast={setToast} />
+            <BuildingCharacteristics
+              settings={userSettings}
+              onSettingChange={setUserSetting}
+              outletContext={outletCtx}
+            />
+          </div>
+        )}
       </div>
 
       {/* Section 2: System Configuration */}
-      <div id="system-config" className="mb-8 scroll-mt-24">
-        <div className="mb-5 pb-3 border-b border-slate-800">
-          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">2. System Configuration</h2>
-          <p className="text-sm text-[#A7B0BA]">Define your HVAC equipment and capabilities</p>
+      <div id="system-config" className="mb-12 scroll-mt-24">
+        <div className="mb-6 pb-4 border-b-2 border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">2. System Configuration</h2>
+                <p className="text-sm text-[#A7B0BA]">Describe your HVAC system so Joule can model it accurately.</p>
+                <p className="text-xs text-[#7C8894] mt-1 italic">This section does not control your equipment — it only affects calculations.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpandedSections(prev => ({ ...prev, "system-config": !prev["system-config"] }))}
+              className="text-[#A7B0BA] hover:text-white transition-colors"
+            >
+              {expandedSections["system-config"] ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
-        <div className="space-y-5">
-          <HvacSystemConfig
-            settings={userSettings}
-            onSettingChange={setUserSetting}
-            setToast={setToast}
-          />
+        {expandedSections["system-config"] && (
+          <div className="space-y-6">
+            <HvacSystemConfig
+              settings={userSettings}
+              onSettingChange={setUserSetting}
+              setToast={setToast}
+            />
 
-          {/* Advanced Equipment Profile (Elite Tier) */}
-          {userSettings.primarySystem === "heatPump" && (
-            <Section title="Advanced Equipment Profile" icon={<Crown className="w-5 h-5 text-amber-500" />}>
-              <AdvancedEquipmentProfile
-                settings={userSettings}
-                onSettingChange={setUserSetting}
-                setToast={setToast}
-              />
-            </Section>
-          )}
-        </div>
+            {/* Advanced Equipment Profile (Elite Tier) */}
+            {userSettings.primarySystem === "heatPump" && (
+              <Section title="Advanced Equipment Profile" icon={<Crown className="w-5 h-5 text-amber-500" />}>
+                <AdvancedEquipmentProfile
+                  settings={userSettings}
+                  onSettingChange={setUserSetting}
+                  setToast={setToast}
+                />
+              </Section>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Section 3: Costs & Rates */}
-      <div id="costs-rates" className="mb-8 scroll-mt-24">
-        <div className="mb-5 pb-3 border-b border-slate-800">
-          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">3. Costs & Rates</h2>
-          <p className="text-sm text-[#A7B0BA]">Set utility rates and pricing preferences</p>
+      <div id="costs-rates" className="mb-12 scroll-mt-24">
+        <div className="mb-6 pb-4 border-b-2 border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-green-400" />
+              </div>
+              <div>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">3. Costs & Rates</h2>
+                <p className="text-sm text-[#A7B0BA]">Set utility rates and pricing preferences</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpandedSections(prev => ({ ...prev, "costs-rates": !prev["costs-rates"] }))}
+              className="text-[#A7B0BA] hover:text-white transition-colors"
+            >
+              {expandedSections["costs-rates"] ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
-        <CostSettings
-          settings={userSettings}
-          onSettingChange={setUserSetting}
-          userSettings={userSettings}
-        />
+        {expandedSections["costs-rates"] && (
+          <CostSettings
+            settings={userSettings}
+            onSettingChange={setUserSetting}
+            userSettings={userSettings}
+          />
+        )}
       </div>
 
       {/* Section 4: Thermostat Behavior */}
-      <div id="thermostat" className="mb-8 scroll-mt-24">
-        <div className="mb-5 pb-3 border-b border-slate-800">
-          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">4. Thermostat Behavior</h2>
-          <p className="text-sm text-[#A7B0BA]">Configure schedule, setbacks, and control logic</p>
+      <div id="thermostat" className="mb-12 scroll-mt-24">
+        <div className="mb-6 pb-4 border-b-2 border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <ThermometerSun className="w-6 h-6 text-orange-400" />
+              </div>
+              <div>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">4. Thermostat Behavior</h2>
+                <p className="text-sm text-[#A7B0BA]">Describe your typical thermostat behavior (for estimates only)</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpandedSections(prev => ({ ...prev, "thermostat": !prev["thermostat"] }))}
+              className="text-[#A7B0BA] hover:text-white transition-colors"
+            >
+              {expandedSections["thermostat"] ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
+        {expandedSections["thermostat"] && (
         <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
+          {/* Important Disclaimer */}
+          <div className="mb-6 p-4 bg-amber-950/30 border border-amber-800/50 rounded-lg">
+            <p className="text-sm font-semibold text-amber-400 mb-2">Important:</p>
+            <p className="text-xs text-[#A7B0BA] mb-2">When using HomeKit, Joule can only:</p>
+            <ul className="text-xs text-[#A7B0BA] list-disc list-inside ml-2 space-y-1 mb-2">
+              <li>Read the current temperature</li>
+              <li>Read/set the target temperature</li>
+              <li>Change mode (Heat / Cool / Auto / Off)</li>
+            </ul>
+            <p className="text-xs text-[#A7B0BA]">
+              Joule <strong>cannot</strong> read or change schedules, comfort profiles, or occupancy settings.
+              The settings below are used only for modeling and budgeting.
+            </p>
+            <p className="text-xs text-[#7C8894] mt-2 italic">
+              Joule estimates and explains — it doesn't override your comfort or control your home.
+            </p>
+          </div>
           {/* Sticky Summary Bar - Dynamic */}
           {(() => {
             // Compute strategy from thermostat settings
@@ -2593,7 +2748,10 @@ const SettingsPage = () => {
             
             return (
               <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-lg">
-                <div className="text-xs font-medium text-slate-400 mb-2">Current Configuration</div>
+                <div className="text-xs font-medium text-slate-400 mb-2">Modeling Assumptions</div>
+                <p className="text-xs text-[#7C8894] mb-2 italic">
+                  These are the temperatures Joule uses when estimating costs — they may not match your actual thermostat schedule exactly.
+                </p>
                 <div className="flex flex-wrap items-center gap-3 text-sm">
                   <span className="text-slate-300">
                     Mode: <span className="font-semibold text-white">{userSettings.primarySystem === "heatPump" ? "Heat pump" : userSettings.primarySystem === "gasFurnace" ? "Gas furnace" : "Unknown"}</span>
@@ -2615,25 +2773,43 @@ const SettingsPage = () => {
             <AutoSettingsMathEquations />
           </div>
         </div>
+        )}
       </div>
 
       {/* Section 5: Bridge & AI */}
-      <div id="bridge-ai" className="mb-8 scroll-mt-24">
-        <div className="mb-5 pb-3 border-b border-slate-800">
-          <h2 className="text-[24px] font-semibold text-[#E8EDF3] mb-1">5. Bridge & AI</h2>
-          <p className="text-sm text-[#A7B0BA]">Connect hardware and configure AI features</p>
+      <div id="bridge-ai" className="mb-12 scroll-mt-24">
+        <div className="mb-6 pb-4 border-b-2 border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                <Server className="w-6 h-6 text-cyan-400" />
+              </div>
+              <div>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">5. Bridge & AI</h2>
+                <p className="text-sm text-[#A7B0BA]">Connect hardware and configure AI features</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExpandedSections(prev => ({ ...prev, "bridge-ai": !prev["bridge-ai"] }))}
+              className="text-[#A7B0BA] hover:text-white transition-colors"
+            >
+              {expandedSections["bridge-ai"] ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
-        <div className="space-y-5">
-          <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
-            <JouleBridgeSettings />
-          </Section>
-          <Section title="Ecobee Cloud API (Fallback)" icon={<ThermometerSun size={20} />}>
-            <EcobeeSettings />
-          </Section>
-          <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
-            <ProCodeInput />
-          </Section>
-        </div>
+        {expandedSections["bridge-ai"] && (
+          <div className="space-y-6">
+            <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
+              <JouleBridgeSettings />
+            </Section>
+            <Section title="Ecobee Cloud API (Fallback)" icon={<ThermometerSun size={20} />}>
+              <EcobeeSettings />
+            </Section>
+            <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
+              <ProCodeInput />
+            </Section>
+          </div>
+        )}
       </div>
 
       {/* Advanced Settings Section */}
@@ -2736,26 +2912,6 @@ const SettingsPage = () => {
                 </label>
               </div>
             </div>
-
-            {/* Documentation Link */}
-            <div className="mb-4">
-              <Link
-                to="/hardware"
-                className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-              >
-                <FileText className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  View Setup Documentation & Guides
-                </span>
-                <ExternalLink className="w-3 h-3" />
-              </Link>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-6">
-                Step-by-step instructions for flashing the Bridge and setting it up
-              </p>
-            </div>
-
-            {/* Byzantine Mode Easter Egg 🕯️ */}
-            <ByzantineModeToggle setToast={setToast} />
 
             {/* Data Management & Privacy Section */}
             <Section title="Data Management & Privacy" icon={<Shield size={20} />}>

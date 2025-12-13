@@ -48,6 +48,8 @@ const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const SummerACIssues = lazy(() => import("./pages/SummerACIssues"));
+const ForecastDebug = lazy(() => import("./pages/ForecastDebug"));
+const BudgetDebug = lazy(() => import("./pages/BudgetDebug"));
 
 import {
   Home as HomeIcon,
@@ -66,6 +68,7 @@ import {
   Server,
   ShoppingCart,
   Heart,
+  Bug,
 } from "lucide-react";
 
 export const routes = [
@@ -501,6 +504,29 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Checkout page with sales questions",
+  },
+  // ===== DEBUG PAGES (Uses Ecobee target temp directly via Joule Bridge) =====
+  {
+    path: "/analysis/forecast-debug",
+    name: "Forecast Debug",
+    label: "Forecast Debug",
+    icon: Bug,
+    Component: ForecastDebug,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: false,
+    description: "7-day forecast using Ecobee target temp directly (no scheduling)",
+  },
+  {
+    path: "/analysis/budget-debug",
+    name: "Budget Debug",
+    label: "Budget Debug",
+    icon: Bug,
+    Component: BudgetDebug,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: false,
+    description: "Annual budget using Ecobee target temp directly (no scheduling)",
   },
 ];
 

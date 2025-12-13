@@ -41,9 +41,17 @@ export function useBlueair(deviceIndex = 0, pollInterval = 10000) {
       setLoading(false);
       return null;
     } catch (err) {
+      // Handle 404s gracefully (Blueair not configured or not available)
+      if (err.message && (err.message.includes('404') || err.message.includes('Device not found'))) {
+        // Blueair not available - this is fine, just mark as not connected
+        setConnected(false);
+        setLoading(false);
+        setError(null); // Don't show error for missing device
+        return null;
+      }
       // Only log non-connection errors (connection refused is expected when Bridge isn't available)
       if (!(err instanceof BridgeConnectionError)) {
-        console.error("Error fetching Blueair status:", err);
+        console.debug("Error fetching Blueair status:", err); // Changed to debug to reduce noise
       }
       setError(err.message);
       setConnected(false);

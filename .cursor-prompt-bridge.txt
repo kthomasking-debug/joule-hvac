@@ -1,0 +1,13 @@
+REQUIREMENTS:
+- Make the smallest change that could work
+- Don't claim success until you run: ./scripts/validate-bridge-health.sh and it prints JOULE_BRIDGE_OK=1
+- If command output is unknown, ask for it—don't guess
+- Keep changes in <file-list> only
+- Summarize: root cause, fix, and why the oracle proves it
+
+ORACLE: ./scripts/validate-bridge-health.sh | grep "JOULE_BRIDGE_OK=1"
+FILES: <comma-separated-file-list>
+SCOPE: <brief-description-of-change>
+
+<your-actual-request-here>
+

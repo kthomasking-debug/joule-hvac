@@ -12,8 +12,7 @@ import {
 } from "../lib/thermostatSettings";
 import { useEcobee } from "../hooks/useEcobee";
 import { getEcobeeCredentials } from "../lib/ecobeeApi";
-import { useJouleBridge } from "../hooks/useJouleBridge";
-import { checkBridgeHealth } from "../lib/jouleBridgeApi";
+import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 import { useProstatRelay } from "../hooks/useProstatRelay";
 import { useBlueair } from "../hooks/useBlueair";
 import {
@@ -37,10 +36,12 @@ import {
   Volume2,
   VolumeX,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import AskJoule from "../components/AskJoule";
 import { getCached, getCachedBatch } from "../utils/cachedStorage";
 import { useUnitSystem, formatTemperatureFromF } from "../lib/units";
+import useForecast from "../hooks/useForecast";
 
 const SmartThermostatDemo = () => {
   const navigate = useNavigate();
@@ -66,6 +67,112 @@ const SmartThermostatDemo = () => {
       return null;
     }
   }, []);
+  
+  // Get weather forecast for temperature drop detection
+  const { forecast, loading: forecastLoading, error: forecastError } = useForecast(
+    userLocation?.latitude,
+    userLocation?.longitude,
+    { enabled: !!(userLocation?.latitude && userLocation?.longitude) }
+  );
+  
+  // Debug forecast loading
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.log('[SmartThermostatDemo] Forecast state:', {
+        hasUserLocation: !!userLocation,
+        latitude: userLocation?.latitude,
+        longitude: userLocation?.longitude,
+        forecastLoading,
+        forecastError,
+        forecastLength: forecast?.length || 0,
+        firstFewTemps: forecast?.slice(0, 5).map(f => f?.temp) || [],
+      });
+    }
+  }, [forecast, forecastLoading, forecastError, userLocation]);
+  
+  // Detect sudden temperature drop (21°F or more within 24 hours)
+  const temperatureDropAlert = useMemo(() => {
+    if (!forecast || forecast.length < 24) {
+      if (import.meta.env.DEV) {
+        console.log('[TemperatureDropAlert] No forecast or insufficient data:', {
+          hasForecast: !!forecast,
+          forecastLength: forecast?.length || 0,
+        });
+      }
+      return null; // Need at least 24 hours of forecast
+    }
+    
+    const currentTemp = forecast[0]?.temp;
+    if (!currentTemp || currentTemp === null || isNaN(currentTemp)) {
+      if (import.meta.env.DEV) {
+        console.log('[TemperatureDropAlert] Invalid current temp:', currentTemp);
+      }
+      return null;
+    }
+    
+    // Check next 24 hours for significant drop
+    const hoursToCheck = Math.min(24, forecast.length);
+    let minTemp = currentTemp;
+    let minTempTime = null;
+    
+    for (let i = 0; i < hoursToCheck; i++) {
+      const hourTemp = forecast[i]?.temp;
+      if (hourTemp !== null && hourTemp !== undefined && !isNaN(hourTemp) && hourTemp < minTemp) {
+        minTemp = hourTemp;
+        minTempTime = forecast[i].time;
+      }
+    }
+    
+    const dropAmount = currentTemp - minTemp;
+    if (import.meta.env.DEV) {
+      console.log('[TemperatureDropAlert] Checking drop:', {
+        currentTemp,
+        minTemp,
+        dropAmount,
+        threshold: 21,
+        willShow: dropAmount >= 21,
+      });
+    }
+    
+    if (dropAmount >= 21) {
+      // Find when the drop starts (first hour that's significantly colder, at least 5°F drop)
+      let dropStartTime = null;
+      for (let i = 0; i < hoursToCheck; i++) {
+        const hourTemp = forecast[i]?.temp;
+        if (hourTemp !== null && hourTemp !== undefined && !isNaN(hourTemp) && hourTemp <= currentTemp - 5) {
+          dropStartTime = forecast[i].time;
+          break;
+        }
+      }
+      
+      // Calculate duration in hours
+      const startTime = dropStartTime || forecast[0].time;
+      const endTime = minTempTime || forecast[hoursToCheck - 1].time;
+      const durationHours = Math.round((new Date(endTime) - new Date(startTime)) / (1000 * 60 * 60));
+      
+      if (import.meta.env.DEV) {
+        console.log('[TemperatureDropAlert] Alert triggered:', {
+          currentTemp,
+          minTemp,
+          dropAmount,
+          startTime,
+          endTime,
+          durationHours,
+        });
+      }
+      
+      return {
+        currentTemp,
+        minTemp,
+        dropAmount,
+        startTime: startTime,
+        endTime: endTime,
+        durationHours,
+      };
+    }
+    
+    return null;
+  }, [forecast]);
 
   // Load analyzer results to get balance point
   const latestAnalysis = useMemo(() => {
@@ -177,9 +284,9 @@ const SmartThermostatDemo = () => {
     }
   }, [userSettings.winterThermostat]);
   
-  // Joule Bridge (HomeKit HAP) - Preferred method
-  const [bridgeAvailable, setBridgeAvailable] = useState(false);
-  const jouleBridge = useJouleBridge(null, 5000); // Poll every 5 seconds (faster than cloud)
+  // Joule Bridge (HomeKit HAP) - Preferred method - use shared context
+  const jouleBridge = useJouleBridgeContext();
+  const bridgeAvailable = jouleBridge.bridgeAvailable;
   
   // Joule Bridge Relay Control (Dehumidifier)
   const prostatRelay = useProstatRelay(2, 5000); // Channel 2 (Y2 terminal), poll every 5 seconds
@@ -225,10 +332,6 @@ const SmartThermostatDemo = () => {
     ? activeIntegration.mode 
     : simulatedMode;
   
-  // Check bridge availability on mount
-  useEffect(() => {
-    checkBridgeHealth().then(setBridgeAvailable);
-  }, []);
   const isAway = activeIntegration 
     ? (activeIntegration.isAway || false) 
     : simulatedIsAway;
@@ -1036,6 +1139,43 @@ const SmartThermostatDemo = () => {
             </span>
           </div>
         </header>
+
+        {/* Temperature Drop Alert */}
+        {temperatureDropAlert ? (
+          <div className="mb-6 rounded-xl bg-amber-900/20 border border-amber-600/40 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-semibold text-amber-300">📉 Sudden Temperature Drop</span>
+                </div>
+                <p className="text-sm text-amber-200 mb-2">
+                  Temperature expected to drop {temperatureDropAlert.dropAmount.toFixed(0)}°F within 24 hours 
+                  (from {formatTemperatureFromF(temperatureDropAlert.currentTemp, unitSystem, { decimals: 0 })} to {formatTemperatureFromF(temperatureDropAlert.minTemp, unitSystem, { decimals: 0 })}).
+                </p>
+                <p className="text-xs text-amber-300/80 mb-2">
+                  🔥 Moderate - Sudden increase in heating demand.
+                </p>
+                <div className="text-xs text-amber-300/70">
+                  Starts: {new Date(temperatureDropAlert.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • 
+                  Duration: {temperatureDropAlert.durationHours > 0 ? `${temperatureDropAlert.durationHours} hours` : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : forecastLoading ? (
+          <div className="mb-6 rounded-xl bg-slate-900/20 border border-slate-700/40 p-4 text-xs text-slate-400">
+            Loading weather forecast...
+          </div>
+        ) : forecastError ? (
+          <div className="mb-6 rounded-xl bg-red-900/20 border border-red-700/40 p-4 text-xs text-red-400">
+            Weather forecast unavailable: {forecastError.message || 'Unknown error'}
+          </div>
+        ) : !userLocation?.latitude || !userLocation?.longitude ? (
+          <div className="mb-6 rounded-xl bg-slate-900/20 border border-slate-700/40 p-4 text-xs text-slate-400">
+            Location not set. Please set your location in Settings to enable weather alerts.
+          </div>
+        ) : null}
 
         {/* Main Console Card - Two Column Split */}
         <section className="rounded-2xl bg-[#0C1118] border border-slate-800 shadow-lg p-6 lg:p-7 mb-6">

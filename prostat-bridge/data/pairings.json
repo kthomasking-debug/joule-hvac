@@ -1,0 +1,16 @@
+{
+  "3a:31:2e:e4:82:a8": {
+    "AccessoryPairingID": "3A:31:2E:E4:82:A8",
+    "AccessoryLTPK": "34f91a1a385bcb3fe6c13512b51ba6477f9d1de6bac9d11d1c7306ca33f0709b",
+    "iOSPairingId": "48a4d3c7-ed97-4b10-bd71-598f3a1c6160",
+    "iOSDeviceLTSK": "50f8211a16c1f49b621caeb4e0053af3fb75e4569d28b39576ab44e897b6d5e2",
+    "iOSDeviceLTPK": "1d803554d3801035a828af4728a5738690a1277b4543ef961a42100441c70e73",
+    "AccessoryIP": "192.168.0.101",
+    "AccessoryIPs": [
+      "192.168.0.101"
+    ],
+    "AccessoryPort": 55663,
+    "Connection": "IP",
+    "id": "3a:31:2e:e4:82:a8"
+  }
+}

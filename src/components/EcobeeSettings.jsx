@@ -67,6 +67,7 @@ export default function EcobeeSettings() {
   return (
     <div className="space-y-4">
       <div className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        This is optional and only needed for advanced features HomeKit doesn't expose.
         Connect your Ecobee thermostat to control it directly from the app. 
         Get your API key from{' '}
         <a

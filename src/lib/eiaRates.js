@@ -27,9 +27,13 @@ export async function fetchLiveElectricityRate(stateCode) {
     // Series ID format: ELEC.PRICE.{STATE}-RES.M (Monthly residential electricity price)
     // Series ID (example: ELEC.PRICE.CA-RES.M) kept for reference if needed
     if (!EIA_API_KEY) {
-      console.warn(
-        "EIA API key is missing. Set VITE_EIA_API_KEY in your environment."
-      );
+      // Only warn once to avoid console spam
+      if (!window._eiaKeyWarned) {
+        console.debug(
+          "EIA API key is missing. Set VITE_EIA_API_KEY in your environment to fetch live electricity rates. Using fallback rates instead."
+        );
+        window._eiaKeyWarned = true;
+      }
       return null;
     }
     const url = `${EIA_BASE_URL}/electricity/retail-sales/data/?api_key=${EIA_API_KEY}&data[0]=price&facets[stateid][]=${stateCode.toUpperCase()}&facets[sectorid][]=RES&sort[0][column]=period&sort[0][direction]=desc&length=1`;
@@ -84,9 +88,13 @@ export async function fetchLiveGasRate(stateCode) {
     // EIA Natural Gas API endpoint for state-level residential rates
     // Series ID format: NG.N3010{STATE}.M (Monthly residential natural gas price)
     if (!EIA_API_KEY) {
-      console.warn(
-        "EIA API key is missing. Set VITE_EIA_API_KEY in your environment."
-      );
+      // Only warn once to avoid console spam
+      if (!window._eiaKeyWarned) {
+        console.debug(
+          "EIA API key is missing. Set VITE_EIA_API_KEY in your environment to fetch live electricity rates. Using fallback rates instead."
+        );
+        window._eiaKeyWarned = true;
+      }
       return null;
     }
     const url = `${EIA_BASE_URL}/natural-gas/pri/sum/data/?api_key=${EIA_API_KEY}&data[0]=value&facets[process][]=N3010&facets[duoarea][]=${stateCode.toUpperCase()}&sort[0][column]=period&sort[0][direction]=desc&length=1`;

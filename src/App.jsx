@@ -39,6 +39,7 @@ import { initStorageCleanup } from "./utils/storageCleanup";
 import { addToRecentlyViewed } from "./utils/recentlyViewed";
 import FeatureTour from "./components/FeatureTour";
 import { SeasonProvider } from "./features/forecaster/components";
+import { JouleBridgeProvider } from "./contexts/JouleBridgeContext";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -1105,7 +1106,9 @@ const App = () => (
   <ConversationProvider>
     <ModeProvider>
       <SeasonProvider>
-        <AppInner />
+        <JouleBridgeProvider pollInterval={5000}>
+          <AppInner />
+        </JouleBridgeProvider>
       </SeasonProvider>
     </ModeProvider>
   </ConversationProvider>

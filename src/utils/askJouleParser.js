@@ -849,51 +849,7 @@ function parseCommandLocal(query, context = {}) {
     return { action: "queryVoiceListenDuration" };
   }
 
-  // Schedule queries - must come before general question rejection
-  // Match: "what is my schedule", "show me schedule", "schedule", "my schedule"
-  // Also match: "schedule for wednesday", "wednesday schedule", "schedule for wed", etc.
-  if (!/^set\s+/i.test(q)) {
-    // Check for specific day first (more specific pattern) - includes abbreviations
-    // Match: "schedule for wed", "schedule on sat", "wed schedule", etc.
-    // Use word boundaries to prevent matching "mon" in "money" or "sat" in "saturday"
-    const dayMatch =
-      q.match(
-        /(?:schedule\s+(?:for\s+)?|(?:my\s+)?(?:schedule\s+for\s+)?|schedule\s+on\s+|^)\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b(?:\s+schedule|\s*$)/i
-      ) ||
-      q.match(
-        /(?:schedule\s+(?:for\s+)?|(?:my\s+)?(?:schedule\s+for\s+)?|schedule\s+on\s+)\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i
-      );
-    if (dayMatch) {
-      const dayName = dayMatch[1].toLowerCase();
-      const dayMap = {
-        sunday: 0,
-        sun: 0,
-        monday: 1,
-        mon: 1,
-        tuesday: 2,
-        tue: 2,
-        wednesday: 3,
-        wed: 3,
-        thursday: 4,
-        thu: 4,
-        friday: 5,
-        fri: 5,
-        saturday: 6,
-        sat: 6,
-      };
-      return { action: "queryScheduleDay", day: dayMap[dayName] };
-    }
-
-    // Check for general schedule query
-    if (
-      /(?:what'?s?|what\s+is|show\s+me|tell\s+me)\s+(?:my\s+)?(?:schedule|weekly\s+schedule)/i.test(
-        q
-      ) ||
-      /^(?:my\s+)?(?:schedule|weekly\s+schedule)\s*$/i.test(q)
-    ) {
-      return { action: "querySchedule" };
-    }
-  }
+  // Schedule queries removed - HomeKit bridge doesn't support schedule data
 
   // === EARLY QUESTION DETECTION ===
   // Check for questions FIRST, before command matching
@@ -1048,17 +1004,7 @@ function parseCommandLocal(query, context = {}) {
     }
   }
 
-  // "Run fan for X minutes every hour" / "Stop the fan after this cycle"
-  if (/run\s+fan\s+for\s+(\d+)\s+minutes?\s+every\s+hour/i.test(q)) {
-    const match = q.match(/run\s+fan\s+for\s+(\d+)\s+minutes?\s+every\s+hour/i);
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      return { action: "setFanSchedule", minutes, frequency: "hourly" };
-    }
-  }
-  if (/stop\s+the\s+fan\s+after\s+this\s+cycle/i.test(q)) {
-    return { action: "fanControl", mode: "auto" }; // Return fan to auto mode
-  }
+  // Fan control removed - HomeKit bridge doesn't support fan control
 
   // "Don't preheat before Xam" / "Pre-warm the house to X by Yam" / "Pre-cool to X by Yam"
   if (/don'?t\s+preheat\s+before\s+(\d{1,2})\s*(am|pm)/i.test(q)) {
@@ -2222,10 +2168,7 @@ function parseCommandLocal(query, context = {}) {
     return { action: "switchMode", mode: "cool" };
   }
 
-  // "turn on fan" - fan control (MUST come before "turn on system")
-  if (/^turn\s+on\s+fan\b/i.test(q)) {
-    return { action: "fanControl" };
-  }
+  // Fan control removed - HomeKit bridge doesn't support fan control
 
   // "turn the heat on" / "turn the heat off"
   if (/^turn\s+(?:the\s+)?heat\s+on\s*$/i.test(q)) {
@@ -2325,39 +2268,8 @@ function parseCommandLocal(query, context = {}) {
     }
   }
 
-  // Preset modes for thermostat
-  if (
-    /(?:i'm|im|i\s+am)\s+(?:going\s+to\s+)?(?:sleep|bed)|(?:^|set\s+(?:to\s+)?|switch\s+to\s+|activate\s+)?sleep\s+mode|bedtime|^goodnight\s*$|^set\s+to\s+sleep\s*$/i.test(
-      q
-    )
-  ) {
-    return { action: "presetSleep" };
-  }
-  // Away mode - improved pattern to catch "activate away mode" and other variations
-  // Also: "turn away mode off", "disable vacation mode"
-  if (
-    /(?:i'm|im|i\s+am)\s+(?:leaving|going\s+out|gone)\b/i.test(q) ||
-    /(?:^|set\s+(?:to\s+)?|switch\s+to\s+|activate\s+)away\s+mode/i.test(q) ||
-    /^away\s+mode$/i.test(q) ||
-    /vacation\s+mode/i.test(q)
-  ) {
-    // Check if it's "turn away mode off" or "disable vacation mode" first
-    if (
-      /turn\s+away\s+mode\s+off/i.test(q) ||
-      /disable\s+vacation\s+mode/i.test(q)
-    ) {
-      return { action: "presetHome" }; // Return to home mode
-    }
-    return { action: "presetAway" };
-  }
-  // More specific: only match explicit "home mode" or "I'm home/back" (not "home's" or questions about "home")
-  if (
-    /(?:i'm|im|i\s+am)\s+(?:home|back)\b|(?:^|set\s+(?:to\s+)?|switch\s+to\s+|activate\s+)?home\s+mode\b|^normal\s+mode\b|^set\s+to\s+home\s*$/i.test(
-      q
-    )
-  ) {
-    return { action: "presetHome" };
-  }
+  // Preset modes (away/home/sleep) removed - HomeKit bridge doesn't support preset modes
+  // These would just set temperature, not actual away/home/sleep modes
 
   // Query current HVAC mode (must come before other queries)
   if (

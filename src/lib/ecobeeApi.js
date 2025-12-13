@@ -354,6 +354,134 @@ export async function getThermostatData(thermostatId = null) {
 }
 
 /**
+ * Get comfort settings (climates) from Ecobee
+ */
+export async function getComfortSettings(thermostatId = null) {
+  try {
+    const credentials = getEcobeeCredentials();
+    if (!credentials.apiKey || !credentials.accessToken) {
+      throw new Error("Ecobee API credentials not configured");
+    }
+
+    // Build selection object
+    const selectionType = thermostatId ? "thermostats" : "registered";
+    const selectionMatch = thermostatId || "";
+
+    const body = {
+      selection: {
+        selectionType,
+        selectionMatch,
+        includeProgram: true,
+        includeSettings: true,
+      },
+    };
+
+    const queryParams = new URLSearchParams({
+      format: "json",
+      body: JSON.stringify(body),
+    });
+
+    const response = await ecobeeApiRequest(
+      `/1/thermostat?${queryParams.toString()}`,
+      "GET"
+    );
+
+    // Parse response
+    if (
+      response.status &&
+      response.status.code === 0 &&
+      response.thermostatList
+    ) {
+      const thermostats = response.thermostatList;
+      const thermostat = thermostatId
+        ? thermostats.find((t) => t.identifier === thermostatId)
+        : thermostats[0];
+
+      if (!thermostat) {
+        throw new Error(`Thermostat ${thermostatId || "not found"}`);
+      }
+
+      // Extract program/climates
+      const program = thermostat.program || {};
+      const climates = program.climates || [];
+      const currentClimateRef = program.currentClimateRef;
+
+      // Map Ecobee climates to app comfort settings
+      // Ecobee typically has: home, away, sleep, etc.
+      const comfortMap = {
+        home: null,
+        away: null,
+        sleep: null,
+      };
+
+      // Find climates by name (case-insensitive)
+      for (const climate of climates) {
+        const name = climate.name?.toLowerCase();
+        if (name === "home" || name === "comfort") {
+          comfortMap.home = climate;
+        } else if (name === "away" || name === "vacation") {
+          comfortMap.away = climate;
+        } else if (name === "sleep" || name === "night") {
+          comfortMap.sleep = climate;
+        }
+      }
+
+      // If not found by name, try to use the first 3 climates
+      const foundClimates = Object.values(comfortMap).filter((c) => c !== null);
+      if (foundClimates.length === 0 && climates.length > 0) {
+        comfortMap.home = climates[0] || null;
+        comfortMap.away = climates[1] || null;
+        comfortMap.sleep = climates[2] || null;
+      }
+
+      // Convert to app format
+      const result = {
+        home: comfortMap.home
+          ? {
+              heatSetPoint: comfortMap.home.heatTemp
+                ? parseFloat(comfortMap.home.heatTemp) / 10
+                : 70,
+              coolSetPoint: comfortMap.home.coolTemp
+                ? parseFloat(comfortMap.home.coolTemp) / 10
+                : 74,
+              fanMode: comfortMap.home.fan || "auto",
+            }
+          : null,
+        away: comfortMap.away
+          ? {
+              heatSetPoint: comfortMap.away.heatTemp
+                ? parseFloat(comfortMap.away.heatTemp) / 10
+                : 62,
+              coolSetPoint: comfortMap.away.coolTemp
+                ? parseFloat(comfortMap.away.coolTemp) / 10
+                : 85,
+              fanMode: comfortMap.away.fan || "auto",
+            }
+          : null,
+        sleep: comfortMap.sleep
+          ? {
+              heatSetPoint: comfortMap.sleep.heatTemp
+                ? parseFloat(comfortMap.sleep.heatTemp) / 10
+                : 66,
+              coolSetPoint: comfortMap.sleep.coolTemp
+                ? parseFloat(comfortMap.sleep.coolTemp) / 10
+                : 72,
+              fanMode: comfortMap.sleep.fan || "auto",
+            }
+          : null,
+      };
+
+      return result;
+    }
+
+    throw new Error("Invalid response from Ecobee API");
+  } catch (error) {
+    console.error("Error getting comfort settings:", error);
+    throw error;
+  }
+}
+
+/**
  * Set thermostat temperature
  */
 export async function setThermostatTemperature(

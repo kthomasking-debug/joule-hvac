@@ -16,10 +16,9 @@ import {
 } from 'lucide-react';
 import { useProstatRelay } from '../hooks/useProstatRelay';
 import { useBlueair } from '../hooks/useBlueair';
-import { useJouleBridge } from '../hooks/useJouleBridge';
+import { useJouleBridgeContext } from '../contexts/JouleBridgeContext';
 import { useEcobee } from '../hooks/useEcobee';
 import { getEcobeeCredentials } from '../lib/ecobeeApi';
-import { checkBridgeHealth } from '../lib/jouleBridgeApi';
 import { getPollenData } from '../lib/pollenApi';
 
 /**
@@ -29,9 +28,9 @@ import { getPollenData } from '../lib/pollenApi';
 export default function AirQualityHMI() {
   const navigate = useNavigate();
   
-  // Integration hooks
-  const [bridgeAvailable, setBridgeAvailable] = useState(false);
-  const jouleBridge = useJouleBridge(null, 5000);
+  // Integration hooks - use shared context (persists across navigation)
+  const jouleBridge = useJouleBridgeContext();
+  const bridgeAvailable = jouleBridge.bridgeAvailable;
   const prostatRelay = useProstatRelay(2, 5000);
   const blueair = useBlueair(0, 10000);
   const ecobeeCredentials = getEcobeeCredentials();
@@ -47,11 +46,6 @@ export default function AirQualityHMI() {
   // Motion sensor data
   const [motionDetected, setMotionDetected] = useState(false);
   const [lastMotionTime, setLastMotionTime] = useState(null);
-  
-  // Check bridge availability
-  useEffect(() => {
-    checkBridgeHealth().then(setBridgeAvailable);
-  }, []);
   
   // Fetch pollen count and AQI
   const fetchPollenData = useCallback(async () => {

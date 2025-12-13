@@ -30,6 +30,7 @@ import {
 import { loadThermostatSettings } from "../lib/thermostatSettings";
 import { STATE_ELECTRICITY_RATES, getStateElectricityRate } from "../data/stateRates";
 import { getStateCode, fetchLiveElectricityRate } from "../lib/eiaRates";
+import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 
 const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
 
@@ -112,15 +113,45 @@ const MissionControlSimple = () => {
     fetchRate();
   }, [userLocation?.state, settings.utilityCost]);
 
-  // State - get from localStorage or use defaults
+  // Joule Bridge integration - use shared context (persists across navigation)
+  const jouleBridge = useJouleBridgeContext();
+  const bridgeAvailable = jouleBridge.bridgeAvailable;
+
+  // State - get from Joule Bridge if available, otherwise localStorage or defaults
   const currentTemp = useMemo(() => {
+    // If demo mode is disabled or Joule Bridge is connected, use real data
+    const demoModeDisabled = localStorage.getItem("demoModeDisabled") === "true";
+    
+    // Debug logging
+    if (demoModeDisabled) {
+      console.log("[Mission Control] Demo mode disabled, checking Joule Bridge data:", {
+        bridgeAvailable,
+        connected: jouleBridge.connected,
+        temperature: jouleBridge.temperature,
+        error: jouleBridge.error,
+        loading: jouleBridge.loading
+      });
+    }
+    
+    if (demoModeDisabled || (bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null)) {
+      const temp = jouleBridge.temperature;
+      if (temp !== null && temp !== undefined) {
+        console.log("[Mission Control] Using Joule Bridge temperature:", temp);
+        return temp;
+      }
+    }
+    
+    // Fallback to localStorage
     try {
       const state = JSON.parse(localStorage.getItem("thermostatState") || '{"currentTemp": 72}');
-      return state.currentTemp || 72;
+      const fallbackTemp = state.currentTemp || 72;
+      console.log("[Mission Control] Using localStorage temperature:", fallbackTemp);
+      return fallbackTemp;
     } catch {
+      console.log("[Mission Control] Using default temperature: 72");
       return 72;
     }
-  }, []);
+  }, [jouleBridge.temperature, jouleBridge.connected, bridgeAvailable, jouleBridge.error, jouleBridge.loading]);
 
   const systemStatus = useMemo(() => {
     try {
@@ -1076,6 +1107,28 @@ const MissionControlSimple = () => {
                     <span className="text-white font-medium ml-1">{systemStatus}</span>
                   </div>
                 </div>
+                
+                {/* Debug: Show raw Joule Bridge data when demo mode is disabled */}
+                {localStorage.getItem("demoModeDisabled") === "true" && (
+                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg text-xs">
+                    <div className="font-semibold text-yellow-300 mb-2">🔍 Debug: Raw Joule Bridge Data</div>
+                    <div className="space-y-1 text-yellow-200/80 font-mono">
+                      <div>Bridge Available: {bridgeAvailable ? "✅" : "❌"}</div>
+                      <div>Connected: {jouleBridge.connected ? "✅" : "❌"}</div>
+                      <div>Loading: {jouleBridge.loading ? "⏳" : "✅"}</div>
+                      <div>Temperature: {jouleBridge.temperature !== null ? `${jouleBridge.temperature}°F` : "null"}</div>
+                      <div>Target Temp: {jouleBridge.targetTemperature !== null ? `${jouleBridge.targetTemperature}°F` : "null"}</div>
+                      <div>Mode: {jouleBridge.mode || "null"}</div>
+                      {jouleBridge.error && (
+                        <div className="text-red-400">Error: {jouleBridge.error}</div>
+                      )}
+                      <div className="mt-2 pt-2 border-t border-yellow-700">
+                        <div className="text-yellow-300">Displayed Temp: {currentTemp.toFixed(1)}°F</div>
+                        <div className="text-yellow-300">Source: {bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null ? "Joule Bridge" : "localStorage/Default"}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Temperature chart placeholder - in real app, use actual chart component */}
                 <div className="h-20 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-center">

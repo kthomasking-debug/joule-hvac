@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   getThermostatStatus,
   setTemperature as bridgeSetTemperature,
@@ -9,52 +9,56 @@ import {
 } from "../lib/jouleBridgeApi";
 
 /**
- * React hook for Joule Bridge (HomeKit HAP) integration
- *
- * @param {string} deviceId - Optional specific device ID, otherwise uses primary device
- * @param {number} pollInterval - Polling interval in milliseconds (default: 5000 = 5 seconds)
- * @returns {Object} Bridge state and control functions
+ * Context for Joule Bridge state - shared across all pages
+ * This prevents data from being cleared when navigating between pages
  */
-export function useJouleBridge(deviceId = null, pollInterval = 5000) {
+const JouleBridgeContext = createContext(null);
+
+/**
+ * Joule Bridge Provider - wraps the app to provide shared bridge state
+ * 
+ * @param {Object} props
+ * @param {React.ReactNode} props.children
+ * @param {string} props.deviceId - Optional specific device ID
+ * @param {number} props.pollInterval - Polling interval in ms (default: 5000)
+ */
+export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 5000 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
   const [thermostatData, setThermostatData] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [primaryId, setPrimaryId] = useState(null);
+  const [initialized, setInitialized] = useState(false);
 
   // Get device ID (use provided, or primary, or first available)
-  // Filter out "null" string values
-  const [primaryId, setPrimaryId] = useState(null);
-  
-  // Fetch primary device ID on mount and when it changes
-  useEffect(() => {
-    getPrimaryDeviceId().then(id => {
-      setPrimaryId(id);
-    });
-  }, []);
-  
-  // Get device ID (use provided, or primary, or first available)
-  // Filter out "null" string values
-  const activeDeviceId = (deviceId && deviceId !== "null") ? deviceId : (primaryId && primaryId !== "null" ? primaryId : null);
+  const activeDeviceId = (deviceId && deviceId !== "null") 
+    ? deviceId 
+    : (primaryId && primaryId !== "null" ? primaryId : null);
 
   // Check bridge health
   const checkHealth = useCallback(async () => {
-    const available = await checkBridgeHealth();
-    setBridgeAvailable(available);
-    return available;
+    try {
+      const available = await checkBridgeHealth();
+      setBridgeAvailable(available);
+      return available;
+    } catch (err) {
+      setBridgeAvailable(false);
+      return false;
+    }
   }, []);
 
   // Fetch thermostat data
   const fetchThermostatData = useCallback(async () => {
-    // If no activeDeviceId, try to get it from API first
     let deviceIdToUse = activeDeviceId;
+    
     if (!deviceIdToUse) {
       try {
-        const primaryId = await getPrimaryDeviceId();
-        if (primaryId) {
-          deviceIdToUse = primaryId;
-          setPrimaryId(primaryId);
+        const id = await getPrimaryDeviceId();
+        if (id) {
+          deviceIdToUse = id;
+          setPrimaryId(id);
         }
       } catch (e) {
         console.debug("Could not get primary device ID:", e);
@@ -73,25 +77,22 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
       const data = await getThermostatStatus(deviceIdToUse);
 
       if (data) {
-        // Normalize data format to match Ecobee API format
         const normalized = {
           identifier: data.device_id,
           name: data.name || "Ecobee Thermostat",
           temperature: data.temperature || null,
-          humidity: data.humidity || null, // May not be available via HAP
+          humidity: data.humidity || null,
           targetHeatTemp: data.mode === "heat" ? data.target_temperature : null,
           targetCoolTemp: data.mode === "cool" ? data.target_temperature : null,
           mode: data.mode || "off",
-          fanMode: "auto", // Default
-          isAway: false, // May need separate implementation
+          fanMode: "auto",
+          isAway: false,
           equipmentStatus:
             data.current_mode !== undefined
-              ? { 0: "idle", 1: "heating", 2: "cooling", 3: "auto" }[
-                  data.current_mode
-                ] || "idle"
+              ? { 0: "idle", 1: "heating", 2: "cooling", 3: "auto" }[data.current_mode] || "idle"
               : "idle",
-          motionDetected: data.motion_detected || false, // From system state
-          motionSensors: data.motion_sensors || [], // From system state
+          motionDetected: data.motion_detected || false,
+          motionSensors: data.motion_sensors || [],
         };
 
         setThermostatData(normalized);
@@ -104,7 +105,6 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
       setLoading(false);
       return null;
     } catch (err) {
-      // Only log non-connection errors (connection refused is expected when Bridge isn't available)
       if (!(err instanceof BridgeConnectionError)) {
         console.error("Error fetching Joule Bridge data:", err);
       }
@@ -113,33 +113,60 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
       setLoading(false);
       return null;
     }
-  }, [activeDeviceId, primaryId]);
+  }, [activeDeviceId]);
 
-  // Start polling
+  // Fetch primary device ID on mount
   useEffect(() => {
-    // Check bridge health first
-    checkHealth().then((available) => {
+    getPrimaryDeviceId().then(id => {
+      setPrimaryId(id);
+    });
+  }, []);
+
+  // Initialize and start polling - only once
+  useEffect(() => {
+    if (initialized) return;
+    
+    let interval = null;
+    let mounted = true;
+    
+    const init = async () => {
+      const available = await checkHealth();
+      
+      if (!mounted) return;
+      
       if (!available) {
         setError("Joule Bridge not available. Is the Bridge running?");
         setLoading(false);
+        setInitialized(true);
         return;
       }
 
       // Initial fetch
-      fetchThermostatData();
-
+      await fetchThermostatData();
+      
+      if (!mounted) return;
+      
       // Set up polling
       setIsPolling(true);
-      const interval = setInterval(() => {
-        fetchThermostatData();
+      interval = setInterval(() => {
+        if (mounted) {
+          fetchThermostatData();
+        }
       }, pollInterval);
+      
+      setInitialized(true);
+    };
+    
+    init();
 
-      return () => {
+    return () => {
+      mounted = false;
+      if (interval) {
         clearInterval(interval);
-        setIsPolling(false);
-      };
-    });
-  }, [fetchThermostatData, pollInterval, checkHealth]);
+      }
+      setIsPolling(false);
+    };
+  }, [initialized, checkHealth, fetchThermostatData, pollInterval]);
 
   // Control functions
   const setTemp = useCallback(
@@ -150,10 +177,8 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
 
       try {
         setError(null);
-        // Use the appropriate temp based on current mode
         const temp = thermostatData?.mode === "cool" ? coolTemp : heatTemp;
         await bridgeSetTemperature(activeDeviceId, temp);
-        // Refresh data after setting
         await fetchThermostatData();
         return { success: true };
       } catch (err) {
@@ -173,7 +198,6 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
       try {
         setError(null);
         await bridgeSetMode(activeDeviceId, mode);
-        // Refresh data after setting
         await fetchThermostatData();
         return { success: true };
       } catch (err) {
@@ -184,11 +208,8 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
     [activeDeviceId, fetchThermostatData]
   );
 
-  // Away mode (may need custom implementation via HAP)
   const setAway = useCallback(
     async (enabled, heatTemp = null, coolTemp = null) => {
-      // TODO: Implement away mode via HAP
-      // For now, just set temperatures
       if (enabled && (heatTemp !== null || coolTemp !== null)) {
         await setTemp(heatTemp || 62, coolTemp || 85);
       }
@@ -198,11 +219,10 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
   );
 
   const resume = useCallback(async () => {
-    // Resume schedule - may need custom implementation
     return { success: true };
   }, []);
 
-  return {
+  const value = {
     // State
     loading,
     error,
@@ -216,7 +236,7 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
     humidity: thermostatData?.humidity || null,
     targetHeatTemp: thermostatData?.targetHeatTemp || null,
     targetCoolTemp: thermostatData?.targetCoolTemp || null,
-    targetTemperature: thermostatData?.targetHeatTemp || thermostatData?.targetCoolTemp || null, // Convenience accessor
+    targetTemperature: thermostatData?.targetHeatTemp || thermostatData?.targetCoolTemp || null,
     mode: thermostatData?.mode || null,
     fanMode: thermostatData?.fanMode || null,
     isAway: thermostatData?.isAway || false,
@@ -231,5 +251,33 @@ export function useJouleBridge(deviceId = null, pollInterval = 5000) {
     refresh: fetchThermostatData,
     checkHealth,
   };
+
+  return (
+    <JouleBridgeContext.Provider value={value}>
+      {children}
+    </JouleBridgeContext.Provider>
+  );
+}
+
+/**
+ * Hook to access Joule Bridge context
+ * Must be used within a JouleBridgeProvider
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useJouleBridgeContext() {
+  const context = useContext(JouleBridgeContext);
+  if (context === null) {
+    throw new Error('useJouleBridgeContext must be used within a JouleBridgeProvider');
+  }
+  return context;
+}
+
+/**
+ * Hook to check if JouleBridgeProvider is available
+ * Returns null if not within provider (for backwards compatibility)
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useOptionalJouleBridge() {
+  return useContext(JouleBridgeContext);
 }
 

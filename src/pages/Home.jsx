@@ -34,6 +34,7 @@ import HomeTopSection from "../components/HomeTopSection";
 import DemoModeBanner from "../components/DemoModeBanner";
 import SystemHealthAlerts from "../components/SystemHealthAlerts";
 import { useDemoMode } from "../hooks/useDemoMode";
+import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 import AutoSettingsMathEquations from "../components/AutoSettingsMathEquations";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
 import {
@@ -142,7 +143,16 @@ const HomeDashboard = () => {
   const settings = React.useMemo(() => userSettings || {}, [userSettings]);
 
   // Mission Control Center State
-  const [currentTemp, setCurrentTemp] = useState(72);
+  // Joule Bridge integration - use shared context (persists across navigation)
+  const jouleBridge = useJouleBridgeContext();
+  const bridgeAvailable = jouleBridge.bridgeAvailable;
+  
+  // Use Joule Bridge temperature if available, otherwise use simulated
+  const [simulatedCurrentTemp, setSimulatedCurrentTemp] = useState(72);
+  const currentTemp = bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null
+    ? jouleBridge.temperature
+    : simulatedCurrentTemp;
+  
   // Initialize systemStatus from localStorage or default to "HEAT ON"
   const [systemStatus, setSystemStatus] = useState(() => {
     try {
@@ -279,6 +289,17 @@ const HomeDashboard = () => {
   const targetTemp = useMemo(() => {
     // targetTempUpdate dependency forces recomputation when event fires
     let temp = null;
+    
+    // Priority 1: Use Joule Bridge data when demo mode is disabled and bridge is connected
+    const demoModeDisabled = localStorage.getItem("demoModeDisabled") === "true";
+    if (demoModeDisabled && bridgeAvailable && jouleBridge.connected) {
+      const bridgeTarget = jouleBridge.targetTemperature;
+      if (bridgeTarget !== null && bridgeTarget !== undefined) {
+        return bridgeTarget;
+      }
+    }
+    
+    // Priority 2: localStorage thermostatState
     try {
       const thermostatState = localStorage.getItem('thermostatState');
       if (thermostatState) {
@@ -302,21 +323,25 @@ const HomeDashboard = () => {
     }
     
     return temp;
-  }, [targetTempUpdate, systemStatus, settings?.winterThermostat, settings?.summerThermostat]);
+  }, [targetTempUpdate, systemStatus, settings?.winterThermostat, settings?.summerThermostat, bridgeAvailable, jouleBridge.connected, jouleBridge.targetTemperature]);
   
   // Demo mode hook
   const { isDemo, demoData, proAccess } = useDemoMode();
 
-  // Simulate temperature changes
+  // Simulate temperature changes (only if not using Joule Bridge)
   useEffect(() => {
+    if (bridgeAvailable && jouleBridge.connected) {
+      // Don't simulate if we have real data
+      return;
+    }
     const interval = setInterval(() => {
-      setCurrentTemp((prev) => {
+      setSimulatedCurrentTemp((prev) => {
         const change = (Math.random() - 0.5) * 0.5;
         return Math.max(68, Math.min(76, prev + change));
       });
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [bridgeAvailable, jouleBridge.connected]);
 
   // Auto-scroll event log
   useEffect(() => {
@@ -719,6 +744,89 @@ const HomeDashboard = () => {
             </Link>
           </div>
         </header>
+
+        {/* Debug Panel - Prominent display when demo mode is disabled */}
+        {localStorage.getItem("demoModeDisabled") === "true" && (
+          <div className="mb-6 p-4 bg-yellow-900/30 border-2 border-yellow-500/50 rounded-lg shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">🔍</div>
+              <div className="flex-1">
+                <div className="font-bold text-yellow-200 text-lg mb-2">Debug: Raw Joule Bridge Data</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Bridge Available</div>
+                    <div className="text-yellow-100 font-mono font-semibold">{bridgeAvailable ? "✅ Yes" : "❌ No"}</div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Connected</div>
+                    <div className="text-yellow-100 font-mono font-semibold">{jouleBridge.connected ? "✅ Yes" : "❌ No"}</div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Temperature</div>
+                    <div className="text-yellow-100 font-mono font-semibold">
+                      {jouleBridge.temperature !== null && jouleBridge.temperature !== undefined 
+                        ? `${jouleBridge.temperature.toFixed(1)}°F` 
+                        : "null"}
+                    </div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Target Temp</div>
+                    <div className="text-yellow-100 font-mono font-semibold">
+                      {(() => {
+                        const targetTemp = jouleBridge.targetTemperature || jouleBridge.targetHeatTemp || jouleBridge.targetCoolTemp;
+                        return targetTemp !== null && targetTemp !== undefined 
+                          ? `${targetTemp.toFixed(1)}°F` 
+                          : "null";
+                      })()}
+                    </div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Mode</div>
+                    <div className="text-yellow-100 font-mono font-semibold">{jouleBridge.mode || "null"}</div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Loading</div>
+                    <div className="text-yellow-100 font-mono font-semibold">{jouleBridge.loading ? "⏳ Yes" : "✅ No"}</div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Displayed Temp</div>
+                    <div className="text-yellow-100 font-mono font-semibold">
+                      {(() => {
+                        const demoModeDisabled = localStorage.getItem("demoModeDisabled") === "true";
+                        if (demoModeDisabled || (bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null)) {
+                          return jouleBridge.temperature ? `${jouleBridge.temperature.toFixed(1)}°F` : "72.0°F";
+                        }
+                        try {
+                          const state = JSON.parse(localStorage.getItem("thermostatState") || '{"currentTemp": 72}');
+                          return `${(state.currentTemp || 72).toFixed(1)}°F`;
+                        } catch {
+                          return "72.0°F";
+                        }
+                      })()}
+                    </div>
+                  </div>
+                  <div className="bg-yellow-900/40 p-2 rounded">
+                    <div className="text-yellow-300/70 text-xs">Data Source</div>
+                    <div className="text-yellow-100 font-mono font-semibold text-xs">
+                      {bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null 
+                        ? "Joule Bridge" 
+                        : "localStorage/Default"}
+                    </div>
+                  </div>
+                </div>
+                {jouleBridge.error && (
+                  <div className="mt-3 p-2 bg-red-900/40 border border-red-500/50 rounded text-red-200 text-sm font-mono">
+                    <div className="font-semibold">Error:</div>
+                    <div>{jouleBridge.error}</div>
+                  </div>
+                )}
+                <div className="mt-3 text-xs text-yellow-300/70">
+                  This debug panel shows raw data from your Ecobee via HomeKit. Check browser console (F12) for detailed logs.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Demo Mode Banner (subtle) */}
         {isDemo && !bannerDismissed && (

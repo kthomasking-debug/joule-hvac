@@ -6,7 +6,7 @@
  */
 
 const JOULE_BRIDGE_URL =
-  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:3002";
+  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:8080";
 
 /**
  * Get Joule Bridge URL from settings or use default
@@ -39,17 +39,21 @@ export class BridgeConnectionError extends Error {
 async function bridgeRequest(endpoint, options = {}) {
   const url = getBridgeUrl();
   try {
+    const { headers, ...restOptions } = options;
     const response = await fetch(`${url}${endpoint}`, {
-      ...options,
+      ...restOptions,
       headers: {
         "Content-Type": "application/json",
-        ...options.headers,
+        ...headers,
       },
     });
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Joule Bridge error: ${response.status} ${error}`);
+      const errorObj = new Error(`Joule Bridge error: ${response.status} ${error}`);
+      errorObj.status = response.status;
+      errorObj.isNotFound = response.status === 404;
+      throw errorObj;
     }
 
     return response.json();
@@ -85,25 +89,39 @@ export async function discoverDevices() {
  */
 export async function pairDevice(deviceId, pairingCode) {
   try {
-    const data = await bridgeRequest("/api/pair", {
-      method: "POST",
-      body: JSON.stringify({
-        device_id: deviceId,
-        pairing_code: pairingCode,
-      }),
-    });
+    // Pairing can take up to 30 seconds, so use a 35 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+    
+    try {
+      const data = await bridgeRequest("/api/pair", {
+        method: "POST",
+        body: JSON.stringify({
+          device_id: deviceId,
+          pairing_code: pairingCode,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    // Store paired device
-    const pairedDevices = getPairedDevices();
-    if (!pairedDevices.includes(deviceId)) {
-      pairedDevices.push(deviceId);
-      localStorage.setItem(
-        "joulePairedDevices",
-        JSON.stringify(pairedDevices)
-      );
+      // Store paired device
+      const pairedDevices = getPairedDevices();
+      if (!pairedDevices.includes(deviceId)) {
+        pairedDevices.push(deviceId);
+        localStorage.setItem(
+          "joulePairedDevices",
+          JSON.stringify(pairedDevices)
+        );
+      }
+
+      return data;
+    } catch (innerError) {
+      clearTimeout(timeoutId);
+      if (innerError.name === 'AbortError') {
+        throw new Error("Pairing timed out after 35 seconds. Please check the pairing code and try again.");
+      }
+      throw innerError;
     }
-
-    return data;
   } catch (error) {
     console.error("Error pairing device:", error);
     throw error;
@@ -146,10 +164,39 @@ export function getPairedDevices() {
  */
 export async function getThermostatStatus(deviceId = null) {
   try {
-    const endpoint = deviceId
-      ? `/api/status?device_id=${encodeURIComponent(deviceId)}`
-      : "/api/status";
-
+    // Handle string "null" or empty string
+    if (deviceId === "null" || deviceId === null || deviceId === undefined || deviceId === "") {
+      deviceId = null;
+    }
+    
+    // If no deviceId provided, try to get it from paired devices API
+    if (!deviceId) {
+      try {
+        const pairedData = await bridgeRequest("/api/paired");
+        if (pairedData.devices && pairedData.devices.length > 0) {
+          // Use the first paired device
+          deviceId = pairedData.devices[0].device_id;
+          // Save it as primary if not already set
+          if (!localStorage.getItem("joulePrimaryDeviceId")) {
+            localStorage.setItem("joulePrimaryDeviceId", deviceId);
+          }
+        } else {
+          // No paired devices - return null instead of making a request
+          return null;
+        }
+      } catch (e) {
+        // If we can't get paired devices, return null instead of making a request with null
+        console.debug("Could not fetch paired devices:", e);
+        return null;
+      }
+    }
+    
+    // Only make the request if we have a valid deviceId
+    if (!deviceId || deviceId === "null") {
+      return null;
+    }
+    
+    const endpoint = `/api/status?device_id=${encodeURIComponent(deviceId)}`;
     const data = await bridgeRequest(endpoint);
 
     // If single device, return it; if multiple, return first
@@ -222,7 +269,7 @@ export async function checkBridgeHealth() {
   
   // Create AbortController for timeout (more compatible than AbortSignal.timeout)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
   
   try {
     const response = await fetch(`${url}/health`, {
@@ -257,7 +304,7 @@ export async function checkBridgeHealth() {
     
     // If it's an abort error, it's a timeout
     if (fetchError.name === 'AbortError') {
-      throw new Error('Connection timeout - bridge did not respond within 5 seconds. Make sure the bridge is running.');
+      throw new Error('Connection timeout - bridge did not respond within 30 seconds. Make sure the bridge is running.');
     }
     
     // Check for common network errors
@@ -276,16 +323,50 @@ export async function checkBridgeHealth() {
 }
 
 /**
- * Get the primary paired device ID (first one, or from settings)
+ * Get the primary paired device ID from server (single source of truth)
+ * Uses /api/primary endpoint which validates the device is actually reachable
  */
-export function getPrimaryDeviceId() {
+export async function getPrimaryDeviceId() {
   try {
-    const stored = localStorage.getItem("joulePrimaryDeviceId");
-    if (stored) return stored;
-
-    // Fallback to first paired device
-    const paired = getPairedDevices();
-    return paired[0] || null;
+    // Use the server's /api/primary endpoint as single source of truth
+    try {
+      const primaryData = await bridgeRequest("/api/primary");
+      if (primaryData.device_id) {
+        // Cache it for offline/fallback scenarios
+        localStorage.setItem("joulePrimaryDeviceId", primaryData.device_id);
+        
+        // Log if device is paired but not validated (not reachable)
+        if (!primaryData.validated) {
+          console.warn(`Primary device ${primaryData.device_id} is paired but not reachable:`, primaryData.error);
+        }
+        
+        return primaryData.device_id;
+      } else {
+        // No device paired - clear stale cache
+        localStorage.removeItem("joulePrimaryDeviceId");
+      }
+    } catch (e) {
+      // If /api/primary fails, fall back to /api/paired
+      console.debug("Could not fetch primary device, falling back to paired list:", e);
+      try {
+        const pairedData = await bridgeRequest("/api/paired");
+        if (pairedData.devices && pairedData.devices.length > 0) {
+          const firstDeviceId = pairedData.devices[0].device_id;
+          localStorage.setItem("joulePrimaryDeviceId", firstDeviceId);
+          return firstDeviceId;
+        } else {
+          // No devices paired - clear stale cache
+          localStorage.removeItem("joulePrimaryDeviceId");
+        }
+      } catch (e2) {
+        console.debug("Could not fetch paired devices either:", e2);
+      }
+    }
+    
+    // No devices paired - return null (don't use stale cache)
+    return null;
+    
+    return null;
   } catch {
     return null;
   }
@@ -378,9 +459,19 @@ export async function getBlueairStatus(deviceIndex = 0) {
     );
     return data;
   } catch (error) {
+    // Handle 404s gracefully (Blueair not configured or not available)
+    // Don't log or throw - just return null silently
+    if (error.status === 404 || error.isNotFound || 
+        (error.message && (
+          error.message.includes('404') || 
+          error.message.includes('Device not found') ||
+          error.message.includes('Not Found')
+        ))) {
+      return null;
+    }
     // Only log non-connection errors (connection refused is expected when Bridge isn't available)
     if (!(error instanceof BridgeConnectionError)) {
-      console.error("Error getting Blueair status:", error);
+      console.debug("Error getting Blueair status:", error); // Changed to debug to reduce noise
     }
     throw error;
   }

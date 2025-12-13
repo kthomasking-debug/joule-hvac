@@ -1552,7 +1552,7 @@ Amen.`);
           localStorage.getItem("localBackendUrl")) ||
         (typeof window !== "undefined" &&
           localStorage.getItem("jouleBridgeUrl")) ||
-        "http://localhost:3002";
+        "http://localhost:8080";
 
       if (useLocalBackend) {
         // Use local backend (Raspberry Pi)

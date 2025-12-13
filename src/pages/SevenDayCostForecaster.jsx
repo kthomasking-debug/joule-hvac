@@ -1805,30 +1805,49 @@ const SevenDayCostForecaster = () => {
             <div>
               <h1 className="text-[32px] font-semibold text-[#FFFFFF] mb-2">
                 {isHeatingView && !isCoolingView
-                  ? "Heating Load Forecast"
+                  ? "What-If Heating Cost Model"
                   : isCoolingView && !isHeatingView
-                  ? "Cooling Load Forecast"
+                  ? "What-If Cooling Cost Model"
                   : isHeatingView && isCoolingView
-                  ? "Comfort & Efficiency Forecast"
+                  ? "What-If Comfort & Efficiency Model"
                   : energyMode === "heating"
-                  ? "Heating Load Forecast"
+                  ? "What-If Heating Cost Model"
                   : energyMode === "cooling"
-                  ? "Cooling Load Forecast"
-                  : "Comfort & Efficiency Forecast"}
+                  ? "What-If Cooling Cost Model"
+                  : "What-If Energy Cost Model"}
               </h1>
               <p className="text-base text-[#A7B0BA] leading-relaxed">
                 {isHeatingView && !isCoolingView
-                  ? "Set your schedule and see how it affects your heating costs."
+                  ? "See how different temperature strategies would change your heating costs."
                   : isCoolingView && !isHeatingView
-                  ? "Set your schedule and see how it affects your cooling costs."
+                  ? "See how different temperature strategies would change your cooling costs."
                   : isHeatingView && isCoolingView
-                  ? "Set your schedule and see how it affects your heating and cooling costs."
+                  ? "See how different temperature strategies would change your heating and cooling costs."
                   : energyMode === "heating"
-                  ? "Set your schedule and see how it affects your heating costs."
+                  ? "See how different temperature strategies would change your heating costs."
                   : energyMode === "cooling"
-                  ? "Set your schedule and see how it affects your cooling costs."
-                  : "Set your schedule and see how it affects your energy costs."}
+                  ? "See how different temperature strategies would change your cooling costs."
+                  : "See how different temperature strategies would change your energy costs."}
               </p>
+              
+              {/* Modeling Mode Banner */}
+              <div className="mt-6 mb-4 p-4 bg-blue-950/30 border border-blue-800/50 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">⚙️</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-[#E8EDF3] mb-1">
+                      Modeling Mode
+                    </p>
+                    <p className="text-sm text-[#A7B0BA] leading-relaxed mb-2">
+                      This page <strong>simulates heating costs using hypothetical thermostat schedules</strong>.
+                      It does <strong>not</strong> read your real schedule and does <strong>not</strong> change your thermostat.
+                    </p>
+                    <p className="text-xs text-[#7C8894] italic">
+                      Use this to compare strategies (night setbacks, daytime targets, aux heat behavior) — not to view actual usage.
+                    </p>
+                  </div>
+                </div>
+              </div>
               
               {/* Section Navigation */}
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
@@ -1992,7 +2011,7 @@ const SevenDayCostForecaster = () => {
         {weeklyMetrics && !forecastLoading && !forecastError && foundLocationName && (
           <div id="summary" className="mb-10">
             <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-8">
-              <h2 className="text-xl font-semibold text-[#E8EDF3] mb-6">Next 7 days – {energyMode === "cooling" ? "Cooling" : "Heating"} cost forecast</h2>
+              <h2 className="text-xl font-semibold text-[#E8EDF3] mb-6">Next 7 days – <strong>Modeled {energyMode === "cooling" ? "cooling" : "heating"} cost</strong> (based on the schedule below)</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                 {/* Daily Cost - Primary Metric */}
@@ -2060,11 +2079,11 @@ const SevenDayCostForecaster = () => {
                           : weeklyMetrics.totalCost
                         )) / 7;
                     const weeklyCost = dailyCost * 7;
-                    return `Based on your schedule, system size, and the 7-day weather forecast, you'll spend about $${dailyCost.toFixed(2)} per day ($${weeklyCost.toFixed(2)} this week) on ${energyMode === "cooling" ? "cooling" : "heating"}.`;
+                    return `Based on the modeled schedule below, system size, and the 7-day weather forecast, you would spend about $${dailyCost.toFixed(2)} per day ($${weeklyCost.toFixed(2)} this week) on ${energyMode === "cooling" ? "cooling" : "heating"}.`;
                   })()}
                   {savingsVsBaseline !== null && savingsVsBaseline > 0 && (
                     <span className="block mt-2 text-[#1E4CFF]">
-                      Your schedule saves you ${(savingsVsBaseline / 7).toFixed(2)}/day vs keeping a constant {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}.
+                      This modeled schedule saves you ${(savingsVsBaseline / 7).toFixed(2)}/day vs keeping a constant {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}.
                     </span>
                   )}
                 </p>
@@ -2101,13 +2120,18 @@ const SevenDayCostForecaster = () => {
           </div>
         )}
 
-        {/* Card B - Your schedule & daily breakdown */}
+        {/* Card B - Modeled schedule & daily breakdown */}
         <div className="mb-10" id="schedule">
           <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-8">
             <div className="mb-6">
-              <h2 className="text-[24px] font-medium text-[#E8EDF3] mb-2">Your schedule</h2>
-              <p className="text-sm text-[#A7B0BA]">
-                This is the thermostat schedule we'll use for the forecast. Adjust it here, or match what you're really running.
+              <h2 className="text-[24px] font-medium text-[#E8EDF3] mb-2">Modeled Schedule (What-If)</h2>
+              <p className="text-sm text-[#A7B0BA] mb-2">
+                This is a <strong>hypothetical schedule</strong> used only for modeling.
+                Adjust it to explore scenarios — it does not affect your real thermostat.
+              </p>
+              <p className="text-xs text-[#7C8894] flex items-center gap-2 mt-2">
+                <span>🔒</span>
+                <span><strong>Safe to experiment</strong> — Changes on this page never modify your thermostat or schedule.</span>
               </p>
             </div>
             
@@ -2127,7 +2151,7 @@ const SevenDayCostForecaster = () => {
             <div className="mt-6 pt-6 border-t border-[#222A35]">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm text-[#7C8894] mb-2">Current Schedule</div>
+                  <div className="text-sm text-[#7C8894] mb-2">Current Modeled Schedule</div>
                   <div className="text-base text-[#E8EDF3] font-medium">
                     {(() => {
                       const dayMins = timeToMinutes(daytimeTime);

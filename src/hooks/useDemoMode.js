@@ -22,8 +22,8 @@ export function useDemoMode() {
     async function checkMode() {
       setLoading(true);
 
-      // Check if we're in demo mode
-      const demo = isDemoMode();
+      // Check if we're in demo mode (now async to check Bridge)
+      const demo = await isDemoMode();
       setIsDemo(demo);
 
       // If demo mode, load demo data
@@ -43,21 +43,30 @@ export function useDemoMode() {
 
     checkMode();
 
-    // Re-check periodically (every 30 seconds) for Bridge presence
-    const interval = setInterval(() => {
+    // Re-check demo mode periodically (every 10 seconds) to catch Bridge connections
+    const checkInterval = setInterval(() => {
+      checkMode();
+    }, 10000);
+
+    // Re-check Pro access periodically (every 30 seconds) for Bridge presence
+    const proAccessInterval = setInterval(() => {
       hasProAccess().then(setProAccess);
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(checkInterval);
+      clearInterval(proAccessInterval);
+    };
   }, []);
 
   // Re-check demo mode when localStorage changes (e.g., after Ecobee connection)
   useEffect(() => {
-    const handleStorageChange = () => {
-      const demo = isDemoMode();
+    const handleStorageChange = async () => {
+      const demo = await isDemoMode();
       setIsDemo(demo);
       if (demo) {
-        loadDemoData().then(setDemoData);
+        const data = await loadDemoData();
+        setDemoData(data);
       } else {
         setDemoData(null);
       }
@@ -66,6 +75,8 @@ export function useDemoMode() {
     window.addEventListener("storage", handleStorageChange);
     // Also listen for custom events (for same-tab updates)
     window.addEventListener("ecobee-connection-changed", handleStorageChange);
+    window.addEventListener("joule-bridge-connection-changed", handleStorageChange);
+    window.addEventListener("demo-mode-changed", handleStorageChange);
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
@@ -73,6 +84,11 @@ export function useDemoMode() {
         "ecobee-connection-changed",
         handleStorageChange
       );
+      window.removeEventListener(
+        "joule-bridge-connection-changed",
+        handleStorageChange
+      );
+      window.removeEventListener("demo-mode-changed", handleStorageChange);
     };
   }, []);
 

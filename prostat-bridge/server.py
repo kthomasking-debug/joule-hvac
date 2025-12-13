@@ -45,6 +45,7 @@ controller = None
 async_zeroconf = None  # Global AsyncZeroconf instance
 pairings = {}  # device_id -> pairing object
 device_info = {}  # device_id -> device info cache
+discovered_devices = {}  # device_id -> IpDiscovery object
 
 # Relay control
 relay_port = None
@@ -105,24 +106,30 @@ async def init_controller():
             if hasattr(async_zeroconf, 'zeroconf'):
                 logger.info(f"AsyncZeroconf.zeroconf value: {async_zeroconf.zeroconf}")
             
-            # Create AsyncServiceBrowser for _hap._tcp.local. BEFORE starting controller
-            # This is required because IpController.async_start() looks for an existing browser
+            # Create AsyncServiceBrowser for _hap._tcp.local BEFORE starting controller
+            # The Controller requires this browser to exist
             logger.info("Creating AsyncServiceBrowser for _hap._tcp.local...")
-            from zeroconf.asyncio import AsyncListener
             from aiohomekit.zeroconf import HAP_TYPE_TCP
             
-            class HomeKitServiceListener(AsyncListener):
-                """Dummy listener for HomeKit services"""
-                async def async_add_service(self, zc, service_type, name):
-                    pass
-                async def async_remove_service(self, zc, service_type, name):
-                    pass
-                async def async_update_service(self, zc, service_type, name):
-                    pass
+            # Create AsyncServiceBrowser for both TCP and UDP - the Controller needs both
+            # Use a simple ServiceListener from zeroconf
+            from zeroconf import ServiceListener
+            from aiohomekit.zeroconf import HAP_TYPE_TCP, HAP_TYPE_UDP
+            
+            class HomeKitServiceListener(ServiceListener):
+                """Simple listener for HomeKit services"""
+                def add_service(self, zc, service_type, name):
+                    logger.debug(f"Service added: {name}")
+                def remove_service(self, zc, service_type, name):
+                    logger.debug(f"Service removed: {name}")
+                def update_service(self, zc, service_type, name):
+                    logger.debug(f"Service updated: {name}")
             
             listener = HomeKitServiceListener()
-            hap_browser = AsyncServiceBrowser(async_zeroconf.zeroconf, HAP_TYPE_TCP, listener=listener)
-            logger.info(f"AsyncServiceBrowser created for {HAP_TYPE_TCP}")
+            # Create browsers for both TCP and UDP
+            hap_browser_tcp = AsyncServiceBrowser(async_zeroconf.zeroconf, HAP_TYPE_TCP, listener=listener)
+            hap_browser_udp = AsyncServiceBrowser(async_zeroconf.zeroconf, HAP_TYPE_UDP, listener=listener)
+            logger.info(f"AsyncServiceBrowser created for {HAP_TYPE_TCP} and {HAP_TYPE_UDP}")
         
         # Create Controller with explicit AsyncZeroconf instance
         logger.info(f"Creating HomeKit Controller with AsyncZeroconf: {async_zeroconf}")
@@ -149,20 +156,61 @@ async def discover_devices():
     if not controller:
         raise RuntimeError("HomeKit controller is not available")
     
+    # Clear cache to force fresh discovery
+    discovered_devices.clear()
+    
     logger.info("Scanning for HomeKit devices...")
-    devices = await controller.async_discover()
+    devices = controller.async_discover()
     
     result = []
-    for device in devices:
+    seen_device_ids = set()  # Track seen device IDs to avoid duplicates
+    seen_names = set()  # Track seen device names to deduplicate
+    
+    async for device in devices:
+        # IpDiscovery objects have 'id' attribute, not 'device_id'
+        # The device ID is typically in device.id or device.description.id
+        device_id = getattr(device, 'id', None) or getattr(device.description, 'id', None) or str(device.description.get('id', 'Unknown'))
+        
+        # Skip duplicates (same device ID)
+        if device_id in seen_device_ids:
+            logger.debug(f"Skipping duplicate device: {device_id}")
+            continue
+        seen_device_ids.add(device_id)
+        
+        # Get device info from description
+        description = device.description if hasattr(device, 'description') else {}
+        if isinstance(description, dict):
+            name = description.get('name', 'Unknown')
+            model = description.get('md', 'Unknown')
+            category = description.get('ci', 'Unknown')
+        else:
+            # If description is an object, try to get attributes
+            name = getattr(description, 'name', 'Unknown')
+            model = getattr(description, 'md', 'Unknown')
+            category = getattr(description, 'ci', 'Unknown')
+        
+        # For devices with the same name (like multiple Ecobee accessories),
+        # keep only the first one to avoid confusion
+        # The first one is typically the main accessory
+        if name in seen_names:
+            logger.debug(f"Skipping duplicate device name '{name}' with ID {device_id} (already have one with this name)")
+            continue
+        seen_names.add(name)
+        
         info = {
-            'device_id': device.device_id,
-            'name': device.description.get('name', 'Unknown'),
-            'model': device.description.get('md', 'Unknown'),
-            'category': device.description.get('ci', 'Unknown'),
+            'device_id': device_id,
+            'name': name,
+            'model': model,
+            'category': category,
         }
-        device_info[device.device_id] = info
+        device_info[device_id] = info
+        discovered_devices[device_id] = device  # Store the actual device object for pairing
         result.append(info)
-        logger.info(f"Found device: {info['name']} ({device.device_id})")
+        logger.info(f"Found device: {info['name']} ({device_id})")
+    
+    # If we have multiple devices with the same name, try to identify the main one
+    # For Ecobee, we can try to pair with the first one or let the user choose
+    # For now, return all devices and let the user choose
     
     return result
 
@@ -173,7 +221,7 @@ async def pair_device(device_id: str, pairing_code: str):
     
     Args:
         device_id: The device ID (e.g., "XX:XX:XX:XX:XX:XX")
-        pairing_code: The 8-digit pairing code (e.g., "123-45-678")
+        pairing_code: The 8-digit pairing code (e.g., "123-45-678" or "12345678")
     
     Returns:
         Pairing object
@@ -184,19 +232,115 @@ async def pair_device(device_id: str, pairing_code: str):
     if not controller:
         raise RuntimeError("HomeKit controller is not available")
     
-    # Remove dashes from pairing code
-    code = pairing_code.replace('-', '')
+    # Keep dashes in pairing code - aiohomekit expects XXX-XX-XXX format
+    # Just remove any spaces
+    code = pairing_code.replace(' ', '').strip()
+    
+    # Check if we have the device from discovery
+    if device_id not in discovered_devices:
+        # Re-discover to get the device
+        logger.info(f"Device {device_id} not in cache, re-discovering...")
+        await discover_devices()
+    
+    if device_id not in discovered_devices:
+        raise ValueError(f"Device {device_id} not found. Please discover devices first.")
+    
+    device = discovered_devices[device_id]
     
     try:
         logger.info(f"Attempting to pair with {device_id} using code {pairing_code}")
-        pairing = await controller.async_pair(device_id, code)
+        # Use the device's async_start_pairing method
+        # This returns a callable that takes the code and returns the pairing
+        # Add timeout to async_start_pairing itself in case it hangs
+        try:
+            finish_pairing = await asyncio.wait_for(device.async_start_pairing(device_id), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.error(f"async_start_pairing timed out after 10 seconds for {device_id}")
+            raise RuntimeError("Pairing initialization timed out. The device may not be in pairing mode or may be unreachable.")
+        # Call it with the pairing code to complete pairing (with timeout)
+        try:
+            pairing = await asyncio.wait_for(finish_pairing(code), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.error(f"Pairing timed out after 30 seconds for {device_id}")
+            raise RuntimeError("Pairing timed out. Please try again and make sure the pairing code is correct.")
+        except Exception as pairing_error:
+            # Check for specific error patterns
+            error_str = str(pairing_error)
+            logger.error(f"Pairing error details: {error_str}, type: {type(pairing_error)}")
+            
+            # HomeKit error code 0x04 typically means "already paired" or "max peers"
+            if 'bytearray' in error_str and '\\x04' in error_str or '\\x04' in repr(pairing_error):
+                raise RuntimeError(
+                    "Device is already paired to another controller (likely Apple HomeKit). "
+                    "You must unpair it from Apple Home first:\n"
+                    "1. Open the Home app on your iPhone/iPad\n"
+                    "2. Find your Ecobee thermostat\n"
+                    "3. Long-press → Settings → Remove Accessory\n"
+                    "4. Wait 30 seconds, then try pairing again"
+                )
+            elif 'already paired' in error_str.lower() or 'max peers' in error_str.lower():
+                raise RuntimeError(
+                    "Device is already paired to another controller. "
+                    "Unpair from Apple Home first, then try again."
+                )
+            else:
+                # Re-raise with more context
+                raise RuntimeError(f"Pairing failed: {error_str}. Make sure the pairing code is correct and the device is in pairing mode.")
+        
+        # Save the pairing to our local pairings dict
         pairings[device_id] = pairing
         logger.info(f"Successfully paired with {device_id}")
+        
+        # Register the pairing with the controller so it can be saved
+        # aiohomekit Controller.save_data() saves controller.pairings
+        # We need to add the pairing to controller.pairings first
+        import os
+        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        pairing_file = os.path.join(data_dir, 'pairings.json')
+        
+        # Extract pairing data from the pairing object
+        pairing_data = {}
+        if hasattr(pairing, 'pairing_data'):
+            pairing_data = pairing.pairing_data
+        elif hasattr(pairing, '_pairing_data'):
+            pairing_data = pairing._pairing_data
+        elif hasattr(pairing, 'id'):
+            # Try to get pairing data from the pairing object
+            pairing_data = {'id': pairing.id if hasattr(pairing, 'id') else device_id}
+        else:
+            # Fallback: create minimal pairing data
+            pairing_data = {'id': device_id}
+        
+        # Ensure device_id is in the pairing data
+        if 'id' not in pairing_data:
+            pairing_data['id'] = device_id
+        
+        # Add the pairing to controller.pairings using device_id as the alias
+        if not hasattr(controller, 'pairings'):
+            controller.pairings = {}
+        controller.pairings[device_id] = pairing_data
+        logger.info(f"Registered pairing with controller (alias: {device_id})")
+        
+        # Save to file
+        try:
+            controller.save_data(pairing_file)
+            logger.info(f"Saved pairings to {pairing_file}")
+        except Exception as e:
+            logger.error(f"Failed to save pairings: {e}")
+            # Fallback: manually save
+            try:
+                import json
+                with open(pairing_file, 'w') as f:
+                    json.dump(controller.pairings, f, indent=2)
+                logger.info(f"Manually saved pairings to {pairing_file}")
+            except Exception as e2:
+                logger.error(f"Manual save also failed: {e2}")
         return pairing
     except AlreadyPairedError:
         logger.warning(f"Device {device_id} is already paired")
         # Try to load existing pairing
-        pairing = await controller.async_load_pairing(device_id)
+        pairing = await controller.load_pairing(device_id, {})
         pairings[device_id] = pairing
         return pairing
     except Exception as e:
@@ -206,16 +350,49 @@ async def pair_device(device_id: str, pairing_code: str):
 
 async def unpair_device(device_id: str):
     """Unpair from a HomeKit device"""
-    if device_id in pairings:
-        del pairings[device_id]
+    if not controller:
+        raise RuntimeError("HomeKit controller is not available")
     
-    if controller:
-        try:
-            await controller.async_unpair(device_id)
-            logger.info(f"Unpaired from {device_id}")
-        except Exception as e:
-            logger.error(f"Unpairing failed: {e}")
-            raise
+    try:
+        # Find the alias/key used in controller.pairings for this device_id
+        alias_to_remove = None
+        if hasattr(controller, 'pairings'):
+            for alias, pairing_data in controller.pairings.items():
+                # Check if this pairing matches our device_id
+                if isinstance(pairing_data, dict):
+                    if pairing_data.get('id') == device_id or alias == device_id:
+                        alias_to_remove = alias
+                        break
+                elif alias == device_id:
+                    alias_to_remove = alias
+                    break
+        
+        # Use controller.remove_pairing() if we found an alias
+        if alias_to_remove:
+            controller.remove_pairing(alias_to_remove)
+            logger.info(f"Removed pairing {alias_to_remove} from controller")
+        elif device_id in pairings:
+            # Fallback: try using device_id directly
+            controller.remove_pairing(device_id)
+            logger.info(f"Removed pairing {device_id} from controller")
+        else:
+            logger.warning(f"Pairing for {device_id} not found in controller")
+        
+        # Remove from our local pairings dict
+        if device_id in pairings:
+            del pairings[device_id]
+        
+        # Save the updated pairings to file
+        import os
+        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        pairing_file = os.path.join(data_dir, 'pairings.json')
+        controller.save_data(pairing_file)
+        
+        logger.info(f"Successfully unpaired from {device_id}")
+    except Exception as e:
+        logger.error(f"Unpairing failed: {e}")
+        raise
 
 
 async def get_thermostat_data(device_id: str):
@@ -230,17 +407,108 @@ async def get_thermostat_data(device_id: str):
     
     pairing = pairings[device_id]
     
+    # Use default characteristic IDs, but try to discover correct ones
+    aid = ECOBEE_AID
+    temp_current_iid = ECOBEE_TEMP_CURRENT
+    temp_target_iid = ECOBEE_TEMP_TARGET
+    target_state_iid = ECOBEE_TARGET_STATE
+    current_state_iid = ECOBEE_CURRENT_STATE
+    
+    # Try to get accessory information first to discover correct characteristic IDs
+    try:
+        # Get accessories to find the correct AID and IIDs
+        if hasattr(pairing, 'list_accessories_and_characteristics'):
+            accessories_data = await pairing.list_accessories_and_characteristics()
+            logger.debug(f"Accessories data type: {type(accessories_data)}")
+            
+            # Handle both dict and list responses
+            accessories_list = []
+            if isinstance(accessories_data, dict):
+                accessories_list = accessories_data.get('accessories', [])
+            elif isinstance(accessories_data, list):
+                accessories_list = accessories_data
+            else:
+                # Try to get accessories attribute if it's an object
+                accessories_list = getattr(accessories_data, 'accessories', [])
+            
+            # Find thermostat service and its characteristics
+            # HomeKit Thermostat service UUID: 0000004A-0000-1000-8000-0026BB765291
+            for accessory in accessories_list:
+                found_aid = accessory.get('aid') if isinstance(accessory, dict) else getattr(accessory, 'aid', None)
+                services = accessory.get('services', []) if isinstance(accessory, dict) else getattr(accessory, 'services', [])
+                
+                for service in services:
+                    service_type = service.get('type') if isinstance(service, dict) else getattr(service, 'type', None)
+                    service_type_str = str(service_type).upper() if service_type else ''
+                    
+                    # Thermostat service UUID ends with 4A or contains "thermostat"
+                    # More precise matching: check for the exact UUID pattern
+                    is_thermostat = (
+                        service_type_str.endswith('4A') or 
+                        '0000004A' in service_type_str or
+                        'thermostat' in service_type_str.lower()
+                    )
+                    
+                    if is_thermostat:
+                        aid = found_aid
+                        characteristics = service.get('characteristics', []) if isinstance(service, dict) else getattr(service, 'characteristics', [])
+                        
+                        # Log all characteristics for debugging
+                        logger.debug(f"Thermostat service found in AID={aid}, characteristics count: {len(characteristics)}")
+                        
+                        for char in characteristics:
+                            iid = char.get('iid') if isinstance(char, dict) else getattr(char, 'iid', None)
+                            char_type = char.get('type') if isinstance(char, dict) else getattr(char, 'type', None)
+                            char_type_str = str(char_type).upper() if char_type else ''
+                            
+                            # Log each characteristic for debugging
+                            char_value = char.get('value') if isinstance(char, dict) else getattr(char, 'value', None)
+                            logger.debug(f"  Char IID={iid}, type={char_type_str}, value={char_value}")
+                            
+                            # More precise matching using exact UUID endings
+                            # Current Temperature: 00000011-0000-1000-8000-0026BB765291
+                            if char_type_str.endswith('11') or '00000011' in char_type_str:
+                                temp_current_iid = iid
+                                logger.debug(f"    -> Current Temperature")
+                            # Target Temperature: 00000035-0000-1000-8000-0026BB765291
+                            elif char_type_str.endswith('35') or '00000035' in char_type_str:
+                                temp_target_iid = iid
+                                logger.debug(f"    -> Target Temperature")
+                            # Target Heating Cooling State: 00000033-0000-1000-8000-0026BB765291
+                            elif char_type_str.endswith('33') or '00000033' in char_type_str:
+                                target_state_iid = iid
+                                logger.debug(f"    -> Target State")
+                            # Current Heating Cooling State: 0000000F-0000-1000-8000-0026BB765291
+                            elif char_type_str.endswith('0F') or '0000000F' in char_type_str:
+                                current_state_iid = iid
+                                logger.debug(f"    -> Current State")
+                        
+                        logger.info(f"Discovered AID={aid}, IIDs: temp={temp_current_iid}, target_temp={temp_target_iid}, target_state={target_state_iid}, current_state={current_state_iid}")
+                        break
+    except Exception as e:
+        logger.warning(f"Could not discover characteristics, using defaults: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        # Use default IDs already set above
+        pass
+    
     # Read characteristics
     # Format: [(aid, iid), ...]
     characteristics = [
-        (ECOBEE_AID, ECOBEE_TEMP_CURRENT),
-        (ECOBEE_AID, ECOBEE_TEMP_TARGET),
-        (ECOBEE_AID, ECOBEE_TARGET_STATE),
-        (ECOBEE_AID, ECOBEE_CURRENT_STATE),
+        (aid, temp_current_iid),
+        (aid, temp_target_iid),
+        (aid, target_state_iid),
+        (aid, current_state_iid),
     ]
     
     try:
-        data = await pairing.async_get_characteristics(characteristics)
+        # Try async_get_characteristics first (properly decrypts), fallback to get_characteristics
+        try:
+            data = await pairing.async_get_characteristics(characteristics)
+        except AttributeError:
+            # Fallback if async_get_characteristics doesn't exist
+            logger.warning("async_get_characteristics not available, using get_characteristics")
+            data = await pairing.get_characteristics(characteristics)
         
         # Parse response
         # Data format: {(aid, iid): {'value': value, ...}, ...}
@@ -254,16 +522,49 @@ async def get_thermostat_data(device_id: str):
         }
         
         # Extract values
-        temp_key = (ECOBEE_AID, ECOBEE_TEMP_CURRENT)
-        target_temp_key = (ECOBEE_AID, ECOBEE_TEMP_TARGET)
-        target_state_key = (ECOBEE_AID, ECOBEE_TARGET_STATE)
-        current_state_key = (ECOBEE_AID, ECOBEE_CURRENT_STATE)
+        temp_key = (aid, temp_current_iid)
+        target_temp_key = (aid, temp_target_iid)
+        target_state_key = (aid, target_state_iid)
+        current_state_key = (aid, current_state_iid)
         
         if temp_key in data:
-            result['temperature'] = data[temp_key].get('value')
+            # HomeKit returns temperature in Celsius, convert to Fahrenheit
+            temp_c = data[temp_key].get('value')
+            if temp_c is not None:
+                # Check if value is base64 encoded (encrypted) - if so, we need to decrypt
+                if isinstance(temp_c, str) and (temp_c.endswith('=') or len(temp_c) > 20):
+                    logger.warning(f"Temperature value appears encrypted (base64): {temp_c[:20]}...")
+                    # Try to decode base64 and extract numeric value
+                    try:
+                        import base64
+                        decoded = base64.b64decode(temp_c)
+                        # The decoded value might be in a specific format - try to extract float
+                        # For now, log it and skip
+                        logger.warning(f"Encrypted temperature value detected, characteristic may need different ID or pairing issue")
+                        result['temperature'] = None
+                    except Exception as e:
+                        logger.warning(f"Could not decode temperature: {e}")
+                        result['temperature'] = None
+                else:
+                    # Ensure temp_c is a number (convert string to float if needed)
+                    try:
+                        temp_c = float(temp_c)
+                        result['temperature'] = (temp_c * 9/5) + 32  # Convert C to F
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid temperature value: {temp_c} ({type(temp_c)}): {e}")
+                        result['temperature'] = None
         
         if target_temp_key in data:
-            result['target_temperature'] = data[target_temp_key].get('value')
+            # HomeKit returns temperature in Celsius, convert to Fahrenheit
+            target_temp_c = data[target_temp_key].get('value')
+            if target_temp_c is not None:
+                # Ensure target_temp_c is a number (convert string to float if needed)
+                try:
+                    target_temp_c = float(target_temp_c)
+                    result['target_temperature'] = (target_temp_c * 9/5) + 32  # Convert C to F
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid target temperature value: {target_temp_c} ({type(target_temp_c)}): {e}")
+                    result['target_temperature'] = None
         
         if target_state_key in data:
             state = data[target_state_key].get('value')
@@ -288,7 +589,7 @@ async def set_temperature(device_id: str, temperature: float):
     
     # Write target temperature
     # Format: [(aid, iid, value), ...]
-    await pairing.async_put_characteristics([
+    await pairing.put_characteristics([
         (ECOBEE_AID, ECOBEE_TEMP_TARGET, temperature)
     ])
     
@@ -320,7 +621,7 @@ async def set_mode(device_id: str, mode: str):
         raise ValueError(f"Invalid mode: {mode}")
     
     # Write target state
-    await pairing.async_put_characteristics([
+    await pairing.put_characteristics([
         (ECOBEE_AID, ECOBEE_TARGET_STATE, state)
     ])
     
@@ -380,8 +681,23 @@ async def handle_status(request):
     try:
         device_id = request.query.get('device_id')
         
+        # Handle null or empty device_id string
+        if device_id and device_id.lower() in ('null', 'none', ''):
+            device_id = None
+        
         if not device_id:
             # Return status of all paired devices
+            # Try to load from controller if pairings dict is empty
+            if not pairings and controller and hasattr(controller, 'pairings') and controller.pairings:
+                logger.info("Pairings dict empty, loading from controller")
+                for alias, pairing_data in controller.pairings.items():
+                    try:
+                        device_id_from_pairing = pairing_data.get('id') if isinstance(pairing_data, dict) else alias
+                        pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
+                        pairings[device_id_from_pairing] = pairing
+                    except Exception as e:
+                        logger.warning(f"Failed to load pairing for {alias}: {e}")
+            
             if not pairings:
                 return web.json_response({'devices': []})
             
@@ -397,9 +713,26 @@ async def handle_status(request):
             return web.json_response({'devices': results})
         
         # Get specific device
+        if device_id not in pairings:
+            # This is expected when no device is paired - log at debug level
+            logger.debug(f"Status request for unpaired device: {device_id}")
+            return web.json_response(
+                {'error': f"Device {device_id} is not paired"}, 
+                status=404  # 404 Not Found is more appropriate than 500 for missing resource
+            )
+        
         data = await get_thermostat_data(device_id)
         return web.json_response(data)
+    except ValueError as e:
+        # ValueError for "not paired" is expected - log at debug level
+        if "not paired" in str(e).lower():
+            logger.debug(f"Status error: {e}")
+            return web.json_response({'error': str(e)}, status=404)
+        else:
+            logger.error(f"Status error: {e}")
+            return web.json_response({'error': str(e)}, status=500)
     except Exception as e:
+        # Other exceptions are unexpected - log as error
         logger.error(f"Status error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
@@ -454,6 +787,55 @@ async def handle_paired_devices(request):
     return web.json_response({'devices': devices})
 
 
+async def handle_primary_device(request):
+    """
+    GET /api/primary - Get the primary (first) paired device ID
+    This is the single source of truth for which device to use.
+    """
+    try:
+        # Get all paired devices
+        device_ids = list(pairings.keys())
+        
+        if not device_ids:
+            return web.json_response({
+                'device_id': None,
+                'error': 'No devices paired'
+            }, status=200)
+        
+        # Primary device is the first one (or could be based on priority/name)
+        primary_id = device_ids[0]
+        
+        # Get device info if available
+        info = device_info.get(primary_id, {})
+        
+        # Validate the device is still actually paired and reachable
+        try:
+            # Quick validation - try to get status
+            status_data = await get_thermostat_data(primary_id)
+            return web.json_response({
+                'device_id': primary_id,
+                'name': info.get('name', 'Unknown'),
+                'validated': True,
+                'status': {
+                    'temperature': status_data.get('temperature'),
+                    'target_temperature': status_data.get('target_temperature'),
+                    'mode': status_data.get('mode'),
+                }
+            })
+        except Exception as e:
+            # Device is paired but not reachable
+            logger.warning(f"Primary device {primary_id} is paired but not reachable: {e}")
+            return web.json_response({
+                'device_id': primary_id,
+                'name': info.get('name', 'Unknown'),
+                'validated': False,
+                'error': f'Device paired but not reachable: {str(e)}'
+            })
+    except Exception as e:
+        logger.error(f"Error getting primary device: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 # ============================================================================
 # Relay Control (Dehumidifier)
 # ============================================================================
@@ -463,7 +845,10 @@ def find_relay_port():
     ports = serial.tools.list_ports.comports()
     for port in ports:
         # Look for CH340 chip (common in USB relay modules)
-        if 'CH340' in port.description or 'CH340' in port.manufacturer:
+        # Handle None values for description/manufacturer
+        description = port.description or ""
+        manufacturer = port.manufacturer or ""
+        if 'CH340' in description or 'CH340' in manufacturer:
             return port.device
         # Also check for common relay module VID/PID
         if port.vid == 0x1a86 and port.pid == 0x7523:  # CH340 VID/PID
@@ -491,7 +876,8 @@ async def init_relay():
         logger.info(f"USB relay connected on {port_path}")
         return True
     except Exception as e:
-        logger.error(f"Failed to connect to relay: {e}")
+        # Relay is optional hardware - log as warning, not error
+        logger.warning(f"USB relay not available: {e}. Dehumidifier control disabled.")
         relay_connected = False
         return False
 
@@ -959,6 +1345,88 @@ async def handle_dust_kicker(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def handle_check_bridge_processes(request):
+    """GET /api/bridge/processes - Check for multiple bridge processes"""
+    import subprocess
+    import os
+    
+    try:
+        # Find all python3 processes running server.py
+        result = subprocess.run(
+            ['pgrep', '-f', 'python3.*server.py'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        pids = [pid.strip() for pid in result.stdout.strip().split('\n') if pid.strip()]
+        current_pid = os.getpid()
+        
+        # Filter out current process
+        other_pids = [pid for pid in pids if pid != str(current_pid)]
+        
+        return web.json_response({
+            'current_pid': current_pid,
+            'total_processes': len(pids),
+            'duplicate_processes': len(other_pids),
+            'other_pids': other_pids,
+            'has_duplicates': len(other_pids) > 0
+        })
+    except subprocess.TimeoutExpired:
+        return web.json_response({'error': 'Timeout checking processes'}, status=500)
+    except Exception as e:
+        logger.error(f"Error checking bridge processes: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_kill_duplicate_bridges(request):
+    """POST /api/bridge/kill-duplicates - Kill all duplicate bridge processes"""
+    import subprocess
+    import os
+    
+    try:
+        # Find all python3 processes running server.py
+        result = subprocess.run(
+            ['pgrep', '-f', 'python3.*server.py'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        pids = [pid.strip() for pid in result.stdout.strip().split('\n') if pid.strip()]
+        current_pid = os.getpid()
+        
+        # Filter out current process
+        other_pids = [pid for pid in pids if pid != str(current_pid)]
+        
+        if not other_pids:
+            return web.json_response({
+                'success': True,
+                'message': 'No duplicate processes found',
+                'killed': []
+            })
+        
+        # Kill other processes
+        killed = []
+        for pid in other_pids:
+            try:
+                subprocess.run(['kill', pid], timeout=1, check=False)
+                killed.append(pid)
+            except Exception as e:
+                logger.warning(f"Failed to kill process {pid}: {e}")
+        
+        return web.json_response({
+            'success': True,
+            'message': f'Killed {len(killed)} duplicate process(es)',
+            'killed': killed
+        })
+    except subprocess.TimeoutExpired:
+        return web.json_response({'error': 'Timeout killing processes'}, status=500)
+    except Exception as e:
+        logger.error(f"Error killing duplicate bridges: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 async def init_app():
     """Initialize the aiohttp application"""
     app = web.Application()
@@ -981,6 +1449,7 @@ async def init_app():
     app.router.add_post('/api/set-temperature', handle_set_temperature)
     app.router.add_post('/api/set-mode', handle_set_mode)
     app.router.add_get('/api/paired', handle_paired_devices)
+    app.router.add_get('/api/primary', handle_primary_device)
     
     # Routes - Relay Control
     app.router.add_get('/api/relay/status', handle_relay_status)
@@ -997,6 +1466,10 @@ async def init_app():
     # Health check
     app.router.add_get('/health', lambda r: web.json_response({'status': 'ok'}))
     
+    # Bridge process management
+    app.router.add_get('/api/bridge/processes', handle_check_bridge_processes)
+    app.router.add_post('/api/bridge/kill-duplicates', handle_kill_duplicate_bridges)
+    
     # Enable CORS for all routes
     for route in list(app.router.routes()):
         cors.add(route)
@@ -1008,8 +1481,45 @@ async def main():
     """Main entry point"""
     logger.info("Starting ProStat Bridge...")
     
-    # Initialize HomeKit controller
+    # Initialize HomeKit controller first
     await init_controller()
+    
+    # Load existing pairings if available
+    import os
+    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    os.makedirs(data_dir, exist_ok=True)  # Ensure data directory exists
+    pairing_file = os.path.join(data_dir, 'pairings.json')
+    
+    if controller:
+        if os.path.exists(pairing_file):
+            try:
+                # Check if file is not empty
+                file_size = os.path.getsize(pairing_file)
+                if file_size > 2:  # More than just "{}"
+                    controller.load_data(pairing_file)
+                    logger.info(f"Loaded existing pairings from {pairing_file}")
+                    # Populate pairings dictionary from controller's internal pairings
+                    # The controller stores pairings in controller.pairings dict
+                    if hasattr(controller, 'pairings') and controller.pairings:
+                        for alias, pairing_data in controller.pairings.items():
+                            # Get device_id from pairing data or use alias
+                            device_id = pairing_data.get('id') if isinstance(pairing_data, dict) else alias
+                            # Load the pairing object
+                            try:
+                                pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
+                                pairings[device_id] = pairing
+                                logger.info(f"Loaded pairing for device {device_id} (alias: {alias})")
+                            except Exception as e:
+                                logger.warning(f"Failed to load pairing for {alias}: {e}")
+                    else:
+                        logger.info("No pairings found in controller after loading file")
+                else:
+                    logger.info(f"Pairing file {pairing_file} is empty, skipping load")
+            except Exception as e:
+                logger.warning(f"Failed to load pairings from {pairing_file}: {e}")
+                logger.info("Continuing without loaded pairings - you may need to re-pair")
+        else:
+            logger.info(f"No pairing file found at {pairing_file}, starting fresh")
     
     # Initialize relay (optional - service works without it)
     await init_relay()
@@ -1034,6 +1544,7 @@ async def main():
     logger.info("    POST /api/set-temperature - Set temperature")
     logger.info("    POST /api/set-mode - Set HVAC mode")
     logger.info("    GET  /api/paired - List paired devices")
+    logger.info("    GET  /api/primary - Get primary device ID (validated)")
     logger.info("  Relay Control:")
     logger.info("    GET  /api/relay/status - Get relay status")
     logger.info("    POST /api/relay/control - Control relay manually")

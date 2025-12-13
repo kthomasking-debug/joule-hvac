@@ -24,6 +24,9 @@ import {
   updateThermostatSetting,
   DEFAULT_THERMOSTAT_SETTINGS,
 } from "../lib/thermostatSettings";
+import { getComfortSettings } from "../lib/ecobeeApi";
+import { getEcobeeCredentials } from "../lib/ecobeeApi";
+import { getThermostatStatus, checkBridgeHealth } from "../lib/jouleBridgeApi";
 import ScheduleEditor from "./ScheduleEditor";
 
 // Settings guide links - maps setting keys to their guide documents
@@ -310,6 +313,8 @@ export default function ThermostatSettingsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [importSuccess, setImportSuccess] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [pullingComfortSettings, setPullingComfortSettings] = useState(false);
+  const [comfortSettingsError, setComfortSettingsError] = useState(null);
   const [expandedSections, setExpandedSections] = useState({
     equipment: false,
     thresholds: false,
@@ -500,6 +505,105 @@ export default function ThermostatSettingsPanel() {
     // Validation will run via useEffect
   };
 
+  // Pull comfort settings from thermostat (Joule Bridge/HomeKit or Ecobee API)
+  const pullComfortSettingsFromEcobee = async () => {
+    setPullingComfortSettings(true);
+    setComfortSettingsError(null);
+    
+    try {
+      // First, try Joule Bridge (HomeKit) - preferred method
+      const bridgeAvailable = await checkBridgeHealth();
+      
+      if (bridgeAvailable) {
+        try {
+          const status = await getThermostatStatus(null);
+          if (status && status.target_temperature !== null && status.target_temperature !== undefined) {
+            // HomeKit doesn't have separate comfort settings, so use current target temp for "home"
+            const targetTemp = status.target_temperature;
+            const mode = status.mode || "heat";
+            
+            const updatedSettings = { ...settings };
+            
+            // Use current target temperature for home comfort setting
+            if (mode === "heat" || mode === "auto") {
+              updatedSettings.comfortSettings.home.heatSetPoint = Math.round(targetTemp);
+            }
+            if (mode === "cool" || mode === "auto") {
+              updatedSettings.comfortSettings.home.coolSetPoint = Math.round(targetTemp + 4); // Typical 4°F spread
+            }
+            
+            saveThermostatSettings(updatedSettings);
+            setSettings(updatedSettings);
+            
+            setImportSuccess(true);
+            setTimeout(() => setImportSuccess(false), 3000);
+            return;
+          }
+        } catch (bridgeError) {
+          console.debug("Joule Bridge available but failed to get status, trying Ecobee API:", bridgeError);
+          // Fall through to Ecobee API
+        }
+      }
+      
+      // Fallback to Ecobee API
+      const credentials = getEcobeeCredentials();
+      if (!credentials.apiKey || !credentials.accessToken) {
+        throw new Error(
+          "No thermostat connection available. " +
+          "Either connect via Joule Bridge (HomeKit) or configure your Ecobee API key in Settings → Bridge & AI → Ecobee Cloud API."
+        );
+      }
+
+      const comfortSettings = await getComfortSettings();
+      
+      if (!comfortSettings || (!comfortSettings.home && !comfortSettings.away && !comfortSettings.sleep)) {
+        throw new Error("No comfort settings found on Ecobee. Make sure your thermostat has home, away, and sleep climates configured.");
+      }
+
+      // Update settings with pulled data
+      const updatedSettings = { ...settings };
+      
+      if (comfortSettings.home) {
+        updatedSettings.comfortSettings.home = {
+          ...updatedSettings.comfortSettings.home,
+          heatSetPoint: comfortSettings.home.heatSetPoint,
+          coolSetPoint: comfortSettings.home.coolSetPoint,
+          fanMode: comfortSettings.home.fanMode,
+        };
+      }
+      
+      if (comfortSettings.away) {
+        updatedSettings.comfortSettings.away = {
+          ...updatedSettings.comfortSettings.away,
+          heatSetPoint: comfortSettings.away.heatSetPoint,
+          coolSetPoint: comfortSettings.away.coolSetPoint,
+          fanMode: comfortSettings.away.fanMode,
+        };
+      }
+      
+      if (comfortSettings.sleep) {
+        updatedSettings.comfortSettings.sleep = {
+          ...updatedSettings.comfortSettings.sleep,
+          heatSetPoint: comfortSettings.sleep.heatSetPoint,
+          coolSetPoint: comfortSettings.sleep.coolSetPoint,
+          fanMode: comfortSettings.sleep.fanMode,
+        };
+      }
+
+      saveThermostatSettings(updatedSettings);
+      setSettings(updatedSettings);
+      
+      // Show success message
+      setImportSuccess(true);
+      setTimeout(() => setImportSuccess(false), 3000);
+    } catch (error) {
+      console.error("Error pulling comfort settings:", error);
+      setComfortSettingsError(error.message || "Failed to pull comfort settings from thermostat");
+    } finally {
+      setPullingComfortSettings(false);
+    }
+  };
+
   // Filter sections based on search query
   const matchesSearch = (sectionKey, sectionLabel) => {
     if (!searchQuery) return true;
@@ -666,19 +770,19 @@ export default function ThermostatSettingsPanel() {
             onClick={() => applyPreset("energy-saver")}
             className="px-3 py-2 text-xs font-medium rounded-lg bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
           >
-            ⚡ Energy Saver
+            ⚡ Energy Saver (Model)
           </button>
           <button
             onClick={() => applyPreset("comfort")}
             className="px-3 py-2 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
           >
-            😌 Comfort
+            😌 Comfort (Model)
           </button>
           <button
             onClick={() => applyPreset("aggressive")}
             className="px-3 py-2 text-xs font-medium rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
           >
-            ⚡ Aggressive
+            ⚡ Aggressive Savings (Model)
           </button>
           <button
             onClick={() => applyPreset("default")}
@@ -1147,6 +1251,33 @@ export default function ThermostatSettingsPanel() {
           </button>
           {expandedSections.comfort && (
             <div className="p-4 border-t dark:border-gray-700 space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Configure temperature setpoints and fan modes for home, away, and sleep modes.
+                </p>
+                <button
+                  onClick={pullComfortSettingsFromEcobee}
+                  disabled={pullingComfortSettings}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {pullingComfortSettings ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Pulling...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Pull from Thermostat
+                    </>
+                  )}
+                </button>
+              </div>
+              {comfortSettingsError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+                  {comfortSettingsError}
+                </div>
+              )}
               {Object.entries(settings.comfortSettings).map(
                 ([key, comfort]) => (
                   <div

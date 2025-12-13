@@ -1824,7 +1824,7 @@ const SystemPerformanceAnalyzer = () => {
       setLastAnalysisWasMeasured(wasMeasured);
       
       if (results.usingDoeFallback || !wasMeasured) {
-        setSuccessMessage("Analysis complete using estimated building heat loss. Upload a file with a longer 'heat off' period (3+ hours) to get a measured value.");
+        setSuccessMessage("Analysis complete! Tip (optional): If your data includes a long \"system off\" stretch (about 3 hours), Joule can measure your home's heat loss more accurately. If not, you'll still get a solid estimate using standard building assumptions.");
       } else {
         setSuccessMessage("Success! The calculated Heat Loss Factor is now available in the other calculator tools.");
       }
@@ -2140,14 +2140,15 @@ const SystemPerformanceAnalyzer = () => {
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">System Performance Analyzer</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-3">
-            Joule reads your thermostat data and explains your heat pump in plain English — what it's doing, whether it's wasting money, and what to change.
+            Upload a thermostat CSV to get a simple checkup: how your system's doing, what's normal, and what might be worth fixing.
           </p>
           <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
-            <p>Joule is a translator between your weird heat pump and your power bill. It:</p>
+            <p>Joule turns your thermostat history into plain English: what your system is doing, whether it looks normal, and a few safe next steps.</p>
+            <p className="mt-2">Think of Joule as a translator between your thermostat and your power bill. It:</p>
             <ul className="list-disc list-inside ml-2 space-y-0.5">
-              <li><strong>Listens</strong> to your thermostat history and local weather</li>
-              <li><strong>Runs the physics</strong> to see how your house actually loses heat</li>
-              <li><strong>Tells you what to do</strong> tonight to cut waste without freezing anyone</li>
+              <li><strong>Looks at</strong> your thermostat history and local weather</li>
+              <li><strong>Estimates</strong> how quickly your home loses heat</li>
+              <li><strong>Flags common issues</strong> (like excessive aux heat) and suggests simple adjustments</li>
             </ul>
           </div>
         </div>
@@ -2165,7 +2166,7 @@ const SystemPerformanceAnalyzer = () => {
           <div className="flex-1">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Step 1: Download Your Thermostat Data</h3>
             <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-              Go to the ecobee app and click on "Download Data" to export your CSV file.
+              In the ecobee app, export your thermostat history as a CSV, then upload it here.
             </p>
             <div className="flex flex-wrap gap-3">
               <a className="inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors shadow-sm" href="https://www.ecobee.com/login/" target="_blank" rel="noopener noreferrer">
@@ -2184,6 +2185,9 @@ const SystemPerformanceAnalyzer = () => {
           </div>
           Upload Data File {zones.length > 1 && activeZone && `(${activeZone.name})`}
         </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Your CSV stays on your device unless you choose to share it.
+        </p>
         <div className="flex flex-wrap items-center gap-4">
           <input
             type="file"
@@ -2437,8 +2441,7 @@ const SystemPerformanceAnalyzer = () => {
               </>
             ) : (
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                <strong>Note:</strong> Without a valid 3+ hour coast-down period, the "From CSV Analyzer" option will be unavailable in other tools. 
-                You can still use the DOE-calculated or manual heat loss methods.
+                <strong>Note:</strong> Some advanced features need a longer "system off" window to measure heat loss directly. If your file doesn't have one, Joule will use a conservative estimate instead.
               </p>
             )}
             <button
@@ -2838,7 +2841,7 @@ const SystemPerformanceAnalyzer = () => {
                 <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 rounded-xl p-8 mb-6 border-2 border-amber-300 dark:border-amber-700 shadow-lg">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Tonight's move</h3>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Suggested adjustments</h3>
                       <p className="text-lg text-gray-800 dark:text-gray-200 mb-2 font-semibold">
                         {primaryRecommendation.title}
                       </p>
@@ -2890,7 +2893,7 @@ const SystemPerformanceAnalyzer = () => {
                     onClick={() => setShowNerdMode(!showNerdMode)}
                     className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 underline"
                   >
-                    {showNerdMode ? 'Hide nerd view ↑' : 'Show full nerd view ↓'}
+                    {showNerdMode ? 'Hide technical details ↑' : 'Show technical details ↓'}
                   </button>
                 </div>
 
@@ -4026,7 +4029,7 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
       <div className="mt-8">
         <div className="card card-hover p-6 fade-in">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">Manual Building Heat Loss Estimator</h2>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">Estimate your home's heat loss (optional)</h2>
             <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline" onClick={() => setShowManualEstimator(v => !v)}>{showManualEstimator ? 'Hide' : 'Use Manual Estimator'}</button>
           </div>
           {showManualEstimator && (
