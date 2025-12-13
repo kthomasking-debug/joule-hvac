@@ -76,6 +76,8 @@ pushd android >/dev/null
 if [ ! -f ./gradlew ]; then
   error_exit "gradlew not found in android/. Are you in a Capacitor project?"
 fi
+# Ensure gradlew is executable (needed for CI/GitHub Actions)
+chmod +x ./gradlew
 ./gradlew clean
 ./gradlew assembleDebug
 popd >/dev/null
