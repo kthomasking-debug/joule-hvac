@@ -47,13 +47,16 @@ export default defineConfig({
       // Add longer timeout for Firefox to account for server startup
       timeout: 45000,
     },
-    {
-      name: "webkit",
-      use: { ...devices["Desktop Safari"] },
-    },
+    // Only run WebKit on macOS (or Windows) - skip on Linux due to missing runtime libs
+    // WebKit on Linux requires specific library versions that aren't always available
+    ...(process.platform !== "linux"
+      ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }]
+      : []),
     {
       name: "chromium-mobile",
       use: { ...devices["Pixel 5"] },
+      // Mobile tests may need longer timeouts due to slower rendering
+      timeout: 60000,
     },
   ],
 

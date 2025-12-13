@@ -113,10 +113,13 @@ test.describe("Smoke Tests - Production Build", () => {
   });
 
   test("budget page loads", async ({ page, browserName }) => {
-    // Firefox may need longer timeout
-    const timeout = browserName === "firefox" ? 45000 : 30000;
+    // Firefox and mobile may need longer timeout
+    const isMobile = page.viewportSize()?.width < 768;
+    const timeout = browserName === "firefox" || isMobile ? 60000 : 30000;
     const waitUntil =
-      browserName === "firefox" ? "domcontentloaded" : "networkidle";
+      browserName === "firefox" || isMobile
+        ? "domcontentloaded"
+        : "networkidle";
 
     try {
       await page.goto("/analysis/budget", {
@@ -139,17 +142,20 @@ test.describe("Smoke Tests - Production Build", () => {
     await acceptTermsIfPresent(page);
 
     // Wait for lazy-loaded component and React hydration
-    // Firefox needs more time for lazy loading
-    await page.waitForTimeout(browserName === "firefox" ? 4000 : 2000);
+    // Firefox and mobile need more time for lazy loading
+    const waitTime = browserName === "firefox" ? 4000 : isMobile ? 5000 : 2000;
+    await page.waitForTimeout(waitTime);
 
     // Ensure page is loaded
     await expect(page.locator("body")).toBeVisible({ timeout: 10000 });
 
-    // Wait for network to settle
-    try {
-      await page.waitForLoadState("networkidle", { timeout: 10000 });
-    } catch {
-      // Ignore if networkidle times out - page might still be loaded
+    // Wait for network to settle (skip on mobile - networkidle can be flaky)
+    if (!isMobile) {
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 10000 });
+      } catch {
+        // Ignore if networkidle times out - page might still be loaded
+      }
     }
 
     // Try multiple strategies to find budget content
