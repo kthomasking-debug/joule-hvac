@@ -128,3 +128,44 @@ Respond ONLY in Orthodox chant style. Start every line with "Oh" or refrain. Man
     };
   }
 }
+
+/**
+ * Legacy alias for answerWithAgent - maintained for backward compatibility
+ * @param {string} userQuestion - The user's question
+ * @param {string} apiKey - Groq API key
+ * @param {string} model - Optional model name (deprecated, uses llama-3.3-70b-versatile)
+ * @returns {Promise<object>} Response object with success/error and message
+ */
+export async function askJouleFallback(userQuestion, apiKey, model = null) {
+  if (!apiKey || !apiKey.trim()) {
+    return {
+      error: true,
+      message: "Groq API key missing. Please add your API key in Settings.",
+      needsSetup: true,
+    };
+  }
+
+  try {
+    const result = await answerWithAgent(userQuestion, apiKey);
+    // Convert answerWithAgent format to legacy format
+    if (result.success) {
+      return {
+        success: true,
+        message: result.message,
+        response: result.message, // Legacy field
+      };
+    } else {
+      // Ensure error message matches expected format
+      const errorMsg = result.message || "Request failed";
+      return {
+        error: true,
+        message: errorMsg.includes("failed") ? errorMsg : `Request failed: ${errorMsg}`,
+      };
+    }
+  } catch (error) {
+    return {
+      error: true,
+      message: `Request failed: ${error.message}`,
+    };
+  }
+}

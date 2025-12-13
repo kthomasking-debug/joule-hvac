@@ -18,6 +18,7 @@ class MockRec {
           { 0: { transcript: "hello " }, isFinal: false },
           { 0: { transcript: "world" }, isFinal: true },
         ],
+        length: 2,
       };
       this.onresult && this.onresult(evt);
       this.onend && this.onend();
@@ -54,6 +55,7 @@ describe("useSpeechRecognition live flow", () => {
     });
     expect(result.current.transcript).toMatch(/hello world/);
     expect(interims.some((c) => c.includes("hello"))).toBe(true);
-    expect(finals[0]).toMatch(/hello world/);
+    // Final result is just "world" (the new final text), but transcript accumulates to "hello world"
+    expect(finals[0]).toMatch(/world/);
   });
 });

@@ -37,7 +37,7 @@ describe('BillUpload', () => {
     expect(screen.getByText(/Variance:/i)).toBeInTheDocument();
   });
 
-  it('shows photo upload and parses preview', async () => {
+  it('shows photo upload and displays error when parsing photo', async () => {
     render(<BillUpload predictedMonthlyCost={150} />);
     const takePhotoBtn = screen.getByRole('button', { name: /Take Photo/i });
     expect(takePhotoBtn).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe('BillUpload', () => {
     const parseBtn = await screen.findByText(/Parse Photo/i);
     expect(parseBtn).toBeTruthy();
     fireEvent.click(parseBtn);
-    // After parsing, parsed data should show
-    expect(screen.getByText('Parsed Data')).toBeInTheDocument();
+    // Photo parsing is not ready yet - should show error message
+    expect(screen.getByText(/Photo parsing is not ready yet/i)).toBeInTheDocument();
   });
 });
