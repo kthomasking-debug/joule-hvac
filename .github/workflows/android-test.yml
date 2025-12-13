@@ -30,6 +30,19 @@ jobs:
           api-level: 29
           arch: x86_64
           profile: Nexus 6
+          emulator-options: >-
+            -no-snapshot-save
+            -no-snapshot-load
+            -no-window
+            -gpu swiftshader_indirect
+            -no-audio
+            -memory 2048
+            -cores 2
+          disable-animations: true
+          disable-spellchecker: true
+          disable-linux-hw-accel: false
+          # Increase boot timeout to 10 minutes (600 seconds) for slower CI environments
+          emulator-boot-timeout: 600
           script: |
             echo "Starting Android tests..."
             npm run test:ci || true
