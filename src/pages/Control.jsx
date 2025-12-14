@@ -46,7 +46,7 @@ const Control = () => {
 
   return (
     <div className="min-h-screen bg-[#050B10]">
-      <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-4">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8 py-4">
         {/* Tab Navigation - Integrated with page header */}
         <div className="mb-3">
           <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900/80 p-1">

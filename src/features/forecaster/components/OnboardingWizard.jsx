@@ -535,7 +535,7 @@ const BuildingSubstep = ({
           <option value={1.1}>Ranch / Single-Story</option>
           <option value={0.9}>Two-Story</option>
           <option value={1.0}>Split-Level</option>
-          <option value={1.25}>Cabin / A-Frame</option>
+          <option value={2.2}>Cabin / A-Frame</option>
           <option value={1.15}>Manufactured Home</option>
         </select>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Affects surface area exposure</p>

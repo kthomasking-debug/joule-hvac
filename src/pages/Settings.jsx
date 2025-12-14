@@ -1469,7 +1469,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             <option value={1.0}>Split-Level / Standard</option>
             <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
             <option value={1.15}>Manufactured Home</option>
-            <option value={1.25}>Cabin / A-Frame</option>
+            <option value={2.2}>Cabin / A-Frame</option>
           </select>
           <p className="text-xs text-[#A7B0BA] mt-1.5">
             Affects surface area exposure and heat loss. Single-story homes have more roof/floor area per square foot.

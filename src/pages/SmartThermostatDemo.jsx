@@ -376,7 +376,7 @@ const SmartThermostatDemo = () => {
         setTargetTemp(activeIntegration.targetCoolTemp);
       }
     }
-  }, [activeIntegration, mode]);
+  }, [activeIntegration, activeIntegration?.targetHeatTemp, activeIntegration?.targetCoolTemp, mode]);
 
   // Listen for HVAC mode changes from Ask Joule commands
   useEffect(() => {
@@ -1024,7 +1024,16 @@ const SmartThermostatDemo = () => {
       const coolTemp = mode === 'cool' || mode === 'auto' ? newTemp : (activeIntegration.targetCoolTemp || newTemp);
       activeIntegration.setTemperature(heatTemp, coolTemp).catch(err => {
         console.error('Failed to set temperature:', err);
+        // Show user-friendly error message
+        if (err.message && err.message.includes("No device paired")) {
+          alert('Cannot set temperature: No device is paired. Please pair your Ecobee in Settings → ProStat Bridge.');
+        } else {
+          alert(`Failed to set temperature: ${err.message || 'Unknown error'}`);
+        }
       });
+    } else if (bridgeAvailable && !activeIntegration) {
+      // Bridge is available but no integration - device might not be paired
+      alert('Cannot set temperature: Device is not connected. Please check your bridge connection in Settings → ProStat Bridge.');
     }
     // Also update userSettings if setUserSetting is available
     if (setUserSetting) {
@@ -1033,7 +1042,7 @@ const SmartThermostatDemo = () => {
         comment: "Set target temperature via slider",
       });
     }
-  }, [activeIntegration, mode, setUserSetting]);
+  }, [activeIntegration, mode, setUserSetting, bridgeAvailable]);
 
 
   // Calculate estimated cost per hour (simplified)
@@ -1217,6 +1226,11 @@ const SmartThermostatDemo = () => {
                     Target <span className="font-semibold text-slate-100">
                       {formatTemperatureFromF(isAway ? effectiveTarget : targetTemp, unitSystem, { decimals: 0 })}
                     </span>
+                    {forecast && forecast[1] && (
+                      <> · Outdoor <span className="font-semibold text-slate-100">
+                        {formatTemperatureFromF(forecast[1].temp, unitSystem, { decimals: 0 })}
+                      </span></>
+                    )}
                   </p>
                 </div>
 

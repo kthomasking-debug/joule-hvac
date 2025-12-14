@@ -2971,7 +2971,7 @@ const SystemPerformanceAnalyzer = () => {
                       exportedAt: new Date().toISOString(),
                       homeInfo: {
                         squareFeet: userSettings?.squareFeet,
-                        buildingType: userSettings?.homeShape >= 1.2 ? 'Cabin/A-Frame' : 
+                        buildingType: userSettings?.homeShape >= 2.0 ? 'Cabin/A-Frame' : 
                                      userSettings?.homeShape >= 1.12 ? 'Manufactured' :
                                      userSettings?.homeShape >= 1.05 ? 'Ranch' :
                                      userSettings?.homeShape >= 0.95 ? 'Split-Level' : 'Two-Story',
@@ -3663,7 +3663,7 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
                         const ceilingHeight = userSettings?.ceilingHeight || 8;
                         
                         const buildingType = 
-                          homeShape >= 1.2 ? 'Cabin / A-Frame' :
+                          homeShape >= 2.0 ? 'Cabin / A-Frame' :
                           homeShape >= 1.12 ? 'Manufactured Home' :
                           homeShape >= 1.05 ? 'Ranch / Single-Story' :
                           homeShape >= 0.95 ? 'Split-Level' :
@@ -3684,8 +3684,8 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
                           <div className="border-t border-blue-700/30 pt-3">
                             <p className="font-semibold text-gray-200 text-sm mb-1">Building Type: {buildingType}</p>
                             <p className="text-sm mb-2">
-                              {homeShape >= 1.2 ? (
-                                <>🏔️ <strong>Cabins and A-Frames</strong> have the <strong>highest surface-area-to-volume ratios</strong> due to steep roofs and complex geometries. The large sloped roof area adds significant heat loss compared to a conventional home. Expected multiplier: ~1.25× typical heat loss.</>
+                              {homeShape >= 2.0 ? (
+                                <>🏔️ <strong>Cabins and A-Frames</strong> have the <strong>highest surface-area-to-volume ratios</strong> due to steep roofs and complex geometries. The large sloped roof area adds significant heat loss compared to a conventional home. Expected multiplier: ~2.2× typical heat loss.</>
                               ) : homeShape >= 1.12 ? (
                                 <>🏭 <strong>Manufactured homes</strong> often have higher heat loss due to thinner walls, minimal insulation in floor systems, and gaps from assembly. The elongated rectangular shape also increases exterior wall area. Expected multiplier: ~1.15× typical heat loss.</>
                               ) : homeShape >= 1.05 ? (
@@ -3747,7 +3747,7 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
                     {(() => {
                       const homeShape = userSettings?.homeShape || 0.9;
                       const buildingType = 
-                        homeShape >= 1.2 ? 'Cabin / A-Frame' :
+                        homeShape >= 2.0 ? 'Cabin / A-Frame' :
                         homeShape >= 1.12 ? 'Manufactured Home' :
                         homeShape >= 1.05 ? 'Ranch / Single-Story' :
                         homeShape >= 0.95 ? 'Split-Level' :
@@ -4059,7 +4059,7 @@ Heat Loss per Sq Ft,${result.heatLossFactor && userSettings?.squareFeet ? (resul
                     <option value={1.1}>Ranch / Single-Story</option>
                     <option value={0.9}>Two-Story</option>
                     <option value={1.0}>Split-Level</option>
-                    <option value={1.25}>Cabin / A-Frame</option>
+                    <option value={2.2}>Cabin / A-Frame</option>
                     <option value={1.15}>Manufactured Home</option>
                   </select>
                 </div>

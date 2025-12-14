@@ -34,13 +34,23 @@ The service will start on `http://0.0.0.0:8080`
 
 ## Pairing Process
 
-### Step 1: Enable HomeKit on Ecobee
+### Step 1: Enable HomeKit Pairing Mode on Ecobee
 
-1. On your Ecobee thermostat, go to: **Menu → Settings → HomeKit**
-2. Select **"Enable Pairing"**
+1. On your Ecobee thermostat, go to: **Menu → Settings → Installation Settings → HomeKit**
+2. Make sure HomeKit is **enabled** and pairing mode is **active**
 3. The thermostat will display:
-   - A QR code
-   - An 8-digit pairing code (format: XXX-XX-XXX)
+   - A QR code (for Apple Home app)
+   - An **8-digit pairing code** (format: XXX-XX-XXX, e.g., `640-54-831`)
+   - **Important:** Write down this code - you'll need it for pairing
+
+**⚠️ Important Notes:**
+- If your Ecobee is already paired to Apple HomeKit, you **must unpair it first**:
+  1. Open the **Home** app on your iPhone/iPad
+  2. Find your Ecobee → Long-press → **Settings** → **Remove Accessory**
+  3. Wait 30 seconds for the device to reset
+  4. Then enable pairing mode on the Ecobee again
+- HomeKit devices can only be paired to **ONE controller at a time**
+- The pairing code may change when you enable/disable pairing mode
 
 ### Step 2: Discover Device
 
@@ -50,29 +60,97 @@ From your web app or via API:
 curl http://localhost:8080/api/discover
 ```
 
-This will list all HomeKit devices on your network, including your Ecobee.
+**Response:**
+```json
+{
+  "devices": [
+    {
+      "device_id": "cc:73:51:2d:3b:0b",
+      "name": "My ecobee",
+      "model": "Unknown",
+      "category": "Unknown"
+    }
+  ]
+}
+```
+
+**Note:** The `device_id` may change each time you enable pairing mode. Always use the ID from the most recent discovery.
 
 ### Step 3: Pair with Device
 
+**Via API:**
 ```bash
 curl -X POST http://localhost:8080/api/pair \
   -H "Content-Type: application/json" \
   -d '{
-    "device_id": "XX:XX:XX:XX:XX:XX",
-    "pairing_code": "123-45-678"
+    "device_id": "cc:73:51:2d:3b:0b",
+    "pairing_code": "640-54-831"
   }'
 ```
 
-Replace:
+**Via Web App:**
+1. Go to Settings → Joule Bridge Settings
+2. Click "Discover" to find your Ecobee
+3. Enter the 8-digit pairing code from your Ecobee screen
+4. Click "Pair"
 
-- `device_id` with the ID from the discover step
-- `pairing_code` with the 8-digit code from your Ecobee
+**Important:**
+- Use the **exact** pairing code shown on your Ecobee screen
+- Format: `XXX-XX-XXX` (with dashes)
+- The pairing process takes up to 45 seconds - be patient
+- Keep the Ecobee screen showing the pairing code during the process
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "device_id": "cc:73:51:2d:3b:0b"
+}
+```
 
 ### Step 4: Verify Pairing
 
 ```bash
 curl http://localhost:8080/api/paired
 ```
+
+**Response:**
+```json
+{
+  "devices": [
+    {
+      "device_id": "cc:73:51:2d:3b:0b",
+      "name": "My ecobee",
+      "model": "Unknown",
+      "category": "Unknown"
+    }
+  ]
+}
+```
+
+### Step 5: Test Connection
+
+```bash
+curl "http://localhost:8080/api/status?device_id=cc:73:51:2d:3b:0b"
+```
+
+**Expected Response:**
+```json
+{
+  "device_id": "cc:73:51:2d:3b:0b",
+  "temperature": 67.46,
+  "target_temperature": 68.0,
+  "target_mode": 1,
+  "current_mode": 0,
+  "mode": "heat"
+}
+```
+
+If you get `null`, see the "Status Returns Null" section in Troubleshooting.
+
+### Pairing Persistence
+
+Pairings are automatically saved to `prostat-bridge/data/pairings.json` and will persist across bridge restarts. The bridge automatically loads existing pairings on startup.
 
 ## API Endpoints
 
@@ -141,7 +219,15 @@ Body: {
 
 ### systemd Service (Linux)
 
-Create `/etc/systemd/system/prostat-bridge.service`:
+The bridge can run as a systemd service to auto-start on boot.
+
+**Create the service file:**
+
+```bash
+sudo nano /etc/systemd/system/prostat-bridge.service
+```
+
+**Service file contents:**
 
 ```ini
 [Unit]
@@ -150,43 +236,213 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/prostat-bridge
-ExecStart=/usr/bin/python3 /home/pi/prostat-bridge/server.py
+User=thomas
+WorkingDirectory=/home/thomas/git/joule-hvac/prostat-bridge
+ExecStart=/home/thomas/git/joule-hvac/prostat-bridge/venv/bin/python3 /home/thomas/git/joule-hvac/prostat-bridge/server.py
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+**Important:** Update the paths in the service file to match your installation:
+- `User=` - Your Linux username
+- `WorkingDirectory=` - Path to the `prostat-bridge` directory
+- `ExecStart=` - Full path to Python in your virtual environment
+
+**Enable and start:**
 
 ```bash
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the service to start on boot
 sudo systemctl enable prostat-bridge
+
+# Start the service
 sudo systemctl start prostat-bridge
+
+# Check status
 sudo systemctl status prostat-bridge
+
+# View logs
+journalctl -u prostat-bridge -f
+```
+
+**Service Management:**
+
+```bash
+# Stop the service
+sudo systemctl stop prostat-bridge
+
+# Restart the service
+sudo systemctl restart prostat-bridge
+
+# Disable auto-start on boot
+sudo systemctl disable prostat-bridge
+
+# View recent logs
+journalctl -u prostat-bridge -n 50
+```
+
+### Manual Start (Development/Testing)
+
+For development or testing, you can run the bridge manually:
+
+```bash
+cd prostat-bridge
+source venv/bin/activate
+python3 server.py
+```
+
+Or run in the background:
+
+```bash
+cd prostat-bridge
+source venv/bin/activate
+nohup python3 server.py > /tmp/bridge.log 2>&1 &
+```
+
+**Check if running:**
+```bash
+curl http://localhost:8080/health
+```
+
+**View logs:**
+```bash
+tail -f /tmp/bridge.log
 ```
 
 ## Troubleshooting
 
 ### Device Not Found
 
-- Ensure Ecobee and Pi are on the same network
-- Check that HomeKit is enabled on Ecobee
-- Try restarting the discovery process
+**Symptoms:** Device doesn't appear in `/api/discover` results
+
+**Solutions:**
+- Ensure Ecobee and Bridge are on the same Wi-Fi network
+- Check that HomeKit is enabled on Ecobee (Menu → Settings → Installation Settings → HomeKit)
+- Verify the Ecobee is powered on and connected to Wi-Fi
+- Try restarting the discovery process: `curl http://localhost:8080/api/discover`
+- Check bridge logs: `tail -f /tmp/bridge.log` (or `journalctl -u prostat-bridge -f` if running as service)
 
 ### Pairing Fails
 
-- Verify the pairing code is correct (8 digits, format XXX-XX-XXX)
-- Ensure the Ecobee is in pairing mode
-- Check that no other HomeKit controller is already paired
+**Symptoms:** Pairing request returns error or times out
 
-### Connection Drops
+**Common Causes & Solutions:**
 
-- Check network connectivity
-- Verify the Pi has a stable IP address (consider static IP)
-- Check logs: `journalctl -u prostat-bridge -f`
+1. **Device Not in Pairing Mode**
+   - On Ecobee: Menu → Settings → Installation Settings → HomeKit
+   - Make sure pairing mode is **ACTIVE** (you should see a pairing code on screen)
+   - The pairing code format is XXX-XX-XXX (e.g., `640-54-831`)
+
+2. **Device Already Paired to Apple HomeKit**
+   - HomeKit devices can only be paired to ONE controller at a time
+   - If your Ecobee is paired to Apple HomeKit, you must unpair it first:
+     1. Open the **Home** app on your iPhone/iPad
+     2. Find your Ecobee thermostat
+     3. Long-press → **Settings** → **Remove Accessory**
+     4. Wait 30 seconds for the device to reset
+     5. Enable pairing mode on the Ecobee again
+     6. Use the **NEW** pairing code shown on the Ecobee screen (it may have changed)
+
+3. **Incorrect Pairing Code Format**
+   - The pairing code must be in format: `XXX-XX-XXX` (with dashes)
+   - Example: `640-54-831` (not `64054831`)
+   - Enter the exact code shown on your Ecobee screen
+
+4. **Network Connectivity Issues**
+   - Ensure Ecobee and Bridge are on the same Wi-Fi network
+   - Check that both devices have stable network connections
+   - Try restarting both the Ecobee and the Bridge
+
+5. **Pairing Initialization Timeout**
+   - The pairing process has a 45-second timeout
+   - If it times out, check:
+     - Is the Ecobee actually in pairing mode? (Check the screen)
+     - Are both devices on the same network?
+     - Is the pairing code correct?
+   - Try restarting the Ecobee and enabling pairing mode again
+
+**Error Messages Explained:**
+
+- `"Pairing initialization timed out"` - The device didn't respond within 45 seconds. Check pairing mode and network.
+- `"Device is already paired to another controller"` - Unpair from Apple HomeKit first (see #2 above).
+- `"Device not found. Please discover devices first"` - Run discovery first, then use the device_id from the results.
+
+### Pairing Not Persisting After Restart
+
+**Symptoms:** Device pairs successfully but disappears after bridge restart
+
+**Solution:**
+- This was a known issue that has been fixed. Pairings are now saved directly to disk.
+- If you experience this issue:
+  1. Check that `prostat-bridge/data/pairings.json` exists and contains your device
+  2. Verify file permissions: `ls -la prostat-bridge/data/pairings.json`
+  3. Check bridge logs for save errors: `grep -i "save\|pairing" /tmp/bridge.log`
+  4. Try pairing again - the fix ensures pairings are saved correctly
+
+### Connection Drops / Device Unreachable
+
+**Symptoms:** Device shows as "paired but not reachable" or status returns `null`
+
+**Solutions:**
+- The bridge automatically refreshes device IP addresses when connection fails
+- Wait a few seconds for automatic reconnection
+- If it persists:
+  1. Check that the Ecobee is powered on and connected to Wi-Fi
+  2. Verify the Ecobee's IP address hasn't changed (check your router)
+  3. Try unpairing and re-pairing the device
+  4. Check bridge logs: `tail -f /tmp/bridge.log | grep -i "connect\|error"`
+
+### Status Returns Null
+
+**Symptoms:** `/api/status` returns `null` even though device is paired
+
+**Solutions:**
+- This usually means the device IP address changed or the device is offline
+- The bridge will automatically try to refresh the IP address
+- Check bridge logs for connection errors
+- Verify the Ecobee is online and reachable on your network
+- Try restarting the bridge: `sudo systemctl restart prostat-bridge` (or kill and restart manually)
+
+### Multiple Devices Listed (Only One Ecobee)
+
+**Symptoms:** `/api/paired` shows multiple device IDs but you only have one Ecobee
+
+**Solution:**
+- This happens when old/stale pairings remain in the system
+- Unpair the old device IDs that are unreachable
+- Keep only the device that's currently working
+- The primary device is automatically set to the first one in the list
+
+### Checking Logs
+
+**Development/Manual Start:**
+```bash
+tail -f /tmp/bridge.log
+```
+
+**systemd Service:**
+```bash
+journalctl -u prostat-bridge -f
+```
+
+**Filter for specific issues:**
+```bash
+# Pairing issues
+grep -i "pair\|error" /tmp/bridge.log
+
+# Connection issues
+grep -i "connect\|timeout" /tmp/bridge.log
+
+# Device discovery
+grep -i "discover\|found device" /tmp/bridge.log
+```
 
 ## Architecture
 

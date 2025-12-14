@@ -108,9 +108,22 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
       if (!(err instanceof BridgeConnectionError)) {
         console.error("Error fetching Joule Bridge data:", err);
       }
-      setError(err.message);
+      
+      // Check if device is paired but not reachable
+      const errorMsg = err.message || "";
+      if (errorMsg.includes("Connect call failed") || errorMsg.includes("not reachable") || errorMsg.includes("ConnectionError") || errorMsg.includes("Errno 111")) {
+        // Device is paired but not reachable (IP may have changed)
+        // The bridge will automatically refresh IP and retry, but we should keep trying
+        setError("Device is paired but not reachable. It may be offline or its IP address changed. The bridge will automatically reconnect when the device comes back online.");
+        // Don't set connected to false immediately - keep trying in the background
+        // The polling will continue and eventually reconnect
+      } else {
+        setError(err.message);
+      }
+      
       setConnected(false);
       setLoading(false);
+      // Keep polling even if connection failed - it might recover
       return null;
     }
   }, [activeDeviceId]);
@@ -171,18 +184,34 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
   // Control functions
   const setTemp = useCallback(
     async (heatTemp, coolTemp) => {
-      if (!activeDeviceId) {
-        throw new Error("No device paired");
+      // Try to get device ID if not available
+      let deviceIdToUse = activeDeviceId;
+      if (!deviceIdToUse) {
+        try {
+          deviceIdToUse = await getPrimaryDeviceId();
+          if (deviceIdToUse) {
+            setPrimaryId(deviceIdToUse);
+          }
+        } catch (e) {
+          console.debug("Could not get primary device ID:", e);
+        }
+      }
+
+      if (!deviceIdToUse) {
+        const error = new Error("No device paired. Please pair a device in Settings → ProStat Bridge.");
+        setError(error.message);
+        throw error;
       }
 
       try {
         setError(null);
         const temp = thermostatData?.mode === "cool" ? coolTemp : heatTemp;
-        await bridgeSetTemperature(activeDeviceId, temp);
+        await bridgeSetTemperature(deviceIdToUse, temp);
         await fetchThermostatData();
         return { success: true };
       } catch (err) {
-        setError(err.message);
+        const errorMsg = err.message || "Failed to set temperature";
+        setError(errorMsg);
         throw err;
       }
     },

@@ -381,7 +381,7 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/mission-control");
+    navigate("/control/thermostat");
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
@@ -502,7 +502,7 @@ export default function Onboarding() {
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
-            onClick={() => navigate("/mission-control")}
+            onClick={() => navigate("/control/thermostat")}
             className="btn btn-primary px-8 py-3 text-lg"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />
@@ -721,7 +721,7 @@ export default function Onboarding() {
                   <option value={1.0}>Split-Level / Standard</option>
                   <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
                   <option value={1.15}>Manufactured Home</option>
-                  <option value={1.25}>Cabin / A-Frame</option>
+                  <option value={2.2}>Cabin / A-Frame</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Affects surface area exposure and heat loss.

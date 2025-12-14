@@ -11,6 +11,49 @@ This workspace contains a React + Vite app and supporting scripts for HVAC/energ
 - Run tests: `npm test`
 - Build: `npm run build`
 
+## Joule Bridge (HomeKit Integration)
+
+The Joule Bridge enables local-only thermostat control via HomeKit. The bridge server runs on **port 8080** by default.
+
+### Quick Start
+
+1. **Install Dependencies:**
+   ```bash
+   cd prostat-bridge
+   pip3 install -r requirements.txt
+   # Or use virtual environment:
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. **Start the Bridge:**
+   ```bash
+   cd prostat-bridge
+   source venv/bin/activate  # if using venv
+   python3 server.py
+   ```
+
+3. **Pair Your Ecobee:**
+   - Enable HomeKit pairing on your Ecobee (Menu → Settings → Installation Settings → HomeKit)
+   - Use the web app's Settings page → Joule Bridge Settings → Discover → Pair
+   - Or use the API (see `prostat-bridge/README.md`)
+
+### Documentation
+
+- **Complete Setup Guide**: See `prostat-bridge/README.md` for detailed installation, pairing, and troubleshooting
+- **API Documentation**: See `prostat-bridge/README.md` for all API endpoints
+- **Default URL**: `http://localhost:8080`
+- **Health Check**: `curl http://localhost:8080/health`
+
+### Configuration
+
+The web app connects to the bridge at `http://localhost:8080` by default. You can configure a custom bridge URL in the app's Settings page (Joule Bridge Settings → Advanced settings).
+
+### Troubleshooting
+
+If you encounter pairing issues, connection problems, or the device becomes unpaired after restart, see the comprehensive troubleshooting section in `prostat-bridge/README.md`.
+
 ## Building for Android on Windows
 
 If you're on Windows and want to build the Android debug APK locally, see `BUILD_ANDROID_WINDOWS.md` for recommended setup steps and trouble-shooting. It includes instructions for installing a JDK, setting the `JAVA_HOME` environment variable, cleaning stale Gradle build artifacts, and assembling a debug APK.

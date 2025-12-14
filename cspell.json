@@ -1,0 +1,43 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "ecobee",
+    "thermostat",
+    "hvac",
+    "joule",
+    "hspf",
+    "seer",
+    "afue",
+    "btu",
+    "kwh",
+    "kbtu",
+    "cop",
+    "hdd",
+    "cdd",
+    "nws",
+    "eia",
+    "groq",
+    "ollama",
+    "rag",
+    "tts",
+    "csv",
+    "homekit",
+    "ifttt",
+    "zeroconf",
+    "mqtt",
+    "websocket",
+    "websockets"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "*.min.js",
+    "package-lock.json",
+    "*.log"
+  ],
+  "includeRegExpList": [
+    "/[^/]*\\.(js|jsx|ts|tsx|json|md|txt)$/"
+  ]
+}

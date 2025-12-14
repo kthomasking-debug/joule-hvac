@@ -123,20 +123,26 @@ export async function loadDemoData() {
 
 /**
  * Check if Joule Bridge is available on local network
- * Scans for http://joule.local
+ * Checks the configured bridge URL from localStorage
  */
 export async function checkBridgePresence() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
 
   try {
-    await fetch("http://joule.local/health", {
+    // Check the configured bridge URL from localStorage
+    const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
+    
+    const response = await fetch(`${bridgeUrl}/health`, {
       method: "GET",
       signal: controller.signal,
-      mode: "no-cors", // CORS may fail, but we can detect network errors
     });
-
-    return true; // If we get here, bridge is present
+    
+    if (response.ok) {
+      return true;
+    }
+    
+    return false;
   } catch (error) {
     // Network error means bridge is not present or not reachable
     // This is expected when running locally - suppress console errors

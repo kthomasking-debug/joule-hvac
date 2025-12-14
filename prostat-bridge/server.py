@@ -620,19 +620,22 @@ async def get_thermostat_data(device_id: str):
 
 
 async def set_temperature(device_id: str, temperature: float):
-    """Set target temperature"""
+    """Set target temperature (temperature is in Fahrenheit, convert to Celsius for HomeKit)"""
     if device_id not in pairings:
         raise ValueError(f"Device {device_id} is not paired")
     
     pairing = pairings[device_id]
     
+    # HomeKit expects temperature in Celsius, convert from Fahrenheit
+    temperature_celsius = (temperature - 32) * 5/9
+    
     # Write target temperature
     # Format: [(aid, iid, value), ...]
     await pairing.put_characteristics([
-        (ECOBEE_AID, ECOBEE_TEMP_TARGET, temperature)
+        (ECOBEE_AID, ECOBEE_TEMP_TARGET, temperature_celsius)
     ])
     
-    logger.info(f"Set temperature to {temperature}°F on {device_id}")
+    logger.info(f"Set temperature to {temperature}°F ({temperature_celsius:.1f}°C) on {device_id}")
 
 
 async def set_mode(device_id: str, mode: str):
@@ -924,6 +927,7 @@ async def init_relay():
 async def control_relay(channel, on):
     """
     Control relay channel (AT command format for CH340)
+    NON-BLOCKING VERSION
     
     Args:
         channel: Relay number (1-8, 1-based)
@@ -935,9 +939,15 @@ async def control_relay(channel, on):
         raise Exception("Relay not connected")
     
     try:
-        # AT command format: AT+ON1\r\n or AT+OFF1\r\n
         command = f"AT+{'ON' if on else 'OFF'}{channel}\r\n"
-        relay_port.write(command.encode())
+        data = command.encode()
+        
+        # Get the running event loop
+        loop = asyncio.get_running_loop()
+        
+        # Run the blocking serial write in a separate thread
+        await loop.run_in_executor(None, relay_port.write, data)
+        
         logger.info(f"Relay {channel} {'ON' if on else 'OFF'}")
         return True
     except Exception as e:
@@ -959,15 +969,41 @@ async def get_relay_status(channel):
 
 async def evaluate_interlock_logic():
     """
-    Evaluate interlock logic for dehumidifier control
+    Evaluate interlock logic for dehumidifier control with SAFETY CHECK for stale data.
     
     Rules:
     1. Free Dry: If outdoor_temp < 65°F AND indoor_humidity > 55% → Run dehumidifier
     2. AC Overcool: If outdoor_temp > 80°F → Disable dehumidifier, let AC handle it
     3. Min on/off times: Respect minimum runtime to prevent short cycling
+    4. Safety: If data is stale (>15 minutes), force dehumidifier OFF
     """
     global system_state
     
+    # --- SAFETY CHECK START ---
+    last_update_str = system_state.get('last_update')
+    if last_update_str:
+        try:
+            last_update = datetime.fromisoformat(last_update_str)
+            time_diff = (datetime.now() - last_update).total_seconds()
+            
+            # If data is older than 15 minutes (900 seconds)
+            if time_diff > 900:
+                logger.warning(f"SAFETY: System state is stale ({int(time_diff)}s old). Forcing Dehumidifier OFF.")
+                
+                # Only force off if it's currently on
+                if system_state.get('dehumidifier_on', False):
+                    await control_relay(relay_channel, False)
+                    system_state['dehumidifier_on'] = False
+                
+                return {
+                    'should_run': False,
+                    'reason': f"SAFETY STOP: Data stale (>15m).",
+                    'current_state': False,
+                }
+        except Exception as e:
+            logger.error(f"Error parsing last_update: {e}")
+    # --- SAFETY CHECK END ---
+
     indoor_humidity = system_state.get('indoor_humidity')
     outdoor_temp = system_state.get('outdoor_temp')
     hvac_mode = system_state.get('hvac_mode')

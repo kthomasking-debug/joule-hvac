@@ -1,0 +1,22 @@
+[Unit]
+Description=Joule Bridge HomeKit Controller
+After=network.target
+
+[Service]
+Type=simple
+User=thomas
+WorkingDirectory=/home/thomas/git/joule-hvac/prostat-bridge
+ExecStart=/home/thomas/git/joule-hvac/prostat-bridge/venv/bin/python3 /home/thomas/git/joule-hvac/prostat-bridge/server.py
+Restart=always
+RestartSec=10
+Environment="PATH=/home/thomas/git/joule-hvac/prostat-bridge/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+
+

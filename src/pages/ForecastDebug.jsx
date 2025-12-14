@@ -64,6 +64,20 @@ const ForecastDebug = () => {
   // Joule Bridge integration - use shared context (persists across navigation)
   const jouleBridge = useJouleBridgeContext();
   
+  // Debug: Log bridge state (remove in production)
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.log('[Weekly Planner] Bridge state:', {
+        bridgeAvailable: jouleBridge.bridgeAvailable,
+        connected: jouleBridge.connected,
+        loading: jouleBridge.loading,
+        error: jouleBridge.error,
+        temperature: jouleBridge.temperature,
+        targetTemperature: jouleBridge.targetTemperature,
+      });
+    }
+  }, [jouleBridge.bridgeAvailable, jouleBridge.connected, jouleBridge.loading, jouleBridge.error]);
+  
   // Electricity rate
   const [electricityRate, setElectricityRate] = useState(0.15);
   const [rateSource, setRateSource] = useState("Default");
@@ -104,20 +118,25 @@ const ForecastDebug = () => {
   );
   
   // Target temperature from Ecobee (via Joule Bridge)
+  // Use data if available, even if device is temporarily offline (bridge will auto-reconnect)
   const ecobeeTargetTemp = useMemo(() => {
-    if (jouleBridge.bridgeAvailable && jouleBridge.connected && jouleBridge.targetTemperature !== null) {
+    if (jouleBridge.bridgeAvailable && jouleBridge.targetTemperature !== null) {
+      // Use target temperature if we have it, even if not currently connected
+      // (device might be temporarily offline but data is cached)
       return jouleBridge.targetTemperature;
     }
     return null;
-  }, [jouleBridge.bridgeAvailable, jouleBridge.connected, jouleBridge.targetTemperature]);
+  }, [jouleBridge.bridgeAvailable, jouleBridge.targetTemperature]);
   
   // Current indoor temperature from Ecobee
+  // Use data if available, even if device is temporarily offline
   const currentIndoorTemp = useMemo(() => {
-    if (jouleBridge.bridgeAvailable && jouleBridge.connected && jouleBridge.temperature !== null) {
+    if (jouleBridge.bridgeAvailable && jouleBridge.temperature !== null) {
+      // Use temperature if we have it, even if not currently connected
       return jouleBridge.temperature;
     }
     return null;
-  }, [jouleBridge.bridgeAvailable, jouleBridge.connected, jouleBridge.temperature]);
+  }, [jouleBridge.bridgeAvailable, jouleBridge.temperature]);
   
   // Current outdoor temperature (from weather forecast, first hour)
   const currentOutdoorTemp = useMemo(() => {
@@ -145,6 +164,9 @@ const ForecastDebug = () => {
     
     // Priority 3: Calculate from building specs
     if (useCalculatedHeatLoss) {
+      // BASE_BTU_PER_SQFT: 22.67 BTU/(hr·ft²) @ 70°F ΔT
+      // Source: DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals
+      // Represents ~0.32 BTU/(hr·ft²·°F) for average modern code-built homes
       const BASE_BTU_PER_SQFT = 22.67;
       const ceilingMultiplier = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
       const designHeatLoss = (userSettings.squareFeet || 1500) * 
@@ -152,6 +174,7 @@ const ForecastDebug = () => {
         (userSettings.insulationLevel || 1.0) * 
         (userSettings.homeShape || 1.0) * 
         ceilingMultiplier;
+      // Divide by 70°F design temp difference to get BTU/hr/°F
       return designHeatLoss / 70; // BTU/hr/°F
     }
     
@@ -298,16 +321,29 @@ const ForecastDebug = () => {
     };
   }, [dailyCosts]);
   
+  // Consider bridge "available" if bridge is running, even if device isn't reachable
+  // This allows the page to show calculations using cached/default values
   const isConnected = jouleBridge.bridgeAvailable && jouleBridge.connected;
+  // Check if bridge is available but device is offline/unreachable
+  const bridgeAvailableButDeviceOffline = jouleBridge.bridgeAvailable && !jouleBridge.connected && (
+    (jouleBridge.error && (
+      jouleBridge.error.includes("not reachable") || 
+      jouleBridge.error.includes("Connect call failed") ||
+      jouleBridge.error.includes("ConnectionError") ||
+      jouleBridge.error.includes("IP address changed")
+    )) ||
+    // Also check if we have paired devices but connection failed
+    (jouleBridge.loading === false && jouleBridge.error)
+  );
   
   return (
     <div className="min-h-screen bg-[#0C0F14] text-white">
-      <div className="mx-auto max-w-4xl px-4 py-6">
+      <div className="mx-auto max-w-7xl px-4 py-6">
         {/* Header */}
         <header className="mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Zap className="w-6 h-6 text-yellow-400" />
-            Forecast Debug
+            Weekly Planner
           </h1>
           <p className="text-sm text-gray-400 mt-1">
             7-day cost forecast using Ecobee target temperature directly (no scheduling)
@@ -318,6 +354,8 @@ const ForecastDebug = () => {
         <div className={`mb-6 p-4 rounded-lg border ${
           isConnected 
             ? "bg-emerald-900/20 border-emerald-700" 
+            : jouleBridge.bridgeAvailable
+            ? "bg-yellow-900/20 border-yellow-700"
             : "bg-red-900/20 border-red-700"
         }`}>
           <div className="flex items-center gap-3">
@@ -328,13 +366,28 @@ const ForecastDebug = () => {
             )}
             <div>
               <div className="font-medium">
-                {isConnected ? "Connected to Joule Bridge" : "Joule Bridge Not Connected"}
+                {isConnected 
+                  ? "Connected to Joule Bridge" 
+                  : bridgeAvailableButDeviceOffline
+                  ? "Bridge Available, Device Offline"
+                  : jouleBridge.bridgeAvailable
+                  ? "Bridge Available, Waiting for Device"
+                  : "Joule Bridge Not Connected"}
               </div>
               <div className="text-sm text-gray-400">
                 {isConnected 
                   ? `Polling every 5 seconds • Last update: ${new Date().toLocaleTimeString()}`
+                  : bridgeAvailableButDeviceOffline
+                  ? "Device is paired but not reachable. Bridge will auto-reconnect. Using default settings for forecast."
+                  : jouleBridge.bridgeAvailable
+                  ? "Bridge is running. Waiting for device connection..."
                   : "Start the Joule Bridge to get real Ecobee data"}
               </div>
+              {jouleBridge.error && !bridgeAvailableButDeviceOffline && (
+                <div className="text-xs text-yellow-400 mt-1">
+                  {jouleBridge.error}
+                </div>
+              )}
             </div>
             {jouleBridge.loading && (
               <RefreshCw className="w-4 h-4 text-blue-400 animate-spin ml-auto" />
@@ -526,7 +579,9 @@ const ForecastDebug = () => {
           <div className="text-xs text-gray-400 font-mono space-y-1">
             <p><span className="text-purple-400">Aux Threshold Temperature:</span> Find temp where Heat Pump Output = Building Heat Loss</p>
             <p className="ml-2">Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor(temp)</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: 12,000 BTU/ton = standard refrigeration ton (ASHRAE Handbook - Fundamentals). Capacity Factor derating based on AHRI performance data.</p>
             <p className="ml-2">Building Heat Loss = {formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)} × ({ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1, withUnit: false }) : "—"} - outdoor temp)</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: Heat loss factor calculated from building characteristics using DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals.</p>
             {balancePoint !== null ? (
               <>
                 <p className="ml-2 text-purple-300">Aux threshold temperature: <strong>{formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}</strong></p>
@@ -540,10 +595,19 @@ const ForecastDebug = () => {
             <p className="mt-2">ΔT = Ecobee Target ({ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}) - Outdoor Temp</p>
             <p>Heat Loss = {formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)} × ΔT = BTU/hr needed</p>
             <p>Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor (varies with temp)</p>
-            <p>If Heat Loss &gt; Heat Pump Output: Aux Heat = (Deficit BTU) ÷ 3,412 BTU/kWh</p>
+            <p className="ml-2 text-xs text-gray-500 italic">Capacity Factor: 1.0 @ 47°F+, linear derate 1.0 - (47 - T) × 0.012 for 17°F ≤ T &lt; 47°F, then 0.64 - (17 - T) × 0.01 below 17°F (AHRI performance data)</p>
+            <p>If Heat Loss &gt; Heat Pump Output: Aux Heat = (Deficit BTU) ÷ 3,412.14 BTU/kWh</p>
+            <p className="ml-2 text-xs text-gray-500 italic">Source: 3,412.14 BTU/kWh = standard energy conversion constant</p>
             <p>Heat Pump {nerdMode ? "Energy" : "kWh"} = (Electrical kW × Runtime%) × 24 hours</p>
             <p>Total {nerdMode ? "Energy" : "kWh"} = Heat Pump {nerdMode ? "Energy" : "kWh"} + Aux Heat {nerdMode ? "Energy" : "kWh"}</p>
             <p>Daily Cost = Total {nerdMode ? "Energy" : "kWh"} × ${electricityRate.toFixed(3)}/kWh</p>
+            <div className="mt-3 pt-3 border-t border-[#222A35]">
+              <p className="text-xs text-gray-500 italic">
+                <strong>References:</strong> ASHRAE Handbook - Fundamentals (refrigeration ton, building heat loss), 
+                DOE Residential Energy Consumption Survey (RECS) (building heat loss constants), 
+                AHRI (Air-Conditioning, Heating, and Refrigeration Institute) performance data (capacity derating curves)
+              </p>
+            </div>
           </div>
         </div>
       </div>

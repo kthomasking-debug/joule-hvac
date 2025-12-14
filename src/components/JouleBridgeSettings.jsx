@@ -7,6 +7,8 @@ import {
   getPrimaryDeviceId,
   setPrimaryDeviceId,
   checkBridgeHealth,
+  diagnoseBridge,
+  autoFixPairing,
 } from '../lib/jouleBridgeApi';
 import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2, Server, ExternalLink, Info, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -31,6 +33,9 @@ export default function JouleBridgeSettings() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [pairedDevices, setPairedDevices] = useState([]);
   const [primaryDeviceId, setPrimaryDeviceIdState] = useState(null);
+  const [deviceReachability, setDeviceReachability] = useState({});
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [autoFixing, setAutoFixing] = useState(false);
   const [localLLMEnabled, setLocalLLMEnabled] = useState(() => {
     try {
       return localStorage.getItem('useLocalBackend') === 'true' || localStorage.getItem('useLocalLLM') === 'true';
@@ -42,6 +47,7 @@ export default function JouleBridgeSettings() {
   useEffect(() => {
     loadState();
     checkHealth();
+    runDiagnostics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeUrl]);
 
@@ -56,10 +62,57 @@ export default function JouleBridgeSettings() {
     }
   }, [bridgeUrl]);
 
+  const runDiagnostics = async () => {
+    try {
+      const diag = await diagnoseBridge();
+      setDiagnostics(diag);
+      return diag;
+    } catch (error) {
+      console.error('Diagnostic error:', error);
+      setDiagnostics(null);
+      return null;
+    }
+  };
+
+  const handleAutoFix = async () => {
+    setAutoFixing(true);
+    try {
+      const result = await autoFixPairing();
+      console.log('Auto-fix result:', result);
+      // Reload state after auto-fix
+      await loadState();
+      await runDiagnostics();
+      alert(`Auto-fix complete!\n\n${result.actions_taken.join('\n')}\n\n${result.recommendation || ''}`);
+    } catch (error) {
+      console.error('Auto-fix error:', error);
+      alert(`Auto-fix failed: ${error.message}`);
+    } finally {
+      setAutoFixing(false);
+    }
+  };
+
   const loadState = async () => {
-    setPairedDevices(getPairedDevices());
+    const paired = await getPairedDevices();
+    setPairedDevices(paired);
     const primaryId = await getPrimaryDeviceId();
     setPrimaryDeviceIdState(primaryId);
+    
+    // Check reachability of each paired device
+    if (paired.length > 0) {
+      const { getThermostatStatus } = await import('../lib/jouleBridgeApi');
+      const reachability = {};
+      for (const deviceId of paired) {
+        try {
+          await getThermostatStatus(deviceId);
+          reachability[deviceId] = true;
+        } catch (error) {
+          reachability[deviceId] = false;
+        }
+      }
+      setDeviceReachability(reachability);
+    } else {
+      setDeviceReachability({});
+    }
   };
 
   const checkHealth = async () => {
@@ -726,6 +779,56 @@ export default function JouleBridgeSettings() {
         </div>
       )}
 
+      {/* Diagnostic & Auto-Fix */}
+      {bridgeAvailable && diagnostics && diagnostics.mismatch_detected && (
+        <div className="p-4 rounded-lg border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 mb-4">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+              <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Pairing Mismatch Detected</h3>
+            </div>
+            <button
+              onClick={runDiagnostics}
+              className="px-2 py-1 text-xs bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-300 dark:hover:bg-yellow-700 transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1 mb-3">
+            {diagnostics.issues.map((issue, idx) => (
+              <div key={idx}>• {issue}</div>
+            ))}
+          </div>
+          {diagnostics.recommendations.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">Recommendations:</p>
+              <div className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
+                {diagnostics.recommendations.map((rec, idx) => (
+                  <div key={idx}>• {rec}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={handleAutoFix}
+            disabled={autoFixing}
+            className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {autoFixing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fixing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                Auto-Fix Pairing Issues
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Paired Devices */}
       {pairedDevices.length > 0 && (
         <div className="space-y-3">
@@ -781,6 +884,25 @@ export default function JouleBridgeSettings() {
           </div>
         </div>
       )}
+      
+      {/* Show warning if device is paired but not reachable */}
+      {bridgeAvailable && pairedDevices.length > 0 && (() => {
+        const unreachableDevices = pairedDevices.filter(id => deviceReachability[id] === false);
+        const hasUnreachable = unreachableDevices.length > 0;
+        if (!hasUnreachable) return null;
+        
+        return (
+          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+              <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                <p className="font-medium mb-1">Device paired but not reachable</p>
+                <p className="text-xs">Your device is paired but may be offline or its IP address changed. Try clicking "Discover" to find it again, or wait a moment for it to reconnect.</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

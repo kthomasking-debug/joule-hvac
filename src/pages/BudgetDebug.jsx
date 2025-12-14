@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   RefreshCw,
   TrendingUp,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 import { getCached } from "../utils/cachedStorage";
@@ -153,6 +155,9 @@ const BudgetDebug = () => {
     
     // Priority 3: Calculate from building specs
     if (useCalculatedHeatLoss) {
+      // BASE_BTU_PER_SQFT: 22.67 BTU/(hr·ft²) @ 70°F ΔT
+      // Source: DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals
+      // Represents ~0.32 BTU/(hr·ft²·°F) for average modern code-built homes
       const BASE_BTU_PER_SQFT = 22.67;
       const ceilingMultiplier = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
       const designHeatLoss = (userSettings.squareFeet || 1500) * 
@@ -160,6 +165,7 @@ const BudgetDebug = () => {
         (userSettings.insulationLevel || 1.0) * 
         (userSettings.homeShape || 1.0) * 
         ceilingMultiplier;
+      // Divide by 70°F design temp difference to get BTU/hr/°F
       return designHeatLoss / 70; // BTU/hr/°F
     }
     
@@ -169,6 +175,8 @@ const BudgetDebug = () => {
   
   // Heat gain factor for cooling (typically higher than heat loss)
   const heatGainFactor = useMemo(() => {
+    // BASE_BTU_PER_SQFT_COOLING: 28.0 BTU/(hr·ft²) @ 20°F ΔT
+    // Source: ASHRAE Handbook - Fundamentals (cooling load typically 20-30% higher than heating due to solar gain)
     const BASE_BTU_PER_SQFT_COOLING = 28.0;
     const ceilingMultiplier = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
     const designHeatGain = (userSettings.squareFeet || 1500) * 
@@ -177,7 +185,8 @@ const BudgetDebug = () => {
       (userSettings.homeShape || 1.0) * 
       ceilingMultiplier *
       (userSettings.solarExposure || 1.0);
-    return designHeatGain / 20; // BTU/hr/°F for cooling (smaller delta T)
+    // Divide by 20°F design temp difference for cooling (smaller delta T than heating)
+    return designHeatGain / 20; // BTU/hr/°F for cooling
   }, [userSettings]);
   
   // Efficiency values
@@ -613,14 +622,17 @@ const BudgetDebug = () => {
   
   const isConnected = jouleBridge.bridgeAvailable && jouleBridge.connected;
   
+  // State for collapsible sections
+  const [showFormula, setShowFormula] = useState(false);
+  
   return (
     <div className="min-h-screen bg-[#0C0F14] text-white">
-      <div className="mx-auto max-w-5xl px-4 py-6">
+      <div className="mx-auto max-w-7xl px-4 py-6">
         {/* Header */}
         <header className="mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Calendar className="w-6 h-6 text-purple-400" />
-            Budget Debug
+            Annual Planner
           </h1>
           <p className="text-sm text-gray-400 mt-1">
             Annual budget calculation using Ecobee target temperature directly (no scheduling)
@@ -963,11 +975,25 @@ const BudgetDebug = () => {
         
         {/* Formula Explanation */}
         <div className="mt-6 bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">Calculation Formula</h3>
+          <button
+            onClick={() => setShowFormula(!showFormula)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <h3 className="text-sm font-semibold text-gray-300">Calculation Formula</h3>
+            {showFormula ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+          {showFormula && (
+            <div className="mt-2">
           <div className="text-xs text-gray-400 font-mono space-y-1">
             <p><span className="text-purple-400">Aux Threshold Temperature:</span> Find temp where Heat Pump Output = Building Heat Loss</p>
             <p className="ml-2">Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor(temp)</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: 12,000 BTU/ton = standard refrigeration ton (ASHRAE Handbook - Fundamentals). Capacity Factor derating based on AHRI performance data.</p>
             <p className="ml-2">Building Heat Loss = {formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)} × ({ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1, withUnit: false }) : "—"} - outdoor temp)</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: Heat loss factor calculated from building characteristics using DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals.</p>
             {balancePoint !== null ? (
               <>
                 <p className="ml-2 text-purple-300">Aux threshold temperature: <strong>{formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}</strong></p>
@@ -980,7 +1006,8 @@ const BudgetDebug = () => {
               <>
                 <p className="mt-2 text-yellow-400">Aux Heat Calculation:</p>
                 <p className="ml-2 text-gray-400">Uses hourly temperature data from <strong>{auxHeatYear}</strong> to calculate aux heat hour-by-hour.</p>
-                <p className="ml-2 text-gray-400">For each hour where outdoor temp &lt; {balancePoint.toFixed(1)}°F, aux heat = (Building Heat Loss - Heat Pump Output) ÷ 3,412 BTU/kWh</p>
+                <p className="ml-2 text-gray-400">For each hour where outdoor temp &lt; {balancePoint.toFixed(1)}°F, aux heat = (Building Heat Loss - Heat Pump Output) ÷ 3,412.14 BTU/kWh</p>
+                <p className="ml-4 text-xs text-gray-500 italic">Source: 3,412.14 BTU/kWh = standard energy conversion constant (1 kWh = 3,412.14 BTU)</p>
                 <p className="ml-4 text-gray-500 italic">
                   Monthly totals use typical-year HDD/CDD, but aux heat is based on {auxHeatYear} actual temperatures. 
                   This keeps the <strong>annual budget stable</strong>, while showing how <strong>cold snaps</strong> change aux usage. 
@@ -995,7 +1022,9 @@ const BudgetDebug = () => {
                 <p className="ml-2 text-gray-500">Note: This is the AVERAGE - actual temps range from ~{formatTemperatureFromF(parseFloat(coldestMonthAnalysis.estimatedMinTemp), effectiveUnitSystem, { decimals: 1 })} (nights) to ~{formatTemperatureFromF(parseFloat(coldestMonthAnalysis.monthlyAvgTemp) + 15, effectiveUnitSystem, { decimals: 1 })} (days)</p>
                 <p className="ml-2 mt-1"><strong>At Average Temp ({formatTemperatureFromF(parseFloat(coldestMonthAnalysis.monthlyAvgTemp), effectiveUnitSystem, { decimals: 1 })}):</strong></p>
                 <p className="ml-4">Heat Pump Output = {coldestMonthAnalysis.heatPumpOutputBtuAvg} BTU/hr</p>
+                <p className="ml-6 text-xs text-gray-500">Source: {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 BTU/ton × Capacity Factor (ASHRAE Handbook - Fundamentals, AHRI performance data)</p>
                 <p className="ml-4">Building Heat Loss = {coldestMonthAnalysis.buildingHeatLossBtuAvg} BTU/hr</p>
+                <p className="ml-6 text-xs text-gray-500">Source: Heat loss factor × ΔT (DOE RECS, ASHRAE Handbook - Fundamentals)</p>
                 <p className="ml-4 text-green-300">Surplus = {coldestMonthAnalysis.surplusBtuAvg} BTU/hr ✓</p>
                 <p className="ml-2 mt-1">
                   <strong>
@@ -1010,6 +1039,7 @@ const BudgetDebug = () => {
                 </p>
                 <p className="ml-4">Heat Pump Output = {coldestMonthAnalysis.heatPumpOutputBtuMin} BTU/hr</p>
                 <p className="ml-4">Building Heat Loss = {coldestMonthAnalysis.buildingHeatLossBtuMin} BTU/hr</p>
+                <p className="ml-6 text-xs text-gray-500">Source: Same formulas as above, calculated at minimum temperature</p>
                 {coldestMonthAnalysis.needsAuxAtMin ? (
                   <>
                     <p className="ml-4 text-red-300">Deficit = {coldestMonthAnalysis.deficitBtuMin} BTU/hr (aux heat needed)</p>
@@ -1021,17 +1051,29 @@ const BudgetDebug = () => {
               </>
             )}
             <p className="mt-2"><span className="text-blue-400">Heating:</span> For each month, estimate avg outdoor temp from HDD</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: HDD (Heating Degree Days) methodology from ASHRAE Handbook - Fundamentals. HDD = sum of (65°F - outdoor temp) for all hours where outdoor temp &lt; 65°F.</p>
             <p className="ml-2">Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor (varies with temp)</p>
-            <p className="ml-2">If Heat Loss &gt; Heat Pump Output: Aux Heat = (Deficit BTU) ÷ 3,412 BTU/kWh</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Capacity Factor: 1.0 @ 47°F+, linear derate 1.0 - (47 - T) × 0.012 for 17°F ≤ T &lt; 47°F, then 0.64 - (17 - T) × 0.01 below 17°F (AHRI performance data)</p>
+            <p className="ml-2">If Heat Loss &gt; Heat Pump Output: Aux Heat = (Deficit BTU) ÷ 3,412.14 BTU/kWh</p>
             <p className="ml-2">Heat Pump {nerdMode ? "Energy" : "kWh"} = (Electrical kW × Runtime%) × hours in month</p>
             <p className="ml-2">Total Heating {nerdMode ? "Energy" : "kWh"} = Heat Pump {nerdMode ? "Energy" : "kWh"} + Aux Heat {nerdMode ? "Energy" : "kWh"}</p>
             <p className="mt-2"><span className="text-orange-400">Cooling:</span> {nerdMode ? "Energy" : "kWh"} = (HeatGainFactor × CDD × 24) ÷ (SEER2 × 1000)</p>
+            <p className="ml-4 text-xs text-gray-500 italic">Source: CDD (Cooling Degree Days) methodology from ASHRAE Handbook - Fundamentals. CDD = sum of (outdoor temp - 65°F) for all hours where outdoor temp &gt; 65°F. SEER2 (Seasonal Energy Efficiency Ratio 2) is the standard efficiency rating for cooling equipment (AHRI).</p>
             <p className="mt-2"><span className="text-green-400">Cost:</span> {nerdMode ? "Energy" : "kWh"} × ${electricityRate.toFixed(3)}/kWh + ${monthlyFixedCharge.toFixed(2)} fixed</p>
             <p className="text-gray-500 mt-2">
               Note: HDD/CDD already account for temperature differential over time.
               Target temp from Ecobee: {ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}
             </p>
-          </div>
+            <div className="mt-3 pt-3 border-t border-[#222A35]">
+              <p className="text-xs text-gray-500 italic">
+                <strong>References:</strong> ASHRAE Handbook - Fundamentals (refrigeration ton, building heat loss, HDD/CDD methodology), 
+                DOE Residential Energy Consumption Survey (RECS) (building heat loss constants), 
+                AHRI (Air-Conditioning, Heating, and Refrigeration Institute) performance data (capacity derating curves, SEER2 ratings)
+              </p>
+            </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

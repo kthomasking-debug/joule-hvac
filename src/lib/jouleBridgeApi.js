@@ -105,7 +105,7 @@ export async function pairDevice(deviceId, pairingCode) {
       clearTimeout(timeoutId);
 
       // Store paired device
-      const pairedDevices = getPairedDevices();
+      const pairedDevices = await getPairedDevices();
       if (!pairedDevices.includes(deviceId)) {
         pairedDevices.push(deviceId);
         localStorage.setItem(
@@ -138,9 +138,9 @@ export async function unpairDevice(deviceId) {
       body: JSON.stringify({ device_id: deviceId }),
     });
 
-    // Remove from stored list
-    const pairedDevices = getPairedDevices().filter((id) => id !== deviceId);
-    localStorage.setItem("joulePairedDevices", JSON.stringify(pairedDevices));
+    // Refresh paired devices list from API (this will update localStorage automatically)
+    // This ensures we get the current state from the server
+    await getPairedDevices();
   } catch (error) {
     console.error("Error unpairing device:", error);
     throw error;
@@ -149,9 +149,24 @@ export async function unpairDevice(deviceId) {
 
 /**
  * Get list of paired devices
+ * First tries to fetch from API, falls back to localStorage cache
  */
-export function getPairedDevices() {
+export async function getPairedDevices() {
   try {
+    // Try to fetch from API first (most up-to-date)
+    try {
+      const pairedData = await bridgeRequest("/api/paired");
+      // Always update localStorage with the current state from API
+      // This ensures cache is cleared when devices are unpaired
+      const deviceIds = pairedData.devices ? pairedData.devices.map(d => d.device_id) : [];
+      localStorage.setItem("joulePairedDevices", JSON.stringify(deviceIds));
+      return deviceIds;
+    } catch (e) {
+      // API call failed, fall back to localStorage cache
+      console.debug("Could not fetch paired devices from API, using cache:", e);
+    }
+    
+    // Fallback to localStorage cache
     const stored = localStorage.getItem("joulePairedDevices");
     return stored ? JSON.parse(stored) : [];
   } catch {
@@ -198,6 +213,11 @@ export async function getThermostatStatus(deviceId = null) {
     
     const endpoint = `/api/status?device_id=${encodeURIComponent(deviceId)}`;
     const data = await bridgeRequest(endpoint);
+
+    // Handle null/undefined response
+    if (!data) {
+      return null;
+    }
 
     // If single device, return it; if multiple, return first
     if (data.devices && Array.isArray(data.devices)) {
@@ -320,6 +340,22 @@ export async function checkBridgeHealth() {
     // Re-throw with context for better error messages
     throw fetchError;
   }
+}
+
+/**
+ * Diagnose pairing and connection issues
+ * Returns diagnostic information about paired vs discovered devices
+ */
+export async function diagnoseBridge() {
+  return bridgeRequest("/api/diagnose");
+}
+
+/**
+ * Automatically fix pairing mismatches
+ * Unpairs stale devices and suggests pairing new ones
+ */
+export async function autoFixPairing() {
+  return bridgeRequest("/api/auto-fix", { method: "POST" });
 }
 
 /**
