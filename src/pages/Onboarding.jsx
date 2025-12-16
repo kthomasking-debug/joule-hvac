@@ -102,6 +102,7 @@ export default function Onboarding() {
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 1500);
   const [insulationLevel, setInsulationLevel] = useState(userSettings.insulationLevel || 1.0);
   const [homeShape, setHomeShape] = useState(userSettings.homeShape || 1.0);
+  const [hasLoft, setHasLoft] = useState(userSettings.hasLoft || false);
   const [ceilingHeight, setCeilingHeight] = useState(userSettings.ceilingHeight || 8);
   const [primarySystem, setPrimarySystem] = useState(userSettings.primarySystem || "heatPump");
   // Heat pump size in tons (convert to kBTU: tons * 12)
@@ -139,10 +140,11 @@ export default function Onboarding() {
         insulationLevel,
         homeShape: homeShape || 1.0,
         ceilingHeight: ceilingHeight || 8,
+        hasLoft: hasLoft || false,
       });
     }
     return 0;
-  }, [squareFeet, insulationLevel, homeShape, ceilingHeight, heatLossSource]);
+  }, [squareFeet, insulationLevel, homeShape, ceilingHeight, hasLoft, heatLossSource]);
 
   // Check if analyzer data exists
   const hasAnalyzerData = useMemo(() => {
@@ -381,7 +383,7 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/control/thermostat");
+    navigate("/analysis/forecast-debug");
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
@@ -418,6 +420,7 @@ export default function Onboarding() {
       setSetting("squareFeet", squareFeet, { source: "onboarding" });
       setSetting("insulationLevel", insulationLevel, { source: "onboarding" });
       setSetting("homeShape", homeShape, { source: "onboarding" });
+      setSetting("hasLoft", hasLoft, { source: "onboarding" });
       setSetting("ceilingHeight", ceilingHeight, { source: "onboarding" });
       setSetting("primarySystem", primarySystem, { source: "onboarding" });
       
@@ -443,6 +446,7 @@ export default function Onboarding() {
         setUserSetting("squareFeet", squareFeet);
         setUserSetting("insulationLevel", insulationLevel);
         setUserSetting("homeShape", homeShape);
+        setUserSetting("hasLoft", hasLoft);
         setUserSetting("ceilingHeight", ceilingHeight);
         setUserSetting("primarySystem", primarySystem);
         if (primarySystem === "heatPump") {
@@ -483,7 +487,7 @@ export default function Onboarding() {
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, ceilingHeight, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -502,7 +506,7 @@ export default function Onboarding() {
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
-            onClick={() => navigate("/control/thermostat")}
+            onClick={() => navigate("/analysis/forecast-debug")}
             className="btn btn-primary px-8 py-3 text-lg"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />
@@ -700,10 +704,9 @@ export default function Onboarding() {
                   onChange={(e) => setInsulationLevel(Number(e.target.value))}
                   className={selectClasses}
                 >
-                  <option value={1.3}>Poor (older home, drafty)</option>
-                  <option value={1.0}>Average (typical construction)</option>
-                  <option value={0.7}>Good (modern, well-sealed)</option>
-                  <option value={0.5}>Excellent (energy star certified)</option>
+                  <option value={1.4}>Poor (pre-1980, minimal upgrades)</option>
+                  <option value={1.0}>Average (1990s-2000s, code-min)</option>
+                  <option value={0.65}>Good (post-2010, ENERGY STAR)</option>
                 </select>
               </div>
 
@@ -721,11 +724,28 @@ export default function Onboarding() {
                   <option value={1.0}>Split-Level / Standard</option>
                   <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
                   <option value={1.15}>Manufactured Home</option>
-                  <option value={2.2}>Cabin / A-Frame</option>
+                  <option value={1.2}>Cabin</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Affects surface area exposure and heat loss.
                 </p>
+                {/* Loft toggle - only show for Cabin */}
+                {homeShape >= 1.2 && homeShape < 1.3 && (
+                  <div className="mt-3">
+                    <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasLoft}
+                        onChange={(e) => setHasLoft(e.target.checked)}
+                        className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-2"
+                      />
+                      Has Loft (reduces effective square footage for heat loss)
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                      For cabins with lofts, this adjusts the heat loss calculation to account for reduced exterior surface area, similar to a two-story home.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Ceiling Height */}
@@ -742,7 +762,7 @@ export default function Onboarding() {
                   <option value={9}>9 feet</option>
                   <option value={10}>10 feet</option>
                   <option value={12}>12 feet (vaulted)</option>
-                  <option value={16}>16+ feet (cathedral)</option>
+                  <option value={16}>16 feet</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Higher ceilings increase heating volume and energy needs.
@@ -980,7 +1000,7 @@ export default function Onboarding() {
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Building Shape</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {homeShape <= 0.9 ? "Two-Story" : homeShape <= 1.0 ? "Split-Level" : homeShape <= 1.1 ? "Ranch" : homeShape <= 1.15 ? "Manufactured" : "Cabin/A-Frame"}
+                    {homeShape <= 0.9 ? "Two-Story" : homeShape <= 1.0 ? "Split-Level" : homeShape <= 1.1 ? "Ranch" : homeShape <= 1.15 ? "Manufactured" : "Cabin"}
                   </span>
                 </div>
                 <div className="flex justify-between">

@@ -583,7 +583,7 @@ const MonthlyBudgetPlanner = () => {
         {
           tons: tons,
           indoorTemp: avgWinterIndoorTemp,
-          heatLossBtu: estimatedDesignHeatLoss,
+          designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
           compressorPower: null, // Will be calculated
         },
         temp,
@@ -2732,30 +2732,41 @@ const MonthlyBudgetPlanner = () => {
                   const avgHumidity = day.humidity || 50;
                   
                   // Calculate for 24 hours
+                  const dtHours = 1.0; // 1 hour per timestep
                   for (let hour = 0; hour < 24; hour++) {
                     const perf = heatUtils.computeHourlyPerformance(
                       {
                         tons,
                         indoorTemp: effectiveIndoorTemp,
-                        heatLossBtu: estimatedDesignHeatLoss,
+                        designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
                         compressorPower,
                       },
                       day.avg,
-                      avgHumidity
+                      avgHumidity,
+                      dtHours
                     );
                     
-                    const hourlyEnergy = perf.electricalKw * (perf.runtime / 100);
+                    // AGGREGATION RULES: Sum energy directly - NEVER multiply by dtHours
+                    // ✅ CORRECT: monthlyHpKwh += perf.hpKwh; monthlyAuxKwh += perf.auxKwh;
+                    // ❌ WRONG: perf.hpKwh * dtHours or perf.auxKwh * dtHours (would double-count!)
+                    // Note: auxKw is informational only; do not aggregate power, aggregate auxKwh.
+                    const hourlyEnergy = perf.hpKwh !== undefined
+                      ? perf.hpKwh
+                      : perf.electricalKw * (perf.capacityUtilization / 100) * dtHours; // Fallback (using capacityUtilization, not time-based runtime)
                     dailyEnergy += hourlyEnergy;
                     
-                    if (useElectricAuxHeat && perf.auxKw) {
-                      auxEnergy += perf.auxKw * (perf.runtime / 100);
-                      dailyEnergy += perf.auxKw * (perf.runtime / 100);
+                    if (useElectricAuxHeat) {
+                      const auxKwh = perf.auxKwh !== undefined
+                        ? perf.auxKwh
+                        : (perf.auxKw ? perf.auxKw * dtHours : 0); // Fallback
+                      if (auxKwh > 0) {
+                        auxEnergy += auxKwh;
+                        dailyEnergy += auxKwh;
+                        dailyCost += auxKwh * utilityCost;
+                      }
                     }
                     
                     dailyCost += hourlyEnergy * utilityCost;
-                    if (useElectricAuxHeat && perf.auxKw) {
-                      dailyCost += perf.auxKw * (perf.runtime / 100) * utilityCost;
-                    }
                   }
                 } else if (energyMode === "heating" && primarySystem === "gasFurnace") {
                   const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
@@ -3237,23 +3248,38 @@ const MonthlyBudgetPlanner = () => {
                           let totalAuxKwh = 0;
                           
                           monthHours.forEach(hour => {
+                            const dtHours = 1.0; // 1 hour per timestep
                             const perf = heatUtils.computeHourlyPerformance(
                               {
                                 tons: tons,
                                 indoorTemp: avgWinterIndoorTemp,
-                                heatLossBtu: estimatedDesignHeatLoss,
+                                designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
                                 compressorPower: null,
                               },
                               hour.temp,
-                              hour.humidity ?? 50
+                              hour.humidity ?? 50,
+                              dtHours
                             );
                             
-                            // Heat pump energy
-                            totalHeatPumpKwh += perf.electricalKw * (perf.runtime / 100);
+                            // AGGREGATION RULES: Sum energy directly - NEVER multiply by dtHours
+                            // ✅ CORRECT: monthlyHpKwh += perf.hpKwh; monthlyAuxKwh += perf.auxKwh;
+                            // ❌ WRONG: perf.hpKwh * dtHours or perf.auxKwh * dtHours (would double-count!)
+                            // Note: auxKw is informational only; do not aggregate power, aggregate auxKwh.
+                            if (perf.hpKwh !== undefined) {
+                              totalHeatPumpKwh += perf.hpKwh;
+                            } else {
+                              // Fallback for backward compatibility
+                              totalHeatPumpKwh += perf.electricalKw * (perf.capacityUtilization / 100) * dtHours; // Using capacityUtilization, not time-based runtime
+                            }
                             
                             // Aux heat energy (only when needed)
-                            if (hour.temp < balancePoint && useElectricAuxHeat && perf.auxKw > 0) {
-                              totalAuxKwh += perf.auxKw;
+                            if (hour.temp < balancePoint && useElectricAuxHeat) {
+                              if (perf.auxKwh !== undefined && perf.auxKwh > 0) {
+                                totalAuxKwh += perf.auxKwh;
+                              } else if (perf.auxKw > 0) {
+                                // Fallback for backward compatibility
+                                totalAuxKwh += perf.auxKw * dtHours;
+                              }
                             }
                           });
                           

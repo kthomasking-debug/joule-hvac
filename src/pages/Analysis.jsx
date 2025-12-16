@@ -4,7 +4,8 @@ import {
   Calendar, 
   TrendingUp, 
   Search, 
-  BarChart2
+  BarChart2,
+  Activity
 } from 'lucide-react';
 
 // Lazy load components to isolate any import issues
@@ -12,6 +13,7 @@ const SevenDayCostForecaster = lazy(() => import('./SevenDayCostForecaster'));
 const MonthlyBudgetPlanner = lazy(() => import('./MonthlyBudgetPlanner'));
 const GasVsHeatPump = lazy(() => import('./GasVsHeatPump'));
 const SystemPerformanceAnalyzer = lazy(() => import('./SystemPerformanceAnalyzer'));
+const HeatPumpEnergyFlow = lazy(() => import('./HeatPumpEnergyFlow'));
 
 const Analysis = () => {
   const navigate = useNavigate();
@@ -31,6 +33,9 @@ const Analysis = () => {
     if (location.pathname.includes('/analysis/analyzer')) {
       return 'analyzer';
     }
+    if (location.pathname.includes('/analysis/energy-flow')) {
+      return 'energy-flow';
+    }
     return 'forecast';
   };
 
@@ -49,6 +54,7 @@ const Analysis = () => {
   const tabs = [
     { id: 'forecast', label: 'Forecast', icon: Calendar, component: SevenDayCostForecaster },
     { id: 'budget', label: 'Budget', icon: TrendingUp, component: MonthlyBudgetPlanner },
+    { id: 'energy-flow', label: 'Energy Flow', icon: Activity, component: HeatPumpEnergyFlow },
     { id: 'compare', label: 'Compare', icon: Search, component: GasVsHeatPump },
     { id: 'analyzer', label: 'Analyzer', icon: BarChart2, component: SystemPerformanceAnalyzer },
   ];
@@ -65,6 +71,7 @@ const Analysis = () => {
   const tabDescriptions = {
     forecast: "See what you'll spend this week based on your schedule and weather.",
     budget: "Plan your monthly energy budget and explore how different strategies affect your costs.",
+    'energy-flow': "Visualize heat pump performance and see when backup heat is needed.",
     compare: "Compare heat pump vs gas furnace costs for your home and climate.",
     analyzer: "Upload your thermostat data to see how your system is performing — and where it might need attention.",
   };
@@ -72,42 +79,46 @@ const Analysis = () => {
   return (
     <div className="min-h-screen bg-[#0C0F14]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        {/* Page Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold text-white mb-1">Analysis</h1>
-          <p className="text-sm text-[#A7B0BA] italic">
-            Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
-          </p>
-        </header>
-
-        {/* Tab Navigation */}
-        <div className="mb-6">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
-                    activeTab === tab.id
-                      ? 'bg-[#1E4CFF] text-white'
-                      : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* Tab Description */}
-          {tabDescriptions[activeTab] && (
-            <p className="mt-3 text-sm text-[#A7B0BA]">
-              {tabDescriptions[activeTab]}
+        {/* Page Header - Hidden for Energy Flow */}
+        {activeTab !== 'energy-flow' && (
+          <header className="mb-6">
+            <h1 className="text-2xl font-semibold text-white mb-1">Simulator</h1>
+            <p className="text-sm text-[#A7B0BA] italic">
+              Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
             </p>
-          )}
-        </div>
+          </header>
+        )}
+
+        {/* Tab Navigation - Hidden for Energy Flow */}
+        {activeTab !== 'energy-flow' && (
+          <div className="mb-6">
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
+                      activeTab === tab.id
+                        ? 'bg-[#1E4CFF] text-white'
+                        : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Tab Description */}
+            {tabDescriptions[activeTab] && (
+              <p className="mt-3 text-sm text-[#A7B0BA]">
+                {tabDescriptions[activeTab]}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Active Tab Content */}
         <div className="animate-fade-in-up">

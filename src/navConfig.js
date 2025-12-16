@@ -50,6 +50,7 @@ const Checkout = lazy(() => import("./pages/Checkout"));
 const SummerACIssues = lazy(() => import("./pages/SummerACIssues"));
 const ForecastDebug = lazy(() => import("./pages/ForecastDebug"));
 const BudgetDebug = lazy(() => import("./pages/BudgetDebug"));
+const MonthlyBudget = lazy(() => import("./pages/MonthlyBudget"));
 
 import {
   Home as HomeIcon,
@@ -147,9 +148,9 @@ export const routes = [
     label: "Climate",
     icon: Thermometer,
     Component: Control,
-    showInNav: true,
-    inMobileNav: true,
-    inPrimaryNav: true,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
     description: "Thermostat and air quality control",
   },
   {
@@ -485,9 +486,20 @@ export const routes = [
   },
   // ===== DEBUG PAGES (Uses Ecobee target temp directly via Joule Bridge) =====
   {
+    path: "/analysis/energy-flow",
+    name: "Energy Flow",
+    label: "Energy Flow",
+    icon: Activity,
+    Component: Analysis,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Visualize heat pump performance and see when backup heat is needed.",
+  },
+  {
     path: "/analysis/forecast-debug",
-    name: "Weekly Planner",
-    label: "Weekly Planner",
+    name: "Weekly Cost Estimate",
+    label: "Weekly Cost Estimate",
     icon: Bug,
     Component: ForecastDebug,
     showInNav: true,
@@ -497,14 +509,25 @@ export const routes = [
   },
   {
     path: "/analysis/budget-debug",
-    name: "Annual Planner",
-    label: "Annual Planner",
+    name: "Annual Cost Estimate",
+    label: "Annual Cost Estimate",
     icon: Bug,
     Component: BudgetDebug,
     showInNav: true,
     inMobileNav: true,
     inPrimaryNav: true,
     description: "Annual budget using Ecobee target temp directly (no scheduling)",
+  },
+  {
+    path: "/analysis/monthly-budget",
+    name: "Monthly Budget",
+    label: "Monthly Budget",
+    icon: Calendar,
+    Component: MonthlyBudget,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Current month budget with daily breakdown",
   },
   {
     path: "/analysis/analyzer",

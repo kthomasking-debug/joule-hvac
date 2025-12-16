@@ -7,6 +7,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   RefreshCw,
+  X,
+  Info,
+  Settings,
+  BarChart3,
+  Code,
+  Calendar,
 } from "lucide-react";
 import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 import useForecast from "../hooks/useForecast";
@@ -81,6 +87,18 @@ const ForecastDebug = () => {
   // Electricity rate
   const [electricityRate, setElectricityRate] = useState(0.15);
   const [rateSource, setRateSource] = useState("Default");
+  
+  // State for tabs and UI improvements
+  const [activeTab, setActiveTab] = useState("forecast");
+  const [dismissedInfoBanner, setDismissedInfoBanner] = useState(() => {
+    return localStorage.getItem('forecastDebug_dismissedBanner') === 'true';
+  });
+  const [showFormula, setShowFormula] = useState(false);
+  
+  const handleDismissBanner = () => {
+    setDismissedInfoBanner(true);
+    localStorage.setItem('forecastDebug_dismissedBanner', 'true');
+  };
   
   useEffect(() => {
     const fetchRate = async () => {
@@ -164,18 +182,14 @@ const ForecastDebug = () => {
     
     // Priority 3: Calculate from building specs
     if (useCalculatedHeatLoss) {
-      // BASE_BTU_PER_SQFT: 22.67 BTU/(hr·ft²) @ 70°F ΔT
-      // Source: DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals
-      // Represents ~0.32 BTU/(hr·ft²·°F) for average modern code-built homes
-      const BASE_BTU_PER_SQFT = 22.67;
-      const ceilingMultiplier = 1 + ((userSettings.ceilingHeight || 8) - 8) * 0.1;
-      const designHeatLoss = (userSettings.squareFeet || 1500) * 
-        BASE_BTU_PER_SQFT * 
-        (userSettings.insulationLevel || 1.0) * 
-        (userSettings.homeShape || 1.0) * 
-        ceilingMultiplier;
-      // Divide by 70°F design temp difference to get BTU/hr/°F
-      return designHeatLoss / 70; // BTU/hr/°F
+      return heatUtils.calculateHeatLoss({
+        squareFeet: userSettings.squareFeet || 1500,
+        insulationLevel: userSettings.insulationLevel || 1.0,
+        homeShape: userSettings.homeShape || 1.0,
+        ceilingHeight: userSettings.ceilingHeight || 8,
+        wallHeight: userSettings.wallHeight ?? null,
+        hasLoft: userSettings.hasLoft || false,
+      }) / 70; // Convert to BTU/hr/°F
     }
     
     // Fallback
@@ -184,6 +198,10 @@ const ForecastDebug = () => {
   
   // HSPF2 efficiency
   const hspf2 = userSettings?.hspf2 || 9.0;
+  
+  // Calculate seasonal COP from HSPF2 for COP expectation text
+  // seasonal COP = (HSPF2 × 1000) / 3412.14
+  const seasonalCOP = (hspf2 * 1000) / 3412.14;
   
   // System capacity and efficiency for aux heat calculations
   const capacity = Number(userSettings?.capacity ?? userSettings?.coolingCapacity ?? 36); // kBTU
@@ -199,8 +217,8 @@ const ForecastDebug = () => {
   }, [tons, efficiency]);
   
   // Calculate total design heat loss (BTU/hr at 70°F delta-T)
-  const heatLossBtu = useMemo(() => {
-    return heatLossFactor * 70; // BTU/hr at design conditions
+  const designHeatLossBtuHrAt70F = useMemo(() => {
+    return heatLossFactor * 70; // BTU/hr at design conditions (70°F delta-T)
   }, [heatLossFactor]);
   
   // Calculate balance point: where heat pump output equals building heat loss
@@ -208,16 +226,50 @@ const ForecastDebug = () => {
     if (!ecobeeTargetTemp) return null;
     
     // Try temperatures from 60°F down to find where output = loss
+    let bestMatch = null;
+    
+    // First pass: find approximate range
+    const cutoffTemp = userSettings?.cutoffTemp ?? -15;
     for (let temp = 60; temp >= -20; temp -= 1) {
-      const capacityFactor = heatUtils.getCapacityFactor(temp);
+      const capacityFactor = heatUtils.getCapacityFactor(temp, cutoffTemp);
       const heatPumpOutputBtu = tons * 12000 * capacityFactor;
       const deltaT = Math.max(0, ecobeeTargetTemp - temp);
       const buildingHeatLossBtu = heatLossFactor * deltaT;
+      
       if (heatPumpOutputBtu <= buildingHeatLossBtu) {
-        return temp;
+        bestMatch = temp;
+        break;
       }
     }
-    return null; // Balance point below -20°F or system can handle all temps
+    
+    // If we found a match, refine it with 0.1°F precision using binary search
+    if (bestMatch !== null && bestMatch < 60) {
+      // Binary search between bestMatch and bestMatch + 1°F for precise crossing point
+      let low = bestMatch;
+      let high = bestMatch + 1.0;
+      let precision = 0.1;
+      
+      // Find the exact temperature where output = loss
+      while (high - low > precision) {
+        const mid = (low + high) / 2;
+        const capFactorMid = heatUtils.getCapacityFactor(mid, cutoffTemp);
+        const outputMid = tons * 12000 * capFactorMid;
+        const deltaTMid = Math.max(0, ecobeeTargetTemp - mid);
+        const lossMid = heatLossFactor * deltaTMid;
+        
+        if (outputMid > lossMid) {
+          // Output exceeds loss, balance point is at lower temp
+          high = mid;
+        } else {
+          // Loss exceeds output, balance point is at higher temp
+          low = mid;
+        }
+      }
+      
+      return Math.round(((low + high) / 2) * 10) / 10;
+    }
+    
+    return bestMatch; // Balance point below -20°F or system can handle all temps
   }, [ecobeeTargetTemp, tons, heatLossFactor]);
   
   // Calculate 7-day costs using Ecobee target temp with aux heat
@@ -232,7 +284,11 @@ const ForecastDebug = () => {
     
     forecast.forEach(hour => {
       const date = new Date(hour.time);
-      const dayKey = date.toISOString().split('T')[0];
+      // Use local date consistently for both dayKey and dayName to avoid timezone mismatches
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const dayOfMonth = String(date.getDate()).padStart(2, '0');
+      const dayKey = `${year}-${month}-${dayOfMonth}`;
       
       if (!dayMap.has(dayKey)) {
         dayMap.set(dayKey, {
@@ -252,57 +308,165 @@ const ForecastDebug = () => {
       });
     });
     
-    // Calculate cost for each day with aux heat
-    dayMap.forEach((day, key) => {
+    // Get sorted list of day keys to ensure chronological order
+    const sortedDayKeys = Array.from(dayMap.keys()).sort();
+    
+    // Calculate cost for each day with aux heat (only first 7 days)
+    sortedDayKeys.slice(0, 7).forEach((key, dayIndex) => {
+      const day = dayMap.get(key);
       const avgTemp = day.temps.reduce((a, b) => a + b, 0) / day.temps.length;
       const minTemp = Math.min(...day.temps);
       const maxTemp = Math.max(...day.temps);
       
+      // DIAGNOSTIC: Log heatLossFactor for first day (Monday) to debug indexing issue
+      if (dayIndex === 0 && import.meta.env.DEV) {
+        console.log(`[ForecastDebug] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, avgTemp=${avgTemp.toFixed(1)}`);
+        if (day.hours.length !== 24) {
+          console.warn(`[ForecastDebug] ⚠️ Day 0 has ${day.hours.length} hours instead of 24! This could cause incorrect BTU calculations.`);
+        }
+      }
+      
       // Calculate hourly performance for aux heat
       let totalHeatPumpKwh = 0;
       let totalAuxKwh = 0;
+      let totalDailyBtuLoad = 0;
+      let totalHpDeliveredBtu = 0;
+      let totalAuxDeliveredBtu = 0;
+      let totalFullTiltKwHours = 0; // Debug: accumulate full-tilt kW × hours
       
       day.hours.forEach(hour => {
+        // Use dtHours from hour object if available, otherwise default to 1.0
+        const dtHours = hour.dtHours ?? 1.0;
+        
+        // Calculate Daily BTU Load from hourly loop (same calculation used for all days)
+        const dT = Math.max(0, ecobeeTargetTemp - hour.temp);
+        const loadBtuHr = heatLossFactor * dT;
+        totalDailyBtuLoad += loadBtuHr * dtHours; // BTU
+        
         const perf = heatUtils.computeHourlyPerformance(
           {
             tons: tons,
             indoorTemp: ecobeeTargetTemp,
-            heatLossBtu: heatLossBtu,
+            designHeatLossBtuHrAt70F: designHeatLossBtuHrAt70F,
             compressorPower: compressorPower,
+            hspf2: hspf2,
+            cutoffTemp: userSettings?.cutoffTemp ?? -15, // Manufacturer-dependent cutoff temperature
           },
           hour.temp,
-          hour.humidity
+          hour.humidity,
+          dtHours
         );
         
-        // Heat pump energy (kWh per hour)
-        const heatPumpKwhPerHour = perf.electricalKw * (perf.runtime / 100);
-        totalHeatPumpKwh += heatPumpKwhPerHour;
+        // AGGREGATION RULES: Sum energy directly - NEVER multiply by dtHours
+        // ✅ CORRECT: monthlyHpKwh += perf.hpKwh;
+        // ❌ WRONG: monthlyHpKwh += perf.hpKwh * dtHours; // Would double-count!
+        const heatPumpKwh = perf.hpKwh !== undefined 
+          ? perf.hpKwh // ✅ CORRECT: Sum energy directly
+          : perf.electricalKw * (perf.capacityUtilization / 100) * dtHours; // Fallback (using capacityUtilization, not time-based runtime)
+        totalHeatPumpKwh += heatPumpKwh;
         
-        // Aux heat energy (kWh per hour) - only if enabled
+        // Aux heat energy
+        // ✅ CORRECT: monthlyAuxKwh += perf.auxKwh;
+        // ❌ WRONG: monthlyAuxKwh += perf.auxKw * dtHours; // Use auxKwh, not auxKw!
+        // Note: auxKw is informational only; do not aggregate power, aggregate auxKwh.
         if (useElectricAuxHeat) {
-          totalAuxKwh += perf.auxKw;
+          const auxKwh = perf.auxKwh !== undefined
+            ? perf.auxKwh // ✅ CORRECT: Sum energy directly
+            : perf.auxKw * dtHours; // Fallback for backward compatibility
+          totalAuxKwh += auxKwh;
+        }
+        
+        // DIAGNOSTIC: Calculate BTU deliveries for COP sanity check (must match load calculation)
+        // Use values from computeHourlyPerformance to ensure consistency
+        const buildingHeatLossBtuHr = heatLossFactor * Math.max(0, ecobeeTargetTemp - hour.temp);
+        const deliveredHpBtuHr = perf.deliveredHpBtuHr !== undefined 
+          ? perf.deliveredHpBtuHr 
+          : (buildingHeatLossBtuHr * (perf.capacityUtilization / 100)); // Fallback (using capacityUtilization, not time-based runtime)
+        const deficitBtuHr = perf.deficitBtuHr !== undefined
+          ? perf.deficitBtuHr
+          : Math.max(0, buildingHeatLossBtuHr - deliveredHpBtuHr); // Fallback
+        const deliveredAuxBtuHr = deficitBtuHr;
+        
+        totalHpDeliveredBtu += deliveredHpBtuHr * dtHours; // BTU/hr × h = BTU
+        totalAuxDeliveredBtu += deliveredAuxBtuHr * dtHours; // BTU/hr × h = BTU
+        
+        // Debug: accumulate full-tilt kW × hours (for debug column)
+        if (perf.fullTiltKw !== undefined) {
+          totalFullTiltKwHours += perf.fullTiltKw * dtHours; // kW × h = kWh (if running at 100% capacity)
         }
       });
       
       const totalKwh = totalHeatPumpKwh + totalAuxKwh;
-      const dailyCost = totalKwh * electricityRate;
+      // Round kWh first, then calculate cost from rounded value to ensure table reconciles
+      const roundedKwh = parseFloat(totalKwh.toFixed(1));
+      const dailyCost = roundedKwh * electricityRate;
+      
+      // Calculate deltaT from hourly temps for consistency (average of hourly deltaTs)
+      // This ensures ΔT matches the effective temperature difference used in calculations
+      const avgDeltaT = day.hours.reduce((sum, hour) => {
+        return sum + Math.max(0, ecobeeTargetTemp - hour.temp);
+      }, 0) / day.hours.length;
+      
+      // INVARIANT CHECK: Delivered heat should match building load (within rounding)
+      // dailyLoadBtu ≈ hpDeliveredBtu + auxDeliveredBtu
+      const deliveredTotalBtu = totalHpDeliveredBtu + totalAuxDeliveredBtu;
+      const loadMismatch = Math.abs(deliveredTotalBtu - totalDailyBtuLoad);
+      const loadMismatchPercent = (loadMismatch / totalDailyBtuLoad) * 100;
+      if (loadMismatch > 100 || loadMismatchPercent > 0.1) { // Allow 100 BTU or 0.1% rounding tolerance
+        console.warn(`[ForecastDebug] Daily heat balance mismatch for ${key} (${day.dayName}): delivered=${deliveredTotalBtu.toFixed(0)} BTU, load=${totalDailyBtuLoad.toFixed(0)} BTU, diff=${loadMismatch.toFixed(0)} (${loadMismatchPercent.toFixed(2)}%)`);
+      }
+      
+      // DIAGNOSTIC: Log first day (Monday) details for debugging
+      if (dayIndex === 0 && import.meta.env.DEV) {
+        const totalHours = day.hours.reduce((sum, h) => sum + (h.dtHours ?? 1.0), 0);
+        console.log(`[ForecastDebug] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, totalHours=${totalHours.toFixed(1)}, avgDeltaT=${avgDeltaT.toFixed(1)}`);
+        console.log(`[ForecastDebug] Day 0 BTU totals: load=${(totalDailyBtuLoad/1000).toFixed(0)}k, HP=${(totalHpDeliveredBtu/1000).toFixed(0)}k, Aux=${(totalAuxDeliveredBtu/1000).toFixed(0)}k, delivered=${(deliveredTotalBtu/1000).toFixed(0)}k, mismatch=${loadMismatch.toFixed(0)}`);
+      }
+      
+      // DIAGNOSTIC: Calculate implied average COP for sanity check
+      // COP = delivered BTU / (electrical kWh × 3412.14 BTU/kWh)
+      const impliedAvgCop = totalHeatPumpKwh > 0 
+        ? totalHpDeliveredBtu / (totalHeatPumpKwh * 3412.14)
+        : null;
+      
+      // Debug print for implied COP (especially for cold days)
+      if (impliedAvgCop !== null && avgTemp >= 30 && avgTemp <= 35) {
+        console.log(`[ForecastDebug] ${key} (${avgTemp.toFixed(1)}°F avg): Implied Avg COP = ${impliedAvgCop.toFixed(2)}, HP Delivered = ${(totalHpDeliveredBtu/1000).toFixed(0)}k BTU, HP kWh = ${totalHeatPumpKwh.toFixed(1)}`);
+        if (impliedAvgCop > 4.5) {
+          console.warn(`[ForecastDebug] ⚠️ High implied COP (${impliedAvgCop.toFixed(2)}) at ${avgTemp.toFixed(1)}°F - COP curve may be too optimistic`);
+        }
+      }
+      
+      // Format day label: "Today (Xh remaining)" for partial first day, otherwise use day name
+      const dayLabel = dayIndex === 0 && day.hours.length < 24
+        ? `Today (${day.hours.length}h remaining)`
+        : day.dayName;
       
       dailyData.push({
         date: key,
-        dayName: day.dayName,
-        avgTemp: Math.round(avgTemp),
+        dayName: dayLabel,
+        avgTemp: parseFloat(avgTemp.toFixed(1)), // Show 1 decimal to match deltaT precision
         minTemp: Math.round(minTemp),
         maxTemp: Math.round(maxTemp),
-        deltaT: (ecobeeTargetTemp - avgTemp).toFixed(1),
+        deltaT: avgDeltaT.toFixed(1), // Use average of hourly deltaTs for consistency
         heatPumpKwh: totalHeatPumpKwh.toFixed(1),
         auxKwh: totalAuxKwh.toFixed(1),
         kWh: totalKwh.toFixed(1),
         cost: dailyCost.toFixed(2),
+        // Diagnostic data for COP sanity check
+        totalDailyBtuLoad: totalDailyBtuLoad,
+        totalHpDeliveredBtu: totalHpDeliveredBtu,
+        totalAuxDeliveredBtu: totalAuxDeliveredBtu,
+        impliedAvgCop: impliedAvgCop,
+        fullTiltKwHours: totalFullTiltKwHours, // Debug: full-tilt kW × hours (if running at 100% capacity)
+        hours: day.hours, // Store hours array to check if day is partial
+        isPartialDay: dayIndex === 0 && day.hours.length < 24, // Flag for partial first day
       });
     });
     
-    return dailyData.slice(0, 7); // Limit to 7 days
-  }, [ecobeeTargetTemp, forecast, heatLossBtu, tons, compressorPower, useElectricAuxHeat, electricityRate]);
+    // dailyData is already in chronological order since we iterated sortedDayKeys
+    return dailyData; // Already limited to 7 days
+  }, [ecobeeTargetTemp, forecast, heatLossFactor, designHeatLossBtuHrAt70F, tons, compressorPower, useElectricAuxHeat, electricityRate, hspf2]);
   
   // Weekly totals
   const weeklyTotals = useMemo(() => {
@@ -311,7 +475,9 @@ const ForecastDebug = () => {
     const totalKwh = dailyCosts.reduce((sum, day) => sum + parseFloat(day.kWh), 0);
     const totalHeatPumpKwh = dailyCosts.reduce((sum, day) => sum + parseFloat(day.heatPumpKwh), 0);
     const totalAuxKwh = dailyCosts.reduce((sum, day) => sum + parseFloat(day.auxKwh), 0);
-    const totalCost = dailyCosts.reduce((sum, day) => sum + parseFloat(day.cost), 0);
+    // Calculate cost from rounded total kWh to ensure table reconciles
+    const roundedTotalKwh = parseFloat(totalKwh.toFixed(1));
+    const totalCost = roundedTotalKwh * electricityRate;
     
     return {
       kWh: totalKwh.toFixed(1),
@@ -319,7 +485,7 @@ const ForecastDebug = () => {
       auxKwh: totalAuxKwh.toFixed(1),
       cost: totalCost.toFixed(2),
     };
-  }, [dailyCosts]);
+  }, [dailyCosts, electricityRate]);
   
   // Consider bridge "available" if bridge is running, even if device isn't reachable
   // This allows the page to show calculations using cached/default values
@@ -341,14 +507,38 @@ const ForecastDebug = () => {
       <div className="mx-auto max-w-7xl px-4 py-6">
         {/* Header */}
         <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Zap className="w-6 h-6 text-yellow-400" />
-            Weekly Planner
+          <h1 className="text-3xl font-bold text-white flex items-center gap-2">
+            <Calendar className="w-7 h-7 text-yellow-400" />
+            Weekly Cost Forecast
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
-            7-day cost forecast using Ecobee target temperature directly (no scheduling)
+          <p className="text-base text-gray-300 mt-2 max-w-3xl">
+            See your heating and cooling costs for the next 7 days based on the weather forecast and your current Ecobee thermostat setting.
           </p>
         </header>
+        
+        {/* Dismissible Info Banner */}
+        {!dismissedInfoBanner && (
+          <div className="mb-6 p-4 rounded-lg border border-blue-700/50 bg-blue-900/20 relative">
+            <button
+              onClick={handleDismissBanner}
+              className="absolute top-2 right-2 text-gray-400 hover:text-white transition-colors"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3 pr-6">
+              <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="font-medium text-blue-200 mb-1">
+                  About This Forecast
+                </div>
+                <div className="text-sm text-blue-300">
+                  This forecast assumes your thermostat stays at its current target temperature. If you use schedules or setbacks, actual costs may differ.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Connection Status */}
         <div className={`mb-6 p-4 rounded-lg border ${
@@ -454,41 +644,41 @@ const ForecastDebug = () => {
           </div>
         </div>
         
-        {/* Calculation Parameters */}
-        <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-semibold mb-3">Calculation Parameters</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-gray-400">Heat Loss Factor:</span>
-              <span className="ml-2 text-white font-mono">{formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)}</span>
+        {/* Hero Section: Weekly Totals */}
+        {weeklyTotals && dailyCosts && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            {/* Weekly Total Cost */}
+            <div className="bg-gradient-to-br from-green-600/30 to-green-800/30 border-2 border-green-600/60 rounded-xl p-6 shadow-lg">
+              <div className="text-sm text-green-200 mb-2 font-medium">7-DAY TOTAL COST</div>
+              <div className="text-4xl font-bold text-white mb-2">${weeklyTotals.cost}</div>
+              <div className="text-sm text-green-300">
+                {formatEnergyFromKwh(parseFloat(weeklyTotals.kWh), effectiveUnitSystem, { decimals: 1 })}
+              </div>
             </div>
-            <div>
-              <span className="text-gray-400">HSPF2:</span>
-              <span className="ml-2 text-white font-mono">{hspf2}</span>
+            
+            {/* Daily Average */}
+            <div className="bg-gradient-to-br from-blue-600/30 to-blue-800/30 border-2 border-blue-600/60 rounded-xl p-6 shadow-lg">
+              <div className="text-sm text-blue-200 mb-2 font-medium">DAILY AVERAGE</div>
+              <div className="text-3xl font-bold text-white mb-2">${(parseFloat(weeklyTotals.cost) / 7).toFixed(2)}</div>
+              <div className="text-xs text-blue-300">
+                {formatEnergyFromKwh(parseFloat(weeklyTotals.kWh) / 7, effectiveUnitSystem, { decimals: 1 })} per day
+              </div>
             </div>
-            <div>
-              <span className="text-gray-400">Capacity:</span>
-              <span className="ml-2 text-white font-mono">
-                {effectiveUnitSystem === UNIT_SYSTEMS.INTL 
-                  ? `${(capacity * 0.293071).toFixed(1)} kW`
-                  : `${capacity}k BTU (${formatCapacityFromTons(tons, effectiveUnitSystem)})`
-                }
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-400">SEER2:</span>
-              <span className="ml-2 text-white font-mono">{efficiency}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">Location:</span>
-              <span className="ml-2 text-white font-mono">
-                {userLocation ? `${userLocation.city}, ${userLocation.state}` : "Not set"}
-              </span>
-            </div>
+            
+            {/* Backup Heat */}
+            {parseFloat(weeklyTotals.auxKwh) > 0 && (
+              <div className="bg-gradient-to-br from-orange-600/30 to-red-800/30 border-2 border-orange-600/60 rounded-xl p-6 shadow-lg">
+                <div className="text-sm text-orange-200 mb-2 font-medium">BACKUP HEAT</div>
+                <div className="text-3xl font-bold text-white mb-2">{formatEnergyFromKwh(parseFloat(weeklyTotals.auxKwh), effectiveUnitSystem, { decimals: 1 })}</div>
+                <div className="text-xs text-orange-300">
+                  ${(parseFloat(weeklyTotals.auxKwh) * electricityRate).toFixed(2)} this week
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
         
-        {/* 7-Day Forecast Table */}
+        {/* Tabbed Interface */}
         {!isConnected ? (
           <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6 text-center">
             <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
@@ -510,61 +700,206 @@ const ForecastDebug = () => {
               <h2 className="text-lg font-semibold">7-Day Heating Cost Forecast</h2>
               <p className="text-sm text-gray-400">
                 Using constant target: <span className="text-orange-400 font-bold">{ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}</span>
+                {dailyCosts && dailyCosts[0] && dailyCosts[0].hours && dailyCosts[0].hours.length < 24 && (
+                  <span className="text-xs text-yellow-400 ml-2">
+                    (Today: {dailyCosts[0].hours.length} hours remaining)
+                  </span>
+                )}
               </p>
               <p className="text-xs text-gray-500 mt-2 italic">
                 This forecast assumes your thermostat stays at its current target. If you use schedules or setbacks, actual costs may differ.
               </p>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-[#1D232C]">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-gray-400 font-medium">Day</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">Avg Temp</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">Min/Max</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">ΔT</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">HP kWh</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">Aux kWh</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">Total kWh</th>
-                    <th className="px-4 py-3 text-right text-gray-400 font-medium">Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyCosts.map((day, idx) => (
-                    <tr key={day.date} className={idx % 2 === 0 ? "bg-[#151A21]" : "bg-[#1A1F27]"}>
-                      <td className="px-4 py-3 font-medium">{day.dayName}</td>
-                      <td className="px-4 py-3 text-right text-cyan-400">{formatTemperatureFromF(day.avgTemp, effectiveUnitSystem, { decimals: 0 })}</td>
-                      <td className="px-4 py-3 text-right text-gray-400">
-                        {formatTemperatureFromF(day.minTemp, effectiveUnitSystem, { decimals: 0, withUnit: false })} / {formatTemperatureFromF(day.maxTemp, effectiveUnitSystem, { decimals: 0, withUnit: false })}
-                      </td>
-                      <td className="px-4 py-3 text-right text-orange-400">
-                        {(() => {
-                          const deltaT = parseFloat(day.deltaT);
-                          return effectiveUnitSystem === UNIT_SYSTEMS.INTL 
-                            ? `${(deltaT * 5/9).toFixed(1)}°C`
-                            : `${deltaT}°F`;
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-right text-blue-400">{formatEnergy(day.heatPumpKwh)}</td>
-                      <td className="px-4 py-3 text-right text-red-400">{formatEnergy(day.auxKwh)}</td>
-                      <td className="px-4 py-3 text-right text-yellow-400 font-semibold">{formatEnergy(day.kWh)}</td>
-                      <td className="px-4 py-3 text-right text-green-400 font-bold">${day.cost}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                {weeklyTotals && (
-                  <tfoot className="bg-[#1E4CFF]/20 border-t border-[#1E4CFF]">
-                    <tr>
-                      <td className="px-4 py-3 font-bold" colSpan={4}>Weekly Total</td>
-                      <td className="px-4 py-3 text-right text-blue-400 font-bold">{formatEnergy(weeklyTotals.heatPumpKwh)}</td>
-                      <td className="px-4 py-3 text-right text-red-400 font-bold">{formatEnergy(weeklyTotals.auxKwh)}</td>
-                      <td className="px-4 py-3 text-right text-yellow-400 font-bold">{formatEnergy(weeklyTotals.kWh)}</td>
-                      <td className="px-4 py-3 text-right text-green-400 font-bold text-lg">${weeklyTotals.cost}</td>
-                    </tr>
-                  </tfoot>
+            {/* Tab Navigation */}
+            <div className="border-b border-[#222A35] bg-[#1D232C]">
+              <div className="flex flex-wrap gap-2 p-2">
+                <button
+                  onClick={() => setActiveTab("forecast")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                    activeTab === "forecast"
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Daily Forecast
+                </button>
+                <button
+                  onClick={() => setActiveTab("system")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                    activeTab === "system"
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  System Specs
+                </button>
+                {nerdMode && (
+                  <button
+                    onClick={() => setActiveTab("technical")}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                      activeTab === "technical"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                    }`}
+                  >
+                    <Code className="w-4 h-4" />
+                    Technical Details
+                  </button>
                 )}
-              </table>
+              </div>
+            </div>
+            
+            {/* Tab Content */}
+            <div className="p-4">
+              {activeTab === "forecast" && (
+                <div>
+                  <div className="mb-4">
+                    <h2 className="text-xl font-semibold text-white mb-2">7-Day Forecast</h2>
+                    <p className="text-sm text-gray-400">
+                      Target: <span className="text-orange-400 font-bold">{ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}</span>
+                      {dailyCosts && dailyCosts[0] && dailyCosts[0].hours && dailyCosts[0].hours.length < 24 && (
+                        <span className="text-xs text-yellow-400 ml-2">
+                          (Today: {dailyCosts[0].hours.length} hours remaining)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-[#1D232C]">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-gray-300 font-medium">Day</th>
+                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Average temperature for this day">Avg Temp</th>
+                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Minimum and maximum temperatures">Min/Max</th>
+                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Total heating energy (Heat Pump + Backup)">Heating kWh</th>
+                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Daily cost">Cost</th>
+                        </tr>
+                      </thead>
+                <tbody>
+                        {dailyCosts.map((day, idx) => (
+                          <tr key={day.date} className={idx % 2 === 0 ? "bg-[#151A21]" : "bg-[#1A1F27]"}>
+                            <td className="px-4 py-3 font-medium">
+                              {day.dayName}
+                              {idx === 0 && dailyCosts[0]?.isPartialDay && (
+                                <span className="ml-1 text-xs text-blue-400">←</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right text-cyan-400">{formatTemperatureFromF(day.avgTemp, effectiveUnitSystem, { decimals: 1 })}</td>
+                            <td className="px-4 py-3 text-right text-gray-400">
+                              {formatTemperatureFromF(day.minTemp, effectiveUnitSystem, { decimals: 0, withUnit: false })} / {formatTemperatureFromF(day.maxTemp, effectiveUnitSystem, { decimals: 0, withUnit: false })}
+                            </td>
+                            <td className="px-4 py-3 text-right text-blue-300 font-semibold" title={`Heat Pump: ${formatEnergy(day.heatPumpKwh)}, Backup Heat: ${formatEnergy(day.auxKwh)}`}>
+                              {formatEnergy(day.kWh)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-green-400 font-bold">${day.cost}</td>
+                          </tr>
+                        ))}
+                </tbody>
+                      {weeklyTotals && (
+                        <tfoot className="bg-[#1E4CFF]/20 border-t border-[#1E4CFF]">
+                          <tr>
+                            <td className="px-4 py-3 font-bold" colSpan={2}>
+                              {dailyCosts && dailyCosts[0] && dailyCosts[0].isPartialDay 
+                                ? "Today remainder + next 6 days"
+                                : "Weekly Total (7 days)"}
+                            </td>
+                            <td className="px-4 py-3 text-right text-blue-300 font-bold">{formatEnergy(weeklyTotals.kWh)}</td>
+                            <td className="px-4 py-3 text-right text-green-400 font-bold text-lg">${weeklyTotals.cost}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {activeTab === "system" && (
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-4">System Specifications</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Efficiency Ratings</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">HSPF2 (Heating):</span>
+                          <span className="text-white font-mono">{hspf2}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">SEER2 (Cooling):</span>
+                          <span className="text-white font-mono">{efficiency}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-3">System Capacity</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Capacity:</span>
+                          <span className="text-white font-mono">
+                            {effectiveUnitSystem === UNIT_SYSTEMS.INTL 
+                              ? `${(capacity * 0.293071).toFixed(1)} kW`
+                              : `${capacity}k BTU (${formatCapacityFromTons(tons, effectiveUnitSystem)})`
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Building Characteristics</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Heat Loss Factor:</span>
+                          <span className="text-white font-mono">{formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Cost Settings</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Electricity Rate:</span>
+                          <span className="text-white font-mono">${electricityRate.toFixed(3)}/kWh</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Location:</span>
+                          <span className="text-white">
+                            {userLocation ? `${userLocation.city}, ${userLocation.state}` : "Not set"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {activeTab === "technical" && nerdMode && (
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-4">Technical Details</h2>
+                  <p className="text-sm text-gray-400 mb-4">
+                    This section contains detailed technical information about the calculation methodology and formulas.
+                  </p>
+                  <div className="text-xs text-gray-400 space-y-4">
+                    {showFormula ? (
+                      <button
+                        onClick={() => setShowFormula(false)}
+                        className="w-full mb-4 p-2 bg-[#1A1F27] border border-[#222A35] rounded text-sm text-gray-400 hover:text-white transition-colors"
+                      >
+                        Hide Detailed Formulas
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowFormula(true)}
+                        className="w-full mb-4 p-2 bg-[#1A1F27] border border-[#222A35] rounded text-sm text-gray-400 hover:text-white transition-colors"
+                      >
+                        Show Detailed Calculation Formulas
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -572,44 +907,6 @@ const ForecastDebug = () => {
             <p className="text-gray-400">No forecast data available</p>
           </div>
         )}
-        
-        {/* Formula Explanation */}
-        <div className="mt-6 bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">Calculation Formula</h3>
-          <div className="text-xs text-gray-400 font-mono space-y-1">
-            <p><span className="text-purple-400">Aux Threshold Temperature:</span> Find temp where Heat Pump Output = Building Heat Loss</p>
-            <p className="ml-2">Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor(temp)</p>
-            <p className="ml-4 text-xs text-gray-500 italic">Source: 12,000 BTU/ton = standard refrigeration ton (ASHRAE Handbook - Fundamentals). Capacity Factor derating based on AHRI performance data.</p>
-            <p className="ml-2">Building Heat Loss = {formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)} × ({ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1, withUnit: false }) : "—"} - outdoor temp)</p>
-            <p className="ml-4 text-xs text-gray-500 italic">Source: Heat loss factor calculated from building characteristics using DOE Residential Energy Consumption Survey (RECS) & ASHRAE Handbook - Fundamentals.</p>
-            {balancePoint !== null ? (
-              <>
-                <p className="ml-2 text-purple-300">Aux threshold temperature: <strong>{formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}</strong></p>
-                <p className="ml-4 text-gray-400 text-xs">Below this outdoor temperature, your heat pump may need backup heat to hold the setpoint.</p>
-                <p className="ml-2 text-red-300">Aux heat required when outdoor temp &lt; {formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}</p>
-                <p className="ml-2 text-gray-500">Below {formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}, heat pump output drops below building heat loss, so electric strip heat supplements the heat pump.</p>
-              </>
-            ) : (
-              <p className="ml-2 text-purple-300">Aux threshold: Below {formatTemperatureFromF(-20, effectiveUnitSystem, { decimals: 0 })} (system can handle all temps without aux)</p>
-            )}
-            <p className="mt-2">ΔT = Ecobee Target ({ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}) - Outdoor Temp</p>
-            <p>Heat Loss = {formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)} × ΔT = BTU/hr needed</p>
-            <p>Heat Pump Output = {formatCapacityFromTons(tons, effectiveUnitSystem)} × 12,000 × Capacity Factor (varies with temp)</p>
-            <p className="ml-2 text-xs text-gray-500 italic">Capacity Factor: 1.0 @ 47°F+, linear derate 1.0 - (47 - T) × 0.012 for 17°F ≤ T &lt; 47°F, then 0.64 - (17 - T) × 0.01 below 17°F (AHRI performance data)</p>
-            <p>If Heat Loss &gt; Heat Pump Output: Aux Heat = (Deficit BTU) ÷ 3,412.14 BTU/kWh</p>
-            <p className="ml-2 text-xs text-gray-500 italic">Source: 3,412.14 BTU/kWh = standard energy conversion constant</p>
-            <p>Heat Pump {nerdMode ? "Energy" : "kWh"} = (Electrical kW × Runtime%) × 24 hours</p>
-            <p>Total {nerdMode ? "Energy" : "kWh"} = Heat Pump {nerdMode ? "Energy" : "kWh"} + Aux Heat {nerdMode ? "Energy" : "kWh"}</p>
-            <p>Daily Cost = Total {nerdMode ? "Energy" : "kWh"} × ${electricityRate.toFixed(3)}/kWh</p>
-            <div className="mt-3 pt-3 border-t border-[#222A35]">
-              <p className="text-xs text-gray-500 italic">
-                <strong>References:</strong> ASHRAE Handbook - Fundamentals (refrigeration ton, building heat loss), 
-                DOE Residential Energy Consumption Survey (RECS) (building heat loss constants), 
-                AHRI (Air-Conditioning, Heating, and Refrigeration Institute) performance data (capacity derating curves)
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

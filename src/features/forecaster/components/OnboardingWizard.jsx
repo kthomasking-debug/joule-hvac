@@ -535,7 +535,7 @@ const BuildingSubstep = ({
           <option value={1.1}>Ranch / Single-Story</option>
           <option value={0.9}>Two-Story</option>
           <option value={1.0}>Split-Level</option>
-          <option value={2.2}>Cabin / A-Frame</option>
+          <option value={1.2}>Cabin</option>
           <option value={1.15}>Manufactured Home</option>
         </select>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Affects surface area exposure</p>
@@ -547,7 +547,7 @@ const BuildingSubstep = ({
           <option value={9}>9 feet</option>
           <option value={10}>10 feet</option>
           <option value={12}>12 feet (vaulted)</option>
-          <option value={16}>16+ feet (cathedral)</option>
+          <option value={16}>16 feet</option>
         </select>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Average ceiling height</p>
       </div>

@@ -44,10 +44,11 @@ function runScenario(profileHours, indoorStrategyFn, settings, heatLoss) {
       perf = computeHourlyPerformance({
         tons: settings.tons,
         indoorTemp: indoorTemp,
-        heatLossBtu: heatLoss,
+        designHeatLossBtuHrAt70F: heatLoss,
         compressorPower: settings.compressorPower,
+        hspf2: settings.hspf2 || 9.0,
       }, hour.temp, hour.humidity);
-      const kwh = perf.electricalKw * (perf.runtime / 100);
+      const kwh = perf.electricalKw * (perf.capacityUtilization / 100); // Using capacityUtilization, not time-based runtime
       totalEnergy += kwh;
       const aux = settings.useElectricAuxHeat ? perf.auxKw : 0;
       totalAux += aux;
@@ -57,7 +58,7 @@ function runScenario(profileHours, indoorStrategyFn, settings, heatLoss) {
       const perfCool = computeHourlyCoolingPerformance({
         tons: settings.tons,
         indoorTemp: indoorTemp,
-        heatLossBtu: heatLoss,
+        designHeatLossBtuHrAt70F: heatLoss,
         seer2: settings.seer2,
         solarExposure: 1.0,
       }, hour.temp, hour.humidity);
@@ -130,9 +131,10 @@ export default function ThermostatStrategyAnalyzer() {
       indoorTemp,
       heatLossBtu: heatLoss,
       compressorPower: settings.compressorPower,
+      hspf2: settings.hspf2 || 9.0,
     }, outdoorTemp, humidity);
     electricalKw = perfHeat.electricalKw;
-    runtimePercent = perfHeat.runtime || 0;
+    runtimePercent = perfHeat.capacityUtilization || 0; // Using capacityUtilization, not time-based runtime
     auxKw = perfHeat.auxKw || 0;
     // recompute heatpumpOutputBtu/factors by capacityFactor
     capacityFactor = getCapacityFactor(outdoorTemp);
@@ -152,7 +154,7 @@ export default function ThermostatStrategyAnalyzer() {
       solarExposure: 1.0,
     }, outdoorTemp, humidity);
     electricalKw = perfCool.electricalKw;
-    runtimePercent = perfCool.runtime || 0;
+    runtimePercent = perfCool.capacityUtilization || 0; // Using capacityUtilization, not time-based runtime
     deficitBtu = perfCool.deficitBtu || 0;
     auxKw = 0; // cooling has no auxKw
     // capacity derate applied to cooling capacity
@@ -238,7 +240,7 @@ export default function ThermostatStrategyAnalyzer() {
             heatLossBtu: heatLossBtu,
             compressorPower: settings.compressorPower,
           }, hour.temp, hour.humidity);
-          const kwh = perf.electricalKw * (perf.runtime / 100);
+          const kwh = perf.electricalKw * (perf.capacityUtilization / 100); // Using capacityUtilization, not time-based runtime
           totalEnergy += kwh;
           const aux = settings.useElectricAuxHeat ? perf.auxKw : 0;
           totalAux += aux;

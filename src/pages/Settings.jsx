@@ -63,6 +63,7 @@ import {
   defaultFallbackFixedCharges,
   normalizeStateToAbbreviation,
 } from "../data/fixedChargesByState";
+import * as heatUtils from "../lib/heatUtils";
 
 const Section = ({ title, icon, description, children, ...props }) => (
   <div
@@ -1338,18 +1339,17 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
   }, [settings.manualHeatLoss]);
   
   const calculatedHeatLossFactor = useMemo(() => {
-    const BASE_BTU_PER_SQFT_HEATING = 22.67;
-    const ceilingMultiplier = 1 + ((settings.ceilingHeight ?? 8) - 8) * 0.1;
-    const designHeatLoss = Math.round(
-      (settings.squareFeet ?? 800) *
-      BASE_BTU_PER_SQFT_HEATING *
-      (settings.insulationLevel ?? 1.0) *
-      (settings.homeShape ?? 1.0) *
-      ceilingMultiplier
-    );
+    const designHeatLoss = heatUtils.calculateHeatLoss({
+      squareFeet: settings.squareFeet ?? 800,
+      insulationLevel: settings.insulationLevel ?? 1.0,
+      homeShape: settings.homeShape ?? 1.0,
+      ceilingHeight: settings.ceilingHeight ?? 8,
+      wallHeight: settings.wallHeight ?? null,
+      hasLoft: settings.hasLoft ?? false,
+    });
     // Convert to BTU/hr/°F (heat loss factor)
     return Math.round(designHeatLoss / 70);
-  }, [settings.squareFeet, settings.insulationLevel, settings.homeShape, settings.ceilingHeight]);
+  }, [settings.squareFeet, settings.insulationLevel, settings.homeShape, settings.ceilingHeight, settings.wallHeight, settings.hasLoft]);
 
   return (
     <Section title="Building Characteristics" icon={<Home size={20} />}>
@@ -1469,11 +1469,32 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             <option value={1.0}>Split-Level / Standard</option>
             <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
             <option value={1.15}>Manufactured Home</option>
-            <option value={2.2}>Cabin / A-Frame</option>
+            <option value={1.2}>Cabin</option>
           </select>
           <p className="text-xs text-[#A7B0BA] mt-1.5">
             Affects surface area exposure and heat loss. Single-story homes have more roof/floor area per square foot.
           </p>
+          {/* Loft toggle - only show for Cabin */}
+          {(settings.homeShape ?? 1.0) >= 1.2 && (settings.homeShape ?? 1.0) < 1.3 && (
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="hasLoft"
+                checked={settings.hasLoft ?? false}
+                onChange={(e) => onSettingChange("hasLoft", e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-blue-600 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={settings.useManualHeatLoss}
+              />
+              <label htmlFor="hasLoft" className="text-sm text-[#E8EDF3] cursor-pointer">
+                Has Loft
+              </label>
+            </div>
+          )}
+          {(settings.homeShape ?? 1.0) >= 1.2 && (settings.homeShape ?? 1.0) < 1.3 && (settings.hasLoft ?? false) && (
+            <p className="text-xs text-[#A7B0BA] mt-1.5">
+              Loft reduces heat loss per square foot (~35% of sqft has ~50% less exterior exposure). This lowers your heat loss estimate.
+            </p>
+          )}
         </div>
         
         <div>
@@ -1490,10 +1511,78 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             <option value={9}>9 feet</option>
             <option value={10}>10 feet</option>
             <option value={12}>12 feet (vaulted)</option>
-            <option value={16}>16+ feet (cathedral)</option>
+            <option value={16}>16 feet</option>
           </select>
           <p className="text-xs text-[#A7B0BA] mt-1.5">
             Higher ceilings increase the volume to heat and energy needs (+10% per foot above 8').
+          </p>
+        </div>
+      </div>
+      
+      {/* Vertical Wall Height - Only for Cabin */}
+      {(settings.homeShape ?? 1.0) >= 1.2 && (settings.homeShape ?? 1.0) < 1.3 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div>
+            <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+              Vertical Wall Height
+            </label>
+            <select
+              value={settings.wallHeight ?? 0}
+              onChange={(e) => onSettingChange("wallHeight", Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={settings.useManualHeatLoss}
+            >
+              <option value={0}>0 feet</option>
+              <option value={4}>4 feet</option>
+              <option value={6}>6 feet</option>
+              <option value={8}>8 feet</option>
+              <option value={10}>10 feet</option>
+              <option value={12}>12 feet</option>
+            </select>
+            <p className="text-xs text-[#A7B0BA] mt-1.5">
+              Vertical wall height before the roof slopes. Affects wall surface area and heat loss through the geometric shape calculation.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Solar Exposure */}
+      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+            Solar Exposure (Cooling Load)
+          </label>
+          <select
+            value={(() => {
+              const val = settings.solarExposure ?? 1.5;
+              if (val >= 1.7) return "high";
+              if (val >= 1.4) return "medium";
+              if (val >= 1.2) return "low";
+              return "shaded";
+            })()}
+            onChange={(e) => {
+              const mapping = { 
+                shaded: 1.1,  // Shaded/minimal windows (allows lower values)
+                low: 1.3,     // Low exposure
+                medium: 1.5,  // Medium exposure (typical)
+                high: 1.8     // High exposure
+              };
+              let value = mapping[e.target.value];
+              // Clamp to [1.0, 2.5] range (shaded allows 1.0-1.2, others 1.3-1.8)
+              value = Math.max(1.0, Math.min(2.5, value));
+              onSettingChange("solarExposure", value);
+            }}
+            className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={settings.useManualHeatLoss}
+          >
+            <option value="shaded">Shaded/Minimal Windows (1.1×)</option>
+            <option value="low">Low (1.3×)</option>
+            <option value="medium">Medium (1.5×) - Typical</option>
+            <option value="high">High (1.8×)</option>
+          </select>
+          <p className="text-xs text-[#A7B0BA] mt-1.5">
+            Solar exposure affects cooling load in summer. High exposure (south-facing windows, minimal shade) increases cooling needs. 
+            Current multiplier: <strong>{(settings.solarExposure ?? 1.0).toFixed(1)}×</strong>
           </p>
         </div>
       </div>

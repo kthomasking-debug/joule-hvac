@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = {
   primarySystem: "heatPump",
   coolingSystem: "heatPump",
   coolingCapacity: 36,
+  cutoffTemp: -15, // Heat pump cutoff temperature (°F) - below this, capacity = 0 (lockout/no-heat condition)
+                   // Manufacturer-dependent, typically -10°F to -20°F. Lower = more cold-tolerant system.
 
   // Thermostat settings
   winterThermostat: 70,
@@ -29,8 +31,10 @@ export const DEFAULT_SETTINGS = {
   insulationLevel: 0.65,
   homeShape: 0.9,
   ceilingHeight: 8,
+  wallHeight: 0, // Vertical wall height (only applies to cabins/A-frames, 0 = true A-frame/triangle)
   homeElevation: 0,
-  solarExposure: 1.0,
+  solarExposure: 1.5, // Default to medium (typical home)
+  hasLoft: false, // For cabins/A-frames with lofts - reduces heat loss per sqft
   useManualHeatLoss: false,
   useCalculatedHeatLoss: true, // Default to calculated
   useAnalyzerHeatLoss: false,
@@ -182,8 +186,9 @@ export const SETTING_VALIDATORS = {
   },
 
   homeShape: (value) => {
-    if (typeof value !== "number" || value < 0.5 || value > 1.5) {
-      return { valid: false, error: "Home shape must be between 0.5 and 1.5" };
+    // Allow values from 0.5 to 1.2 (Cabin is 1.2)
+    if (typeof value !== "number" || value < 0.5 || value > 1.2) {
+      return { valid: false, error: "Home shape must be between 0.5 and 1.2" };
     }
     return { valid: true };
   },
@@ -209,7 +214,7 @@ export const SETTING_VALIDATORS = {
   },
 
   solarExposure: (value) => {
-    if (typeof value !== "number" || value < 0 || value > 2) {
+    if (typeof value !== "number" || value < 0.5 || value > 2.0) {
       return { valid: false, error: "Solar exposure must be between 0 and 2" };
     }
     return { valid: true };

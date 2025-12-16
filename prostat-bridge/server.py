@@ -47,6 +47,10 @@ pairings = {}  # device_id -> pairing object
 device_info = {}  # device_id -> device info cache
 discovered_devices = {}  # device_id -> IpDiscovery object
 
+# Cache for discovered characteristic IDs
+# format: device_id -> {'aid': 1, 'temp_target': 11, 'target_state': 12, ...}
+device_characteristics_cache = {}
+
 # Relay control
 relay_port = None
 relay_connected = False
@@ -522,6 +526,14 @@ async def get_thermostat_data(device_id: str):
                                 current_state_iid = iid
                                 logger.debug(f"    -> Current State")
                         
+                        # Save discovered IDs to cache for use by set_temperature and set_mode
+                        device_characteristics_cache[device_id] = {
+                            'aid': aid,
+                            'temp_target': temp_target_iid,
+                            'target_state': target_state_iid
+                        }
+                        logger.info(f"Cached IIDs for {device_id}: AID={aid}, TargetTemp={temp_target_iid}, Mode={target_state_iid}")
+                        
                         logger.info(f"Discovered AID={aid}, IIDs: temp={temp_current_iid}, target_temp={temp_target_iid}, target_state={target_state_iid}, current_state={current_state_iid}")
                         break
     except Exception as e:
@@ -567,7 +579,7 @@ async def get_thermostat_data(device_id: str):
         current_state_key = (aid, current_state_iid)
         
         if temp_key in data:
-            # HomeKit returns temperature in Celsius, convert to Fahrenheit
+            # HomeKit returns temperature in Celsius
             temp_c = data[temp_key].get('value')
             if temp_c is not None:
                 # Check if value is base64 encoded (encrypted) - if so, we need to decrypt
@@ -588,19 +600,19 @@ async def get_thermostat_data(device_id: str):
                     # Ensure temp_c is a number (convert string to float if needed)
                     try:
                         temp_c = float(temp_c)
-                        result['temperature'] = (temp_c * 9/5) + 32  # Convert C to F
+                        result['temperature'] = temp_c  # Native Celsius
                     except (ValueError, TypeError) as e:
                         logger.warning(f"Invalid temperature value: {temp_c} ({type(temp_c)}): {e}")
                         result['temperature'] = None
         
         if target_temp_key in data:
-            # HomeKit returns temperature in Celsius, convert to Fahrenheit
+            # HomeKit returns temperature in Celsius
             target_temp_c = data[target_temp_key].get('value')
             if target_temp_c is not None:
                 # Ensure target_temp_c is a number (convert string to float if needed)
                 try:
                     target_temp_c = float(target_temp_c)
-                    result['target_temperature'] = (target_temp_c * 9/5) + 32  # Convert C to F
+                    result['target_temperature'] = target_temp_c  # Native Celsius
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Invalid target temperature value: {target_temp_c} ({type(target_temp_c)}): {e}")
                     result['target_temperature'] = None
@@ -620,22 +632,46 @@ async def get_thermostat_data(device_id: str):
 
 
 async def set_temperature(device_id: str, temperature: float):
-    """Set target temperature (temperature is in Fahrenheit, convert to Celsius for HomeKit)"""
+    """Set target temperature (temperature is in Celsius for HomeKit/Canada)"""
     if device_id not in pairings:
         raise ValueError(f"Device {device_id} is not paired")
     
     pairing = pairings[device_id]
     
-    # HomeKit expects temperature in Celsius, convert from Fahrenheit
-    temperature_celsius = (temperature - 32) * 5/9
+    # --- FIX: Ensure cache is populated before trying to set ---
+    if device_id not in device_characteristics_cache:
+        logger.info(f"Cache miss for {device_id}, fetching characteristics before setting temperature...")
+        try:
+            # This populates the cache
+            await get_thermostat_data(device_id)
+        except Exception as e:
+            logger.warning(f"Could not refresh data before setting: {e}")
+    # ---------------------------------------------------------
+
+    # Determine correct IDs
+    aid = ECOBEE_AID
+    iid = ECOBEE_TEMP_TARGET
     
-    # Write target temperature
-    # Format: [(aid, iid, value), ...]
-    await pairing.put_characteristics([
-        (ECOBEE_AID, ECOBEE_TEMP_TARGET, temperature_celsius)
-    ])
+    # Use cached IDs if available
+    if device_id in device_characteristics_cache:
+        cache = device_characteristics_cache[device_id]
+        aid = cache.get('aid', aid)
+        iid = cache.get('temp_target', iid)
+        logger.debug(f"Using cached IDs for set_temperature: AID={aid}, IID={iid}")
+    else:
+        logger.warning(f"Using default IDs for set_temperature (AID={aid}, IID={iid}) - this may fail.")
     
-    logger.info(f"Set temperature to {temperature}°F ({temperature_celsius:.1f}°C) on {device_id}")
+    # Write target temperature (Already in Celsius)
+    try:
+        await pairing.put_characteristics([
+            (aid, iid, temperature)
+        ])
+        logger.info(f"Set temperature to {temperature}°C on {device_id}")
+    except Exception as e:
+        logger.error(f"Failed to set temperature on AID {aid}, IID {iid}: {e}")
+        # If it fails despite our best efforts, refresh cache for next time
+        await get_thermostat_data(device_id)
+        raise
 
 
 async def set_mode(device_id: str, mode: str):
@@ -649,7 +685,29 @@ async def set_mode(device_id: str, mode: str):
         raise ValueError(f"Device {device_id} is not paired")
     
     pairing = pairings[device_id]
+
+    # --- FIX: Ensure cache is populated before trying to set ---
+    if device_id not in device_characteristics_cache:
+        logger.info(f"Cache miss for {device_id}, fetching characteristics before setting mode...")
+        try:
+            await get_thermostat_data(device_id)
+        except Exception as e:
+            logger.warning(f"Could not refresh data before setting: {e}")
+    # ---------------------------------------------------------
     
+    # Determine correct IDs
+    aid = ECOBEE_AID
+    iid = ECOBEE_TARGET_STATE
+    
+    # Use cached IDs if available
+    if device_id in device_characteristics_cache:
+        cache = device_characteristics_cache[device_id]
+        aid = cache.get('aid', aid)
+        iid = cache.get('target_state', iid)
+        logger.debug(f"Using cached IDs for set_mode: AID={aid}, IID={iid}")
+    else:
+        logger.warning(f"Using default IDs for set_mode (AID={aid}, IID={iid}) - this may fail.")
+
     # Map mode to HomeKit state
     mode_map = {
         'off': 0,
@@ -663,11 +721,15 @@ async def set_mode(device_id: str, mode: str):
         raise ValueError(f"Invalid mode: {mode}")
     
     # Write target state
-    await pairing.put_characteristics([
-        (ECOBEE_AID, ECOBEE_TARGET_STATE, state)
-    ])
-    
-    logger.info(f"Set mode to {mode} on {device_id}")
+    try:
+        await pairing.put_characteristics([
+            (aid, iid, state)
+        ])
+        logger.info(f"Set mode to {mode} on {device_id}")
+    except Exception as e:
+        logger.error(f"Failed to set mode on AID {aid}, IID {iid}: {e}")
+        await get_thermostat_data(device_id)
+        raise
 
 
 # REST API Handlers
@@ -972,8 +1034,8 @@ async def evaluate_interlock_logic():
     Evaluate interlock logic for dehumidifier control with SAFETY CHECK for stale data.
     
     Rules:
-    1. Free Dry: If outdoor_temp < 65°F AND indoor_humidity > 55% → Run dehumidifier
-    2. AC Overcool: If outdoor_temp > 80°F → Disable dehumidifier, let AC handle it
+    1. Free Dry: If outdoor_temp < 18.3°C AND indoor_humidity > 55% → Run dehumidifier
+    2. AC Overcool: If outdoor_temp > 26.6°C → Disable dehumidifier, let AC handle it
     3. Min on/off times: Respect minimum runtime to prevent short cycling
     4. Safety: If data is stale (>15 minutes), force dehumidifier OFF
     """
@@ -1011,16 +1073,16 @@ async def evaluate_interlock_logic():
     current_dehu_state = system_state.get('dehumidifier_on', False)
     
     # Rule 1: Free Dry Logic
-    # If it's cool outside (< 65°F) and humid inside (> 55%), run dehumidifier
+    # If it's cool outside (< 18.3°C / 65°F) and humid inside (> 55%), run dehumidifier
     free_dry_condition = (
-        outdoor_temp is not None and outdoor_temp < 65 and
+        outdoor_temp is not None and outdoor_temp < 18.3 and
         indoor_humidity is not None and indoor_humidity > 55
     )
     
     # Rule 2: AC Overcool Logic
-    # If it's hot outside (> 80°F), let AC handle dehumidification
+    # If it's hot outside (> 26.6°C / 80°F), let AC handle dehumidification
     ac_overcool_condition = (
-        outdoor_temp is not None and outdoor_temp > 80 and
+        outdoor_temp is not None and outdoor_temp > 26.6 and
         hvac_mode == 'cool' and hvac_running
     )
     
@@ -1031,11 +1093,11 @@ async def evaluate_interlock_logic():
     if ac_overcool_condition:
         # AC is running and it's hot - let AC dehumidify for "free"
         should_run = False
-        reason = "AC overcool mode (outdoor > 80°F, AC running)"
+        reason = "AC overcool mode (outdoor > 26.6°C, AC running)"
     elif free_dry_condition:
         # Cool outside, humid inside - run dehumidifier
         should_run = True
-        reason = f"Free dry mode (outdoor {outdoor_temp}°F < 65°F, humidity {indoor_humidity}% > 55%)"
+        reason = f"Free dry mode (outdoor {outdoor_temp}°C < 18.3°C, humidity {indoor_humidity}% > 55%)"
     else:
         # Default: Use humidity setpoint logic (can be extended)
         # For now, keep current state unless explicitly changed
@@ -1650,4 +1712,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-

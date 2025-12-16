@@ -5,9 +5,10 @@ import { inputClasses, fullInputClasses, selectClasses } from '../lib/uiClasses'
 import { DashboardLink } from '../components/DashboardLink';
 import { fetchGeocodeCandidates, chooseBestCandidate, reverseGeocode } from '../utils/geocode';
 import { fetchStateAverageGasPrice } from '../lib/eia';
-import { getDefrostPenalty } from '../lib/heatUtils';
+import { getDefrostPenalty, getEffectiveSquareFeet } from '../lib/heatUtils';
 import useForecast from '../hooks/useForecast';
 import { useUnitSystem, formatTemperatureFromF, formatCapacityFromKbtuh } from '../lib/units';
+import { getAllSettings } from '../lib/unifiedSettingsManager';
 
 const GasVsHeatPump = () => {
   const EXTREME_COLD_F = 0; // Default threshold for extreme cold advisory
@@ -16,30 +17,60 @@ const GasVsHeatPump = () => {
   // Extract context
   const outletContext = useOutletContext() || {};
   const { userSettings, setUserSetting } = outletContext || {};
-  // Extract building characteristics from userSettings/context
-  const squareFeet = Number(userSettings?.squareFeet) || outletContext?.squareFeet || 1500;
+  
+  // Get onboarding data from unified settings manager as fallback
+  const allSettings = getAllSettings();
+  
+  // Extract building characteristics from userSettings/context/onboarding
+  const squareFeet = Number(userSettings?.squareFeet || outletContext?.squareFeet || allSettings?.squareFeet || 1500);
   const setSquareFeetContext = (v) => setUserSetting ? setUserSetting('squareFeet', v) : (outletContext?.setSquareFeet || (() => { }))(v);
-  const insulationLevel = Number(userSettings?.insulationLevel) || outletContext?.insulationLevel || 1.0;
+  const insulationLevel = Number(userSettings?.insulationLevel || outletContext?.insulationLevel || allSettings?.insulationLevel || 1.0);
   const setInsulationLevelContext = (v) => setUserSetting ? setUserSetting('insulationLevel', v) : (outletContext?.setInsulationLevel || (() => { }))(v);
-  const homeShape = Number(userSettings?.homeShape) || outletContext?.homeShape || 1.0;
+  const homeShape = Number(userSettings?.homeShape || outletContext?.homeShape || allSettings?.homeShape || 1.0);
   const setHomeShapeContext = (v) => setUserSetting ? setUserSetting('homeShape', v) : (outletContext?.setHomeShape || (() => { }))(v);
-  const ceilingHeight = Number(userSettings?.ceilingHeight) || outletContext?.ceilingHeight || 8;
+  const ceilingHeight = Number(userSettings?.ceilingHeight || outletContext?.ceilingHeight || allSettings?.ceilingHeight || 8);
   const setCeilingHeightContext = (v) => setUserSetting ? setUserSetting('ceilingHeight', v) : (outletContext?.setCeilingHeight || (() => { }))(v);
-  const contextIndoorTemp = Number(userSettings?.indoorTemp ?? userSettings?.winterThermostat) || outletContext?.indoorTemp || 70;
-  const contextCapacity = userSettings?.capacity || outletContext?.capacity || 24;
-  const contextEfficiency = Number(userSettings?.efficiency) || outletContext?.efficiency || 15;
-  const contextUtilityCost = Number(userSettings?.utilityCost) || outletContext?.utilityCost || 0.10;
-  const contextGasCost = Number(userSettings?.gasCost) || outletContext?.gasCost || 1.50; // Get gas cost from context/onboarding
+  const hasLoft = Boolean(userSettings?.hasLoft || outletContext?.hasLoft || allSettings?.hasLoft || false);
+  const setHasLoftContext = (v) => setUserSetting ? setUserSetting('hasLoft', v) : (outletContext?.setHasLoft || (() => { }))(v);
+  const contextIndoorTemp = Number((userSettings?.indoorTemp ?? userSettings?.winterThermostat) || outletContext?.indoorTemp || allSettings?.indoorTemp || allSettings?.winterThermostat || 70);
+  const contextCapacity = userSettings?.capacity || outletContext?.capacity || allSettings?.capacity || allSettings?.coolingCapacity || 24;
+  const contextEfficiency = Number(userSettings?.efficiency || outletContext?.efficiency || allSettings?.efficiency || allSettings?.seer2 || 15);
+  const contextUtilityCost = Number(userSettings?.utilityCost || outletContext?.utilityCost || allSettings?.utilityCost || 0.10);
+  const contextGasCost = Number(userSettings?.gasCost || outletContext?.gasCost || allSettings?.gasCost || 1.50);
+  const contextAFUE = Number(userSettings?.afue || outletContext?.afue || allSettings?.afue || 0.95);
 
   // --- System Configuration (use context if available, otherwise local state) ---
   const [capacity, setCapacity] = useState(contextCapacity);
   const [efficiency, setEfficiency] = useState(contextEfficiency);
-  const [indoorTemp] = useState(contextIndoorTemp);
+  const [indoorTemp, setIndoorTemp] = useState(contextIndoorTemp);
   const [utilityCost, setUtilityCost] = useState(contextUtilityCost);
 
   // --- New Gas Furnace Inputs ---
-  const [gasFurnaceAFUE, setGasFurnaceAFUE] = useState(0.95); // 95% AFUE
-  const [gasCostPerTherm, setGasCostPerTherm] = useState(contextGasCost); // Use gas cost from onboarding
+  const [gasFurnaceAFUE, setGasFurnaceAFUE] = useState(contextAFUE);
+  const [gasCostPerTherm, setGasCostPerTherm] = useState(contextGasCost);
+  
+  // Sync state with onboarding data when it becomes available
+  useEffect(() => {
+    if (contextCapacity && contextCapacity !== capacity) {
+      setCapacity(contextCapacity);
+    }
+    if (contextEfficiency && contextEfficiency !== efficiency) {
+      setEfficiency(contextEfficiency);
+    }
+    if (contextIndoorTemp && contextIndoorTemp !== indoorTemp) {
+      setIndoorTemp(contextIndoorTemp);
+    }
+    if (contextUtilityCost && contextUtilityCost !== utilityCost) {
+      setUtilityCost(contextUtilityCost);
+    }
+    if (contextGasCost && contextGasCost !== gasCostPerTherm) {
+      setGasCostPerTherm(contextGasCost);
+    }
+    if (contextAFUE && contextAFUE !== gasFurnaceAFUE) {
+      setGasFurnaceAFUE(contextAFUE);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextCapacity, contextEfficiency, contextIndoorTemp, contextUtilityCost, contextGasCost, contextAFUE]);
 
   // --- State for EIA gas price fetch ---
   const [showStatePickerModal, setShowStatePickerModal] = useState(false);
@@ -141,18 +172,14 @@ const GasVsHeatPump = () => {
   useEffect(() => {
     const baseBtuPerSqFt = 22.67;
     const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
-    const calculatedHeatLoss = squareFeet * baseBtuPerSqFt * insulationLevel * homeShape * ceilingMultiplier;
+    const effectiveSquareFeet = getEffectiveSquareFeet(squareFeet, hasLoft, homeShape);
+    const calculatedHeatLoss = effectiveSquareFeet * baseBtuPerSqFt * insulationLevel * homeShape * ceilingMultiplier;
     const rounded = Math.round(calculatedHeatLoss / 1000) * 1000;
     setHeatLoss(rounded);
     setLowHeatLossWarning(rounded < 10000); // Warn if abnormally low, likely invalid inputs
-  }, [squareFeet, insulationLevel, homeShape, ceilingHeight]);
+  }, [squareFeet, insulationLevel, homeShape, ceilingHeight, hasLoft]);
 
-  // Update gas cost when context changes (from onboarding or settings)
-  useEffect(() => {
-    if (contextGasCost && contextGasCost !== gasCostPerTherm) {
-      setGasCostPerTherm(contextGasCost);
-    }
-  }, [contextGasCost]);
+  // Gas cost sync is now handled in the main sync useEffect above
 
   const compressorPower = useMemo(() => tons * 1.0 * (15 / efficiency), [tons, efficiency]);
 
@@ -573,13 +600,12 @@ const GasVsHeatPump = () => {
                 <p className="text-gray-500 text-xs mt-1">Heated floor area only.</p>
               </div>
               <div>
-                <label className="block text-gray-300 mb-1">Insulation level</label>
+                <label className="block text-gray-300 mb-1">Insulation Quality</label>
                 <select value={insulationLevel} onChange={(e) => setInsulationLevelContext(Number(e.target.value))} className={selectClasses}>
-                  <option value={1.4}>Rough</option>
-                  <option value={1.0}>Typical</option>
-                  <option value={0.65}>Tight</option>
+                  <option value={1.4}>Poor (pre-1980, minimal upgrades)</option>
+                  <option value={1.0}>Average (1990s-2000s, code-min)</option>
+                  <option value={0.65}>Good (post-2010, ENERGY STAR)</option>
                 </select>
-                <p className="text-gray-500 text-xs mt-1">How drafty or tight the building shell is.</p>
               </div>
               
               {/* Advanced Details Accordion */}
@@ -598,19 +624,43 @@ const GasVsHeatPump = () => {
                 {showAdvancedDetails && (
                   <div className="p-3 space-y-4 border-t border-[#1c2733] bg-[#0c1218]">
                     <div>
-                      <label className="block text-gray-300 mb-1">Home shape</label>
+                      <label className="block text-gray-300 mb-1">Building Shape</label>
                       <select value={homeShape} onChange={(e) => setHomeShapeContext(Number(e.target.value))} className={selectClasses}>
-                        <option value={1.0}>Simple box</option>
-                        <option value={1.15}>Cape/Craftsman</option>
-                        <option value={1.3}>Spiky modern</option>
+                        <option value={0.9}>Two-Story (less exterior surface)</option>
+                        <option value={1.0}>Split-Level / Standard</option>
+                        <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
+                        <option value={1.15}>Manufactured Home</option>
+                        <option value={2.2}>Cabin / A-Frame</option>
                       </select>
-                      <p className="text-gray-500 text-xs mt-1">Complex shapes lose more heat than simple boxes.</p>
+                      <p className="text-gray-500 text-xs mt-1">Affects surface area exposure and heat loss.</p>
+                      {/* Loft toggle - only show for Cabin/A-Frame */}
+                      {homeShape >= 1.2 && homeShape < 1.3 && (
+                        <div className="mt-3">
+                          <label className="flex items-center text-sm font-medium text-gray-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hasLoft}
+                              onChange={(e) => setHasLoftContext(e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
+                            />
+                            Has Loft (reduces effective square footage for heat loss)
+                          </label>
+                          <p className="text-gray-500 text-xs mt-1 ml-6">
+                            For cabins with lofts, this adjusts the heat loss calculation to account for reduced exterior surface area, similar to a two-story home.
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-gray-300 mb-1">Ceiling height</label>
-                      <input type="range" min="7" max="20" step="1" value={ceilingHeight} onChange={(e) => setCeilingHeightContext(Number(e.target.value))} className="w-full mb-2" />
-                      <span className="text-lg font-bold text-white">{ceilingHeight} ft</span>
-                      <p className="text-gray-500 text-xs mt-1">Higher ceilings = more air volume to heat.</p>
+                      <label className="block text-gray-300 mb-1">Average Ceiling Height</label>
+                      <select value={ceilingHeight} onChange={(e) => setCeilingHeightContext(Number(e.target.value))} className={selectClasses}>
+                        <option value={8}>8 feet (standard)</option>
+                        <option value={9}>9 feet</option>
+                        <option value={10}>10 feet</option>
+                        <option value={12}>12 feet (vaulted)</option>
+                        <option value={16}>16+ feet (cathedral)</option>
+                      </select>
+                      <p className="text-gray-500 text-xs mt-1">Higher ceilings increase heating volume and energy needs.</p>
                     </div>
                   </div>
                 )}

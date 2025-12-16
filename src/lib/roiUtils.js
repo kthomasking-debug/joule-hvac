@@ -5,6 +5,7 @@ import {
   calculateAnnualHeatingCostFromHDD,
   calculateAnnualCoolingCostFromCDD,
 } from "./hddData";
+import * as heatUtils from "./heatUtils";
 
 export const currency = (v) => `$${(v ?? 0).toFixed(0)}`;
 
@@ -13,15 +14,14 @@ export function estimateAnnualCost(settings, userLocation, latestAnalysis) {
   const heatLossFactor =
     latestAnalysis?.heatLossFactor ||
     (() => {
-      const BASE_BTU_PER_SQFT_HEATING = 22.67;
-      const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
-      const designHeatLoss =
-        (settings.squareFeet || 1500) *
-        BASE_BTU_PER_SQFT_HEATING *
-        (settings.insulationLevel || 1.0) *
-        (settings.homeShape || 1.0) *
-        ceilingMultiplier;
-      return designHeatLoss / 70;
+      return heatUtils.calculateHeatLoss({
+        squareFeet: settings.squareFeet || 1500,
+        insulationLevel: settings.insulationLevel || 1.0,
+        homeShape: settings.homeShape || 1.0,
+        ceilingHeight: settings.ceilingHeight || 8,
+        wallHeight: settings.wallHeight ?? null,
+        hasLoft: settings.hasLoft || false,
+      }) / 70; // Convert to BTU/hr/°F
     })();
 
   const homeElevation =
@@ -51,16 +51,22 @@ export function estimateAnnualCost(settings, userLocation, latestAnalysis) {
     `${userLocation.city}, ${userLocation.state}`,
     userLocation.state
   );
-  const BASE_BTU_PER_SQFT_COOLING = 28.0;
-  const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
-  const designHeatGain =
-    (settings.squareFeet || 1500) *
-    BASE_BTU_PER_SQFT_COOLING *
-    (settings.insulationLevel || 1.0) *
-    (settings.homeShape || 1.0) *
-    ceilingMultiplier *
-    (settings.solarExposure || 1.0);
-  const heatGainFactor = designHeatGain / 20;
+  // Heat gain factor derived from heat loss factor with solar exposure multiplier
+  // Default range: 1.3-1.8 (unless user explicitly selects "shaded/minimal windows" which allows 1.0-1.2)
+  let solarExposureMultiplier = settings.solarExposure || 1.5;
+  
+  // If it's a percent (>= 1 and <= 100), divide by 100
+  if (solarExposureMultiplier >= 1 && solarExposureMultiplier <= 100) {
+    solarExposureMultiplier = solarExposureMultiplier / 100;
+  }
+  
+  // Clamp to [1.0, 2.5] range
+  // Note: Shaded/minimal windows allows 1.0-1.2, typical range is 1.3-1.8
+  solarExposureMultiplier = Math.max(1.0, Math.min(2.5, solarExposureMultiplier));
+  
+  // Derive heat gain from heat loss: heatGainFactor = heatLossFactor * solarExposureMultiplier
+  // This is a UA-like term (BTU/hr/°F), consistent with heatLossFactor
+  const heatGainFactor = heatLossFactor * solarExposureMultiplier;
 
   const coolingThermostatMultiplier = 74 / (settings.summerThermostat || 74);
   const annualCoolingCost = calculateAnnualCoolingCostFromCDD(

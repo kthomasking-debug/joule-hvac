@@ -6,6 +6,7 @@ import {
   calculateAnnualCoolingCostFromCDD,
 } from "./hddData";
 import computeAnnualPrecisionEstimate from "./fullPrecisionEstimate";
+import * as heatUtils from "./heatUtils";
 
 function optionsMonthlyProfileFromUserLocation(userLocation) {
   const defaultHighs = [42, 45, 55, 65, 75, 85, 88, 86, 78, 66, 55, 45];
@@ -21,15 +22,14 @@ export function estimateAnnualCostQuick(
   const heatLossFactor =
     latestAnalysis?.heatLossFactor ||
     (() => {
-      const BASE_BTU_PER_SQFT_HEATING = 22.67;
-      const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
-      const designHeatLoss =
-        (settings.squareFeet || 1500) *
-        BASE_BTU_PER_SQFT_HEATING *
-        (settings.insulationLevel || 1.0) *
-        (settings.homeShape || 1.0) *
-        ceilingMultiplier;
-      return designHeatLoss / 70;
+      return heatUtils.calculateHeatLoss({
+        squareFeet: settings.squareFeet || 1500,
+        insulationLevel: settings.insulationLevel || 1.0,
+        homeShape: settings.homeShape || 1.0,
+        ceilingHeight: settings.ceilingHeight || 8,
+        wallHeight: settings.wallHeight ?? null,
+        hasLoft: settings.hasLoft || false,
+      }) / 70; // Convert to BTU/hr/°F
     })();
 
   const homeElevation =

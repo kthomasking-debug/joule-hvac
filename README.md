@@ -60,9 +60,23 @@ If you're on Windows and want to build the Android debug APK locally, see `BUILD
 
 Automation: There's also a convenience PowerShell script at `scripts/build-android.ps1`. It automates the steps in `BUILD_ANDROID_WINDOWS.md` and optionally installs the debug APK to a connected device with `adb`.
 
+## Energy Budget & Forecast Tools
+
+The app includes comprehensive energy budget and forecast tools:
+
+- **Weekly Cost Estimate**: 7-day cost forecast using typical-year hourly temperatures (TMY) derived from monthly HDD/CDD distributions. Both heat pump and auxiliary heat are computed hourly using `computeHourlyPerformance()` for accurate part-load behavior modeling.
+
+- **Annual Cost Estimate**: Annual budget using typical-year (TMY) mode. Monthly HDD/CDD values are converted to hourly temperatures, which are then processed through `computeHourlyPerformance()` to get accurate monthly totals. This hybrid approach combines HDD/CDD (monthly aggregates) with hourly equipment modeling.
+
+- **Key Features**:
+  - **Mode: Typical Year (Budget)**: Uses typical-year hourly temperatures (TMY) derived from monthly HDD/CDD distributions, suitable for annual budget planning
+  - **Accurate Equipment Modeling**: Uses `computeHourlyPerformance()` to model actual heat pump behavior (capacity factor, COP, defrost penalty) at each hour
+  - **High Precision Calculations**: Monthly HDD/CDD values are kept at high precision internally, rounded only for display to prevent rounding drift
+  - **Cooling Model**: Simplified CDD energy estimator (not a real equipment model) - appropriate for long-term planning but does not model actual equipment behavior
+
 ## Ask Joule (natural‑language concierge)
 
-Ask Joule lets you describe your home and preferences in plain English. It parses your prompt locally and updates the forecaster with the same deterministic engine used by manual inputs. You’ll also see a quick Answer card summarizing expected weekly cost and estimated annual savings with a CTA to open the full dashboard.
+Ask Joule lets you describe your home and preferences in plain English. It parses your prompt locally and updates the forecaster with the same deterministic engine used by manual inputs. You'll also see a quick Answer card summarizing expected weekly cost and estimated annual savings with a CTA to open the full dashboard.
 
 ### Where to find it
 

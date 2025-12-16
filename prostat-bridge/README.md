@@ -190,6 +190,8 @@ Body: {
 }
 ```
 
+**Note:** The bridge automatically discovers the correct characteristic IDs for your Ecobee model. You can call `set-temperature` immediately after pairing - no need to call `/api/status` first. The bridge will automatically fetch the required IDs if they're not cached.
+
 ### Set Mode
 
 ```
@@ -199,6 +201,8 @@ Body: {
   "mode": "heat"  // or "cool", "off", "auto"
 }
 ```
+
+**Note:** Like `set-temperature`, this endpoint works immediately after pairing. The bridge automatically discovers and caches the correct characteristic IDs for your device.
 
 ### List Paired Devices
 
@@ -410,6 +414,17 @@ tail -f /tmp/bridge.log
 - Verify the Ecobee is online and reachable on your network
 - Try restarting the bridge: `sudo systemctl restart prostat-bridge` (or kill and restart manually)
 
+### Cannot Change Temperature or Mode
+
+**Symptoms:** `set-temperature` or `set-mode` calls fail with errors about wrong characteristic IDs
+
+**Solutions:**
+- This is now automatically handled by the bridge's characteristic ID discovery
+- The bridge automatically discovers and caches the correct IDs for your Ecobee model
+- If you see errors, check the bridge logs for "Cache miss" or "Using cached IDs" messages
+- The bridge will automatically refresh the cache if a write fails
+- If problems persist, try calling `/api/status` first to force ID discovery, then retry the set operation
+
 ### Multiple Devices Listed (Only One Ecobee)
 
 **Symptoms:** `/api/paired` shows multiple device IDs but you only have one Ecobee
@@ -443,6 +458,24 @@ grep -i "connect\|timeout" /tmp/bridge.log
 # Device discovery
 grep -i "discover\|found device" /tmp/bridge.log
 ```
+
+## Technical Details
+
+### Characteristic ID Discovery
+
+The bridge automatically discovers the correct HomeKit characteristic IDs (AID and IID) for your specific Ecobee model. Different Ecobee firmware versions may use different IDs, so the bridge:
+
+1. **Discovers IDs on first read**: When you call `/api/status`, the bridge queries the device to find the correct IDs for:
+   - Current Temperature
+   - Target Temperature  
+   - Target Heating/Cooling State
+   - Current Heating/Cooling State
+
+2. **Caches IDs for writes**: The discovered IDs are cached so that `set-temperature` and `set-mode` can use them immediately.
+
+3. **Auto-populates on cold start**: If you call `set-temperature` or `set-mode` immediately after server restart (before calling status), the bridge will automatically fetch the IDs first, then perform the write operation.
+
+This means you **never need to call `/api/status` before setting temperature or mode** - the bridge handles ID discovery automatically.
 
 ## Architecture
 

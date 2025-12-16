@@ -41,13 +41,13 @@ function runDayScenario(profileHours, indoorStrategyFn, settings) {
         {
           tons: settings.tons,
           indoorTemp,
-          heatLossBtu: calculateHeatLoss(settings),
+          designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
           compressorPower: settings.compressorPower,
         },
         hour.temp,
         hour.humidity
       );
-      const kwh = perf.electricalKw * (perf.runtime / 100);
+      const kwh = perf.electricalKw * ((perf.capacityUtilization || perf.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
       totalEnergy += kwh;
       const aux = settings.useElectricAuxHeat ? perf.auxKw || 0 : 0;
       totalAux += aux;
@@ -64,14 +64,14 @@ function runDayScenario(profileHours, indoorStrategyFn, settings) {
         {
           tons: settings.tons,
           indoorTemp,
-          heatLossBtu: calculateHeatLoss(settings),
+          designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
           seer2: settings.seer2,
           solarExposure: settings.solarExposure || 1.0,
         },
         hour.temp,
         hour.humidity
       );
-      const kwh = perfCool.electricalKw * (perfCool.runtime / 100);
+      const kwh = perfCool.electricalKw * ((perfCool.capacityUtilization || perfCool.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
       totalEnergy += kwh;
       totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
     }
@@ -143,23 +143,25 @@ export async function computeAnnualPrecisionEstimate(
                 {
                   tons: settings.tons,
                   indoorTemp: indoor,
-                  heatLossBtu: calculateHeatLoss(settings),
+                  designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
                   compressorPower: settings.compressorPower,
                 },
                 h.temp,
                 h.humidity
               ).electricalKw *
-                (computeHourlyPerformance(
-                  {
-                    tons: settings.tons,
-                    indoorTemp: indoor,
-                    heatLossBtu: calculateHeatLoss(settings),
-                    compressorPower: settings.compressorPower,
-                  },
-                  h.temp,
-                  h.humidity
-                ).runtime /
-                  100),
+                (() => {
+                  const perf = computeHourlyPerformance(
+                    {
+                      tons: settings.tons,
+                      indoorTemp: indoor,
+                      designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
+                      compressorPower: settings.compressorPower,
+                    },
+                    h.temp,
+                    h.humidity
+                  );
+                  return (perf.capacityUtilization || perf.runtime || 0) / 100; // Using capacityUtilization, not time-based runtime
+                })(),
               h.time,
               [],
               settings.utilityCost
@@ -176,25 +178,27 @@ export async function computeAnnualPrecisionEstimate(
                 {
                   tons: settings.tons,
                   indoorTemp: indoor,
-                  heatLossBtu: calculateHeatLoss(settings),
+                  designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
                   seer2: settings.seer2,
                   solarExposure: settings.solarExposure || 1.0,
                 },
                 h.temp,
                 h.humidity
               ).electricalKw *
-                (computeHourlyCoolingPerformance(
-                  {
-                    tons: settings.tons,
-                    indoorTemp: indoor,
-                    heatLossBtu: calculateHeatLoss(settings),
-                    seer2: settings.seer2,
-                    solarExposure: settings.solarExposure || 1.0,
-                  },
-                  h.temp,
-                  h.humidity
-                ).runtime /
-                  100),
+                (() => {
+                  const perf = computeHourlyCoolingPerformance(
+                    {
+                      tons: settings.tons,
+                      indoorTemp: indoor,
+                      designHeatLossBtuHrAt70F: calculateHeatLoss(settings),
+                      seer2: settings.seer2,
+                      solarExposure: settings.solarExposure || 1.0,
+                    },
+                    h.temp,
+                    h.humidity
+                  );
+                  return (perf.capacityUtilization || perf.runtime || 0) / 100; // Using capacityUtilization, not time-based runtime
+                })(),
               h.time,
               [],
               settings.utilityCost
