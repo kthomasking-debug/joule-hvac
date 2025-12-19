@@ -73,18 +73,19 @@ import {
 } from "lucide-react";
 
 export const routes = [
-  {
-    path: "/",
-    name: "Landing",
-    label: "Home",
-    icon: HomeIcon,
-    Component: LandingPage,
-    exact: true,
-    showInNav: false, // Don't show landing page in nav
-    inMobileNav: false,
-    inPrimaryNav: false,
-    description: "Joule Landing Page",
-  },
+  // Landing page removed for Reddit demo - app opens directly to onboarding
+  // {
+  //   path: "/",
+  //   name: "Landing",
+  //   label: "Home",
+  //   icon: HomeIcon,
+  //   Component: LandingPage,
+  //   exact: true,
+  //   showInNav: false,
+  //   inMobileNav: false,
+  //   inPrimaryNav: false,
+  //   description: "Joule Landing Page",
+  // },
   // ===== THE GOLDEN PATH: 5 MAIN TABS =====
   {
     path: "/mission-control",
@@ -487,8 +488,8 @@ export const routes = [
   // ===== DEBUG PAGES (Uses Ecobee target temp directly via Joule Bridge) =====
   {
     path: "/analysis/energy-flow",
-    name: "Energy Flow",
-    label: "Energy Flow",
+    name: "Performance",
+    label: "Performance",
     icon: Activity,
     Component: Analysis,
     showInNav: true,
@@ -498,8 +499,8 @@ export const routes = [
   },
   {
     path: "/analysis/forecast-debug",
-    name: "Weekly Cost Estimate",
-    label: "Weekly Cost Estimate",
+    name: "Weekly Forecast",
+    label: "Weekly Forecast",
     icon: Bug,
     Component: ForecastDebug,
     showInNav: true,
@@ -508,20 +509,9 @@ export const routes = [
     description: "7-day forecast using Ecobee target temp directly (no scheduling)",
   },
   {
-    path: "/analysis/budget-debug",
-    name: "Annual Cost Estimate",
-    label: "Annual Cost Estimate",
-    icon: Bug,
-    Component: BudgetDebug,
-    showInNav: true,
-    inMobileNav: true,
-    inPrimaryNav: true,
-    description: "Annual budget using Ecobee target temp directly (no scheduling)",
-  },
-  {
     path: "/analysis/monthly-budget",
-    name: "Monthly Budget",
-    label: "Monthly Budget",
+    name: "Monthly Forecast",
+    label: "Monthly Forecast",
     icon: Calendar,
     Component: MonthlyBudget,
     showInNav: true,
@@ -530,9 +520,20 @@ export const routes = [
     description: "Current month budget with daily breakdown",
   },
   {
+    path: "/analysis/budget-debug",
+    name: "Annual Forecast",
+    label: "Annual Forecast",
+    icon: Bug,
+    Component: BudgetDebug,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Annual budget using Ecobee target temp directly (no scheduling)",
+  },
+  {
     path: "/analysis/analyzer",
-    name: "System Analyzer",
-    label: "System Analyzer",
+    name: "Analyze System",
+    label: "Analyze System",
     icon: BarChart2,
     Component: Analysis,
     showInNav: true,
@@ -542,8 +543,8 @@ export const routes = [
   },
   {
     path: "/analysis/forecast",
-    name: "System Simulator",
-    label: "System Simulator",
+    name: "What If",
+    label: "What If",
     icon: Calendar,
     Component: Analysis,
     showInNav: true,

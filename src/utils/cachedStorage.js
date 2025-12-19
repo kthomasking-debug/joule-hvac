@@ -29,14 +29,16 @@ export function getCached(key, defaultValue = null) {
         try {
           value = JSON.parse(item);
         } catch (parseError) {
-          // If JSON parse fails, try using the raw string value if it looks like a plain string
-          // This handles cases where values were stored as plain strings instead of JSON
+          // If JSON parse fails, check if it's a valid JSON string that just failed to parse
+          // If it looks like JSON (starts/ends with quotes or brackets), use default
+          // Otherwise, it might be a plain string value stored directly
           if (item.startsWith('"') && item.endsWith('"')) {
             // It's a JSON string, but parse failed - use default
             return defaultValue;
           }
-          // Plain string value - use it as-is
-          value = item;
+          // For invalid JSON that doesn't look like a JSON string, return default
+          // This handles cases where corrupted data was stored
+          return defaultValue;
         }
       } else {
         // Key doesn't exist, return default

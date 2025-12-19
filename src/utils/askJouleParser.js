@@ -364,10 +364,13 @@ function calculateOfflineAnswer(query) {
   // Filter/Coil Efficiency Questions
   // Match questions about dirty filters/coils causing efficiency issues
   // Also match statements like "my coils are iced up"
+  // Must be recognized as commands (isCommand: true)
   if (
     /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|old|worn)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)/.test(
       q
     ) ||
+    /(?:why|how)\s+(?:am\s+i|do\s+i)\s+using\s+so\s+much\s+energy.*filter/i.test(q) ||
+    /dirty\s+(?:fliter|filter).*question/i.test(q) ||
     /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|iced|frozen)\s+(?:coil|evaporator\s+coil|condenser\s+coil|indoor\s+coil|outdoor\s+coil)/.test(
       q
     ) ||
@@ -387,6 +390,7 @@ function calculateOfflineAnswer(query) {
     return {
       action: "offlineAnswer",
       type: "filterCoilEfficiency",
+      isCommand: true,
       needsContext: true,
     };
   }
@@ -400,9 +404,11 @@ function calculateOfflineAnswer(query) {
 
   // 2. Pre-Canned Engineering Knowledge
   // Short cycling - catch general knowledge questions, but NOT specific problem questions
-  // Match: "what causes short cycling", "what is short cycling", "explain short cycling"
+  // Match: "what causes short cycling", "what is short cycling", "explain short cycling", "short cycling???"
   // Don't match: "why is my system short cycling" (specific problem - needs LLM context)
+  // Must check this BEFORE other short cycling patterns - check for question marks first
   if (
+    /^short\s+cycl.*\?+$/i.test(q) || // "short cycling???" with question marks - must be first
     (/^what\s+(?:is|causes?|does)\s+short\s+cycl/.test(q) ||
       /^explain\s+short\s+cycl/.test(q) ||
       (/short\s+cycl/.test(q) && /^what\s+(?:is|causes?)/.test(q))) &&
@@ -411,6 +417,7 @@ function calculateOfflineAnswer(query) {
     return {
       action: "offlineAnswer",
       type: "knowledge",
+      isCommand: true,
       answer: OFFLINE_KNOWLEDGE["short cycling"],
     };
   }
@@ -849,7 +856,34 @@ function parseCommandLocal(query, context = {}) {
     return { action: "queryVoiceListenDuration" };
   }
 
-  // Schedule queries removed - HomeKit bridge doesn't support schedule data
+  // Schedule queries
+  // "what's the schedule for tomorrow" / "what is my weekly schedule" / "schedule"
+  if (
+    /what'?s?\s+(?:the\s+)?schedule\s+(?:for\s+tomorrow|this\s+week)?/i.test(q) ||
+    /what\s+is\s+my\s+weekly\s+schedule/i.test(q) ||
+    /^schedule\s*$/i.test(q)
+  ) {
+    return { action: "querySchedule", isCommand: true };
+  }
+  
+  // "show me monday's schedule" / "schedule on friday" / "schedule for wed"
+  const dayMatch = q.match(/(?:show\s+me\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)'?s?\s+schedule|schedule\s+(?:on|for)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)/i);
+  if (dayMatch) {
+    const dayName = (dayMatch[1] || dayMatch[2]).toLowerCase();
+    const dayMap = {
+      sunday: 0, sun: 0,
+      monday: 1, mon: 1,
+      tuesday: 2, tue: 2,
+      wednesday: 3, wed: 3,
+      thursday: 4, thu: 4,
+      friday: 5, fri: 5,
+      saturday: 6, sat: 6,
+    };
+    const dayNum = dayMap[dayName];
+    if (dayNum !== undefined) {
+      return { action: "queryScheduleDay", day: dayNum, isCommand: true };
+    }
+  }
 
   // === EARLY QUESTION DETECTION ===
   // Check for questions FIRST, before command matching
@@ -1070,7 +1104,7 @@ function parseCommandLocal(query, context = {}) {
     return {
       action: "setVoiceCommand",
       trigger: "goodnight",
-      commandAction: "switchMode",
+      commandAction: "setMode",
       mode: "off",
     };
   }
@@ -1427,14 +1461,14 @@ function parseCommandLocal(query, context = {}) {
     return { action: "decreaseTemp", value: 2 };
   }
 
-  // "lower by X" or "lower by five" (spelled out numbers) - also "lower by five please"
+  // "lower it by X" or "lower temperature by X" (not just "lower by X")
   if (
-    /lower\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i.test(
+    /lower\s+(?:it|the\s+temp|temperature)\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i.test(
       q
     )
   ) {
     const match = q.match(
-      /lower\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i
+      /lower\s+(?:it|the\s+temp|temperature)\s+by\s+(\d+|five|four|three|two|one|six|seven|eight|nine|ten)/i
     );
     if (match) {
       const numWords = {
@@ -1617,6 +1651,7 @@ function parseCommandLocal(query, context = {}) {
   // Exclude questions like "short cycling???" which should go to knowledge base
   if (
     !/\?/.test(q) && // Don't match if it's a question (has question mark)
+    !/^short\s+cycl/i.test(q) && // Don't match "short cycling" questions (handled by offlineAnswer above)
     (/(?:heat|system|it|furnace|ac|air)\s+(?:turns?\s+)?(?:on\s+and\s+off|cycles?|cycling)\s+(?:too\s+)?(?:much|often|constantly|frequently)/i.test(
       q
     ) ||
@@ -2158,24 +2193,29 @@ function parseCommandLocal(query, context = {}) {
     /^turn\s+everything\s+off\s*$/i.test(q) ||
     /^turn\s+off\s+(?:the\s+)?(?:furnace|thermostat|system)\s*$/i.test(q) ||
     /^set\s+thermostat\s+to\s+off\s*$/i.test(q) ||
-    /^turn\s+the\s+system\s+off\s*$/i.test(q)
+    /^turn\s+the\s+system\s+off/i.test(q)
   ) {
-    return { action: "switchMode", mode: "off" };
+    return { action: "setMode", value: "off" };
+  }
+  
+  // "turn on fan" - fan mode maps to auto
+  if (/^turn\s+on\s+fan\s*$/i.test(q)) {
+    return { action: "setMode", value: "auto", isCommand: true };
   }
 
   // "turn on AC" - AC means cool mode (MUST come before "turn on system")
   if (/^turn\s+on\s+ac\b/i.test(q)) {
-    return { action: "switchMode", mode: "cool" };
+    return { action: "setMode", value: "cool" };
   }
 
   // Fan control removed - HomeKit bridge doesn't support fan control
 
   // "turn the heat on" / "turn the heat off"
   if (/^turn\s+(?:the\s+)?heat\s+on\s*$/i.test(q)) {
-    return { action: "switchMode", mode: "heat" };
+    return { action: "setMode", value: "heat" };
   }
   if (/^turn\s+(?:the\s+)?heat\s+off\s*$/i.test(q)) {
-    return { action: "switchMode", mode: "off" };
+    return { action: "setMode", value: "off" };
   }
 
   // "auto mode please" or "auto mode" (MUST come before "turn on system")
@@ -2185,7 +2225,7 @@ function parseCommandLocal(query, context = {}) {
     /^switch\s+back\s+to\s+auto\s*$/i.test(q) ||
     /^put\s+(?:the\s+)?system\s+in\s+auto\s*$/i.test(q)
   ) {
-    return { action: "switchMode", mode: "auto" };
+    return { action: "setMode", value: "auto" };
   }
 
   // Match: "turn on the system" or "turn the system on" - defaults to "heat" mode (per test expectation)
@@ -2197,7 +2237,7 @@ function parseCommandLocal(query, context = {}) {
     (/^turn\s+on\b/i.test(q) &&
       !/^turn\s+on\s+(?:heat|cool|auto|ac|fan)\b/i.test(q)) // Simple "turn on" without mode specified
   ) {
-    return { action: "switchMode", mode: "heat" };
+    return { action: "setMode", value: "heat" };
   }
 
   // Match: "set it to heat", "set mode to heat", "switch to heat", "change to heat", "turn on heat"
@@ -2230,14 +2270,14 @@ function parseCommandLocal(query, context = {}) {
     if (match) {
       const mode = match[1].toLowerCase();
       if (["heat", "cool", "auto", "off"].includes(mode)) {
-        return { action: "switchMode", mode: mode };
+        return { action: "setMode", value: mode };
       }
     }
   }
 
   // "change to cooling" - cooling = cool mode
   if (/^change\s+to\s+cooling\b/i.test(q)) {
-    return { action: "switchMode", mode: "cool" };
+    return { action: "setMode", value: "cool" };
   }
   // Also match: "set to heat", "go to heat", "put it in heat mode"
   if (
@@ -2251,7 +2291,7 @@ function parseCommandLocal(query, context = {}) {
     if (match) {
       const mode = match[1].toLowerCase();
       if (["heat", "cool", "auto", "off"].includes(mode)) {
-        return { action: "switchMode", mode: mode };
+        return { action: "setMode", value: mode };
       }
     }
   }
@@ -2264,12 +2304,40 @@ function parseCommandLocal(query, context = {}) {
     const match = q.match(/^(heat|cool|auto)\s+mode\s*$/i);
     if (match) {
       const mode = match[1].toLowerCase();
-      return { action: "switchMode", mode: mode };
+      return { action: "setMode", value: mode };
     }
   }
 
-  // Preset modes (away/home/sleep) removed - HomeKit bridge doesn't support preset modes
-  // These would just set temperature, not actual away/home/sleep modes
+  // Preset modes (away/home/sleep) - these set temperature presets
+  // Sleep mode
+  if (
+    /^(?:set\s+to\s+)?sleep\s+mode\s*$/i.test(q) ||
+    /^go\s+to\s+sleep\s+mode\s*$/i.test(q) ||
+    /^i'?m\s+going\s+to\s+sleep\s*$/i.test(q) ||
+    /^goodnight\s*$/i.test(q)
+  ) {
+    return { action: "presetSleep", isCommand: true };
+  }
+  
+  // Away mode
+  if (
+    /^(?:set\s+to\s+)?away\s+mode\s*$/i.test(q) ||
+    /^go\s+to\s+away\s+mode\s*$/i.test(q) ||
+    /^activate\s+away\s+mode\s*$/i.test(q) ||
+    /^i'?m\s+leaving\s*$/i.test(q)
+  ) {
+    return { action: "presetAway", isCommand: true };
+  }
+  
+  // Home mode
+  if (
+    /^(?:set\s+to\s+)?home\s+mode\s*$/i.test(q) ||
+    /^go\s+to\s+home\s+mode\s*$/i.test(q) ||
+    /^activate\s+home\s+mode\s*$/i.test(q) ||
+    /^i'?m\s+home\s*$/i.test(q)
+  ) {
+    return { action: "presetHome", isCommand: true };
+  }
 
   // Query current HVAC mode (must come before other queries)
   if (

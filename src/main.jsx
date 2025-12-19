@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles/tailwind.css";
 import "./styles/ui.css";
@@ -79,15 +79,22 @@ const router = createBrowserRouter(
     {
       path: "/",
       element: <App />,
-      children: routes.map((route) => ({
-        index: route.path === "/",
-        path: route.path === "/" ? undefined : route.path.replace(/^\//, ""),
-        element: (
-          <Suspense fallback={<RouteLoadingFallback />}>
-            <route.Component />
-          </Suspense>
-        ),
-      })),
+      children: [
+        {
+          index: true,
+          element: <Navigate to="/onboarding" replace />,
+        },
+        ...routes
+          .filter((route) => route.path !== "/") // Remove landing page route
+          .map((route) => ({
+            path: route.path.replace(/^\//, ""),
+            element: (
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <route.Component />
+              </Suspense>
+            ),
+          })),
+      ],
     },
   ],
   { basename }

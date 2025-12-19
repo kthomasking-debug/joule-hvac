@@ -57,11 +57,18 @@ function AppInner() {
   // State for search bar
   const [showSearch, setShowSearch] = useState(false);
 
-  // Terms acceptance state
+  // Terms acceptance state - auto-accept for Reddit demo
   const { termsAccepted, markTermsAccepted, isLoaded } = useTermsAcceptance();
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useMode();
+  
+  // Auto-accept terms on mount (for Reddit demo - skip terms modal)
+  React.useEffect(() => {
+    if (!termsAccepted && isLoaded) {
+      markTermsAccepted();
+    }
+  }, [termsAccepted, isLoaded, markTermsAccepted]);
   
   // Enable swipe navigation on touch devices
   useSwipeNavigation();
@@ -797,9 +804,10 @@ function AppInner() {
     return null; // Or a loading spinner
   }
 
-  if (!termsAccepted) {
-    return <TermsAcceptanceModal onAccept={markTermsAccepted} />;
-  }
+  // Skip terms modal for Reddit demo - auto-accept
+  // if (!termsAccepted) {
+  //   return <TermsAcceptanceModal onAccept={markTermsAccepted} />;
+  // }
 
   const navLinks = routes.filter((route) => route.showInNav);
   const moreLinks = routes.filter((route) => route.showInMoreMenu);

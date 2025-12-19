@@ -464,7 +464,7 @@ const TTSEngineToggle = () => {
   );
 };
 
-const VoiceListenDurationInput = () => {
+export const VoiceListenDurationInput = () => {
   const [value, setValue] = useState(() => {
     const raw = localStorage.getItem("askJouleListenSeconds");
     if (raw === null || raw === undefined) return 5;
