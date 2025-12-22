@@ -1,2 +1,11 @@
 plotly==5.18.0
 pandas==2.3.3
+# EnergyPlus dependencies (optional - install if EnergyPlus is available)
+# pyenergyplus  # Uncomment when EnergyPlus Python API is installed
+# eppy  # Uncomment for EnergyPlus IDF/epJSON manipulation
+# TTS dependencies (open-source text-to-speech)
+TTS>=0.22.0  # Coqui TTS for natural-sounding speech
+flask>=2.3.0
+flask-cors>=4.0.0
+soundfile>=0.12.0
+numpy>=1.24.0

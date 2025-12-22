@@ -51,6 +51,8 @@
     "generate-icons": "node scripts/generate-icons.cjs",
     "relay-server": "node scripts/relay-server.js",
     "temp-server": "node server/temperature-server.js",
+    "energyplus-service": "python3 server/energyplus-service.py",
+    "tts-service": "python3 server/tts-service.py",
     "nest:convert": "node scripts/convert-nest-takeout.js",
     "generate:tts": "node scripts/generate-tts-responses.js"
   },

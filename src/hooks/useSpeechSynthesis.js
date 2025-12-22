@@ -19,6 +19,104 @@ const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY ||
   (typeof localStorage !== 'undefined' ? localStorage.getItem('elevenLabsApiKey') : null) ||
   null; // Set to null to disable ElevenLabs if no key is available
 
+// Coqui TTS (open-source) integration
+// Service URL - defaults to same host as temperature-server.js
+const getTTSServiceUrl = () => {
+  // Check for explicit TTS service URL
+  if (import.meta.env.VITE_TTS_SERVICE_URL) {
+    return import.meta.env.VITE_TTS_SERVICE_URL;
+  }
+  
+  // Check for backend URL (where temperature-server.js runs)
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+                     (typeof localStorage !== 'undefined' ? localStorage.getItem('localBackendUrl') : null);
+  
+  if (backendUrl) {
+    // Remove trailing slash and add /api/tts
+    const baseUrl = backendUrl.replace(/\/$/, '');
+    // If backendUrl is like http://bridge.local:8080, we need to use port 3001 for temp-server
+    if (backendUrl.includes(':3001')) {
+      return `${baseUrl}/api/tts`;
+    }
+    // Otherwise assume temp-server is on same host, different port
+    const url = new URL(backendUrl);
+    return `${url.protocol}//${url.hostname}:3001/api/tts`;
+  }
+  
+  // Fallback to localhost (for development)
+  return "http://localhost:3001/api/tts";
+};
+
+const TTS_SERVICE_URL = getTTSServiceUrl();
+
+// Check if Coqui TTS service is available
+let coquiTTSAvailable = null;
+let coquiTTSCheckPromise = null;
+
+async function checkCoquiTTSAvailable() {
+  if (coquiTTSAvailable !== null) return coquiTTSAvailable;
+  if (coquiTTSCheckPromise) return coquiTTSCheckPromise;
+  
+  coquiTTSCheckPromise = (async () => {
+    try {
+      const response = await fetch(`${TTS_SERVICE_URL}/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
+      if (response.ok) {
+        const data = await response.json();
+        coquiTTSAvailable = data.model_loaded === true;
+        return coquiTTSAvailable;
+      }
+    } catch (error) {
+      // Service not available or not running
+      coquiTTSAvailable = false;
+      return false;
+    }
+    coquiTTSAvailable = false;
+    return false;
+  })();
+  
+  return coquiTTSCheckPromise;
+}
+
+// Speak with Coqui TTS (open-source)
+async function speakWithCoquiTTS(text, speakerId = null) {
+  try {
+    const response = await fetch(`${TTS_SERVICE_URL}/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: text,
+        speaker_id: speakerId,
+        language: "en",
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Coqui TTS API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Decode base64 audio
+    const audioData = atob(data.audio);
+    const audioArray = new Uint8Array(audioData.length);
+    for (let i = 0; i < audioData.length; i++) {
+      audioArray[i] = audioData.charCodeAt(i);
+    }
+    
+    // Create blob and audio element
+    const blob = new Blob([audioArray], { type: "audio/wav" });
+    const audioUrl = URL.createObjectURL(blob);
+    
+    return { audioUrl, blob };
+  } catch (error) {
+    console.warn("Coqui TTS synthesis failed:", error);
+    throw error;
+  }
+}
+
 // Function to get voice ID from localStorage or use default
 function getElevenLabsVoiceId() {
   try {
@@ -850,8 +948,8 @@ export function useSpeechSynthesis(options = {}) {
             throw new Error(`ElevenLabs API error: ${response.status}`);
           }
         } catch (error) {
-          // Fall through to browser TTS if ElevenLabs fails
-          console.warn("ElevenLabs TTS failed, using browser TTS:", error);
+          // Fall through to Coqui TTS or browser TTS if ElevenLabs fails
+          console.warn("ElevenLabs TTS failed, trying Coqui TTS:", error);
           // Make sure we don't have both playing - ensure ElevenLabs audio is stopped
           if (audioRef.current) {
             audioRef.current.pause();
@@ -859,6 +957,105 @@ export function useSpeechSynthesis(options = {}) {
             audioRef.current = null;
           }
           usingElevenLabsRef.current = false;
+        }
+      }
+
+      // Step 4: Try Coqui TTS (open-source, natural-sounding)
+      // Check if service is available and use it if ElevenLabs failed or is disabled
+      if (!useElevenLabs || !ELEVENLABS_API_KEY || !ELEVENLABS_API_KEY.startsWith('sk_')) {
+        const isCoquiAvailable = await checkCoquiTTSAvailable();
+        
+        if (isCoquiAvailable) {
+          // Cancel any browser TTS
+          if (isSupported) {
+            window.speechSynthesis.cancel();
+          }
+          
+          try {
+            setIsSpeaking(true);
+            
+            const formattedText = personalityWrap(cleanText);
+            const { audioUrl } = await speakWithCoquiTTS(formattedText);
+            
+            // Final check: make sure no other audio started while we were fetching
+            if (audioRef.current) {
+              URL.revokeObjectURL(audioUrl);
+              return; // Another audio already started
+            }
+            
+            const audio = new Audio();
+            audioRef.current = audio;
+            
+            // Ensure browser TTS is stopped
+            if (isSupported) {
+              window.speechSynthesis.cancel();
+            }
+            
+            audio.src = audioUrl;
+            audio.preload = "auto";
+            
+            await new Promise((resolve, reject) => {
+              const cleanup = () => {
+                URL.revokeObjectURL(audioUrl);
+                if (audioRef.current === audio) {
+                  audioRef.current = null;
+                }
+                setIsSpeaking(false);
+              };
+              
+              let hasStarted = false;
+              let fallbackTimeout = null;
+              
+              const startPlayback = () => {
+                if (hasStarted) return;
+                hasStarted = true;
+                if (fallbackTimeout) {
+                  clearTimeout(fallbackTimeout);
+                  fallbackTimeout = null;
+                }
+                audio.play().catch((error) => {
+                  cleanup();
+                  reject(error);
+                });
+              };
+              
+              audio.oncanplay = startPlayback;
+              audio.oncanplaythrough = startPlayback;
+              
+              audio.onended = () => {
+                cleanup();
+                resolve();
+              };
+              
+              audio.onerror = (error) => {
+                cleanup();
+                reject(error);
+              };
+              
+              audio.onpause = () => {
+                setIsSpeaking(false);
+              };
+              
+              audio.load();
+              
+              // Fallback: if events don't fire quickly, try playing after a short delay
+              fallbackTimeout = setTimeout(() => {
+                if (!hasStarted && audio.readyState >= 2) {
+                  startPlayback();
+                }
+              }, 150);
+            });
+            
+            return Promise.resolve(); // Successfully used Coqui TTS
+          } catch (error) {
+            // Fall through to browser TTS if Coqui TTS fails
+            console.warn("Coqui TTS failed, using browser TTS:", error);
+            if (audioRef.current) {
+              audioRef.current.pause();
+              audioRef.current.currentTime = 0;
+              audioRef.current = null;
+            }
+          }
         }
       }
 

@@ -9,6 +9,41 @@ import net from "net";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import http from "http";
+
+// Simple fetch wrapper using Node's http module
+async function simpleFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const req = http.request(
+      {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 3002,
+        path: urlObj.pathname,
+        method: options.method || "GET",
+        headers: options.headers || {},
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            json: async () => JSON.parse(data),
+            text: async () => data,
+          });
+        });
+      }
+    );
+    req.on("error", reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+// Use native fetch if available (Node 18+), otherwise use simple wrapper
+const fetch = typeof globalThis.fetch !== "undefined" ? globalThis.fetch : simpleFetch;
 
 // --- Agentic Runtime Imports (local simple implementation) ---
 // Lightweight in-process agent loop (rule-based fallback; upgradeable to LLM tool-calling)
@@ -589,6 +624,127 @@ app.delete("/api/agent/:runId", (req, res) => {
 });
 
 // Health check endpoint
+// EnergyPlus load calculation endpoint (proxies to Python service)
+app.post("/api/energyplus/calculate", async (req, res) => {
+  try {
+    const params = req.body;
+    
+    // Proxy to Python EnergyPlus service
+    const pythonServiceUrl = process.env.ENERGYPLUS_SERVICE_URL || "http://localhost:3002";
+    const response = await fetch(`${pythonServiceUrl}/api/energyplus/calculate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`EnergyPlus service error: ${response.status}`);
+    }
+    
+    const results = await response.json();
+    res.json(results);
+  } catch (error) {
+    console.error("EnergyPlus calculation error:", error);
+    res.status(500).json({
+      error: error.message,
+      fallback: "EnergyPlus service unavailable - using simplified calculation",
+    });
+  }
+});
+
+app.get("/api/energyplus/status", async (req, res) => {
+  try {
+    const pythonServiceUrl = process.env.ENERGYPLUS_SERVICE_URL || "http://localhost:3002";
+    const response = await fetch(`${pythonServiceUrl}/api/energyplus/status`);
+    
+    if (!response.ok) {
+      throw new Error(`EnergyPlus service error: ${response.status}`);
+    }
+    
+    const status = await response.json();
+    res.json(status);
+  } catch (error) {
+    res.json({
+      status: "error",
+      energyplus_available: false,
+      method: "simplified",
+      error: error.message,
+    });
+  }
+});
+
+// Rebate API endpoint - proxy to Python service
+app.post("/api/rebates/calculate", async (req, res) => {
+  try {
+    const pythonServiceUrl = process.env.ENERGYPLUS_SERVICE_URL || "http://localhost:3002";
+    const response = await fetch(`${pythonServiceUrl}/api/rebates/calculate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Rebate service error: ${response.status}`);
+    }
+    
+    const results = await response.json();
+    res.json(results);
+  } catch (error) {
+    console.error("Rebate calculation error:", error);
+    res.status(500).json({
+      error: error.message,
+    });
+  }
+});
+
+// Proxy to TTS Python service
+app.get("/api/tts/health", async (req, res) => {
+  try {
+    const ttsServiceUrl = process.env.TTS_SERVICE_URL || "http://localhost:3003";
+    const response = await fetch(`${ttsServiceUrl}/api/tts/health`, {
+      method: "GET",
+    });
+    
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error("Error proxying to TTS service:", error);
+    res.status(503).json({ status: "error", model_loaded: false, service: "coqui-tts" });
+  }
+});
+
+app.post("/api/tts/synthesize", async (req, res) => {
+  try {
+    const ttsServiceUrl = process.env.TTS_SERVICE_URL || "http://localhost:3003";
+    const response = await fetch(`${ttsServiceUrl}/api/tts/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error("Error proxying to TTS service:", error);
+    res.status(500).json({ error: "Failed to connect to TTS service" });
+  }
+});
+
+app.get("/api/tts/voices", async (req, res) => {
+  try {
+    const ttsServiceUrl = process.env.TTS_SERVICE_URL || "http://localhost:3003";
+    const response = await fetch(`${ttsServiceUrl}/api/tts/voices`, {
+      method: "GET",
+    });
+    
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error("Error proxying to TTS service:", error);
+    res.status(500).json({ voices: [] });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
