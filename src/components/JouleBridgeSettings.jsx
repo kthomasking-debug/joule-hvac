@@ -897,7 +897,26 @@ export default function JouleBridgeSettings() {
               <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
               <div className="text-sm text-yellow-700 dark:text-yellow-300">
                 <p className="font-medium mb-1">Device paired but not reachable</p>
-                <p className="text-xs">Your device is paired but may be offline or its IP address changed. Try clicking "Discover" to find it again, or wait a moment for it to reconnect.</p>
+                <p className="text-xs mb-2">Your device is paired but not reachable. This often happens after server restart if pairing data didn't load correctly, or if the device's IP address changed.</p>
+                <p className="text-xs font-semibold mb-1">Why pairing data might not load correctly:</p>
+                <ul className="text-xs mb-2 ml-4 list-disc space-y-1">
+                  <li><strong>File corruption:</strong> The pairing file (pairings.json) may be corrupted or incompletely written if the server crashed during save</li>
+                  <li><strong>IP address change:</strong> If the device's IP changed (DHCP renewal), the saved pairing data points to the old IP</li>
+                  <li><strong>Library limitations:</strong> aiohomekit's load_pairing() may fail if the pairing object can't be reconstructed from saved metadata</li>
+                  <li><strong>Network timing:</strong> Server starts before network is ready, so device discovery fails</li>
+                  <li><strong>Data format mismatch:</strong> Pairing data structure may be incompatible after aiohomekit library updates</li>
+                  <li><strong>Missing encryption keys:</strong> HomeKit requires encryption keys that may not be fully persisted in the pairing file</li>
+                </ul>
+                <p className="text-xs font-semibold mb-1">Why re-pairing is needed:</p>
+                <p className="text-xs mb-2">HomeKit pairing data includes encryption keys and connection info stored in memory. The pairing file only contains metadata. If load_pairing() fails, the bridge can't reconstruct the active pairing object needed to connect.</p>
+                <p className="text-xs font-semibold mb-1">To fix:</p>
+                <ol className="text-xs ml-4 list-decimal space-y-1">
+                  <li>Click "Unpair" below to remove the current pairing</li>
+                  <li>Click "Discover" to find your Ecobee</li>
+                  <li>Enter the 8-digit pairing code from your Ecobee screen (Menu → Settings → Installation Settings → HomeKit)</li>
+                  <li>Click "Pair" and wait up to 45 seconds</li>
+                </ol>
+                <p className="text-xs mt-2 text-gray-600 dark:text-gray-400">The bridge will automatically reconnect once the device is reachable again.</p>
               </div>
             </div>
           </div>

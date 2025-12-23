@@ -1,27 +1,34 @@
 {
   "goals": [
     {
-      "goal": "time",
-      "ts": 1763918469693
+      "goal": "Show joule score efficiency",
+      "ts": 1766357591857
     },
     {
-      "goal": "fresh-goal-1",
-      "ts": 1763832069578
+      "goal": "Show joule score efficiency",
+      "ts": 1766357563537
     },
     {
-      "goal": "fresh-goal-2",
-      "ts": 1763832069578
+      "goal": "Show joule score efficiency",
+      "ts": 1766357524613
+    },
+    {
+      "goal": "Show joule score efficiency",
+      "ts": 1766357487790
+    },
+    {
+      "goal": "Show joule score efficiency",
+      "ts": 1766357444738
+    },
+    {
+      "goal": "Show joule score efficiency",
+      "ts": 1766357414751
+    },
+    {
+      "goal": "Show joule score efficiency",
+      "ts": 1766357330378
     }
   ],
-  "facts": [
-    {
-      "fact": "fresh-fact-1",
-      "ts": 1763745669578
-    },
-    {
-      "fact": "fresh-fact-2",
-      "ts": 1763745669578
-    }
-  ],
+  "facts": [],
   "settingsSnapshot": null
 }

@@ -1,0 +1,2181 @@
+
+Installation, Setup and User guide
+
+
+
+
+
+
+
+
+
+
+
+`
+
+
+
+
+
+
+Table of Contents
+
+Installation Guide	7
+How to determine if your HVAC system is compatible and if you have a C-wire	8
+What do my thermostat's wire labels mean?	10
+* Common thermostat wires	10
+* Less common thermostat wires	11
+* Incompatible thermostat wires	12
+Scenario 1: Install your ecobee with a C-wire	14
+Scenario 2: How to install with multiple G-wires	20
+Scenario 3: How to install without a C-wire using the supplied PEK adaptor	26
+Setup Guide	38
+Configuring your ecobee thermostat for the first time (I'm a homeowner)	38
+Configuring your ecobee thermostat for a Heat-Pump system	40
+Configuring your ecobee thermostat for the first time (I'm a Pro)	41
+Fan Coil Unit (FCU) wiring on the ecobee	41
+Terminal activation for multi-speed fan control	42
+Fan speed selection (System Mode)	43
+The Pipe Sensor	44
+Pipe Sensor Activation (notification & alerts)	45
+Multi-speed setup flow options during setup process	46
+* Fan Coil Unit, no W1 wire	46
+* Fan Coil Unit, w/ W1 wire	46
+* Heat Pump/PTAC	47
+* Fan Coil Unit, no W1 wire & Pipe Sensor	47
+* Fan Coil Unit, w/ W1 wire & Pipe Sensor	48
+Setting up an ecobee for dehumidification control	49
+Setting up an ecobee for ventilator control	51
+Setting up an ecobee for humidification control	53
+User Guide	55
+How to use temperature correction on your ecobee thermostat	56
+How do I register my ecobee thermostat?	56
+Registering using the ecobee app	57
+How to adjust the comfort settings	59
+How to create/adjust a thermostat schedule	60
+How to schedule a vacation event on your ecobee	63
+Using a Hold setting on my ecobee thermostat	64
+How to adjust the preferences on your ecobee thermostat	65
+* Temperature Display	65
+* Heating/Cooling Ranges	65
+* Thermostat Name	66
+* Alexa Sounds	66
+* Screen Brightness	66
+* Hold Action Duration	66
+* Smart Recovery	67
+* Access Control	67
+How to control your HVAC system's fan	69
+* Fan Control in Heat Mode	69
+* Fan Minimum On Time	70
+* Quick Changes	70
+* Heat/Cool Dissipation Time	72
+* Fan mode in Comfort Settings	72
+How to enable auto heat/cool changeover on my ecobee thermostat	73
+How to set reminders & alerts on your ecobee thermostat	75
+SmartSensors: Setup guide and FAQ's	77
+How can I use them in my home?	78
+How do I mount a SmartSensor on a wall?	78
+SmartSensor tech specs	79
+Where can I see the status of each SmartSensor?	80
+Pairing a SmartSensor	80
+Unpairing a SmartSensor (if needed)	84
+Sensor participation and comfort setting	85
+SmartSensor participation FAQ's	87
+Smart Home/Away	88
+Follow-me mode:	89
+Appendix	91
+How to access Threshold settings	92
+* Automatic and Manual Threshold Staging	93
+* Automatic Staging with a Heat Pump system	94
+Using AC Overcool Max to reduce humidity	95
+Minimize the use of auxiliary heat with a heat-pump	96
+What does the flame icon with an exclamation mark mean?	98
+Thermostat HVAC settings for all system types	99
+* Auto Heat/Cool	99
+* Heat/Cool Minimum Delta	99
+* Heat Dissipation Time	99
+* Cool Dissipation Time	99
+* Heat Differential Temperature	99
+* Cool Differential Temp	99
+* Heat Minimum On Time	100
+* AC Overcool Max	100
+* Temperature Correction	100
+* Humidity Correction	100
+* Thermal Protect	100
+Compressor & Heat/Aux Staging settings	100
+* Compressor Minimum Cycle Off Time	100
+* Compressor Minimum On Time	100
+* Compressor Min Outdoor Temperature	100
+* Compressor Stage 2 Temperature Delta	101
+* Compressor Reverse Staging	101
+* Compressor Stage 1 Max Runtime	101
+Two Stage Furnace Settings	101
+* Heat Stage 2 Temperature Delta	101
+* Heat Stage 1 Max Runtime	101
+Aux Heat Settings (Heat Pumps with Aux Heat)	101
+* Aux Heat Max Outdoor Temperature	101
+* Aux Heat Minimum On Time	101
+* Compressor to Aux Temperature Delta	102
+* Compressor to Aux Runtime	102
+* Aux Stage 2 Temperature Delta	102
+* Aux Reverse Staging	102
+* Aux Stage 1 Max Runtime	102
+What is eco+ and how does it work?	103
+a) How do I know when eco+ is active?	103
+b) What are monthly reports and how are eco+ savings calculated?	103
+c) Can I use one eco+ feature without using the others?	103
+d) Will eco+ make any changes to my comfort settings?	104
+How can I customize my eco+ experience?	104
+* Adjusting temperature for humidity	105
+* Time of Use	106
+* Community Energy Savings	109
+* Smart Home & Away	111
+* Schedule Assistant	112
+* Pause when Open	113
+What do all the icons on my ecobee mean?	115
+Wiring Diagrams	119
+Diagram 1. Furnace (1-stage) + AC (1-stage) using PEK	119
+Diagram 2. Furnace (2-stage) + AC (1-stage) using PEK	119
+Diagram 3. Furnace (1-stage) + AC (2-stage) using PEK	120
+Diagram 4. Furnace (2-stage) + AC (2-stage) using PEK	120
+Diagram 5. Furnace (1-stage) + AC (1-stage)	121
+Diagram 6. Furnace (2-stage) + AC (1-stage)	121
+Diagram 7. Furnace (1-stage) + AC (2-stage)	122
+Diagram 8. Furnace (2-stage) + AC (2-stage)	122
+Diagram 9. Heatpump (1-stage)	123
+Diagram 10. Heatpump (1-stage) using PEK	123
+Diagram 11. Heatpump (2-stage)	124
+Diagram 12. Heatpump (2-stage) using PEK	124
+Diagram 13. Heatpump (1-stage) + Aux Heat (1-stage)	125
+Diagram 14. Heatpump (2-stage) + Aux Heat (1-stage)	125
+Diagram 15. Heatpump (2-stage) + Aux Heat (2-stage)	126
+Diagram 16. Heatpump (1-stage) + Aux Heat (1-stage) using PEK	126
+Diagram 17. Heatpump (2-stage) + Aux Heat (1-stage) using PEK	127
+Diagram 18. Heatpump (2-stage) + Aux Heat (2-stage) using PEK	127
+Diagram 19. How to Include a Float switch on the Y circuit	128
+Diagram 20. How to Include a 1-wire Dehumidifier / Humidifier	128
+Diagram 21. How to Include a 2-wire Dehumidifier / Humidifier	129
+Diagram 22. How to Include a Ventilator / HRV / ERV	129
+Diagram 23. Boiler (1-stage) + AC (1-stage) - 2 Transformers	130
+Diagram 24. Boiler (1-stage) + AC (2-stage) - 2 Transformers	130
+Diagram 25. Boiler (2-stage) + AC (2-stage) - 2 Transformers	131
+Need to talk?	132
+
+Installation Guide
+
+Download the ecobee app. The ecobee app has instructions, step-by-step videos, and diagrams customized to your wiring setup. Register your ecobee after installation to unlock smart features like Amazon Alexa.
+
+
+
+
+
+The installation section of this manual will describe 3 scenarios:
+
+1) How to install with a C-wire.
+2) How to install with multiple G wires.
+3) How to install without a C-wire using the supplied PEK adaptor.
+
+
+How to determine if your HVAC system compatible and if you have a C-wire.
+
+STEP 1: Power off your Heating, Ventilation, and Air Conditioning (HVAC) system by using the master switch or circuit breaker box. This is important for your safety.
+
+
+
+
+
+STEP 2: Confirm your system is off by turning on your heat (during winter) or your AC (during summer). Wait a few minutes -you should not feel air coming from your vents.
+
+
+
+
+
+
+STEP 3: Remove your old thermostat cover from the wall.
+
+
+
+
+What do my thermostat's wire labels mean?
+
+Common thermostat wires:
+LabelDescriptionCAlso known as the common wire, the C wire enables the continuous flow of 24VAC power that ecobee thermostats need to operate.
+
+Don't see a C wire? There might be an extra wire tucked in the wall behind your thermostat's backplate that you can utilize as the C wire. That is provided it's connected to the C terminal on your furnace/air handler control board. The C wire might also be labelled as the X or B wire. You'll have the opportunity to safely check for a C wire during installation when your system is powered off.
+Still no C wire? You can probably still install an ecobee with the Power Extender Kit (included with ecobee thermostats), or in other less common setups, with other customizations we can walk you through at the time.RHeating and cooling system power wire.
+
+If you only have one R wire (That includes R, Rc, and Rh), you'll insert it into the Rc terminal on your ecobee.
+
+Do not jumper any R wires!RHIf you don't have an Rc wire, Rh serves as both the heating and cooling power wire.
+With dual-transformer systems you'll have two R wires-one from the cooling transformer (Rc) and one from the heating transformer (Rh). Learn how to install an ecobee thermostat in a dual-transformer system.RCIf you don't have an Rh wire, Rc serves as both the cooling and heating power wire.
+With dual-transformer systems you'll have two R wires-one from the cooling transformer (Rc) and one from the heating transformer (Rh). Learn how to install an ecobee thermostat in a dual-transformer system.W/W1 & W2In a conventional system, W/W1 controls your heating system and, where applicable, W2 controls your heating system's second stage, which helps warm the home faster.
+If you have a heat pump system with auxiliary heating, you'll normally connect the AUX/AUX1 or W2 wire to the ecobee's W1 terminal. If you have two stages of AUX heat, you will connect AUX2 to W2 on your ecobee.Y/Y1 & Y2In conventional cooling systems, Y/Y1 controls the first stage of cooling and Y2 controls the second stage, which helps cool down the home faster.
+In heat pump systems, Y1 controls your compressor, which heats and cools your home. If you have a two- stage compressor, Y2 controls your compressor's second stage, allowing for different levels of heating and cooling.G or G1G or G1 controls your furnace/air-handler fan.O/BOn heat pump systems, O/B controls the reversing valve, which tells your compressor to switch between
+heating and cooling.ESome thermostats for heat pumps have an E terminal, which toggles emergency heat on or off. Emergency heat should only be used on very cold days when the heat pump is unable to keep the house warm. The E
+wire normally connects to the ecobee's W1 terminal.AUX/AUX1 & AUX2Heat pumps systems sometimes have a second, auxiliary heat source that helps warm your home quicker and keeps the home warm in frigid weather conditions when the heat pump cannot. Some auxiliary heat systems for heat pumps have two stages, hence AUX2.
+If you have a heat pump system with auxiliary heating, you will normally connect the wire labelled AUX/AUX1 or W2 to the ecobee's W1 terminal. If you have two stages of AUX heat, connect the AUX2 wire to the ecobee's W2 terminal.
+
+Less common thermostat wires:
+
+Any unnecessary or spare wires not needed can be safely taped off or wrapped around the wiring bundle and tucked back into the wall.
+LabelDescriptionS, S1 or S2S terminals are for outdoor temperature sensors. ecobee thermostats obtain weather data over Wi-Fi so S
+wires are not necessary.LThe L wire can be used to power indicator lights on older thermostats. ecobee thermostats feature an LCD
+display so the L wire is not necessary.G2, G3, GL, GM, GH, FAN1, FAN2, FAN3Most HVAC systems feature a single fan speed. In multi-speed systems, fan speed is either controlled by the furnace control board or the thermostat.
+
+I have a multi-speed system. How can I tell if it is controlled by the furnace control board or by my thermostat?
+
+· If your multi-speed system is connected to your current thermostat by a single G wire, fan speed is set by the furnace control board.
+
+· If multiple G wires connect to your thermostat, your thermostat manages fan speed. ecobee thermostats support the former type but not the latter.
+If you're installing an ecobee thermostat in a multi-speed system with multiple G wires running to your old thermostat, use the table below to match your preferred fan speed with the correct wire:
+
+
+O and BOn heat pump systems, the O and B wires tell the compressor when to switch between heating and cooling your home.
+
+If you have a wire labelled B but do not have a separate wire labelled O, connect it to the ecobee thermostat's O/B terminal.
+
+If you see O and B as separate wires in your current setup, we recommend booking a pro near you to install your ecobee.
+Worth a look: Occasionally, the wire labelled B may in fact be the common wire (C), which is needed to power an ecobee thermostat.W3A wire connected to the W3 terminal on your current thermostat indicates that you have a three-stage furnace. ecobee thermostats do not support three-stage furnaces. Workarounds are to connect a jumper between the W2 and W3 terminals on your furnace's control board or add in a "Delay on Make adjustable
+timer" to control 3rd stage.Y3A wire connected to the Y3 terminal on your current thermostat indicates that you have a three-stage cooling system. ecobee thermostats do not support three stages of cooling. Workarounds are to connect a jumper between the Y2 and Y3 terminals on your furnace's control board or add in a "Delay on Make
+adjustable timer" to control 3rd stage.
+
+
+LabelDescriptionH or HUM or HUM1 and H2 or HUM2This wire or pair of wires controls your whole-home humidification system.
+
+ecobee SmartThermostat with voice control, ecobee4 and ecobee3 are compatible with accessories, including humidification equipment. When you are setting up your thermostat for the first time, you can add one compatible 1- or 2-wire accessory such as a humidifier, dehumidifier or HRV/ERV.
+
+View the wiring diagrams for your ecobee to learn how to wire an indoor air-quality accessory.D or DH or DHUM or DEHUM1 and DH2 or DHUM2 or DEHUM2This wire or pair of wires controls your whole-home dehumidification system.
+
+ecobee SmartThermostat with voice control, ecobee4 and ecobee3 are compatible with accessories, including dehumidification equipment. When you are setting up your thermostat for the first time, you can add one compatible 1- or 2-wire accessory such as a humidifier, dehumidifier or HRV/ERV.
+
+View the wiring diagrams for your ecobee to learn how to wire an indoor air-quality accessory.V, VR, Vg, V+If you see a wire(s) labelled V or VR (or both) or Vg and V+ plugged into your current thermostat, you'll need to take a closer look to ensure your HVAC system is compatible with ecobee thermostats. If your HVAC system has terminals labelled R, C, W, Y, G, etc. the ecobee will be compatible.
+
+
+Incompatible thermostat wires:
+
+Unfortunately, if you see any of the following wires attached to your current thermostat, your system is not compatible with ecobee.
+
+LabelDescription1 2 3 4 These wire labels indicate a proprietary system that is not compatible with ecobee thermostats. You'll need to take a closer look to ensure your HVAC system is compatible with ecobee thermostats. If your HVAC system has terminals labelled R, C, W, Y, G, etc. the ecobee will be compatible but may lose some
+proprietary features.A B C D These wire labels indicate a proprietary system that is not compatible with ecobee thermostats. You'll need to take a closer look to ensure your HVAC system is compatible with ecobee thermostats. If your HVAC system has terminals labelled R, C, W, Y, G, etc. the ecobee will be compatible but may lose some
+proprietary features.Water or H2Oecobee thermostats are not compatible with these types of wiresL1 and L2, or 110, 120 or 240
+volts   These wire labels and terminal blocks indicate a high-voltage system and are accompanied by a Danger, Warning or Caution symbol. ecobee thermostats are not compatible with high-voltage systems.
+
+STEP 4: Take a picture of the wires connected to the terminals of your old thermostat. You may need to reference this photo later.
+
+
+
+Scenario 1: Install your ecobee with a C-wire:
+
+If you have a C wire, it will power your ecobee. You will not need the Power Extender Kit (PEK) included in the box.
+
+
+TIP: To install accessories (humidifier, dehumidifier, or ventilator) please refer to the wiring diagrams section in this manual.
+
+
+
+STEP 5: Carefully disconnect and label the wires from your old thermostat one at a time, using the labels provided.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+STEP 6: Unscrew the mounting plate of your old thermostat to remove it from the wall.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+STEP 7: Decide if you want to use the trim plate with your ecobee. The trim plate is useful if you want to hide marks or holes left on the wall by your old thermostat.
+
+If using the trim plate, align the mounting holes on the trim plate and backplate and press them into place together.
+
+
+
+STEP 8: Pull the wires through the hole in the middle of the backplate and then attach the backplate to the wall using the drywall anchors and screws provided.
+
+
+
+STEP 9: Insert your remaining wires into the side (not the front) of their corresponding terminal blocks.
+
+
+ 
+
+STEP 10: Tug on the wires gently to ensure they are securely connected.
+
+
+
+
+STEP 11: Carefully push any excess wires back into the hole and ensure there are no drafts coming from the hole(s) in the wall.
+
+
+
+
+STEP 12: Turn the power to your HVAC system back on using the master switch or at the circuit breaker box.
+
+
+
+
+STEP 13: Gently press your ecobee into the backplate until it 'clicks' into place. If the thermostat 'rocks' or is not flush with the wall, be sure the excess wires are pushed all the way into the wall.
+
+
+
+Congratulations, you did it!
+
+Say hi to your new ecobee! To complete your setup and registrations, follow the instructions on your ecobee screen.
+
+
+
+Scenario 2: How to install with multiple G-wires:
+Installation of a system with multiple G wires means you have a multi-speed fan. Depending on the equipment in your building, this may require you to select wiring configurations that can damage your system if done incorrectly. If you would rather leave it up to a professional, we can help you find one quickly. ecobee.com/proinstall
+
+
+STEP 5: Carefully disconnect and label the wires from your old thermostat one at a time, using the labels provided.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+STEP 6: Unscrew the mounting plate of your old thermostat to remove it from the wall.
+
+
+
+STEP 7: Decide if you want to use the trim plate with your ecobee. The trim plate is useful if you want to hide marks or holes left on the wall by your old thermostat.
+
+If using the trim plate, align the mounting holes on the trim plate and backplate and press them into place together.
+
+
+
+STEP 8: Pull the wires through the hole in the middle of the backplate and then attach the backplate to the wall using the drywall anchors and screws provided.
+
+
+
+STEP 9: Remove the Rc, Y2, and W2 white labels from the label sheet and attach them to the wires as shown below:
+
+
+
+STEP 10: First, connect these 3 wires as shown: RC, G2, G3. Then, insert your remaining wires into the side (not the front) of their corresponding terminal blocks.
+
+
+
+STEP 11: Tug on the wires gently to ensure they are securely connected.
+
+
+
+
+STEP 12: Carefully push any excess wires back into the hole and ensure there are no drafts coming from the hole(s) in the wall.
+
+
+
+
+
+STEP 13: Turn the power to your HVAC system back on using the master switch or at the circuit breaker box.
+
+
+
+
+STEP 14: Gently press your ecobee into the backplate until it 'clicks' into place. If the thermostat 'rocks' or is not flush with the wall, be sure the excess wires are pushed all the way into the wall.
+
+
+Congratulations, you did it!
+
+Say hi to your new ecobee! To complete your setup and registrations, you must select "I'm a pro" when your thermostat powers on to access the multi-speed/fan coil options.
+
+
+Scenario 3: How to install without a C-wire using the supplied PEK adaptor:
+
+Installation with the Power Extender Kit (PEK) will require you to handle electrical wiring. If you would rather leave it up to a professional, we can help you find one quickly. ecobee.com/proinstall
+
+
+If you don't have a C wire, you'll need to use the Power Extender Kit (PEK) included to reliably power your ecobee.
+
+
+
+
+
+
+STEP 5: Take your Power Extender Kit, wire labels, tools, your smartphone, and go to your HVAC system.
+
+
+
+STEP 6: Open your HVAC system's cover to reveal the control board
+
+
+
+
+STEP 7: Take a picture of the wires connected to your control board. You may need to reference this photo later.
+
+
+STEP 8: Label only the R, Y or Y1, G, and W or W1 wires with the matching labels provided. If you have more than one wire going into these terminals, only label those going to your thermostat.
+
+
+
+
+STEP 9: Disconnect the wires labeled R, Y, G, and W from the control board.
+
+
+STEP 10: Connect the wires you disconnected from the control board into their matching gray terminal blocks on the Power Extender Kit.
+
+
+
+
+STEP 11: Tug on the wires gently to ensure they are securely connected.
+
+
+
+STEP 12: Connect the five white wires coming out of your Power Extender Kit to their corresponding terminals on the control board.
+
+
+
+
+
+
+
+STEP 13: Mount the Power Extender Kit inside your HVAC system, taking care not to strain the wires. Close the HVAC cover panel securely and return to your thermostat.
+
+
+
+
+STEP 14: Back at your thermostat: Carefully disconnect and label the wires from your old thermostat one at a time, using the labels provided.
+
+
+
+
+STEP 15: Unscrew the mounting plate of your old thermostat to remove it from the wall.
+
+	
+
+
+STEP 16: Decide if you want to use the trim plate with your ecobee. The trim plate is useful if you want to hide marks or holes left on the wall by your old thermostat.
+
+If using the trim plate, align the mounting holes on the trim plate and backplate and press them into place together.
+
+
+STEP 17: Pull the wires through the hole in the middle of the backplate and then attach the backplate to the wall using the drywall anchors and screws provided.
+
+
+
+
+STEP 18: Remove the Rc, C, and PEK white labels from the label sheet and attach them to the wires as shown below:
+
+STEP 19: First, connect these 3 wires as shown: RC, C, PEK. Then, connect any remaining wires to their corresponding terminal.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+STEP 20: Tug on the wires gently to ensure they are securely connected.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+STEP 21: Carefully push any excess wires back into the hole and ensure there are no drafts coming from the hole(s) in the wall.
+
+
+
+
+STEP 22: Turn the power to your HVAC system back on using the master switch or at the circuit breaker box.
+
+
+
+
+STEP 23: Gently press your ecobee into the backplate until it 'clicks' into place. If the thermostat 'rocks' or is not flush with the wall, be sure the excess wires are pushed all the way into the wall.
+
+
+
+Congratulations, you did it!
+Say hi to your new ecobee! To complete your setup and registrations, follow the instructions on your ecobee screen.
+
+
+Setup Guide
+Configuring your ecobee thermostat for the first time (I'm a homeowner):
+Upon powering up the ecobee, it will provide step-by-step prompts to assist with the HVAC equipment configuration. This is an example of this process:
+
+
+
+
+
+These steps will allow you to select the thermostat name, your desired heat/cool set-point, HVAC system mode, and enabled or disable Smart Home/Away after completing the initial setup.
+
+
+Once the setup is completed the Home screen will be displayed.
+
+
+Before heating or cooling can be resumed the ecobee will go through a Heating/Cooling Temperature Calibration period. This may take up to a max of 20 minutes.
+
+
+
+Configuring your ecobee thermostat for a Heat-Pump system:
+These are the applicable steps to configure when O/B is detected or selected during the wire selection phase.
+
+
+
+Configuring your ecobee thermostat for the first time (I'm a Pro):
+ecobee thermostats provide multi-speed fan control to work with 2/4-pipe fan coil units with/without pipe sensors (24V systems only) and multi-speed PTAC units. These settings are accessed through the "I'm a Pro" setup flow. Many of the same first-run configuration steps apply as described in the "I'm a homeowner" section, however this section will callout and describe the key screens and settings.
+
+
+First step is to determine the correct configuration for the application the ecobee is going to be controlling.
+
+
+Fan Coil Unit (FCU) wiring on the ecobee:
+
+
+
+2-pipe system
+* Y1: fan coil cooling/heat
+* W1: Aux Heat stage 1 or fan coil heat
+* G2: medium-speed fan
+* G3: high-speed fan
+* S1 & S2: dry contact terminals for the pipe sensor
+
+4-pipe system
+* Y1: fan coil cooling
+* W1: fan coil heating
+* G2: medium-speed fan
+* G3: high-speed fan
+
+
+
+Terminal activation for multi-speed fan control:
+
+For multi-speed options, multi-purpose thermostat terminals will be utilized.
+
+* Y2 can also be configured as G2
+   * W2 can also be configured as G3 For the pipe sensor:
+* Rh becomes S1
+* PEK becomes S2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+• Low speed - G1
+
+• Medium speed - G2
+
+• High speed - G3
+
+
+
+Fan speed selection (System Mode):
+
+• Fan speed setting is located in Main MENU --> SYSTEM
+
+
+• It is a global setting, meaning that it will affect all types of fan runtime (i.e. heating, cooling, fan only, fan + ventilator, fan + humidifier, etc.)
+
+• Optimized: When running heating/cooling the fan speed will be automatically adjusted based on heating/cooling needs, the system will attempt to use the lowest fan speed while maintaining comfort.
+
+
+
+	
+
+
+The Pipe Sensor:
+It monitors the temperature of the water going to a 2-pipe FCU, also known as changeover sensor, changeover switch, Aquastat, among others:
+• If the water is hot (> 83 F), it signals the thermostat that the system is in heat mode;
+• If the water is cold (< 65 F), it signals the thermostat that the system is in cooling mode;
+• User configurable for Open or Closed activation
+
+• Compatible with both on-Cool / on-Heat sensors (determined on 1st run setup)
+
+• Compatible with dry-contact pipe sensors (on/off), not analog. (ex. 10K ohm thermistor)
+
+
+
+Pipe Sensor Activation (notification & alerts):
+• Aqua-stat alerts (Building mode changes)
+• Aqua-stat (Switch modes)
+• Aqua-stat (Alerts & Reminders)
+• Informs customer the option to switch system mode
+
+
+
+
+Multi-speed setup flow options during setup process:
+
+Fan Coil Unit, no W1 wire
+• Y1 detected, O/B not detected
+• 2-pipe, no Aux Heat
+
+
+
+
+
+
+
+
+
+
+Heat Pump/PTAC
+• Y1 and O/B detected
+• For PTAC, configure it as Air-to-air heat pump
+
+
+
+
+
+
+Fan Coil Unit, no W1 wire & Pipe Sensor
+
+
+
+
+
+
+
+
+
+
+Setting up an ecobee for dehumidification control:
+This section describes how to setup an ecobee thermostat to control a standalone dehumidifier or a forced air furnace/air-handler that supports a 'Dehum' mode. This is compatible using ecobee3, ecobee4 or Smart Thermostat with voice control.
+
+
+Once the ecobee has been wired to control the HVAC system and dehumidification system using the ACC+/ACC- terminals it will require correct setup to determine how you want to enable Dehumidification control. During the first-run setup they are a few key settings to ensure Dehumidification is part of the HVAC control algorithms.
+
+
+
+During setup when prompted, select Dehumidifier.
+
+The ecobee will attempt to auto-detect the inserted wires into ACC+ / ACC-, therefore this prompt may not appear during setup.
+
+This setting determines if the state of the ACC+/- relay is Open or Closed when active. Refer to the HVAC equipment manual for the recommended setting.
+
+
+
+After the ecobee has been configured there are a few specific settings that allow you to determine when the Dehumidifier becomes active.
+
+To access these settings, on the device select MENU --> SETTINGS --> INSTALLATION SETTING --> EQUIPMENT
+--> DEHUMIDIFIER.
+
+* Dehumidify with Fan (Yes or No): when Dehum is active this setting specifies if you want the furnace/air-handler fan to run as well. This will activate (G) output on the t-stat at the same time. This can work independent of a cooling cycle.
+
+* Min Runtime Delta (2-10%): to reduce short cycling, the dehumidifier will run beyond the desired humidity by the selected amount (%). Default is 5%.
+
+* Dehumidify in Heat Mode (Yes or No): If humidity is a concern during the heating season and have a standalone Dehumidifier, this setting can be used to activate the Dehumidifier and will work independent of a heating cycle.
+
+* Dehumidifier Active (Open or Closed): this setting is dependent whether the HVAC system or standalone Dehumidifier requires it to be open or closed while active. This setting is part of the 1st run setup but can change afterwards in the Dehumidifier menu.
+
+
+
+AC Overcool Max is another option to help control high humidity levels and works in conjunction with the Dehumidify setpoint under System Mode menu. This setting will allow the Air Conditioner to overcool by comparing the actual RH% vs. the desired Dehumidify setpoint.
+
+
+Note: When the overcool temperature has been achieved (i.e. temperature setpoint + overcool setting), the AC system will turn off however the Dehumidifier ACC+/- relay may be still active if Dehum setpoint has not been achieved.
+
+
+Setting up an ecobee for ventilator control:
+The ventilator control capabilities depend on the type of ventilator installed which can be either a HRV, ERV or standard Ventilator.
+
+
+There minimum runtime setting when the home is occupied and when unoccupied. The ventilator will also run for 60 minutes prior to occupancy, this is called pre-purge and is not user adjustable but can be enabled or disabled.
+
+Regardless of the type of ventilator the minimum runtime settings are used to force the ventilator to run a specific number of minutes per hour. This runtime is broken into 15-minute blocks to evenly spread out the runtime throughout the hour, but at a minimum 5 minutes of runtime is required. So, if the runtime was set to 10 minutes, the time is broken into two 5-minute blocks.
+
+
+
+
+
+
+Ventilator Minimum On Time While Home: The number of minutes per hour the fan is required to run when the house is considered occupied
+
+Ventilator Minimum On Time While Away: The number of minutes per hour the fan is required to run when the house is considered unoccupied
+
+
+
+Free Cooling: If a standard ventilator is installed, then it can be used to cool the house and is much cheaper to use compared to air conditioning. The thermostat will look at indoor temperature and humidity and outdoor temp and humidity to determine if free cooling can be used. If conditions are favorable, then the ventilator will be engaged instead of the air conditioner. There are several configuration settings used to control free cooling. This feature does not apply to a HRV or ERV. To access these, Select MENU --> SETTINGS --> INSTALLATION SETTINGS --> EQUIPMENT --> VENTILATOR
+
+
+* Pre-Occupancy Purge (Enable or Disable): determines if they ventilator will be active 1 hour prior to expected occupancy.
+
+* Free Cooling Max Outdoor Temperature: this setting defines the max outdoor temperature when free cooling is no longer permitted.
+
+* Free Cooling Max Outdoor Humidity: this setting defines the max outdoor humidity when free cooling is no longer permitted. (Default is disabled)
+
+* Indoor/Outdoor Temperature Delta: permits free cooling if Indoor Temp vs. Outdoor Temp is greater than this Temp Delta setting. (Default is 2F)
+
+* Max Desired Temperature Delta (Enable or
+
+
+
+Setting up an ecobee for humidification control:
+This section describes how to setup an ecobee thermostat to control a humidifier with a forced air furnace/air- handler. This is compatible using ecobee3, ecobee4 or Smart Thermostat with voice control.
+
+
+Once the ecobee has been wired to control the HVAC system and humidification system using the ACC+/ACC- terminals it will require correct setup to determine how you want to enable humidification control. During the first- run setup they are a few key settings to ensure humidification is part of the HVAC control algorithms.
+
+		
+
+During setup when prompted, select Humidifier.
+
+The ecobee will attempt to auto-detect the inserted wires into ACC+ / ACC-, therefore this prompt may not appear during setup.
+
+This setting determines the type of humidifier system. Evaporative is recommended to operate with a heating cycle.
+
+
+After the ecobee has been configured there are a few specific settings that allow you to determine when the humidifier becomes active.
+
+To access these settings, on the device select MENU --> SETTINGS --> INSTALLATION SETTING --> EQUIPMENT
+--> HUMIDIFIER.
+
+* Humidifier Type: Evaporative humidifiers are design to work with a heating cycle to aid in the evaporation of water whereas a Steam humidifier only requires air flow from the furnace fan. A Steam setup can operate independent of heating cycle.
+
+* Min Runtime Delta (2-10%): to reduce short cycling, the humidifier will run beyond the desired humidity by the selected amount (%). Default is 5%.
+
+* Window Efficiency: The humidifier frost Control setting uses this efficiency rating to compute the desired humidity within the range of 15% to 50%. The chosen setting will determine the maximum indoor humidity permitted.
+
+
+
+
+
+
+
+
+
+* On: Requires a preferred humidity level (%) to be manually set. If the actual RH% is below this setpoint the humidifier will be turned on.
+
+* Off: This will not permit the humidifier to operate.
+
+* Frost Control: Will optimize the humidity level to 50% based on the outdoor temperature, indoor temperature, and window efficiency. Use this setting to dynamically adjust the humidity level to avoid excessive condensation forming on windows when outdoor weather is very cold.
+
+User Guide
+Change system mode and status indicator
+
+
+
+Alexa voice and notification status indicator
+
+
+
+
+
+
+
+
+
+   Indoor humidity Indoor temperature
+
+
+Temperature adjustment slider
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Main menu to access thermostat settings, schedules and more
+
+
+
+
+
+Show your local weather and forecast for the week
+
+
+Volume control and enable/disable microphone
+
+
+
+
+
+Quick Changes menu to set a Fan Hold, Home and Away modes and see what equipment is running
+
+
+How to use temperature correction on your ecobee thermostat:
+It is important to verify that the temperature sensor is reading the indoor temperature correctly. The thermostat sensor has a sensitivity variance of +/- 1F. If the thermostat reading needs adjusting for any reason, there is a Temperature Correction function which will permanently correct the sensor reading by +/- 10F in both directions. To access this offset is as follows: MAIN MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS --> TEMPERATURE CORRECTION. Important! Be aware that warm or cold air from the wall cavity behind the thermostat can have an influence on the temperature sensor. Ensure that the hole where the wires pass through the wall is sealed to avoid unwanted wall cavity air.
+
+
+How do I register my ecobee thermostat?
+To register your ecobee thermostat, you will need to obtain the 4-digit registration code from your ecobee thermostat's screen. This code is obtained by doing the following on your ecobee thermostat's screen:
+
+1. Tap the three horizontal bars on the bottom left corner of the ecobee screen to open the Main Menu.
+2. Tap Registration. If it says "2 Steps Left" under registration, you'll be taken to the Wi-Fi configuration screen first to connect the ecobee to your home network so that the code can be generated.
+
+
+After completing these steps, the code will then be displayed on the thermostat's screen. Write this code down.
+
+NOTE: Registration codes are valid for about one hour before they expire. If your code expires, simply follow the above procedure again to re-generate the code.
+
+Once you have this code, register your ecobee via the mobile app or the web portal.
+
+
+Registering using the ecobee app:
+1. Download the ecobee App on your phone and select Create an Account.
+2. Fill out the necessary fields, accept the Terms and Conditions, and select Create account.
+
+
+3. Give your home a name and enter your home address.
+
+Note: You have the option of leaving the address field blank and selecting "Save home". The app will give you the option of setting the address later. Please also note that all devices under a home without a property address may not be able to generate weather data as well as HomeIQ reports.
+
+
+
+
+4. Tap on Add a Device and select Register a device on the pop-up menu.
+
+5. Select ecobee Thermostat as your device and enter the 4-digit registration code from your thermostat.
+
+
+6. Enter your home details to help optimize heating and cooling. This information is also needed for generating your HomeIQ report. If you are unsure of your home details, you can skip this step for now and come back to it later.
+
+7. Tap Done on the Home Details setup to proceed to your device screen. Your ecobee is now registered and accessible through the app or web portal! Once you're finished, return to your thermostat and tap Finish at the bottom right corner to complete registration.
+
+
+
+How to adjust the comfort settings:
+The ecobee comes with (3) default Comfort Settings. Each comfort setting can be edited for temperature, fan mode and if participating sensor are part of the configuration. To access select: MAIN MENU --> COMFORT SETTINGS
+
+
+
+
+
+How to create/adjust a thermostat schedule:
+
+You can program the schedule on your ecobee either on the thermostat itself, through the mobile app, or through the Web Portal. This section describes how to program your schedule on the thermostat and the mobile app (the process is virtually identical on both). Note: If you are looking to create a custom Comfort Setting, you'll need to do so through the Web Portal or the mobile app.
+
+Go to the schedule tab from the main menu: MAIN MENU -->SCHEDULE. You will see the schedule for the day. Tap on any of the days listed at the top to view your schedule for that specific day.
+
+If you wish to change the start time of a particular activity, simply tap on the activity (Home, Away, or Sleep) and adjust the time. The ecobee will maintain this activity/Comfort Setting until your next scheduled activity begins.
+
+
+
+
+If you wish to add a new Comfort Setting into your schedule, click the + icon in the top right corner. You will be given the option to choose between your programmed Comfort Settings. Select the Comfort Setting you wish to add and tap Next in the bottom right corner.
+
+
+Choose the time you would like to set for the Comfort Setting, then tap Save in the bottom right corner. You will now see the Comfort Setting you have added to/adjusted in your schedule. If you would like to copy the schedule for this specific day throughout the rest of the week, select COPY [WEEKDAY] at the bottom.
+Note: You cannot schedule two instances of the same Comfort Setting back-to-back.
+
+
+
+You will then be able to select the days you wish to copy this schedule over to. Tap Save in the bottom right corner.
+
+
+
+
+
+Success! You have now programmed your ecobee's schedule. You can adjust your schedule at any time by simply repeating the process above. The ecobee will now follow your schedule and maintain your pre-programmed Comfort Settings (unless you place a hold by manually adjusting the temperature on the thermostat, through the app or other APIs).
+
+
+How to schedule a vacation event on your ecobee:
+
+The Vacation feature on your ecobee helps conserve energy while you're away and ensures your home is comfortable when you return. When you schedule a Vacation, you'll be prompted to set a heating or cooling temperature. This helps protect your home from frozen pipes or extreme heat damage so you can truly relax and unwind on your trip.
+
+From the Home screen, select MENU --> VACATION. Select the + symbol to add a vacation. Enter
+the Start and End dates and times of your vacation. You can then customize your minimum and maximum threshold temperatures by tapping Vacation Settings. The ecobee will ensure that when your vacation ends, it reverts to your regular comfort settings and schedule.
+
+
+Scheduling a vacation can also completed from the mobile app or web-portal.
+
+
+
+Using a Hold setting on my ecobee thermostat:
+
+Whenever you manually adjust your ecobee to a different temperature that is not the scheduled set point, your ecobee will go into a "hold." This means instead of following your set schedule, your thermostat will follow the hold action until the hold is manually cancelled, or until your preferred hold action setting kicks in.
+
+
+
+You can set a hold action in a variety of ways - by manually changing the temperature either on the thermostat itself or the app, through the Quick Changes menu --> selecting "home for now" or "away for now", or if you are using any 3rd party apps such as Alexa, HomeKit, Smart Things, or Google. Any manual changes made through with the quick changes menu, or selecting home/ away for now, will result in indefinite holds and will need to be manually cancelled.
+
+How does sensor participation work when there is a hold? Any time you make a manual adjustment and put the thermostat in a hold, your sensors will follow the sensor participation of your Home comfort setting. This is hardcoded into the ecobee and these parameters cannot be changed.
+
+How do I adjust the hold setting? You can change your hold preference to hold for 2 hours, 4 hours, Until the Next Scheduled Activity, Until I Change It or Decide at the Time of Change.
+
+To do this, just tap MAIN MENU --> SETTINGS --> PREFERENCES --> HOLD ACTION and make the changes you like.
+
+How do I cancel a hold? Easy! You will just want to tap on the "X" in the top left corner of the text box on the thermostat, or select the "Cancel" text box on the app. By cancelling the hold, the thermostat will resume your schedule.
+
+
+How to adjust the preferences on your ecobee thermostat:
+
+To access these settings, select MENU --> SETTINGS --> PREFERENCES.
+
+
+
+
+Temperature Display: Configure your ecobee thermostat to display the temperature values in Fahrenheit or Celsius.
+
+
+1. Select MAIN MENU > SETTINGS > PREFERENCES
+2. Select Temperature display
+3. Touch °F or °C
+
+Heating/Cooling Ranges: Configure your ecobee thermostat to only display a specific heat and/or cool set point range. This prevents users from selecting values outside the displayed range.
+
+1. Select MAIN MENU > SETTINGS > PREFERENCES
+2. Select Heating range or Cooling range
+3. Adjust the allowed upper and lower values
+4. Touch Save.
+
+
+
+Thermostat Name: Customize the name of your ecobee thermostat to suit your needs (i.e. Main Floor). This is useful if you have multiple systems or zones and are accessing your thermostat from your personalized web portal.
+
+
+1. Select Main MENU > SETTINGS > PREFERENCES
+2. Select Thermostat name.
+3. Select an existing name from the list or choose Enter your own.
+4. Touch Save.
+5. If you choose your own name, enter the custom name and touch Save.
+
+Alexa Sounds: Sound effects include Alexa is listening/has finished listening and a "barge in" sound to force Alexa to listen
+
+Screen Brightness: Customize the brightness of your ecobee thermostat's screen. The brightness of both the active and standby screens can be configured independently. You can also configure the screen to automatically sleep (i.e. turn off) whenever your ecobee thermostat enters the Sleep activity period. For example, if your ecobee thermostat is located in a bedroom, you may want to blank the screen when you are sleeping, whereas if the ecobee thermostat is in a hallway, you may want the screen displayed all the time.
+
+1. Select Main MENU > SETTINGS > PREFERENCES
+2. Select Screen brightness.
+3. Adjust the values of the Active and Standby screen brightness.
+4. Select Screen sleeps when I sleep if you want to make the screen blank during the Sleep activity period.
+
+Active to Standby Screen Timer: Configure how long it takes for the standby screen to activate after you have finished using the ecobee thermostat.
+
+1. Select Main MENU > SETTINGS > PREFERENCES
+2. Select Active to standby screen timer.
+3. Adjust the activation time as required.
+
+Hold Action Duration: Configure how long a manual change to the set point will remain in effect.
+
+1. Select Main MENU > SETTINGS > PREFERENCES
+2. Select Hold action.
+3. Select the hold action from the list:
+* 2 hours
+* 4 hours
+* Until the next scheduled activity
+* Until you change it (default value)
+* Decide at time of change
+
+
+
+Smart Recovery: Your ecobee thermostat learn how you're heating and cooling system works, taking into account weather and historical operating performance so that your home reaches the scheduled set point at the time in which the change occurs (i.e. not afterward). For example, if you wake up at 6:00 AM, you do not need to schedule your Home period to start at 5:30 AM. Smart Recovery will start the HVAC equipment to ensure that at 6:00 AM, the house is at your desired temperature.
+
+1. Select Main MENU --> SETTINGS --> PREFERENCES
+2. Select Heating Smart Recovery or Cooling Smart Recovery.
+3. Touch Enable or Disable.
+
+Access Control: Control who can adjust your ecobee. You may find this feature useful if you have curious children or if you're renting out a unit with an ecobee installed and want to prevent the tenant from making any drastic changes.
+
+To access this menu, MAIN MENU --> SETTINGS --> ACCESS CONTROL --> ENABLE SECURITY CODE
+
+
+
+
+
+
+From here, you will be allowed to set a 4-digit code and set which features you would like to restrict.
+
+
+
+All: This will prevent someone from adjusting any of the settings previously listed (schedule, vacation, system, settings, temperature, quick changes).
+
+Temperature and Quick Changes: This will prevent someone from adjusting the temperature set point and accessing the Quick Changes menu to set holds.
+
+System Mode: This will prevent someone from changing the system mode on your ecobee (switching from heat mode to cool mode and vice versa).
+
+Schedule: This will prevent someone from making any adjustments to your ecobee's schedule on the thermostat.
+
+Vacation: This will prevent someone from creating a vacation schedule or adjusting any pre-existing vacation schedule.
+
+Other Settings: This will prevent someone from adjusting the thermostat settings-this includes the date and time, preferences (thermostat name, heating and cooling range, hold action, etc.), Wi-Fi configuration, equipment and threshold settings, and resetting the ecobee's equipment settings and/or registration.
+
+
+How to control your HVAC system's fan:
+ecobee thermostats can control your fan in a variety of ways to maximize your comfort. Below explains the five methods available.
+
+1. Fan Control in Heat Mode
+2. Fan Minimum On Time
+3. Quick Changes (used to turn the fan ON for a limited amount of time)
+4. Heat/Cool Dissipation Time
+   5. Fan Mode in Comfort Settings Fan Control in Heat Mode:
+You can choose either the ecobee thermostat or your furnace to control your system's fan during furnace/aux heating cycles. When set to "thermostat", the ecobee will operate your system fan differently than your furnace during heating cycles by sending the signal to run the fan itself rather than relying on the furnace to do so.
+
+To adjust this setting, go to MAIN MENU > SETTINGS > INSTALLATION SETTINGS > EQUIPMENT > FURNACE > FAN CONTROL IN HEAT MODE
+
+NOTE: This option is only accessible through the thermostat interface. Neither the mobile apps or Web Portal provide access to adjust this option.
+
+
+Set to ecobee thermostat: By choosing this option, your ecobee will energize the fan directly during heating cycles. This will cause the fan to immediately turn on when a heating cycle is initiated and continue to run until the heating cycle ends.
+
+Set to HVAC: By choosing this option, your ecobee will relinquish control of the fan to the furnace during heating cycles. In this case, there will usually be a brief delay before the fan engages after a heating cycle is initiated. This option is recommended if you have a variable fan speed furnace.
+
+
+
+Fan Minimum On Time:
+
+This feature allows you to define the minimum amount of time each hour that the system fan will run. This feature is useful if you wish to circulate the air throughout your home automatically outside of heating or cooling cycles.
+
+The ecobee will divide the "Fan Min On time" you select throughout each hour. If the Fan Min On Time is set for 15 minutes or lower, the fan will operate in two separate segments across the hour; if the Fan Min On Time is set for 20 minutes or higher, the fan will run in four equal segments across the hour.
+
+If a heating or cooling cycle operates within any given hour, the length of either cycle will be deducted from the Fan Min On Time. For example, if your cooling runs for 5 minutes and your Fan Min On Time is set to 20 minutes, 5 minutes will be deducted from the Fan Min On Time.
+
+To adjust this setting go to MAIN MENU > SYSTEM > FAN
+
+NOTE: If you are adjusting the Fan Minimum On Time value and you have a Hold on your thermostat (meaning, you have set a temperature manually), you will first need to cancel the existing Hold before the new Fan Minimum On Time value will be applied. Afterwards, you can set a Hold again.
+
+
+
+Quick Changes:
+
+From the Quick Changes menu, you can switch the fan to ON, overriding the schedule.
+
+
+
+
+With the release of firmware version 4.6.25 and up, the Quick Changes menu has changed to accommodate the following new features:
+
+* The ability to set timed Fan Holds rather than having to set the fan to ON until cancelled/toggled back to Auto
+* The ability to set a specified fan speed if your ecobee is configured for multi-speed fan support (for more information on multi-speed fan installations, please see "I'm a Pro" section)
+
+Fan Holds can be set for the following durations: 15 minutes, 30 minutes, 45 minutes, 1 hour, 2 hours, or Indefinitely (keeps the ecobee in ON fan mode until the Hold is cancelled from the main screen with the temperature displayed)
+
+
+To use this new feature (currently only available on the thermostat screen, coming soon to the app.
+
+1. Tap the Quick Changes menu icon 
+2. Tap the Fan Hold button
+3. Using the horizontal slider, select a preferred time duration for the fan to run in ON mode
+
+(Optional) If you have multi speed fan capability on your ecobee, select a fan speed from the menu below
+
+
+4. Tap the < in the top left to leave the menu
+5. Exit the Quick Changes menu
+
+Your ecobee should now say "Fan on until" followed by the end time of the fan Hold. For example, if it is 9:00PM when you place a Fan Hold for 45 minutes, the ecobee will say "Fan on until 9:45PM"
+
+NOTE: If there was a Hold on the thermostat prior to the Fan Hold being placed, the thermostat may not display the expected "Fan on until" text and will instead show the currently held temperature. However, the fan will still be set to ON, and the Quick Changes menu will show the fan running under the "Equipment running now" section.
+
+
+
+Heat/Cool Dissipation Time:
+
+
+MAIN MENU > SETTINGS > INSTALLATION SETTINGS > THRESHOLDS > HEAT/COOL DISSIPATION TIME
+
+The amount of time after a call for heating or cooling that the fan will continue to run. This is set to Auto by default, meaning that the furnace will decide when to disengage the fan after a heating or cooling call. The furnace may continue to run the fan for several minutes after a call for heating or cooling to expel any hot or cold air remaining in the ducts.
+
+If set to 0 the fan will turn off as soon as a call for heating or cooling has concluded.
+
+NOTE: This option is only accessible through the thermostat interface. Neither the mobile apps or web portal provide access to adjust this option.
+
+Fan mode in Comfort Settings
+
+Your ecobee also can control the fan mode for specific Comfort Settings such as Home, Away, and Sleep. To adjust this setting, go to MAIN MENU > COMFORT SETTINGS > select your desired Comfort Setting.
+
+The ecobee has two modes of fan operation: Auto and On
+
+* When the fan is set to Auto, the ecobee will run the fan on equipment calls and to fulfill any remaining fan runtime required to fulfill the Fan Minimum On Time value set in Fan Duration under MAIN MENU > SYSTEM > FAN DURATION
+
+
+* When the fan is set to ON, the ecobee will run the fan constantly until told to stop or until a Comfort Setting with "Auto" fan settings is active
+
+
+How to enable auto heat/cool changeover on my ecobee thermostat:
+Auto mode on your ecobee thermostat is great for maintaining a comfortable home temperature in milder climates or in-between heating and cooling seasons. While on this system mode, the ecobee will display two set points- one for heating and one for cooling. The cooling set point is blue while the heating set point is orange.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+To enable this system mode, go to MAIN MENU > SETTINGS > INSTALLATION SETTINGS > THRESHOLDS > AUTO HEAT/COOL and select Enable.
+
+
+
+
+Once enabled, you should be able to activate Auto either by taping on the system icon above the thermostat temperature reading on the main screen or by going to MAIN MENU > SYSTEM > HVAC
+
+
+
+
+If the temperature goes above the blue cooling set point, the ecobee will turn on your cooling equipment to lower it down to the desired level. In the same way, the ecobee will turn on the heating equipment should the temperature drop below the heating set point.
+
+The minimum allowable gap between the two set points is determined by the Heat/Cool Min Delta threshold. You can edit this by going to MAIN MENU > SETTINGS > INSTALLATION SETTINGS > THRESHOLDS.
+
+
+
+
+How to set reminders & alerts on your ecobee thermostat:
+
+When an alert is generated, it will appear on the screen of your ecobee and you'll also receive a notification in your mobile app and email.
+
+* Reminders let you know if you need to service your heating and cooling system and when to perform periodic maintenance.
+* Alerts let you know if you're heating, and cooling equipment isn't performing as it should.
+* To view your Reminders and Alerts on your thermostat or mobile app, select Reminders & Alerts from the Main Menu. On the web portal, select the Reminders & Alerts tile.
+
+
+
+You can view and configure your Reminders and Alerts on your thermostat or mobile app by selecting Reminders & Alerts from the Main Menu or on the web portal under the Reminders & Alerts tile.
+
+Here are the different Reminders and Alerts you can enable, disable, and configure on your thermostat, mobile app, or from the web portal by selecting Preferences:
+
+HVAC Service: The HVAC Service (maintenance) reminder generates an alert telling when regularly scheduled maintenance is required. A reminder will be sent to the email you provided upon registration. You can set the Last Service date, turn the Reminder On or Off, and to set the Frequency of the maintenance interval in months.
+
+Furnace Filter: This will create an alert for cleaning or changing your furnace filter. You can set the Last Filter Change date, turn the Reminder On or Off, and set the Frequency of the maintenance interval.
+
+UV Lamp: Create a reminder for cleaning or replacing your system's UV lamp. You can set the Last Lamp Change date, turn the Reminder On or Off, and set the Frequency of the maintenance interval.
+
+Low Temp Alert: To prevent home damage due to freezing you can set a Low Temperature Alert. The low temperature range can be from 35 to 68 °F (1.5 to 20 °C).
+
+High Temp Alert: To prevent home damage due to excessive heat you can set a High Temperature Alert. The high temperature range can be from 60 to 104 °F (15.5 to 40 °C).
+
+Aux Heat Runtime Alert: Sets the amount of time that the Auxiliary heat source, if installed, can run continuously before an alert is generated.
+
+
+
+Aux Outdoor Temp Alert: If you have a heat pump with an auxiliary heat configuration, you can configure your ecobee4 to generate an alert if the auxiliary heat is called for when the outdoor temperature exceeds this programmed set point.
+
+Low/High Humidity Alert: Sets the percentage of relative humidity at which your ecobee4 will generate a Low/High Humidity Alert.
+
+Display Alerts on Thermostat: Select 'No' if you do not want any of the alerts to be displayed on your thermostat screen. Alerts will continue to be displayed on the web portal and sent via email.
+
+Enable Heating/Cooling Alerts: Select 'No' to disable alerts for heat/cool error conditions. If disabled, alerts indicating that the system failed to heat or cool will not be appear in the screen, web portal, or emails.
+
+
+
+SmartSensors: Setup guide and FAQ's
+
+
+
+
+
+
+
+
+The SmartSensor is designed to supplement the temperature and occupancy sensor built into your ecobee thermostat*-unlocking its full potential.
+
+Install these portable powerhouses throughout your home for comfort in the rooms that matter most (bedrooms, nursery, living room, etc.), and place them in rooms that run too hot or too cold for a more balanced temperature throughout the home.
+
+See your SmartSensor readings remotely with the ecobee app or the web portal.
+
+Compared with Room Sensor, our previous generation ecobee thermostat sensor, SmartSensor features the following improvements:
+
+* Captures and sends more occupancy and temperature data more often with faster transmission speeds, further improving Smart Features like Smart Home/Away and Follow Me.
+* Brand new curved front face optimizes sensor's field of view for improved occupancy detection.
+* Enhanced occupancy sensor "pet immunity" to prevent false readings triggered by our furry friends.
+* Powered by a bigger battery (CR-2477) for an improved battery life of 5 years.
+* Improved pairing range between the SmartSensor and thermostat.
+* Sensor attaches to its satin-steel stand magnetically and clicks into the adhesive wall-mount.
+* Compatible with ecobee thermostats SmartThermostat with voice control, ecobee4, ecobee3 Lite and ecobee3.
+
+* ecobee3 lite does not have a built-in occupancy sensor. Not to worry! Pair it with SmartSensor to take advantage of ecobee Smart Features like Smart Home/Away and Follow Me mode.
+
+
+How can I use them in my home?
+Place a sensor in a high-traffic room to take advantage of ecobee Smart Features like Smart Home/Away and Follow Me mode. Other spots that are great for SmartSensor include areas that are either warmer or cooler than the rest of your home. Using SmartSensor along with your ecobee can help you achieve a more balanced temperature throughout the home by minimizing hot or cool spots.
+
+Every time you pair a SmartSensor to your ecobee thermostat you'll be asked which Comfort Settings (e.g. Home, Away, and Sleep) you'd like it to participate in. For example, if you're putting a SmartSensor in your bedroom, but you don't spend a lot of time there when you're not sleeping, you can choose to have the bedroom SmartSensor only participate in the Sleep Comfort Setting. Doing so will ensure that your bedroom remains the temperature you like throughout the night. No more going to bed too hot or too cold!
+
+In order to best detect occupancy changes, the best placement for a SmartSensor is about four feet off the ground in a location that is facing the entire room. Avoid locations that may have the sensor come into contact with any external factor that may influence its readings. These can include vents, fans, exterior walls, windows and other places where the sensor would be exposed to direct sunlight.
+
+
+How do I mount a SmartSensor on a wall?
+
+Simply attach your sensor to an interior wall with the included adhesive wall mount. Alternately, you may use a #4- 22 flat head Phillips screw (not included) to mount SmartSensor. The screw should be 1" long to go through drywall.
+
+
+
+
+SmartSensor tech specs:
+Occupancy and Temperature detection
+
+* Detects both temperature and occupancy and communicates those readings to the thermostat.
+* Occupancy detection uses infrared technology to detect body heat signatures.
+* Occupancy is based on a person's continued presence within a SmartSensor's viewing angle-not merely motion detection. The more time you spend in front of a particular sensor, the more weight your ecobee assigns to that sensor's readings.
+* Enhanced occupancy sensor "pet immunity" to prevent false occupancy readings triggered by our furry friends.
+
+Communication
+
+* SmartSensor uses 915MHz radio waves-not Wi-Fi-for secure, energy-efficient communication with your ecobee thermostat.
+
+Range and Viewing Angle
+
+* Range: SmartSensor can communicate with thermostat to a range of 60 ft (barriers and obstacles such as thick walls or different floors, and other devices operating on the same 915MHz frequency, such as a baby monitor, cordless phones, etc., may lower range).
+* Viewing angle:140° horizontal and 100° vertical. Occupancy sensor accurate to a distance of 20 feet (6 m).
+o For optimal placement for pet immunity, wall-mount at a height of 6.5 ft (2 m).
+o For optimal placement for temperature readings, set at a height of 4 ft (1.2 m).
+* Occupancy viewing distance: 20 ft (6 m).
+
+Battery
+
+* Powered by a single CR-2477 coin-cell battery that's good for up to five years of battery life and easily replaceable. (Factors that can reduce battery life include a high or low ambient temperature and placing the sensor in a high-traffic area.) CR-2477N battery is not compatible with SmartSensor
+
+ecobee thermostats can support up to 32 SmartSensors.
+
+
+
+Where can I see the status of each SmartSensor?
+
+Go to MAIN MENU --> SENSORS on the thermostat, the ecobee app or the Web Portal and look for the following icons:
+
+The sensor is currently active/participating (sensor is filled in with white) The sensor is currently inactive/not participating (sensor is hollow)
+The sensor is not connected and not participating (sensor is hollow and has no signal waves)
+
+
+Pairing a SmartSensor:
+
+Pairing prerequisites: an ecobee account, the ecobee mobile app, and a Wi-Fi connection.
+
+1. Option A: Open the ecobee app, on the app Home Screen, tap the + sign in the top-right corner, select Sensor, then SmartSensor.
+
+
+
+
+
+Option B: From your thermostat's Home Screen in the ecobee app, go to MAIN MENU --> SENSORS, tap Add Sensors, and select SmartSensor.
+
+
+
+2. Tap Let's get started to begin.
+
+
+
+
+3. Scan the QR code on the sensor's pull tab with your wireless device's camera. (The QR code is also printed on the SmartSensor's battery slot.)
+
+
+Optionally, enter the pairing code manually by selecting Manually enter code at the bottom of the screen.
+
+If you select Manually enter code, on the next screen, enter the 8-digit pairing code listed on the inside of your SmartSensor's battery compartment (pictured below). When you are done, replace the battery, secure the cap, and tap Next.
+
+
+Good to know: The Next button will be greyed out until the 8-digit pairing code is correctly inputted.
+
+
+
+4. Pull the tab to pair. If pairing is successful, you will be able to move on to the next screen. If it is not, consider the following troubleshooting tips.
+
+
+5. Select a name for your sensor from the list or give your sensor a unique name.
+
+
+6. If you have more than one ecobee thermostat, select which thermostat you want to pair the sensor to, then select Sensor, meet thermostat.
+
+7. Tap to choose which Comfort Settings (i.e., Home, Away, and Sleep) you would like your sensor to participate in, and which to exclude it from.
+
+8. Consider the tips for placement with the stand or included adhesive wall-mount, then select Next.
+
+
+What are Comfort Settings? When a sensor participates in a Comfort Setting its temperature readings are used in tandem with the thermostat's readings to calculate an average temperature across multiple rooms.
+
+Tip: If you're unsure what Comfort Settings you'd like your SmartSensor to participate in, leave all of the boxes checked for now. You can always change participation settings later by going to MAIN MENU --> SENSORS --> Tapping the sensor in question --> PARTICIPATION.
+
+
+
+
+
+
+
+
+
+
+
+9. Tap Done to finish or select Add another device. Keep in mind, it may take up to 3 minutes for your sensor to become available.
+
+
+
+
+
+
+
+
+
+
+
+Unpairing a SmartSensor (if needed)
+To unpair a SmartSensor or Room Sensor:
+1. On the thermostat, select the hamburger menu ().
+2. From your thermostat's Main Menu, select Sensors.
+3. Tap on the sensor you'd like to remove.
+4. Select the trash icon in the top-right corner, then select Unpair.
+
+
+Sensor participation and comfort setting:
+
+Your ecobee's schedule consists of temperature profiles called Comfort Settings. By default, your ecobee has three Comfort Settings: Home, Away, and Sleep. You can also create additional custom Comfort Settings via the Web Portal and in the app itself.
+
+Comfort Settings make sure your home is the right temperature during specific activities in your schedule.
+For example, when your home, your ecobee thermostat can turn the heating on if the temperature falls below 70°F (21°C) and turn the cooling on if the temperature rises above 78°F (25°C). Or when you are away, only turn heating on if the temperature falls below 62°F (16.7°C) and turn cooling on if the temperature rises above 85F (27.8°C).
+
+By choosing which sensors participate in each Comfort Setting, you will have complete control over which sensors your ecobee thermostat uses to calculate the average temperature. Keep in mind, each Comfort Setting must have at least one participating sensor.
+
+Customize your comfort by adjusting your sensor participation settings
+To maximize overnight comfort, you might decide that the only sensor you want to include in your Sleep Comfort Setting is the one in your bedroom.
+
+During the busiest time of day, when your Home Comfort Setting is active, you may want to have multiple sensors participating, e.g. your living room SmartSensor, the one in the kitchen, and your thermostat's built-in occupancy sensor.
+
+You can change your Participation Settings in the app or on the thermostat itself in one of two ways:
+
+Shown: Steps for changing Participation Setting on thermostat.
+
+MAIN MENU --> SENSORS --> Tap the sensor you wish to change --> PARTICIPATION
+		
+
+
+
+OR
+
+MAIN MENU --> COMFORT SETTINGS --> Tap the Comfort Setting you wish to change --> "Participating Sensors."
+
+
+
+
+SmartSensor participation FAQ's:
+How does my ecobee thermostat manage sensor participation when it's changing from one Comfort Setting to the next (e.g. from Home to Sleep, or Home to Away)?
+Because each Comfort Setting might have an entirely different mixture of participating sensors, a sudden change from one Comfort Setting to another could result in a rapid rise or drop in average temperature. To avoid this, your ecobee makes the transition from one Comfort Setting to the next gradually. This process usually takes about 30 minutes.
+
+How does sensor participation work when I adjust the temperature manually?
+Adjusting the temperature with your ecobee's temperature slider or in the app activates your Home Comfort Setting. (This is called placing a Manual Hold.)
+When your Home Comfort Setting is active, your ecobee sets the temperature by averaging out the temperature readings from each SmartSensor participating in that Comfort Setting. (To resume your scheduled Comfort Setting, tap the X icon on your ecobee's Home Screen, using the app? Press Cancel on the thermostat Home Screen.)
+
+Good to know: By default, a Manual Hold continues until you cancel it. You can adjust this setting according to your preference by going to the following screen on your thermostat or in the app: MAIN MENU --> SETTINGS --> PREFERENCES --> HOLD ACTION
+
+When a SmartSensor isn't participating in a Comfort Setting, what does my ecobee thermostat do with its reading? When a sensor isn't participating, it still reports the temperature to the thermostat, but the reading isn't used to help determine the average home temperature.
+
+How can I tell which sensors are participating in the current Comfort Setting?
+Go to MAIN MENU --> SENSORS on the thermostat, the ecobee app or the Web Portal and look for the following icons:
+
+
+The sensor is currently active/participating (sensor is filled in with white) The sensor is currently inactive/not participating (sensor is hollow)
+The sensor is not connected and not participating (sensor is hollow and has no signal waves)
+
+
+Smart Home/Away:
+With Smart Home/Smart Away enabled, when your thermostat senses your home during a scheduled Away period or away during a scheduled Home period, it automatically overrides your schedule for comfort (Smart Home) or savings (Smart Away). So even when your schedule changes, your ecobee knows to adjust on its own helping you save energy and stay comfortable.
+
+Smart Home/Away works independently of the sensor participation rules you've set up for your Comfort Settings. That's to say, it acts upon the occupancy readings from all of your sensors-not just the ones participating in the scheduled Comfort Setting. Smart Home and Smart Away cannot be triggered during a scheduled Sleep period.
+
+How it works
+By using the occupancy information reported by your ecobee thermostat's built-in occupancy sensor* and the SmartSensor(s) paired with your ecobee, Smart Home/Away tracks your household's comings and goings to set the temperature for comfort or savings.
+
+* ecobee3 lite does not have a built-in occupancy sensor. Not to worry! Pair it with SmartSensor to take advantage of ecobee Smart Features like Smart Home/Away and Follow Me mode.
+
+SMART HOME
+When your ecobee senses someone's home during a scheduled Away period...
+
+And the following conditions are met:
+* The Away or Custom Away Comfort Setting has been active for over an hour.
+* Smart Home hasn't been active for at least two hours.
+Smart Home intelligently switches on your Home Comfort Setting for maximum comfort.
+
+How long does Smart Home run for?
+When it's active, Smart Home will stay in effect until a) two hours pass with no occupancy detected; b) it is cancelled; or c) the start of the next scheduled Comfort Setting.
+
+What temperature set points are in effect when Smart Home is running? Smart Home uses your Home Comfort Setting's hot and cold set points.
+
+SMART AWAY
+When your ecobee senses nobody's home during a scheduled Home period...
+
+And:
+* No occupancy has been detected for two straight hours during a scheduled Home period or when Smart Home is running.
+Smart Away intelligently overrides your usual schedule-helping you save on your energy bill.
+
+How long does Smart Away run for?
+Smart Away runs until it detects occupancy or until the start of the next scheduled Away period.
+
+
+What temperature set points are in effect when Smart Away is running?
+
+Since your ecobee thermostat knows that it will have to recover the temperature gap should you return, it sets the temperature to where it can quickly get your home back to your Home Comfort Setting set points while still conserving energy. (Typically, 1-4° Fahrenheit lower than your Home set points.*)
+*Actual number is based on your ecobee's ongoing analysis of your HVAC's equipment's ability to recover the temperature gap.
+
+How to enable Smart Home/Away
+On your thermostat's screen or in the app, go to: MAIN MENU --> SENSORS --> SMART HOME/AWAY --> set to Enable.
+
+How to tell when Smart Home or Smart Away is active Look for the following indicators on your thermostat:
+
+Smart Home:
+
+Smart Away:
+
+
+
+Follow-me mode:
+
+Working hand-in-hand with your Comfort Settings, Follow Me mode allows you to target comfort where it matters most. With Follow Me enabled, your thermostat's built-in occupancy sensor and your SmartSensor(s) detect which rooms you and your family are in and your ecobee thermostat sets your home's temperature to prioritize comfort in those rooms.
+
+How it works
+When Follow Me mode is enabled your thermostat:
+1. Takes the temperature and occupancy readings from each of the sensors participating in the scheduled Comfort Setting.
+2. Ranks them according to where you're spending the most time.
+3. Based on the rankings, calculates the optimal home temperature for the active Comfort Setting.
+
+
+How to enable Follow Me mode
+Go to MAIN MENU --> SENSORS --> FOLLOW ME --> set to Enabled from your thermostat's screen or in the app.
+
+When Follow Me is disabled, the ecobee will follow your sensor participation rules assigned to each Comfort Setting. Note: The thermostat will follow the "Home" Comfort Setting participation rules and ignore Follow Me if the following occurs:
+
+* No occupancy is detected from any sensors
+
+How does follow me function under the "sleep" comfort setting?
+In the Sleep period when no motion is detected, Follow Me defaults to averaging temperature across the selected sensors in your network. However, if any motion is detected, Follow Me will use this information to heat/cool appropriate rooms.
+
+What happens if none of the sensors participating in the active Comfort Setting report motion?
+
+If none of your participating sensors report motion for 30 minutes, your ecobee will set the temperature based on the average of all participating sensors (even in the Sleep Comfort Setting).
+
+I'm spending most of my time in the living room this evening, and I just walked by my kitchen's SmartSensor. I don't want a single reading from my kitchen sensor to determine my home's temperature. In Follow Me mode, how much weight does my ecobee assign to a single reading versus the many readings from the living SmartSensor?
+
+If you walk by a sensor and it detects occupancy, the weight your ecobee assigns to that single reading in calculating the home temperature will be low. In this scenario, most of the weighting will be given to the occupancy readings from the SmartSensor in your living room. To put it differently, the more time you spend in front of a particular sensor the more weight your ecobee will assign to that sensor's readings.
+
+When I leave a room, how long will it be until that SmartSensor's temperature readings no longer factor into my ecobee's temperature averaging calculation?
+
+Follow Me includes participating sensors that have detected occupancy within the past 30 minutes.
+If you leave a room and its sensor stops detecting motion, that sensor's temperature readings will be gradually (not immediately) removed from your ecobee's set point calculation over a 30-minute period.
+If 30 minutes pass with no occupancy detected, that sensor's reading will be excluded until occupancy is detected again.
+
+What happens to Follow Me mode if I manually adjust the temperature while it's running?
+
+Adjusting the temperature on your thermostat or in the app with the temperature slider (i.e. placing a Manual Hold) activates the Home Comfort Setting. When Home is active the sensors participating in that Comfort Setting participate in Follow Me mode.
+To cancel a Manual Hold and resume your scheduled Comfort Setting, tap the X icon on your ecobee's Home Screen. Using the app? Press Cancel on the thermostat Home Screen.
+
+
+Appendix
+1) How to access Threshold settings
+2) Thermostat HVAC settings for all system types
+3) Using AC Overcool Max to reduce humidity
+4) Minimize the use of Aux Heat with a Heat-pump
+5) What does the exclamation mark with the Flame icon mean?
+6) Thermostat HVAC settings & manual staging options
+7) What is eco+ and how it works
+(a) Adjusting temperature for humidity
+(b) Time of Use
+(c) Community Energy Savings
+(d) Smart Home & Away
+(e) Schedule Assistant
+(f) Pause When Open
+
+8) What do the various icons mean of the thermostat?
+9) Wiring diagrams
+A. Conventional HVAC systems with no C-wire available
+1. Furnace (1-stage) + AC (1-stage)
+2. Furnace (2-stage) + AC (1-stage)
+3. Furnace (1-stage) + AC (2-stage)
+4. Furnace (2-stage) + AC (2-stage)
+
+B. Conventional HVAC system with C-wire available
+5. Furnace (1-stage) + AC (1-stage)
+6. Furnace (2-stage) + AC (1-stage)
+7. Furnace (1-stage) + AC (2-stage)
+8. Furnace (2-stage) + AC (2-stage)
+
+C. Heatpump systems with/without C-wire
+9. Heatpump (1-stage)
+10. Heatpump (1-stage) - No C-wire
+11. Heatpump (2-stage)
+12. Heatpump (2-stage) - No C-wire
+
+D. Heatpump + Auxiliary Heat systems with C-wire available
+13. Heatpump (1-stage) + Aux Heat (1-stage)
+14. Heatpump (2-stage) + Aux Heat (1-stage)
+15. Heatpump (2-stage) + Aux Heat (2-stage)
+
+E. Heatpump + Auxiliary Heat systems without C-wire
+16. Heatpump (1-stage) + Aux Heat (1-stage)
+17. Heatpump (2-stage) + Aux Heat (1-stage)
+18. Heatpump (2-stage) + Aux Heat (2-stage)
+
+
+F. Adding an HVAC Accessory
+19. How to Include a Float switch on the Y circuit
+20. How to Include a 1-wire Dehumidifier / Humidifier
+21. How to Include a 2-wire Dehumidifier / Humidifier
+22. How to Include a Ventilator
+
+G. Duel (2) Transformer HVAC systems
+23. Boiler (1-stage) + AC (1-stage)
+24. Boiler (1-stage) + AC (2-stage)
+25. Boiler (2-stage) + AC (2-stage)
+
+How to access Threshold settings:
+Threshold settings allow you to configure your HVAC equipment for greater efficiency and prevent damage to your equipment by controlling how the ecobee engages it.
+
+These adjustments can only be made on the ecobee itself, not through the Web Portal or mobile app.
+
+If you're unfamiliar with the capabilities of your HVAC equipment, we recommend reaching out to ecobee Support before making any adjustments to these settings.
+
+To access the THRESHOLDS menu on the thermostat: MAIN MENU --> SETTINGS --> INSTALLATION SETTINGS
+--> THRESHOLDS
+
+
+
+
+Automatic and Manual Threshold Staging
+
+With the latest firmware upgrade, you may notice your thresholds page looks a little different now. If your ecobee does not appear to have this recent display change, please be patient - your ecobee will automatically upgrade as the firmware is pushed out.
+
+
+This firmware version makes minor adjustments to the threshold's menu. There is now the option to have the staging configured as Automatic or Manual. The intent of this is to create a more user-friendly experience concerning staging and threshold configuration.
+
+(Note: it will be set to automatic by default on new installs.)
+
+If you choose to configure staging manually, you will be able to select and customize values such as dissipation time, temperature deltas, and runtimes for both your heating and cooling equipment. Manually managing these settings is a more advanced way to optimize and tailor your equipment to any specific requirements.
+
+However, if you are unsure of the best configurations for your equipment, automatic staging allows your thermostat to decide how best to optimize it. Your ecobee will look at your 'Savings vs Comfort' setting to control your equipment staging.
+
+
+
+Automatic Staging with a Heat Pump system
+
+If you have a heat pump system with an Auxiliary heat option and Automatic staging is selected, you will be presented with the Aux Savings Optimization menu. This will present you with the following options:
+
+
+* Minimum (0.5F / 0.3C) - sacrifice savings for comfort
+* Basic (1F / 0.5C) - sacrifice a bit of savings for comfort
+* Balanced (1.5F / 0.8C)- optimize for savings and comfort
+* Super (2F / 1.1C) - sacrifice a bit of comfort for savings (recommended setting, default value)
+* Maximum (2.5F / 1.4C) - sacrifice comfort for savings
+
+If you have previously changed any threshold settings on your thermostat - there is no need to worry. You can also test out the automatic staging function without losing any previous configurations.
+
+NOTE: During "Away" periods or Custom Comfort Settings set to "I'm Usually Away", an additional 1°F/0.6°C degree differential will be added to your set temperature when deciding to call for heating or cooling.
+
+
+Using AC Overcool Max to reduce humidity:
+AC Overcool Max can help reduce excessive humidity in your home even if you do not have a dehumidifier installed. While it is not a substitute for a dehumidifier, it helps to decrease the humidity level in your home by continuing to run your cooling beyond your comfort setting. This threshold setting can be accessed and configured by going to: MAIN MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS --> AC OVERCOOL MAX
+
+
+Next, on this threshold page specify how many degrees your A/C system should overcool the home.
+
+Next you will want to set your desired humidity point. This can be accessed by going to: MAIN MENU --> SYSTEM
+--> DEHUMIDIFY USING AC --> ENABLE. Select your desired humidity level.
+
+
+By enabling this threshold, your air conditioning system will overcool your home. It will stop once it reaches your overcool max setting or until the humidity set point is reached - whichever occurs first.
+
+For example, if your AC Overcool Max is set to 2 degrees, and your desired set point is 72 degrees, then the AC will continue to run until it is 70 degrees if the humidity is above 60%. However, if the humidity level reaches 60% before 70 degrees, then it will shut off. Since air conditioning naturally removes humidity from the air, running a longer cooling cycle will bring down the humidity level in your home.
+
+
+Minimize the use of auxiliary heat with a heat-pump:
+There is a setting in your "thresholds" section that you can change; most likely it is set to default at the moment which relies on the feedback of your heat pump system and how long it takes to warm up the home. Some heat pumps can take longer than others to warm up and finally start giving heat. In these cases, you can manually enter a higher differential to avoid the auxiliary heat coming on for a certain time or temperature difference (it is up to you what value you would like to keep it at). It is recommended to set a value for these thresholds first and that should eliminate the aux heat turning on sooner than needed.
+
+This can be done by going to MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS -->
+CONFIGURE STAGING MANUALLY --> COMP TO AUX DELTA. Now this 'COMP TO AUX DELTA' option is asking
+for how many degrees the indoor temperature should drop before using the auxiliary heat.
+
+
+
+
+For heat pump systems, its also crucial to understand what the minimum outdoor temperature that the heat pump can run with - otherwise the thermostat will lock out the heat pump and change over to aux heat as the weather outside will be too cold to run the heat pump unit that is sitting outside.
+
+This can be done by going to MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS --> COMPRESSOR MIN OUTDOOR TEMP. This is set at a default 35F (1.7C), so the heat pump will not be used when the weather outside is below 35 degrees Fahrenheit and only aux heat will be used in this case.
+
+
+
+To also avoid short cycling and increase equipment efficiency, you can go to MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS --> HEAT DIFFERENTIAL TEMP --> and change this to a higher value so that the system turns on for a larger temperature drop and reduces short cycling.
+
+
+
+
+What does the flame icon with an exclamation mark mean?
+
+
+These two icons indicate that the Aux Heat has been temporarily disabled to save on energy costs. You will see the "Heat" icon if you are in Heat mode, and the "Auto" icon in Auto mode.
+One of these icons will appear when the following conditions are met:
+
+* The ecobee has attempted to call for Aux Heat due to the Compressor to Aux Maximum Runtime or Compressor to Aux Temperature Delta settings
+   * The outdoor temperature is higher than your Aux Heat Maximum Outdoor Temperature threshold Tapping the icon and then tapping "Learn More" provides further information, as well as two options:
+Override For 2 Hours: Tapping this will ignore the Aux Heat Maximum Outdoor Temperature setting for 2 hours
+and will utilize the Aux Heat
+
+Modify: Tapping this will bring up a separate screen that will allow you change the Aux Heat Maximum Outdoor Temperature threshold value
+
+
+
+Thermostat HVAC settings for all system types:
+These settings can be accessed by selecting MENU --> SETTINGS --> INSTALLATION SETTINGS --> THRESHOLDS. Additionally, to access the manual staging options requires changing Configure Staging from Automatic to Manual.
+
+Auto Heat/Cool: This setting allows you to set your system mode to "Auto." This is enabled by default. In Auto mode, the thermostat will engage both your heating or cooling as necessary. This mode is most useful if you live in a region where the temperature fluctuates regularly or you're in the middle of a season change and you may need both heating and cooling at different times during the day.
+
+Heat/Cool Minimum Delta: The minimum temperature difference between the desired Heat and Cool set points in Auto mode. You will not be able to adjust the temperature range in Auto mode below this value. This is set to 5°F/2.8°C by default, meaning the shortest range you can maintain in Auto mode is 5°F (70°-75°, for example). The lowest possible range in Auto mode the ecobee can maintain is 2°F/1.1°C. This setting prevents your equipment from short cycling.
+
+Heat Dissipation Time: The amount of time the fan will continue to run once the heat is turned off. This is set to auto by default. Running the fan after a call for heat will expel any heated air remaining in the ducts and circulate it through your home. If you notice your fan may be running longer than you would like once a call for heat is finished, you can adjust this value.
+
+Cool Dissipation Time: The amount of time the fan will continue to run once the cooling is turned off. This is set to auto by default. Running the fan after a call for cooling will expel any cool air remaining in the ducts and circulate it through your home. If you notice your fan may be running longer than you would like once a call for air conditioning is finished, you can adjust this value.
+
+Heat Differential Temperature: The minimum temperature differential before engaging heat. This is set to 0.5°F/0.3°C by default. This setting will wait for the temperature in your home to drop by this value (0.5°F/0.3°C in the default scenario) below your set point before engaging your heat. For example, if your Heat set point is 72°F, the ecobee will wait until the temperature in your home drops below 71.5°F before engaging your heat. This setting prevents your equipment from short cycling and helps to conserve energy.
+
+NOTE: During "Away" periods or Custom Comfort Settings set to "I'm Usually Away", an additional 1°F/0.6°C degree differential will be added to your set temperature when deciding to call for heating.
+
+Cool Differential Temp: The minimum temperature differential before engaging cooling. This is set to 0.5°F/0.3°C by default. This setting will wait for the temperature in your home to rise by this value (0.5°F/0.3°C in the default scenario) above your set point before engaging your air conditioning. For example, if your Cool set point is 72°F, the ecobee will engage your air conditioning when the temperature in your home reaches above 72.5°F. This setting prevents your equipment from short cycling and helps to conserve energy.
+
+NOTE: During "Away" periods or Custom Comfort Settings set to "I'm Usually Away", an additional 1°F/0.6°C degree differential will be added to your set temperature when deciding to call for heating.
+
+
+
+Heat Minimum On Time: The minimum amount of time your furnace/boiler will stay on during a call for heat. This is set to 300 seconds (5 minutes) by default. If your furnace/boiler is engaged and then the call for heat is immediately cancelled, the furnace will continue running for this set value (5 minutes) before turning off.
+
+AC Overcool Max: This setting will allow the air conditioner to overcool (run past your Cool set point) by this value to decrease humidity. This setting is useful if you live in a humid climate/have issues with high humidity levels in your home.
+
+Temperature Correction: If you notice that the ecobee's temperature sensor may be slightly off, you can adjust this
++ or - 10 degrees for a more accurate reading.
+
+Humidity Correction: If you notice that the ecobee's humidity sensor may be slightly off, you can adjust this + or - 10 % for a more accurate reading.
+
+Thermal Protect: The minimum temperature reading difference between sensors that will trigger the algorithm to ignore the inaccurate sensor reading. This range tells your thermostat the maximum difference allowed between the thermostat and hottest or coldest rooms in your home. If a sensor measures a temperature that is significantly outside of this range, it probably means the reading is inaccurate. Your ecobee will ignore this inaccurate reading to prevent your heating or cooling from running excessively.
+
+Compressor & Heat/Aux Staging settings:
+Compressor Minimum Cycle Off Time: The amount of time the compressor remains off between cycles. This is set to 300 seconds (5 minutes) by default. Once your compressor has finished running a cycle, it will remain off for at least 5 minutes before engaging again even if there is an immediate call for it. This setting prevents your compressor from short cycling, so we recommend leaving this at 300 seconds to prevent any potential damage to your compressor.
+
+Compressor Minimum On Time: The minimum amount of time the compressor will stay on. This is set to 300 seconds (5 minutes) by default. If your compressor is engaged and then the call is immediately cancelled, the compressor will continue running for this set value (5 minutes) before turning off. This setting prevents your compressor from short cycling, so we recommend leaving this at 300 seconds to prevent any potential damage to your compressor.
+
+Compressor Min Outdoor Temperature: The compressor will not run below this outdoor temperature. This is set to 35°F/1.7°C by default. Before adjusting this setting, we recommend reaching out to the manufacturer of your heat pump/compressor to inquire about the safest setting. Running your compressor at a temperature below what it can handle can damage the equipment and is ill-advised.
+
+* If you have a heat pump with auxiliary heating, when the outdoor temperature drops below this value, the ecobee will engage your aux heat and rely on aux heat to heat your home. If you're receiving many "Aux heat running" alerts, you may want to adjust this setting (after confirming with your heat pump manufacturer the lowest temperature your heat pump can safely function at). If it's particularly cold where you live, the heat pump may not be able to sufficiently heat your home and the ecobee will instead rely on your aux heat in these cases.
+
+
+
+Compressor Stage 2 Temperature Delta: The minimum number of degrees from the desired temperature (set point) before engaging the second stage of the compressor. This is set to auto by default.
+
+* You will only see this option if you have a two-stage compressor (wires in both Y1 and Y2)
+
+Compressor Reverse Staging: With this setting enabled, you will also need to enable the Compressor Stage 2 Temperature Delta threshold setting listed above and set a temperature value. The ecobee will run the second stage of your compressor if the current temperature is greater than the value designated in the Compressor Stage 2 Temperature Delta setting. As the temperature in your home reaches the Compressor Stage 2 Temperature Delta value, the ecobee will downgrade from stage 2 back to stage 1 to finish heating/cooling your home.
+
+* You will only see this option if you have a two-stage compressor (wires in both Y1 and Y2)
+* If enabled, this setting will cancel out Compressor Stage 1 Max Runtime
+
+Compressor Stage 1 Max Runtime: The maximum number of minutes running stage 1 before engaging the second stage of the compressor.
+
+* You will only see this option if you have a two-stage compressor (wires in both Y1 and Y2)
+
+Two Stage Furnace Settings:
+Heat Stage 2 Temperature Delta: The minimum number of degrees from the desired temperature (set point) before engaging the second stage of furnace heat. This is set to auto by default.
+
+* You will only see this option if you have a two-stage furnace (wires in both W1 and W2)
+
+Heat Stage 1 Max Runtime: The maximum number of minutes running stage 1 before engaging the second stage of the furnace.
+
+* You will only see this option if you have a two-stage furnace (wires in both W1 and W2)
+
+Aux Heat Settings (Heat Pumps with Aux Heat):
+Aux Heat Max Outdoor Temperature: The auxiliary heat will not run when the outdoor temperature is above this point. If you are receiving many "Aux heat running alerts," you may want to lower this setting-this will maximize the use of your heat pump while limiting the use your aux heat.
+
+Aux Heat Minimum On Time: The minimum amount of time your auxiliary heat will stay on during a call for aux heat. This is set to 300 seconds (5 minutes) by default. If your aux heat is engaged and then the call for heat is immediately cancelled, the aux heat will continue running for this set value (5 minutes) before turning off. This setting prevents your aux heat from short cycling, so we recommend leaving this at 300 seconds to prevent any potential damage to your equipment.
+
+
+
+Compressor to Aux Temperature Delta: The minimum number of degrees from the current temperature in your home and your desired temperature (set point) before engaging the auxiliary heat. This is set to auto by default. If you're receiving many "Aux heat running" alerts, you may want to adjust this setting.
+
+Compressor to Aux Runtime: The minimum number of minutes the compressor will run for before switching to auxiliary heat. This is set to auto by default. If you're receiving many "Aux heat running" alerts, you may want to adjust this setting.
+
+NOTE: Compressor to Aux Temperature Delta takes precedence over Compressor to Aux Runtime.
+
+
+Aux Stage 2 Temperature Delta: The minimum number of degrees from the desired temperature before engaging the second stage of aux heat.
+
+* You will only see this option if you have two stages of auxiliary heat (wires in W1 and W2)
+
+Aux Reverse Staging: With this setting enabled, you will also need to enable the Aux Heat Stage 2 Temperature Delta threshold setting listed above and set a temperature value. The ecobee will run the second stage of your aux heat if the current temperature is greater than the value designated in the Aux Heat Stage 2 Temperature
+Delta setting. As the temperature in your home reaches the Aux Heat Stage 2 Temperature Delta value, the ecobee will downgrade from stage 2 back to stage 1 to finish heating your home.
+
+* You will only see this option if you have two stages of auxiliary heat (wires in W1 and W2)
+* If enabled, this setting will cancel out Aux Heat Stage 1 Max Runtime
+
+Aux Stage 1 Max Runtime: The maximum number of minutes since engaging the first stage of aux heat before engaging the second stage.
+
+* You will only see this option if you have two stages of auxiliary heat (wires in W1 and W2)
+
+
+
+
+
+
+What is eco+ and how does it work?
+
+Every home consumes energy differently. That's why we created eco+, a suite of new smart features that helps you improve your home's energy efficiency to save more on energy bills, while enhancing your comfort. Eco+ supercharges your ecobee thermostat and delivers personalized energy recommendations by looking at things like local weather, home occupancy, and variable electricity rates to shift your home's energy usage accordingly.
+
+How do I know when eco+ is active?
+
+When it's active, the eco+ icon will appear on your smart thermostat's home screen, as well as the mobile app. Tap the icon for more information on what eco+ is doing to optimize your heating or cooling.
+
+What are monthly reports and how are eco+ savings calculated?
+
+Once you set up your thermostat and eco+, you will start receiving emails on a monthly basis detailing your energy consumption for the previous month. The emails include how long your system has run for during the last month, the amount of energy savings your ecobee smart thermostat has generated, and how your savings compare with your community. Savings are calculated in the same way as HomeIQ savings.
+
+If you are not receiving your monthly reports, please ensure eco+ is turned on, and you have filled in your Home Information and Property Characteristics accurately. If you are still experiencing an issue, contact Customer Support.
+
+Can I use one eco+ feature without using the others?
+
+Yes! You can customize your eco+ experience to best suit your lifestyle. There are five features that make up the eco+ suite: Smart Home & Away, Schedule Assistant, Time of Use,* Community Energy Savings,* and the ability to adjust temperature for humidity. Each feature can be enabled or disabled, giving you full control of your experience.
+
+* Time of Use and Community Energy Savings are not available in all areas. Availability depends on local utility rate plans and programs.
+
+
+
+
+
+Will eco+ make any changes to my comfort settings?
+
+No, eco+ will not make any changes to your Comfort Settings. eco+ will optimize your smart thermostat's performance based on your Comfort Settings, schedule, and your eco+ savings preferences.
+
+How can I customize my eco+ experience?
+You have total control over your eco+ experience: you can leave it turned on after registering your thermostat or disable it. for as long as you would like.
+
+You can also customize your eco+ experience with the slider in the eco+ settings. The impact of the slider on each eco+ feature is described in the below Features section.
+
+eco+ consists of five features: Smart Home & Away, Schedule Assistant, Time of Use*, Community Energy Savings*, and the ability to adjust temperature for humidity. You can selectively enable or disable each feature, giving you full control of your experience. Keep in mind, disabling eco+ features may impact your overall eco+ savings.
+
+* Time of Use and Community Energy Savings are not available in all areas. The availability of these features depends on local utility rate plans and utility programs.
+
+
+
+
+Adjusting temperature for humidity:
+When the feature to adjust for humidity is enabled, eco+ uses both humidity and temperature readings to calculate your home's temperature. In doing so, eco+ finds opportunities to lower your energy bill when it's dry in summer, and when its humid in winter. How does it work? First, eco+ averages out humidity data over the past 10
+days. It then looks at the current temperature and humidity level to calculate the adjusted for humidity temperature.
+
+What happens when humidity is high? When humidity is particularly high compared to the average level over the past few days, any given temperature will feel warmer than it normally would. In winter, that's when the adjustment for humidity kicks in: the ecobee won't heat the house as much as it normally would at the same temperature, leading to energy savings.
+
+What happens when humidity is low? When humidity is significantly lower than the average level over the past few days, any given temperature will feel cooler than it normally would. In summer, that's when the adjustment for humidity kicks in: the thermostat won't cool the home as much as it normally would at the same temperature, helping you save energy and feel the same way you would when humidity levels were normal.
+
+How do I know when the thermostat is adjusting for humidity? Any time the humidity affects the temperature reading on your thermostat by more than 1ºF, the eco+ icon will appear on the screen. If you disable eco+ for the day, this feature will be disabled until midnight.
+
+
+You can enable or disable eco+'s ability to adjust the temperature for humidity at any time from your eco+ settings in the ecobee app.
+
+Notes:
+
+* The eco+ ability to adjust temperature for humidity lives on the thermostat itself which means that even if the thermostat is offline it will continue to be active.
+* This feature is not affected by the eco+ comfort preference slider.
+
+
+Time of Use:
+If your electricity rate varies based on the time of day, Time of Use can save you money by intelligently precooling or preheating your home when electricity is less expensive to keep you comfortable, while cooling or heating less when electricity is more costly. By shifting energy usage to times of day when electricity is cheaper and cleaner, Time of Use is having a positive impact on communities and the environment.
+
+The Time of Use feature is only applicable if the price you pay for electricity varies based on the time of day. If this is not the case and you would like to benefit from the Time of Use feature, please contact your utility provider and request to be switched on to a rate plan with variable electricity pricing.
+
+As part of the eco+ experience, if your home is in an area where Time of Use rates are in effect, a list of utilities and rate plans will be displayed. Your utility rate plan can be found on your bill or through your utility account details online. As you configure eco+, when entering your utility information, select the information icon in the top right- hand corner to view an example of where your rate plan could be shown on your bill. If you are unsure if you are on a Time of Use rate plan, please contact your utility provider's customer care team.
+
+
+Once you have selected and saved a rate plan, Time of Use will be activated in the following 24-hour period. Once activated, during time of use periods (generally during summer or winter), eco+ will preheat or precool your home at times of day when electricity is less expensive. When electricity gets more expensive, a setback will be applied to consume less energy. Even if your rate plan includes more than two electricity rates based on time of day, the same logic will apply: precooling or preheating before each increase of price, and a setback during the higher price. The duration of precooling or preheating is customized to each home based on historical thermal data.
+
+
+
+The depth of the precool, preheat or setbacks depends on your eco+ slider preferences. These depths are relative offsets applied on top of the existing setpoint of the home. Here is the current relationship between eco+ slider values and precool, preheat and setback:
+
+
+Level 1
+Level 2
+Level 3
+Level 4
+Level 5Precool / Preheat1F2F3F4F4FSetback0F0F1F2F3F
+Tip: If you skipped setting up Time of Use when you were setting up eco+, you can always set up it up later from:
+
+* the eco+ settings, by toggling the Time of Use slider to on
+* By editing Utility information under Home settings
+
+
+
+
+The eco+ icon will show on the thermostat screen or mobile app thermostat view any time Time of Use is precooling, preheating, or applying a setback. If you disable eco+ for the day, Time of Use will be disabled until midnight.
+
+
+You can enable or disable Time of Use at any time from your eco+ settings. Notes:
+* Time of Use events are generated through the server, which means that the thermostat must be connected to the internet for this feature to work.
+* In order to set up Time of Use, your home address must have a valid ZIP or postal code.
+* If you are with a time of use electricity rate but your utility or rate plan is not available on the app, please contact us and we will add it shortly.
+
+
+Community Energy Savings:
+Peak energy demand places strain on the electricity grid that can lead to outages and generally require more harmful energy to be produced. ecobee partners with utilities to help reduce electricity usage in periods of peak demand. When you enroll, your utility provider will send energy events to your thermostat through eco+ to help better match the electricity supply with demand. This may adjust the temperature in your home slightly. Events take place just a handful of times per year.
+
+Some of our utility partners will provide you with a reward for participating in their community energy savings program. When you set up Community Energy Savings in the app, you will be notified if you are eligible for a reward from your utility provider. To check your eligibility, open the app and under your eco+ settings enable Community Energy Savings. Then follow the onscreen instructions to request your reward. Once you have applied, you will need to contact your utility provider to disable Community Energy Savings and be removed from the program.
+
+
+
+
+If you have applied but haven't received your reward yet, please contact your utility provider. In some cases, your reward may still be pending because your personal information in the ecobee app doesn't match the information your utility has. If that is the case, they will reach out to you via email to confirm your information.
+
+When your thermostat is receiving an energy savings event, typically in summer, it will first precool your home to keep you comfortable. The duration of precooling or preheating is customized to each individual home, based on historical thermal data. After the precool, a setback is applied for a duration that depends on the event. You can opt out of the event at any time by setting a hold or tapping on the eco+ icon and ending eco+ for the day.
+
+
+
+The depth of the precool, preheat or setbacks depend on your eco+ slider preferences. These depths are relative offsets applied on top of the existing setpoint of the home. Here is the current relationship between eco+ slider values and precool, preheat and setback:
+
+
+Level 1
+Level 2
+Level 3
+Level 4
+Level 5Precool / Preheat1F2F3F4F4FSetback0F0F1F2F3F
+Tip: If you skipped setting up Community Energy Savings when you were setting up your thermostat, you can always set up it up later from:
+
+* the eco+ settings, by toggling the Community Energy Savings feature to on
+* by editing Utility information in Home settings
+
+
+
+
+By helping your utility reduce electricity demand when it peaks, Community Energy Savings reduces your community's reliance on so-called "peaker plants." Peaker plants, which generally only run during times of high electricity demand, are expensive to maintain and operate, reduce local air quality, and emit global warming- causing greenhouse gases. By spreading out the electricity load, Community Energy Savings is not just reducing the need to operate peaker plants, it reduces the need for them to be built in the first place.
+
+The eco+ icon will show on the thermostat screen anytime Community Energy Savings is precooling, preheating or applying a setback. If you disable eco+ for the day, Community Energy Savings will be disabled until midnight.
+
+
+Notes:
+
+* Energy savings events are generated through the server, which means that the thermostat must be connected to the internet in order for this feature to work.
+* You may not receive any events if ecobee isn't partnered with your utility. Stay tuned, as ecobee is always expanding its partnerships.
+
+
+Smart Home & Away:
+Smart Home & Away automatically adjust the temperature for energy savings when it detects you are not home, and quickly restoring your comfort settings when you come back.
+
+Notes:
+
+* Smart Home & Away lives on the thermostat itself which means that even if the thermostat is offline the feature will continue to be active.
+* We are making some changes to this feature to further improve your experience. As such, if you purchased a thermostat after March 26, 2021, you will not be prompted to enable this feature during the thermostat setup, however, you can access it from your mobile app settings.
+
+
+Schedule Assistant:
+Customizing your thermostat schedule is the easiest way to lower your energy bill.
+
+When Schedule Assistant detects that your thermostat schedule isn't matching up with your actual routine, it recommends a new schedule that will keep you more comfortable when you're home and cut down on energy waste when you're away.
+
+By using your ecobee occupancy sensors, Schedule Assistant detects patterns of occupancy over the course of the last five weeks. If those patterns do not match the schedule programmed in your thermostat, Schedule Assistant will send you an email. Click on the link to access the recommendations. Some of those recommendations may have been based on occurrences that do not truly reflect a permanent change in your lifestyle. You can, therefore, select the recommendations that are valid and ignore the ones that aren't. Click on the button at the bottom of the page to confirm your selection.
+
+NOTE: If you are using an ecobee3 Lite, please note that the ecobee SmartSensor will need to be purchased separately in order to use this feature.
+
+
+
+Once activated, it may take a recommendation up to a few days to be reflected in your schedule.
+
+Schedule Assistant will be available directly on the ecobee app and schedule changes will be applied instantly.
+
+
+Pause when Open:
+What is it?
+To save money and energy, ecobee automatically pauses heating or cooling when a door or window with a SmartSensor is open for more than 5 minutes. A notification is sent with information about which door or window has been left open. When a door or window has been closed again for 30 seconds, heating and cooling resumes.
+
+When the heating or cooling is paused, the eco+ icon will show on your app and thermostat. You can override this automation from the push notification directly, or by clicking on the eco+ icon on your app or thermostat and turning the system back on.
+
+.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+You can also select which sensors are participating in this feature. All sensors will be included by default. Unselecting all sensors will turn the feature off completely.
+
+
+How do I access this feature?
+This feature is only available to Haven customers who have a SmartSensor for doors and windows. This feature may take up to 24h to become active once you subscribe to Haven during weekdays and 72h during weekends. If you have a Smart Sensor for doors and windows but are not a Haven customer yet, you will be able to see this feature appear under your eco+ settings. From there you can subscribe to Haven and get access to the feature.
+
+Note: this feature is not affected by the eco+ savings preferences slider.
+
+I paired my Smart Sensor for doors and windows to my Smart camera with voice, do I have to repair my sensor to my ecobee thermostat for pause on door/window to work?
+No, your Smart Sensor will appear under the eco+ feature regardless of what you paired it with.
+
+Does my thermostat have to be connected online all the time for this feature to work?
+If the thermostat is not connected to the internet, the HVAC will not pause when the sensor is open for more than 5min. However, once internet returns it will engage immediately and the HVAC will pause. If a Smart Sensor is open and triggers the thermostat to pause, and then the internet is lost, the HVAC will still resume when the sensor is closed.
+
+
+What do all the icons on my ecobee mean?
+Comfort Setting icons
+
+
+Alert icons
+
+
+
+
+Home Screen icons
+
+
+Menu icons
+
+
+Navigation & Button icons
+
+
+
+
+System icons
+
+
+Weather icons
+
+
+
+
+Wi-Fi icons
+
+
+Wiring Diagrams
+Diagram 1. Furnace (1-stage) + AC (1-stage) using PEK
+
+
+Diagram 2. Furnace (2-stage) + AC (1-stage) using PEK
+
+
+
+Diagram 3. Furnace (1-stage) + AC (2-stage) using PEK
+
+
+Diagram 4. Furnace (2-stage) + AC (2-stage) using PEK
+
+
+
+
+
+
+
+Diagram 6. Furnace (2-stage) + AC (1-stage)
+
+
+
+
+
+Diagram 8. Furnace (2-stage) + AC (2-stage)
+
+
+
+
+
+
+Diagram 10. Heatpump (1-stage) using PEK
+
+
+
+
+
+
+
+Diagram 12. Heatpump (2-stage) using PEK
+
+
+
+
+
+Diagram 14. Heatpump (2-stage) + Aux Heat (1-stage)
+
+
+
+
+
+
+Diagram 16. Heatpump (1-stage) + Aux Heat (1-stage) using PEK
+
+
+
+
+
+Diagram 18. Heatpump (2-stage) + Aux Heat (2-stage) using PEK
+
+
+
+
+
+A float switch will prevent the AC from running if the drain pan is full of water or condensation pump motor fails.
+
+Diagram 20. How to Include a 1-wire Dehumidifier / Humidifier
+
+
+
+
+
+
+
+Diagram 22. How to Include a Ventilator / HRV / ERV
+
+
+
+
+
+
+
+Diagram 24. Boiler (1-stage) + AC (2-stage) - 2 Transformers
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

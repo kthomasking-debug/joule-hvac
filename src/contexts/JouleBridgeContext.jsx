@@ -114,7 +114,7 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
       if (errorMsg.includes("Connect call failed") || errorMsg.includes("not reachable") || errorMsg.includes("ConnectionError") || errorMsg.includes("Errno 111")) {
         // Device is paired but not reachable (IP may have changed)
         // The bridge will automatically refresh IP and retry, but we should keep trying
-        setError("Device is paired but not reachable. It may be offline or its IP address changed. The bridge will automatically reconnect when the device comes back online.");
+        setError("Device is paired but not reachable. This can happen after server restart if: (1) pairing file is corrupted/incomplete, (2) device IP changed, (3) aiohomekit can't reconstruct pairing object, (4) network not ready, or (5) encryption keys missing. The bridge will automatically reconnect when the device comes back online. If auto-reconnect doesn't work within 30 seconds, go to Settings → Joule Bridge Settings to re-pair the device.");
         // Don't set connected to false immediately - keep trying in the background
         // The polling will continue and eventually reconnect
       } else {

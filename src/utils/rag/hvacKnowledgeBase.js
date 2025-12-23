@@ -1533,6 +1533,74 @@ export const HVAC_KNOWLEDGE_BASE = {
       },
     },
   },
+
+  // Ecobee Wiring and Installation
+  ecobeeWiring: {
+    title: "Ecobee Thermostat Wiring",
+    source: "Ecobee Installation Guide, HVAC Industry Standards",
+    topics: {
+      basicWiring: {
+        summary: "Standard Ecobee wiring terminals and connections.",
+        keyConcepts: [
+          "R terminal: 24VAC power (Red wire) - Required for all systems",
+          "C terminal: 24VAC common (Blue/Black wire) - Required for Ecobee (provides power return)",
+          "G terminal: Fan control (Green wire) - Controls fan independently",
+          "Y terminal: Cooling (Yellow wire) - Activates air conditioner compressor",
+          "W terminal: Heating (White wire) - Activates furnace/heat pump aux heat",
+          "O terminal: Reversing valve (Orange wire) - Most heat pumps (energized on cool)",
+          "B terminal: Reversing valve (Brown wire) - Some brands like Rheem/Ruud (energized on heat)",
+          "W1/W2: Multi-stage heating terminals",
+          "Y1/Y2: Multi-stage cooling terminals",
+          "ACC+/ACC-: Accessory terminals for humidifier, dehumidifier, ventilators",
+        ],
+      },
+      heatPumpWiring: {
+        summary: "Heat pump specific wiring configurations.",
+        keyConcepts: [
+          "Heat pumps require O or B terminal for reversing valve",
+          "O terminal (Orange): Energized when cooling - used by most brands (Carrier, Trane, Lennox, etc.)",
+          "B terminal (Brown): Energized when heating - used by Rheem, Ruud, some older systems",
+          "W1 terminal: Auxiliary/emergency heat - activates when heat pump can't keep up",
+          "Y1 terminal: Compressor contactor - controls heat pump compressor",
+          "Most systems: R, C, O, Y1, W1, G for standard heat pump with aux heat",
+          "Check equipment manual to determine O vs B terminal requirement",
+        ],
+      },
+      conventionalWiring: {
+        summary: "Conventional heating and cooling system wiring.",
+        keyConcepts: [
+          "Standard system: R, C, Y (cooling), W (heating), G (fan)",
+          "Two-stage systems: Y1/Y2 for cooling stages, W1/W2 for heating stages",
+          "Heat only: R, C, W, G",
+          "Cool only: R, C, Y, G",
+          "Fan control: G terminal allows independent fan operation",
+        ],
+      },
+      accessories: {
+        summary: "Wiring for humidifiers, dehumidifiers, and other accessories.",
+        keyConcepts: [
+          "ACC+ and ACC- terminals provide 24VAC power for accessories",
+          "Humidifier: Connects to ACC+ and ACC- terminals",
+          "Dehumidifier: May use ACC terminals or dedicated DEHUM terminal",
+          "Ventilator: Can use ACC terminals for control",
+          "Accessories activate based on Ecobee settings and conditions",
+        ],
+      },
+      installation: {
+        summary: "Installation safety and best practices.",
+        keyConcepts: [
+          "ALWAYS turn off power at breaker before wiring",
+          "Take photo of existing wiring before disconnecting",
+          "Use 18-22 AWG thermostat wire",
+          "Verify wire colors match equipment terminals",
+          "C wire (common) is required for Ecobee - provides power return path",
+          "If no C wire: May need to use PEK (Power Extender Kit) or install new wire",
+          "Test all connections before restoring power",
+          "Verify equipment operation after installation",
+        ],
+      },
+    },
+  },
 };
 
 /**

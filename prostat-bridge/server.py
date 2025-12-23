@@ -18,6 +18,8 @@ Usage:
 import asyncio
 import json
 import logging
+import shutil
+import tempfile
 from aiohomekit.controller import Controller
 from aiohomekit.exceptions import AccessoryNotFoundError, AlreadyPairedError
 from aiohttp import web, web_runner
@@ -95,6 +97,65 @@ ECOBEE_TEMP_CURRENT = 10  # Current Temperature
 ECOBEE_TEMP_TARGET = 11    # Target Temperature
 ECOBEE_TARGET_STATE = 12   # Target Heating Cooling State (0=Off, 1=Heat, 2=Cool, 3=Auto)
 ECOBEE_CURRENT_STATE = 13  # Current Heating Cooling State
+
+def save_pairing_file_atomic(pairing_file, data_to_save):
+    """
+    Save pairing file atomically with backup.
+    
+    This function:
+    1. Creates a backup of the existing file (if it exists)
+    2. Writes to a temporary file
+    3. Atomically renames the temp file to the final location
+    
+    This hardens against:
+    - File corruption during write (atomic rename)
+    - Data loss (backup allows recovery)
+    """
+    import os
+    
+    # Create backup of existing file if it exists
+    backup_file = pairing_file + '.backup'
+    if os.path.exists(pairing_file):
+        try:
+            shutil.copy2(pairing_file, backup_file)
+            logger.debug(f"Created backup: {backup_file}")
+        except Exception as e:
+            logger.warning(f"Failed to create backup: {e}")
+            # Continue anyway - backup is best-effort
+    
+    # Write to temporary file first (atomic write)
+    try:
+        # Create temp file in same directory to ensure atomic rename works
+        temp_dir = os.path.dirname(pairing_file)
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        with tempfile.NamedTemporaryFile(mode='w', dir=temp_dir, delete=False, suffix='.tmp') as f:
+            temp_file = f.name
+            json.dump(data_to_save, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())  # Force write to disk
+        
+        # Atomic rename (this is atomic on POSIX systems)
+        os.replace(temp_file, pairing_file)
+        logger.debug(f"Atomically saved pairing file: {pairing_file}")
+        
+        # Remove old backup if we have a new successful save
+        if os.path.exists(backup_file):
+            try:
+                os.remove(backup_file)
+            except Exception:
+                pass  # Best effort cleanup
+                
+    except Exception as e:
+        logger.error(f"Failed to save pairing file atomically: {e}")
+        # Try to restore from backup if write failed
+        if os.path.exists(backup_file) and not os.path.exists(pairing_file):
+            try:
+                shutil.copy2(backup_file, pairing_file)
+                logger.info(f"Restored pairing file from backup after failed write")
+            except Exception as restore_err:
+                logger.error(f"Failed to restore from backup: {restore_err}")
+        raise
 
 
 def get_data_directory():
@@ -365,20 +426,19 @@ async def pair_device(device_id: str, pairing_code: str):
         controller.pairings[device_id] = pairing_data
         logger.info(f"Registered pairing with controller (alias: {device_id})")
         
-        # Save to file
+        # Save to file with atomic write and backup
         try:
+            # Try controller.save_data first (it may have its own format)
             controller.save_data(pairing_file)
             logger.info(f"Saved pairings to {pairing_file}")
         except Exception as e:
-            logger.error(f"Failed to save pairings: {e}")
-            # Fallback: manually save
+            logger.warning(f"controller.save_data failed: {e}, using atomic fallback")
+            # Fallback: manually save with atomic write and backup
             try:
-                import json
-                with open(pairing_file, 'w') as f:
-                    json.dump(controller.pairings, f, indent=2)
-                logger.info(f"Manually saved pairings to {pairing_file}")
+                save_pairing_file_atomic(pairing_file, controller.pairings)
+                logger.info(f"Manually saved pairings to {pairing_file} (atomic write with backup)")
             except Exception as e2:
-                logger.error(f"Manual save also failed: {e2}")
+                logger.error(f"Atomic save also failed: {e2}")
         return pairing
     except AlreadyPairedError:
         logger.warning(f"Device {device_id} is already paired")
@@ -430,7 +490,17 @@ async def unpair_device(device_id: str):
         data_dir = get_data_directory()
         os.makedirs(data_dir, exist_ok=True)
         pairing_file = os.path.join(data_dir, 'pairings.json')
-        controller.save_data(pairing_file)
+        try:
+            controller.save_data(pairing_file)
+            logger.info(f"Saved pairings after unpairing to {pairing_file}")
+        except Exception as e:
+            logger.warning(f"controller.save_data failed during unpair: {e}, using atomic fallback")
+            # Fallback: manually save with atomic write and backup
+            try:
+                save_pairing_file_atomic(pairing_file, controller.pairings)
+                logger.info(f"Manually saved pairings after unpairing (atomic write with backup)")
+            except Exception as e2:
+                logger.error(f"Atomic save failed during unpair: {e2}")
         
         logger.info(f"Successfully unpaired from {device_id}")
     except Exception as e:
@@ -1633,7 +1703,34 @@ async def main():
                 # Check if file is not empty
                 file_size = os.path.getsize(pairing_file)
                 if file_size > 2:  # More than just "{}"
-                    controller.load_data(pairing_file)
+                    # Validate JSON structure before loading (hardens against file corruption)
+                    try:
+                        with open(pairing_file, 'r') as f:
+                            json.load(f)  # Validate JSON is parseable
+                    except (json.JSONDecodeError, ValueError) as json_err:
+                        logger.error(f"Pairing file {pairing_file} contains invalid JSON: {json_err}")
+                        # Try to restore from backup if main file is corrupted
+                        backup_file = pairing_file + '.backup'
+                        if os.path.exists(backup_file):
+                            try:
+                                logger.info(f"Attempting to restore from backup: {backup_file}")
+                                shutil.copy2(backup_file, pairing_file)
+                                logger.info(f"Restored pairing file from backup")
+                                # Re-validate the restored file
+                                with open(pairing_file, 'r') as f:
+                                    json.load(f)
+                                # If restore succeeded, continue with loading
+                            except Exception as restore_err:
+                                logger.error(f"Backup restore failed: {restore_err}")
+                                logger.info("Skipping corrupted pairing file - you may need to re-pair")
+                                continue
+                        else:
+                            logger.info("No backup available - you may need to re-pair")
+                            continue
+                    else:
+                        # Small delay to let network initialize (hardens against network timing issues)
+                        await asyncio.sleep(2)
+                        controller.load_data(pairing_file)
                     logger.info(f"Loaded existing pairings from {pairing_file}")
                     # Populate pairings dictionary from controller's internal pairings
                     # The controller stores pairings in controller.pairings dict
@@ -1641,13 +1738,23 @@ async def main():
                         for alias, pairing_data in controller.pairings.items():
                             # Get device_id from pairing data or use alias
                             device_id = pairing_data.get('id') if isinstance(pairing_data, dict) else alias
-                            # Load the pairing object
+                            # Load the pairing object with retry and re-discovery
                             try:
                                 pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
                                 pairings[device_id] = pairing
                                 logger.info(f"Loaded pairing for device {device_id} (alias: {alias})")
                             except Exception as e:
                                 logger.warning(f"Failed to load pairing for {alias}: {e}")
+                                # Retry with re-discovery (hardens against IP changes and device unreachable)
+                                try:
+                                    logger.info(f"Attempting re-discovery for {device_id} before retry...")
+                                    await discover_devices()
+                                    await asyncio.sleep(1)
+                                    pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
+                                    pairings[device_id] = pairing
+                                    logger.info(f"Successfully loaded pairing for {device_id} after re-discovery")
+                                except Exception as e2:
+                                    logger.warning(f"Failed to load pairing for {alias} after re-discovery: {e2}")
                     else:
                         logger.info("No pairings found in controller after loading file")
                 else:

@@ -568,7 +568,32 @@ const ForecastDebug = () => {
                 {isConnected 
                   ? `Polling every 5 seconds • Last update: ${new Date().toLocaleTimeString()}`
                   : bridgeAvailableButDeviceOffline
-                  ? "Device is paired but not reachable. Bridge will auto-reconnect. Using default settings for forecast."
+                  ? (
+                    <div className="space-y-1">
+                      <p>Device is paired but not reachable. The bridge will automatically reconnect when the device comes back online.</p>
+                      <p className="text-xs text-yellow-400 mt-1">
+                        <strong>Why this happens:</strong> After server restart, pairing data may not load correctly due to:
+                      </p>
+                      <ul className="text-xs text-yellow-400 mt-1 ml-4 list-disc space-y-0.5">
+                        <li>Pairing file corruption or incomplete save</li>
+                        <li>Device IP address changed (DHCP lease renewal)</li>
+                        <li>aiohomekit library unable to reconstruct pairing object from saved data</li>
+                        <li>Network not ready when server starts (device unreachable)</li>
+                        <li>Pairing data format mismatch after library update</li>
+                      </ul>
+                      <p className="text-xs text-yellow-400 mt-1">
+                        If auto-reconnect doesn't work within 30 seconds, you may need to re-pair:
+                      </p>
+                      <ol className="text-xs text-yellow-400 mt-1 ml-4 list-decimal space-y-0.5">
+                        <li>Go to Settings → Joule Bridge Settings</li>
+                        <li>Click "Unpair" if a device is shown</li>
+                        <li>Click "Discover" to find your Ecobee</li>
+                        <li>Enter the 8-digit pairing code from your Ecobee screen</li>
+                        <li>Click "Pair" and wait up to 45 seconds</li>
+                      </ol>
+                      <p className="text-xs text-gray-500 mt-1">Using default settings for forecast until device reconnects.</p>
+                    </div>
+                  )
                   : jouleBridge.bridgeAvailable
                   ? "Bridge is running. Waiting for device connection..."
                   : "Start the Joule Bridge to get real Ecobee data"}

@@ -1,0 +1,471 @@
+	
+Advanced Installation and Configuration Instructions
+
+
+ecobee Smart Thermostat Premium, Powered by Carrier
+A221052C
+
+
+Table of Contents
+Safety Considerations	1
+Introduction	1
+How to use this document	1
+Thermostat Subbase and Print Label	2
+Wiring Diagrams	3
+Fan Coil Unit (FCU) wiring on the ecobee	8
+Start-Up	9
+Default Settings List	25
+Safety Considerations
+Read and follow manufacturer instructions carefully. Follow all local electrical codes during installation. All wiring must conform to local and national electrical codes. Improper wiring or installation may damage Thermostat.
+Recognize safety information. This is the safety-alert symbol . When you see this symbol on the equipment and in the instruction manual, be alert to the potential for personal injury.
+Understand the signal words DANGER, WARNING, and CAUTION. These words are used with the safety-alert symbol. DANGER identifies the most serious hazards which will result in severe personal injury or death. WARNING signifies a hazard which could result in personal injury or death. CAUTION is used to identify unsafe practices which may result in minor personal injury or product and property damage. NOTE is used to highlight suggestions which will result in enhanced installation, reliability, or operation.
+Introduction
+The ecobee Smart Thermostat Premium, Powered by Carrier provides your customers with freedom and flexibility to manage their home environment. These thermostats help homeowners conserve energy, save money and reduce their environmental impact. They support a furnace with AC up to 2-stages of heat/cool. For heat pumps (air to air or Geothermal) they support up to four stages of heat (2-stage heat pump, 2-stage auxiliary heat) and two stages of cool. For these systems the thermostats can control a single accessory, such as a humidifier, dehumidifier, ventilator, HRV or ERV. Also, the thermostats can be installed with the PEK if a C wire isn't present. Additionally, the thermostats can control boilers with or without an AC. When connected to a boiler, the thermostats support up to 2-stage of heat and 2-stages of cool and a single accessory, such as a humidifier, dehumidifier,
+
+ventilator, HRV or ERV. When used with a boiler they cannot be installed with the PEK if a C wire isn't present, the C wire must come from the air handler, not the boiler.
+How to use this document
+The advanced installation and configuration instructions are intended to supplement the standard installation instructions shipped with the thermostat or available for download on www.HVACpartners.com. The advanced settings and configuration options detailed in this document are intended for professional installers only. Incorrect configuration may lead to improper operation and equipment damage.
+Each section of this document is outlined in the following structure:
+Section Title
+Location of this section within the thermostat menus.
+Image showing available features in this section on the thermostat.
+Feature Title
+Feature Description
+• Default Configuration
+• Configuration Options
+Image showing screen on the thermostat
+
+!	WARNINGELECTRICAL OPERATION HAZARD
+Failure to follow this warning could result in personal injury or death. Before installing, modifying, or servicing system, main electrical disconnect switch must be in the off position. There may be more than 1 disconnect switch. Lock out and tag switch with a suitable warning label.!	CAUTIONELECTRICAL OPERATION HAZARD
+Failure to follow this caution may result in equipment damage or improper operation.
+Improper wiring or installation may damage the thermostat. Check to make sure wiring is connect before proceeding with installation or turning on unit.
+Thermostat Subbase and Print Label
+
+A221054
+Reference the print label on the back of your ecobee device to identify the final assembly number, model name, country of origin, and device serial number.
+
+A221055
+The following final assembly numbers and corresponding model name are as follows:
+Table 1 - Final Assembly Number
+
+ModelCorresponding Final Assmbly NumberEB-STATE6CR-01900-00117
+Wiring Diagrams
+Conventional System
+For single stage heat and single stage cooling applications, 5 wires are required instead of the traditional 4.
+
+A221056
+A common wire (C) to power is needed to power the thermostat. The thermostat is powered on RC and C terminals. Additional wires for 2nd stage heating and cooling are shown as dotted lines.
+Most Carrier 2-stage furnace equipment can be operated with a single stage thermostat using the algorithm in the furnace circuit board to engage 2nd stage. While a 2-stage thermostat can control the equipment, it is preferred to allow the Carrier equipment to determine the staging by not connecting W2. See furnace installation instructions for heat staging setup.
+
+Power Extender Kit (PEK)
+
+A221057
+The Power Extender Kit, also known as the PEK, allows the thermostat to operate with 4 wires instead of 5, which helps with retrofit applications. The thermostat has a PEK terminal which digitally combines the G and Y1 signal. The PEK device, which gets installed at the equipment, separates that combined signal back into separate 24v wires.
+The PEK can go from 5 to 6 wires or from 8 to 9 wires. It can always add one more wire to the available wires. The 4 wires at the thermostat should be wired as shown above. Additional wires would bypass the PEK and connect directly to the equipment.
+IMPORTANT: When using PEK, dual (24V) transformers configurations are not supported.
+
+Power Extender Kit (PEK) - continued
+
+
+A221058
+In the example above, the PEK is shown with wire labels. The Red wire goes to Rc and the White wire goes to W. However, the Green wire, which is labeled G in the drawing does not go to G. Instead it becomes the Common wire. The Yellow wire, labeled Y, goes to the PEK+ terminal.
+
+Heat Pump With Auxiliary Heat
+For a traditional heat pump, Y1 is the compressor and O/B is the reversing valve. During the startup process, the O/B should be configured to act as an O terminal with Carrier equipment, since the equipment defaults to heating and needs the reversing valve to be energized on a cooling call. W1 is used for the auxiliary heat - typically, electric resistance.
+
+
+A221059
+
+Fan Coil/Air Conditioner with Boiler (Dual Transformer)
+The ecobee thermostat can control two pieces of equipment where each has its own transformer, such as a fan coil with a boiler. Both Rc and Rh are needed in this application. Heat pumps are also supported with this configuration by adding the required OB wire.
+
+
+
+
+2-wire Boiler/Furnace-Heat Only Systems
+
+A221060
+
+The ecobee thermostat requires a minimum of 3-wires (Rc, C, W1) to control a 1-stage furnace/boiler. If the C-wire is not available or not feasible to run a new wire, another option is to use a Fast-Stat Common-Maker. This can we wired for R/W/G or T/T applications. The W call gets piggy-backed on the common wire with the small black sender module installed at the thermostat. Then the Common Maker is installed at the boiler where it separates the W signal from the common. Note: The R wire will connect to the ecobee Rc terminal of the ecobee.
+
+
+A221063
+
+Non-Powered (1-wire) Accessories
+When the accessory is NOT internally powered, it needs power from the furnace or fan coil transformer. Connect one wire to the ACC+ terminal on the thermostat and the other wire should be connected to Common. Because there is already a common wire from the t-stat to the air handler, and since the humidifier is likely right next to the furnace, this is referred to as a 1-wire application because only one extra wire needs to run through the walls.
+
+
+
+
+
+Self-Powered (2-wire) Accessories
+
+A221064
+
+When the accessory is internally powered, it does not require power from the furnace or fan coil transformer. Connect one wire to ACC+ and the other to ACC- on the thermostat. When doing so the Accessory Relay is fully isolated from the other circuits within the thermostat and simply acts as a dry-contact, closing the circuit to engage the accessory.
+
+
+
+
+A221065
+NOTE: When configuring the ecobee thermostat during the initial start-up/first-run setup the thermostat will attempt to auto-detect 1 or 2 wires inserted into the accessory terminals and you may not be prompted to select the option. If no voltage is detected on these terminals even though wires are inserted, you'll be able to manually choose the 1or 2-wire option.
+
+Dehumidification with DH or DEHUM Terminal (FV Fan Coil and Variable Speed Furnaces)
+
+A221066
+If the accessory terminals are not being used for a humidifier or whole house dehumidifier, then they may be used for the dehumidification feature integrated into Carrier FV fan coils and select variable speed furnaces. The ACC+ terminal is wired to the DH or DHUM terminal on the equipment in these applications. On the FV fan coils, remove jumper J1 from the Easy Select board to enable this feature.
+Please also note that the equipment is expecting DH or DHUM to be ENERGIZED during normal cooling operation and DE-ENERGIZED on a dehumidification call from the thermostat. It is a reverse logic input, as compared to Y, G, W, etc.
+
+
+A221067
+
+Multi-Speed Fan (FCU) and PTAC
+Choosing I'm an ecobee Pro when the thermostat is first powered up, when Reconfiguring Equipment or performing a Reset All provides access to the Multi-Speed Fan (MSF) equipment options.
+
+
+A221068
+Fan Coil Unit (FCU) wiring on the ecobee:
+2-pipe system	4-pipe system	PTAC system
+• RC & C: thermostat power	• RC & C: thermostat power	• RC & C: thermostat power
+• Y1: fan coil cooling/heat	• Y1: fan coil cooling	• Y1: cooling
+• W1: Aux Heat stage 1 or fan coil heat	• W1: fan coil heating	• W1: heating
+• G: low-speed fan	• G: low-speed fan	• G: low-speed fan
+• Y2: medium-speed fan	• Y2: medium-speed fan	• Y2: medium-speed fan
+• W2: high-speed fan	• W2: high-speed fan	• W2: high-speed fan
+• RH & PEK+: dry contact terminals for the pipe sensor	• OB: reversing valve
+
+
+
+A221100
+
+
+	
+
+
+
+
+Start-Up
+
+A221069
+
+After the initial start-up animation, tap "Let's get started" to begin the setup. Choosing "I'm a Pro" during first-run configuration will provide same options as "I'm a homeowner" but will also include options for multi-speed fan FCU/PTAC equipment.
+
+
+A221070C
+
+Start-Up ? Power Source & Fan System
+A standard furnace with A/C or a fan coil with heat pump will only have a single transformer and so only Rc is connected. It is important to note that in these applications, Rc must be used instead of Rh like some Carrier thermostats. If the heating and cooling equipment have separate transformers, such as a boiler with a fan coil and A/C, then both Rc and Rh are connected.
+Select Single or Variable Speed Fan for furnace/heat pump systems or Multi-Speed Fan/Multi-Speed Fan and Pipe Sensor for FCU/PTAC systems.
+
+
+
+
+Start-Up ? Wire Detection ? All HVAC Systems
+
+A221071
+
+You will always be prompted to confirm (Yes or No) the auto-detected wires. If something is incorrect, check the terminations at the thermostat backplate and at the equipment. In rare cases, the thermostat will not be able to detect certain wires. When this happens, they can be manually added by selecting Modify and then the tap on the wires terminals that should be included.
+The wires auto detected/manually selected determines how many stages of heating/cooling the thermostat will control. This also provides additional temperature delta and/or runtime staging options by tapping Menu ? Settings ? Installation Settings ? Thresholds ? Configure Staging ? Manual.
+
+
+A221072
+
+Start-Up ? Wire Detection ? Accessory Configuration
+Select which accessory is installed if any, No Accessory, Humidifier, Dehumidifier, or Ventilator. When configuring the ecobee thermostat during the initial start-up/first-run setup the thermostat will attempt to auto-detect 1 or 2 wires inserted into the accessory terminals and you may not be prompted to select the option. If no voltage is detected on these terminals even though wires are inserted, you'll be able to manually choose 1or 2-wire option.
+
+
+
+
+Start-Up ? Heat Pump Configuration
+
+A221073
+
+When O/B terminal is enabled during the wire detection setup there are additional steps to configure for heat pump. Carrier heat pumps need the reversing valve (O terminal) to be energized on a cooling call, so On Cool should be selected. Some other equipment manufacturers could energize the reversing valve on a heat call. Note: The O/B Reversing Valve configuration can be changed in the Equipment Settings (if required). Menu ? Settings ? Installation Settings ? Equipment ? Heat Pump
+
+A221074
+
+Start-Up ? Heat Pump Configuration - continued
+Select Enable if the auxiliary heat source is electric resistance and it is desired to have heat pump and electric heat to run at the same time. The system will provide heat pump heating at lower stage and then turn on electric heat along with the heat pump at higher stages. If it is a "dual fuel system", meaning the auxiliary heat is a fossil fuel furnace, including natural gas, propane, or oil, then select Disable. Do not run the compressor and furnace at the same time to condition the home.
+
+
+A221075
+The minimum compressor outdoor temperature is based on the specific model of heat pump used in the system. Nearly all heat pumps can operate in the heating mode down to at least 17 degrees, as this temperature, along with 47 degrees, are the two AHRI standard testing points. The best temperature to disable the compressor depends on a lot of factors. If the auxiliary heat is electric resistance, then shut off the compressor when either...
+a. The manufacturer has a published lowest operating temperature (for example, our 5-stage inverters can only run down to 10 degrees) or
+b. The COP of the heat pump drops below 1.0, which is the COP of electric resistance heat.
+Until that low temperature is reached, it is best to use the heat pump as the primary heat source and use the electric resistance as additional stages. Then below that temperature, shut off the compressor and use the electric heat only. If the auxiliary heat is fossil fuel, then consider the cost of the fuel vs the cost of electricity, as well as the load of the house, the size of the equipment, and the models of the equipment. The online OpCost Calculator found on HVAC Partners can be used to determine the "thermal balance point" and the "economic balance point." This tool takes only a couple of minutes to use. The thermal balance point is the outdoor temperature at which the heat pump can no longer handle the load of the house on its own. The economic balance point is the outdoor temperature at which the furnace would be less expensive to run. Set the thermostat for the higher of these two numbers, so 43 degrees in the example above.
+
+A221076
+
+Start-Up ? Furnace Fan
+The fan should be controlled by the furnace for all current Carrier furnaces. This allows the furnace to delay the fan on a W1 allowing the heat exchanger to warm-up before engaging airflow so the occupants do not get a blast of cold air. This setting only affects the gas heat start-up sequence, it will not delay continuous fan or ventilation schedules, etc.
+
+
+
+
+Start-Up ? Humidifier
+
+A221077
+
+Typically, Steam should be selected as the humidifier choice even when an evaporative humidifier is installed. The ONLY difference between the two choices is that Steam will work with or without a heating cycle based on the humidification setpoint. Without a heating cycle, only the fan is engaged.
+
+A221078
+
+Start-Up ? Ventilator
+The ventilator control capabilities depend on the type of ventilator installed which can be either a HRV, ERV or standard Ventilator.
+
+
+A221079
+There minimum runtime setting when the home is occupied and when unoccupied. The ventilator will also run for 60 minutes prior to occupancy, this is called pre-purge and is not user adjustable but can be enabled or disabled. Regardless of the type of ventilator the minimum runtime settings are used to force the ventilator to run a specific number of minutes per hour. This runtime is broken into 15-minute blocks to evenly spread out the runtime throughout the hour, but at a minimum 5 minutes of runtime is required. So, if the runtime was set to 10 minutes, the time is broken into two 5-minute blocks.
+
+
+
+A221080
+
+Start-Up ? Ventilator - continued
+Free Cooling: If a standard ventilator is installed, then it can be used to cool the house and is much cheaper to use compared to air conditioning. The thermostat will look at indoor temperature and humidity and outdoor temp and humidity to determine if free cooling can be used. If conditions are favorable, then the ventilator will be engaged instead of the air conditioner. There are several configuration settings used to control free cooling. This feature does not apply to a HRV or ERV. To access these settings, Select Menu ? Settings ? Installation Settings ? Equipment ? Ventilator. Once configured Ventilator control options are located within Main Menu ? System ? Ventilator.
+
+
+A221081
+
+Start-Up ? Pair SmartSensor
+During start-up the included SmartSensor can be paired during the setup phase or if preferred the customer can add/pair it afterwards using the mobile app. Using the SmartSensor stand the sensor can be located on a table, shelf, or other open and flat surface approx. 4ft above floor level. It should be away from exterior walls, windows and not in direct sunlight or near air vents. If it's going to be wall mounted, select a spot on an interior wall around 5ft above floor level, and away from air vents or windows. Use a damp cloth to clean the wall surface area. Once dry, press the wall mount adhesive firmly to the surface for 10 secs to ensure good adhesion before attaching the SmartSensor.
+
+
+
+
+
+
+A221082
+
+Accessing Equipment and Threshold Settings
+All Installation and Thresholds settings are accessible on the thermostat only. When the t-stat comes out of the idle screen tap on the hamburger icon, then the gear icon ? Settings ? Installation Settings ? Equipment or Thresholds
+
+
+
+
+Installation Settings ? Equipment ? Ventilator
+
+A221101
+
+A221083
+
+
+
+• Pre-Occupancy Purge (Enable or Disable): determines if the ventilator will be active 1 hour prior to expected occupancy.
+• Free Cooling Max Outdoor Temperature: this setting defines the max outdoor temperature when free cooling is no longer permitted.
+• Free Cooling Max Outdoor Humidity: this setting defines the max outdoor humidity when free cooling is no longer permitted. (Default is disabled)
+• Indoor/Outdoor Temperature Delta: permits free cooling if Indoor Temp vs. Outdoor Temp is greater than this Temp Delta setting. (Default is 2F)
+• Max Desired Temperature Delta (Enable or Disable): This is the maximum delta between current and desired temperature to engage Free Cooling. (Default is disabled)
+
+Installation Settings ? Equipment ? Humidifier ? Window Efficiency
+The humidifier Frost Control setting uses this efficiency rating to compute the desired humidity within the range of 15% to 50%. A higher window efficiency rating (range 1 to 7) dictates a greater thermal efficiency of the windows. This will permit a higher humidity level based on outdoor temperatures while helping to avoid condensation forming on the windows.
+
+
+
+
+Installation Settings ? Equipment ? Dehumidifier (for Fan Coil or Furnaces)
+
+A221084
+
+When this feature is wired and set up along with AC Overcool Max, it allows multiple modes of cooling operation, including temperature only demand, dehumidification demand, and both. When the DH or DHUM terminal on the equipment is energized, it will slow down the variable speed blower to increase latent capacity of the evaporator coil, while reducing sensible capacity.
+• Dehumidify with Fan (Yes or No): when Dehum is active this setting specifies if you want the furnace/air-handler fan to run as well. This will activate (G) output on the t-stat at the same time. This can work independent of a cooling cycle.
+• Min Runtime Delta (2-10%): to reduce short cycling, the dehumidifier will run beyond the desired humidity by the selected amount (%). Default is 5%.
+• Dehumidify in Heat Mode (Yes or No): If humidity is a concern during the heating season and have a standalone Dehumidifier, this setting can be used to activate the Dehumidifier and will work independent of a heating cycle.
+• Dehumidifier Active (Open or Closed): this setting is dependent whether the HVAC system or standalone Dehumidifier requires it to be open or closed while active. This setting is part of the 1st run setup but can change afterwards in the Dehumidifier menu.
+
+
+
+
+
+
+A221085
+
+
+
+
+
+
+
+
+A221086
+
+Installation Settings ? Thresholds ? AC Overcool Max
+AC Overcool Max is another option to help control high humidity levels and works in conjunction with the Dehumidify setpoint under System Mode menu. This setting will allow the Air Conditioner to overcool by comparing the actual RH% vs. the desired Dehumidify setpoint.
+NOTE: When the overcool temperature has been achieved (i.e. temperature setpoint + overcool setting), the AC system will turn off however the Dehumidifier ACC+/- relay may be still active if Dehum setpoint has not been achieved.
+
+
+
+
+Installation Settings ? Thresholds ? Cool Dissipation Time
+
+A221087
+
+Cool Dissipation Time is default on, but the feature should only be used in very dry climates, such as Phoenix or Las Vegas. For the rest of the country, the fan should not run at all after the cooling cycle is over. Setting the Cool Dissipation Time from Auto to 0 will allow the moisture on the evaporator coil to run down into the drain pain and leave the system. If the fan were to continue running, much of that moisture would re-evaporate back into the home. The graph on the right illustrates humidity going back into the home after a cooling cycle as the fan blows air across a wet evaporator. Note: this setting is only available once Configure Staging is set to Manual.
+
+A221088
+
+Installation Settings ? Thresholds ? Reverse Staging
+The Compressor Staging and Heat Staging settings work the same.
+If Reverse Staging is enabled, then the installer must configure values for Stage 2 delta, which is the space temperature deviation required to engage second stage. It is recommended that a Stage 2 Delta of TWO degrees be used when stage 1 was previously set for the standard half degree. This will allow the maximum runtime with just stage 1 operational which will minimize electrical usage and maximize dehumidification. Standard staging should be selected for geothermal systems.
+Standard Staging example: If there is a 74 degree cooling setpoint the 1st stage of cooling will energize when the room temperature climbs to 74.5 degrees. Then, if the temperature continues to climb to 76 degrees, the 2nd stage will come on. Then both will run together until the room temperature is satisfied at 74.
+Reverse staging works example: If there is a 74 degree cooling setpoint the 1st stage of cooling will energize when we reach 74.5 degrees. Then, if the temperature continues to climb to 76 degrees, the 2nd stage will come on. Instead of both stages running to finish the cycle together, stage 2 will de-energize when the room temperature gets back down to 74.5 degrees. Stage 1 then finishes on its own until the room temperature is satisfied at 74. This helps get a longer total run cycle. If the space temperature continues to climb to 76 degrees, then stage 2 could be re-energized if needed. Note: this setting is only available once Configure Staging is set to Manual.
+
+
+
+
+Installation Settings ? Thresholds ? Aux Savings Optimization
+
+A221089
+
+There are lot of settings related to heat pump optimization located in different areas of the thermostat setup. To be energy efficient, a big goal is to minimize the use of auxiliary electric resistance heat. As shown in the table above, a heat pump is often 2 to 3 times more efficient that electric heat, and since both use electricity at the same price, electric heat should only be used when it must be used.
+
+
+A221090
+
+Installation Settings ? Thresholds ? Aux Savings Optimization - continued
+ecobee has an Auxiliary Savings Optimization algorithm with settings that are in language that is supposed to be homeowner friendly. Essentially this setting determines how many degrees out of setpoint AND runtime before auxiliary heat will be engaged. The range is 2.0F (minimum) up to 3.2F (maximum). The default is 2.9F. A higher delta will emphasize Heat Pump vs. Auxiliary Heat therefore minimizing aux heat usage.
+With the default value the Heat Pump would run for the minimum 60 minutes AND the temperature delta from setpoint would need to be more than 2.9F, at which point the Auxiliary heat would be engaged. Once the temperature delta drops within 2.2F to setpoint, the auxiliary heat would be disengaged and only Heat Pump is used. This means the thermostat will reverse-stage automatically as a result.
+
+
+
+
+Installation Settings ? Thresholds ? Configure Staging
+
+A221091
+
+If Manual staging is selected instead of Automatic, up to 5 additional staging options for the Auxiliary heat need to be configured. Unlike straight cooling projects where Manual Staging is recommended be enabled so Reverse Staging could be utilized, the same recommendation is not made for heat pumps. The Auxiliary Staging adds an extra layer of complexity into the mix, especially if there are 2 compression stages plus 2 auxiliary stages, so Automatic Staging should be selected on heat pump applications.
+
+A221092
+
+Installation Settings ? Thresholds ? Auxiliary Heat Maximum Outdoor Temperature
+The Auxiliary Heat Maximum Outdoor Temperature specifies when the heat pump should be able to handle the heating load solo without the need for auxiliary electric heat to assist. Aux heat will be locked out above this temperature.
+The OpCost Calculator mentioned on page 12 can be used to determine the "Thermal Break Point" based on the house load and the heat pump model selected. The "Thermal Break Point" number often varies between 10 and 35 degrees. The default number is conservatively high at 35, and this should be lowered for most modern systems.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Installation Settings ? Thresholds ? Thermal Protect
+
+A221093
+
+The Thermal Protect range tells the thermostat the maximum difference allowed between the thermostat and hottest or coldest rooms in the home. If a sensor measures a temperature that is significantly outside of this range, it probably means the reading is inaccurate. The thermostat will ignore this inaccurate reading to prevent the heating or cooling from running excessively. This setting is adjustable from 10 to 25 degrees.
+
+
+A221094
+
+Installation Settings ? Thresholds ? Temperature and Humidity Correction
+If you notice that the ecobee's temperature and humidity sensor may be slightly off, you can adjust these + or - 10 degrees / + or - 10% for a more accurate reading. Before any adjustments are made, make certain the thermostat has acclimated to its new environment. It is also strongly recommended that the wall penetration behind the thermostat be sealed with a pliable non-hardening/non-permeable putty to prevent interior wall-cavity drafts to influence the thermostats internal sensors.
+
+
+
+
+Installation Settings ? Thresholds ? Installer Code
+
+A221095
+
+It is recommended that professionally installed thermostats be locked out by enabling the Installer Code. This prevents the homeowner from accidentally changing any of the settings in the Equipment, Thresholds, or Test Equipment settings. This lockout feature is separate from the Access Control lockout and password that the homeowner can set for the homeowner settings.
+Write this code down as it is not well documented or easy to find online. The code cannot be changed, as is the same for all thermostats.
+
+A221096
+
+Main Menu ? Sensor Settings
+Several settings can be adjusted for the main thermostat's sensor and the remote sensors.
+For users with SmartSensors, the "Follow Me" feature allows sensors that have occupancy detected to become the active sensors being used. Other sensors without occupancy will be ignored. If more than one sensor detects occupancy (or, motion), they will be averaged.
+The ecobee thermostat makes changes gradually when multiple sensors are detecting occupancy to make sure there are no sudden changes for the heating and cooling system to deal with. Similarly, once someone leaves a room and the sensor stops detecting occupancy, the thermostat's temperature data is gradually (and not immediately) removed from the calculation.
+
+
+
+
+Each sensor can be used with a Comfort Setting (Home, Away, & Sleep).
+
+A221097
+
+At least one sensor (or the thermostat's internal sensor) must be selected (or, checked) per Comfort Setting. If more than one sensor is selected per Comfort Setting, then they will be averaged. If "Follow Me" is on, then only the sensors that are enabled for that Comfort Setting AND are detecting occupancy will be used. The Name of the sensor can also be adjusted.
+
+A221098
+
+                                   Default Settings List Complete list of Threshold, Equipment, Reminder/Alert Preferences Menu ? Settings ? Installation Settings ?Thresholds
+Setting NameDefault SettingDefinitionConventional & Heat Pump SystemsAuto Heat/CoolEnablesIn Auto mode, the thermostat will engage both your heating and cooling as necessary.Heat/Cool Min Delta5°FThe minimum temperature difference between the desired Heat and Cool set points in Auto mode.Configure StagingAutomaticConfigure staging Manually, to select and customize values such as dissipation time, temperature deltas, and
+runtimes for both your heating and cooling equipment. (See *Manual Setting options)Compressor Min Cycle Off Time300 secondsThe amount of time the compressor remains off between cycles.Compressor Min Outdoor Temperature35°FThe AC or Heat Pump compressor will not run below this outdoor temperature.AC Overcool MaxDisabledWill allow the air conditioner to overcool (above Cool set point) by this value to help decrease humidity.Heat Min On Time5 minutesThe minimum amount of time the furnace/boiler will stay on during a call for heat.Compressor Min On Time5 minutesThe minimum amount of time the compressor will stay on.Temperature Correction+0FIf the thermostat sensor reading is incorrect, a correction may be applied to achieve an accurate reading.Humidity Correction+0%If the thermostat sensor reading is incorrect, a correction may be applied to achieve an accurate reading.Thermal ProtectDisabledThe minimum temperature reading difference between sensors that will trigger the algorithm to ignore the
+inaccurate sensor reading.Installer CodeDisabledWhen enabled, this will restrict access to Installation Settings menus. (Code 3262 permits access)Heat Pump Only SystemsAux Savings Optimization2°FThis setting simplifies Heat Pump to Aux Heating staging based on Savings vs. Comfort. The higher the
+temperature setting will sacrifice comfort for savings.Aux Heat Max Outdoor Temperature35°FThe Auxiliary Heat will not run above this outdoor temperature.Aux Min On Time5 minutesThe minimum amount of time your auxiliary heat will stay on during a call for aux heat.Compressor to Aux Temperature DeltaAutoThe minimum number of degrees from the current temperature vs. set point before engaging the auxiliary
+heat.Compressor to Aux RuntimeAutoThe minimum number of minutes the Heat Pump compressor will run for before switching to auxiliary heat.Aux Reverse StagingOffWhen enabled, aux heat will be engaged if the current temperature is greater than the value designated in the
+Compressor to Aux Temperature Delta setting.*Manual Setting OptionsHeat Differential Temperature0.5°FThe minimum temperature differential before engaging heating.Heat Dissipation TimeAutoThe amount of time the fan will continue to run once the heating cycle is completed.Cool Differential TemperatureAutoThe minimum temperature differential before engaging cooling.Cool Dissipation TimeAutoThe amount of time the fan will continue to run once the cooling cycle is completed.Compressor Reverse StagingOffWhen enabled, second stage compressor will be engaged if the current temperature is greater than the value
+designated in the Compressor Stage 2 Temperature Delta setting.Compressor Stage 2 Temperature DeltaAutoThe minimum number of degrees from the current temperature vs. set point before engaging the second stage
+of the compressor.Compressor Stage 1 Max RuntimeAutoThe maximum number of minutes running stage 1 before engaging the second stage of the compressor.Heat Reverse StagingOffWhen enabled, second stage heat will be engaged if the current temperature is greater than the value
+designated in the Heat Stage 2 Temp Delta setting.Heat Stage 2 Temp DeltaAutoThe minimum number of degrees from desired setpoint before engaging the 2nd stage of heat.Heat Stage 1 Max RuntimeAutoThe maximum number of minutes since engaging the first stage of aux heat before engaging the second
+stage.Menu ? Settings ? Installation Settings ? Equipment
+
+Setting NameDefaultDefinitionHumidifierEvaporative or SteamUser DefinedAn "Evaporative" humidifier will operate with a heating cycle where a "Steam" humidifier can operate
+with/without a heating cycle.Min Runtime Delta5%The humidifier will run beyond the desired humidity setpoint by the selected amount.Window Efficiency2The Frost Control setting uses the efficiency rating to determine the desired humidity within the range of 15 to
+50%.DehumidifierDehumidify with FanYesWhen enabled, this will activate the furnace/air handler fan during a call for Dehumidification.Min Runtime Delta5%The dehumidifier will run beyond the desired humidity setpoint by the selected amount.Dehumidify in Heat ModeNoWill permit the Dehumidifier to operate independent of a heating cycle.Dehumidifier ActiveUser DefinedWill determine if the accessory relay should be in an Open or Closed state when active.VentilatorPre-Occupancy PurgeDisabledEnable to run ventilator for 1 hour prior to expected occupancy.Free Cooling Max Outdoor Temperature72°FFree Cooling will not run when the outdoor temperature is above this point.Free Cooling Max Outdoor TemperatureDisabledMaximum Outdoor Humidity to permit Free Cooling to run.Indoor/Outdoor Temperature Delta2°FPermit Free Cooling if Indoor Temp vs. Outdoor Temp is greater than Temperature Delta.Max Desired Temperature DeltaDisabledMaximum delta between current and desired temperature to engage Free Cooling.HRV/ERVPre-Occupancy PurgeDisabledEnable to run ventilator for 1 hour prior to expected occupancy.
+Menu ? Reminders & Alerts ? Preferences
+
+Setting NameDefinitionDefaultHVAC MaintenanceMaintenance interval for the heating & cooling systems.Reminder: Enabled, Frequency: 6
+monthsFurnace FilterThe frequency of filter reminders based on months or runtime hours.Reminder: Enabled, Frequency: 3
+monthsUV LampThe frequency when maintenance is needed based on months or runtime hours.Reminder: DisabledLow Temp AlertWhen indoor temperature meets/exceeds this setting an alert will be generated.Alert: Enabled, 50°FHigh Temp AlertWhen indoor temperature meets/exceeds this setting an alert will be generated.Alert: Enabled, 92°FAux Outdoor Temp AlertAn alert will be generated when Aux Heat is used at this value or above.Alert: 50°FAux Heat Runtime AlertAn alert will be generated when Aux Heat meets/exceeds this runtime value in a 24 hr period.Alert: 3 hrsLow Humidity AlertAn alert will be generated if humidity falls below this value.Alert: DisabledHigh Humidity AlertAn alert will be generated if humidity rises above this value.Alet: DisabledDisplay Alerts on ThermostatWhen enabled, Alerts will also appear on the thermostat display.DisabledEnable Heating/Cooling AlertsAn alert will be generated indicating that the system has failed to heat or cool the indoor location.Enabled
+Resources
+
+
+
+
+ecobee provides multiple online resources and phone support for both homeowners and contractors.
+
+A221099
+
+The phone numbers here are specific to the Pro thermostat models. Since all of the ecobee units are the Pro models, they all have the 5-year warranty. These Pro Support numbers are dedicated for Carrier: customer support is provided by ecobee.
+And as always, go to HVAC Partners and My Learning Center to learn more.
+Training
+My Learning Center is your central location for professional residential HVAC training resources that help strengthen careers and businesses. We believe in providing high quality learning experiences both online and in the classroom.
+Access My Learning Center with your HVACpartners credentials at www.mlctraining.com.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(c) 2022 Carrier. All rights reserved.	Edition Date: 06/22	Catalog No: EBSTATE6CR-01SI
+
+Replaces: New
+
+
+
+
+
+
+
+

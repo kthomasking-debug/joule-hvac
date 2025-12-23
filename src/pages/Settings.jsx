@@ -50,6 +50,7 @@ import {
 import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import EcobeeSettings from "../components/EcobeeSettings";
 import JouleBridgeSettings from "../components/JouleBridgeSettings";
+import TTSServiceSettings from "../components/TTSServiceSettings";
 import StorageUsageIndicator from "../components/StorageUsageIndicator";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
 import AutoSettingsMathEquations from "../components/AutoSettingsMathEquations";
@@ -2936,6 +2937,7 @@ const SettingsPage = () => {
             <Section title="Voice Settings" icon={<Mic size={20} />}>
               <div className="space-y-4">
                 <TTSEngineToggle />
+                <TTSServiceSettings />
                 <VoicePicker />
                 <VoiceListenDurationInput />
                 <FunSafeModeToggle />

@@ -25,6 +25,10 @@ import {
 import { calculateBalancePoint } from "../../utils/balancePointCalculator";
 import { getSystemHealthAlerts } from "../../utils/alertDetector";
 import {
+  getWiringDiagramForQuery,
+  generateEcobeeWiringDiagram,
+} from "../../utils/ecobeeWiringDiagrams";
+import {
   handleSettingCommand,
   handlePresetCommand,
   handleTempAdjustment,
@@ -551,7 +555,7 @@ export function useAskJoule({
   // Handle Offline Intelligence Answers (No API Key Needed)
   const handleOfflineAnswer = (parsed, callbacks) => {
     const { setOutput, speak } = callbacks;
-    const { type, answer, check, needsContext } = parsed;
+    const { type, answer, check, needsContext, query } = parsed;
 
     // Direct answers (knowledge base, calculator, easter egg)
     if (answer) {
@@ -629,6 +633,39 @@ export function useAskJoule({
           "HVAC status not available. Connect your Ecobee thermostat to see real-time status.";
         setOutput({ message: msg, status: "info" });
         // Note: setOutput automatically handles TTS, so no need to call speak() again
+        return true;
+      }
+
+      if (type === "wiring") {
+        // Answer wiring questions from knowledge base
+        const queryLower = (query || "").toLowerCase();
+        const wiringAnswers = {
+          "r wire": "R terminal (Red wire) provides 24VAC power to the thermostat. It's required for all systems and connects to the transformer's hot side.",
+          "c wire": "C terminal (Common, typically Blue or Black wire) provides the 24VAC return path. Required for Ecobee thermostats. If missing, you may need a Power Extender Kit (PEK).",
+          "y wire": "Y terminal (Yellow wire) controls cooling. Connects to the air conditioner compressor contactor or heat pump compressor.",
+          "w wire": "W terminal (White wire) controls heating. In conventional systems, activates furnace. In heat pumps, activates auxiliary/emergency heat.",
+          "g wire": "G terminal (Green wire) controls the fan independently. Allows fan to run without heating or cooling for air circulation.",
+          "o wire": "O terminal (Orange wire) controls the reversing valve on heat pumps. Energized when cooling - used by most brands (Carrier, Trane, Lennox).",
+          "b wire": "B terminal (Brown wire) controls reversing valve on some heat pumps. Energized when heating - used by Rheem, Ruud, and some older systems.",
+          "reversing valve": "The reversing valve switches heat pump between heating and cooling modes. Most systems use O terminal (energized on cool), but Rheem/Ruud use B terminal (energized on heat).",
+          "aux heat": "Auxiliary heat (W1 terminal, White wire) activates backup heat when the heat pump can't keep up. Typically engages below 35-40°F outdoor temperature.",
+          "accessory terminal": "ACC+ and ACC- terminals provide 24VAC power for accessories like humidifiers, dehumidifiers, or ventilators. Controlled by Ecobee settings.",
+        };
+
+        // Try to match specific wire/terminal question
+        let wiringAnswer = null;
+        for (const [key, value] of Object.entries(wiringAnswers)) {
+          if (queryLower.includes(key)) {
+            wiringAnswer = value;
+            break;
+          }
+        }
+
+        if (!wiringAnswer) {
+          wiringAnswer = "Common Ecobee terminals: R (24VAC power), C (common), Y (cooling), W (heating), G (fan), O/B (reversing valve for heat pumps). Ask for a wiring diagram to see the full connection layout.";
+        }
+
+        setOutput({ message: wiringAnswer, status: "info" });
         return true;
       }
 
@@ -932,6 +969,50 @@ export function useAskJoule({
         console.log("[AskJoule] Handling offline answer:", parsed);
       }
       return handleOfflineAnswer(parsed, callbacks);
+    }
+
+    // 0.6. Wiring Diagrams (High Priority - No API Key Needed)
+    if (parsed.action === "wiringDiagram") {
+      if (import.meta.env.DEV) {
+        console.log("[AskJoule] Handling wiring diagram request:", parsed);
+      }
+      try {
+        const query = parsed.query || "";
+        // Try to get wiring config from user settings if available
+        const wiringConfig = userSettings?.equipment?.wiring || {};
+        const config = {
+          hasHeat: wiringConfig.hasHeat !== false,
+          hasCool: wiringConfig.hasCool !== false,
+          hasFan: wiringConfig.hasFan !== false,
+          hasAuxHeat: wiringConfig.hasAuxHeat || false,
+          hasHeatPump: userSettings?.equipment?.heatPump?.type === "air-to-air" || userSettings?.equipment?.heatPump?.type === "geothermal",
+          reversingValve: userSettings?.equipment?.heatPump?.reversingValve || "O",
+          hasHumidifier: wiringConfig.hasHumidifier || false,
+          hasDehumidifier: wiringConfig.hasDehumidifier || false,
+        };
+        
+        // Generate diagram based on query or user settings
+        const diagram = query 
+          ? getWiringDiagramForQuery(query)
+          : generateEcobeeWiringDiagram(config);
+        
+        const message = diagram + "\n\nTip: You can ask for specific configurations like 'wiring diagram for heat pump with aux heat' or 'show me wiring for conventional system'.";
+        
+        setOutput({ message, status: "info" });
+        setAgenticResponse({
+          success: true,
+          message,
+          source: "wiringDiagram",
+        });
+        return true;
+      } catch (error) {
+        console.error("[AskJoule] Error generating wiring diagram:", error);
+        setOutput({
+          message: "Error generating wiring diagram. Please try again.",
+          status: "error",
+        });
+        return true;
+      }
     }
 
     // 1. Setting Commands

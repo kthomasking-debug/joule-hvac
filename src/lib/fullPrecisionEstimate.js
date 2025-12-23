@@ -47,9 +47,10 @@ function runDayScenario(profileHours, indoorStrategyFn, settings) {
         hour.temp,
         hour.humidity
       );
-      const kwh = perf.electricalKw * ((perf.capacityUtilization || perf.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
+      // perf.hpKwh is already energy (kWh) for the timestep, scaled by dtHours
+      const kwh = perf.hpKwh || 0;
       totalEnergy += kwh;
-      const aux = settings.useElectricAuxHeat ? perf.auxKw || 0 : 0;
+      const aux = settings.useElectricAuxHeat ? perf.auxKwh || 0 : 0;
       totalAux += aux;
       totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
       if (settings.useElectricAuxHeat)
@@ -71,7 +72,12 @@ function runDayScenario(profileHours, indoorStrategyFn, settings) {
         hour.temp,
         hour.humidity
       );
-      const kwh = perfCool.electricalKw * ((perfCool.capacityUtilization || perfCool.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
+      // perfCool.electricalKw is power (kW), multiply by runtime to get energy (kWh)
+      // For cooling, electricalKw represents average power over the hour when running
+      // Note: cooling performance returns electricalKw as power, runtime as percentage
+      const kwh = perfCool.electricalKw !== undefined && perfCool.runtime !== undefined
+        ? perfCool.electricalKw * (perfCool.runtime / 100)
+        : 0;
       totalEnergy += kwh;
       totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
     }

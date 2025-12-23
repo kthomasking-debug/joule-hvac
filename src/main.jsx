@@ -84,6 +84,23 @@ const router = createBrowserRouter(
           index: true,
           element: <Navigate to="/onboarding" replace />,
         },
+        // Redirect old tool paths to new /tools/ paths for backward compatibility
+        {
+          path: "energyplus",
+          element: <Navigate to="/tools/energyplus" replace />,
+        },
+        {
+          path: "wiring-diagram",
+          element: <Navigate to="/tools/wiring-diagram" replace />,
+        },
+        {
+          path: "equipment-settings",
+          element: <Navigate to="/tools/equipment-settings" replace />,
+        },
+        {
+          path: "hvac-troubleshooting",
+          element: <Navigate to="/tools/hvac-troubleshooting" replace />,
+        },
         ...routes
           .filter((route) => route.path !== "/") // Remove landing page route
           .map((route) => ({

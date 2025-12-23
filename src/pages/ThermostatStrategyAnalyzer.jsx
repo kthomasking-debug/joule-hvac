@@ -48,9 +48,10 @@ function runScenario(profileHours, indoorStrategyFn, settings, heatLoss) {
         compressorPower: settings.compressorPower,
         hspf2: settings.hspf2 || 9.0,
       }, hour.temp, hour.humidity);
-      const kwh = perf.electricalKw * (perf.capacityUtilization / 100); // Using capacityUtilization, not time-based runtime
+      // perf.hpKwh is already energy (kWh) for the timestep, scaled by dtHours
+      const kwh = perf.hpKwh || 0;
       totalEnergy += kwh;
-      const aux = settings.useElectricAuxHeat ? perf.auxKw : 0;
+      const aux = settings.useElectricAuxHeat ? perf.auxKwh || 0 : 0;
       totalAux += aux;
       totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
       if (settings.useElectricAuxHeat) totalCost += computeHourlyCost(aux, hour.time, [], settings.utilityCost);
@@ -240,9 +241,10 @@ export default function ThermostatStrategyAnalyzer() {
             heatLossBtu: heatLossBtu,
             compressorPower: settings.compressorPower,
           }, hour.temp, hour.humidity);
-          const kwh = perf.electricalKw * (perf.capacityUtilization / 100); // Using capacityUtilization, not time-based runtime
+          // perf.hpKwh is already energy (kWh) for the timestep, scaled by dtHours
+          const kwh = perf.hpKwh || 0;
           totalEnergy += kwh;
-          const aux = settings.useElectricAuxHeat ? perf.auxKw : 0;
+          const aux = settings.useElectricAuxHeat ? perf.auxKwh || 0 : 0;
           totalAux += aux;
           totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
           if (settings.useElectricAuxHeat) totalCost += computeHourlyCost(aux, hour.time, [], settings.utilityCost);
@@ -254,7 +256,11 @@ export default function ThermostatStrategyAnalyzer() {
             seer2: settings.seer2,
             solarExposure: 1.0,
           }, hour.temp, hour.humidity);
-          const kwh = perfCool.electricalKw * (perfCool.runtime / 100);
+          // For cooling, electricalKw is power (kW), runtime is percentage
+          // Energy = power × (runtime / 100) × 1 hour
+          const kwh = perfCool.electricalKw !== undefined && perfCool.runtime !== undefined
+            ? perfCool.electricalKw * (perfCool.runtime / 100)
+            : 0;
           totalEnergy += kwh;
           totalCost += computeHourlyCost(kwh, hour.time, [], settings.utilityCost);
         }

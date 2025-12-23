@@ -938,6 +938,8 @@ const SevenDayCostForecaster = () => {
           insulationLevel: insulationLevel || 1.0,
           homeShape: homeShape || 1.0,
           ceilingHeight: ceilingHeight || 8,
+          wallHeight: userSettings?.wallHeight ?? null,
+          hasLoft: userSettings?.hasLoft || false,
         });
         return designHeatLoss; // BTU/hr at ~70°F delta
       } catch (e) {
@@ -957,6 +959,8 @@ const SevenDayCostForecaster = () => {
         insulationLevel: insulationLevel || 1.0,
         homeShape: homeShape || 1.0,
         ceilingHeight: ceilingHeight || 8,
+        wallHeight: userSettings?.wallHeight ?? null,
+        hasLoft: userSettings?.hasLoft || false,
       });
       return designHeatLoss;
     } catch (e) {
@@ -969,6 +973,8 @@ const SevenDayCostForecaster = () => {
     userSettings?.useAnalyzerHeatLoss,
     userSettings?.manualHeatLoss,
     userSettings?.analyzerHeatLoss, // Added: analyzer heat loss from userSettings
+    userSettings?.wallHeight,
+    userSettings?.hasLoft,
     useCalculatedFactor,
     heatLossFactor,
     heatLoss,
@@ -1011,8 +1017,9 @@ const SevenDayCostForecaster = () => {
       const params = {
         tons: safeTons,
         indoorTemp: safeIndoorTemp,
-        heatLossBtu: safeEffectiveHeatLoss,
+        designHeatLossBtuHrAt70F: safeEffectiveHeatLoss,
         compressorPower: safeCompressorPower,
+        hspf2: hspf2,
       };
       return heatUtils.computeHourlyPerformance(params, safeOutdoorTemp, safeHumidity);
     },
@@ -1365,13 +1372,8 @@ const SevenDayCostForecaster = () => {
   const manualDayMetrics = useMemo(() => {
     const perf = getPerformanceAtTemp(manualTemp, manualHumidity);
 
-    const electricalKw =
-      typeof perf?.electricalKw === "number" ? perf.electricalKw : NaN;
-    const runtime = typeof perf?.capacityUtilization === "number" ? perf.capacityUtilization : (typeof perf?.runtime === "number" ? perf.runtime : NaN); // Prefer capacityUtilization, fallback to runtime for backward compatibility
-    const hourlyEnergy =
-      Number.isFinite(electricalKw) && Number.isFinite(runtime)
-        ? electricalKw * (runtime / 100)
-        : NaN;
+    // perf.hpKwh is already energy (kWh) for 1 hour (dtHours = 1.0 by default)
+    const hourlyEnergy = typeof perf?.hpKwh === "number" ? perf.hpKwh : NaN;
     const dailyEnergy = Number.isFinite(hourlyEnergy) ? hourlyEnergy * 24 : NaN;
     const dailyCost =
       Number.isFinite(dailyEnergy) && Number.isFinite(utilityCost)
@@ -1405,8 +1407,10 @@ const SevenDayCostForecaster = () => {
       let totalCostWithAux = 0;
       tempAdjustedForecast.forEach((hour) => {
         const perf = getPerformanceAtTemp(hour.temp, hour.humidity);
-        const energyForHour = perf.electricalKw * ((perf.capacityUtilization || perf.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
-        const auxEnergyForHour = perf.auxKw;
+        // perf.hpKwh is already energy (kWh) for the timestep, scaled by dtHours
+        const energyForHour = perf.hpKwh || 0;
+        // perf.auxKwh is already energy (kWh) for the timestep, scaled by dtHours
+        const auxEnergyForHour = perf.auxKwh || 0;
         const effectiveAuxEnergyForHour = useElectricAuxHeatSetting
           ? auxEnergyForHour
           : 0;
@@ -1727,9 +1731,9 @@ const SevenDayCostForecaster = () => {
       const perf = getPerformanceAtTemp(hour.temp, hour.humidity);
       // Use constant temp for all hours (no schedule)
       const tempDiff = Math.max(0, constantTemp - hour.temp);
-      if (tempDiff > 0 && (perf.capacityUtilization || perf.runtime || 0) > 0) {
-        const duty = Math.min(100, Math.max(0, perf.capacityUtilization || perf.runtime || 0)); // Using capacityUtilization, not time-based runtime
-        const hourlyCost = perf.electricalKw * (duty / 100) * utilityCost;
+      if (tempDiff > 0 && perf.hpKwh !== undefined) {
+        // perf.hpKwh is already energy (kWh) for the hour
+        const hourlyCost = (perf.hpKwh || 0) * utilityCost;
         baselineTotal += hourlyCost;
       }
     });
@@ -4293,41 +4297,50 @@ const SevenDayCostForecaster = () => {
                           const examplePerf = getPerformanceAtTemp(exampleTemp, exampleHumidity);
                           const tempDiff = Math.max(1, indoorTemp - exampleTemp);
                           const buildingHeatLossBtu = ((effectiveHeatLoss || 0) / 70) * tempDiff;
-                          // Calculate capacity factor (same logic as heatUtils)
-                          let capacityFactor = 1.0;
-                          if (exampleTemp < 47) capacityFactor = 1.0 - (47 - exampleTemp) * 0.01;
-                          if (exampleTemp < 17) capacityFactor = 0.70 - (17 - exampleTemp) * 0.0074;
-                          capacityFactor = Math.max(0.3, capacityFactor);
+                          // Use heatUtils function to match actual calculation exactly
+                          const capacityFactor = heatUtils.getCapacityFactor(exampleTemp, -15);
                           // Calculate heat output
                           // Correct formula: tons × 12,000 BTU/ton × capacity factor
-                          // (NOT tons × 3.517 × capacityFactor × 3412 - that multiplies two conversion factors incorrectly)
                           const BTU_PER_TON = 12000;
                           const heatpumpOutputBtu = tons * BTU_PER_TON * capacityFactor;
+                          // Calculate hourly energy and cost
+                          const hourlyEnergyKwh = examplePerf.hpKwh || 0; // Already energy (kWh) for 1 hour
+                          const hourlyCost = hourlyEnergyKwh * utilityCost;
+                          const auxEnergyKwh = examplePerf.auxKwh || 0;
+                          const totalHourlyEnergy = hourlyEnergyKwh + auxEnergyKwh;
+                          const totalHourlyCost = hourlyCost + (auxEnergyKwh * utilityCost);
                           return (
                             <>
                               Capacity Factor: <strong>{capacityFactor.toFixed(3)}</strong><br />
                               Defrost Penalty: <strong>{(examplePerf.defrostPenalty || 1.0).toFixed(3)}</strong><br />
                               Electrical Power: <strong>{(examplePerf.electricalKw || 0).toFixed(2)} kW</strong><br />
                               <span className="text-gray-400 text-xs">
-                                (Rated: {compressorPower.toFixed(2)} kW × Power Factor × Defrost Penalty)
+                                (Average power used over the hour)
                               </span><br />
                               Heat Output: <strong>{(heatpumpOutputBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
                               <span className="text-gray-400 text-xs">
                                 ({tons} tons × 12,000 BTU/ton × {capacityFactor.toFixed(3)})
                               </span><br />
                               Building Heat Loss: <strong>{(buildingHeatLossBtu / 1000).toFixed(0)}k BTU/hr</strong><br />
-                              Runtime: <strong>{((examplePerf.capacityUtilization || examplePerf.runtime) || 0).toFixed(1)}%</strong><br />
+                              Capacity Utilization: <strong>{((examplePerf.capacityUtilization || examplePerf.runtime) || 0).toFixed(1)}%</strong><br />
                               <span className="text-gray-400 text-xs">
                                 ({((buildingHeatLossBtu / heatpumpOutputBtu) * 100).toFixed(1)}% = {buildingHeatLossBtu.toFixed(0)} ÷ {heatpumpOutputBtu.toFixed(0)})
                               </span><br />
-                              {examplePerf.auxKw > 0 && (
+                              {auxEnergyKwh > 0 && (
                                 <>
-                                  Aux Heat: <strong>{(examplePerf.auxKw || 0).toFixed(2)} kW</strong><br />
+                                  Aux Heat Energy: <strong>{(auxEnergyKwh).toFixed(2)} kWh</strong><br />
                                 </>
                               )}
                               <br />
-                              Hourly Cost @ {((examplePerf.capacityUtilization || examplePerf.runtime) || 0).toFixed(1)}%: <strong>${((examplePerf.electricalKw || 0) * ((examplePerf.capacityUtilization || examplePerf.runtime) || 0) / 100 * utilityCost).toFixed(3)}</strong><br />
-                              = {(examplePerf.electricalKw || 0).toFixed(2)} kW * ({((examplePerf.capacityUtilization || examplePerf.runtime) || 0).toFixed(1)}% / 100) * ${utilityCost.toFixed(2)}/kWh
+                              Energy for Hour: <strong>{(hourlyEnergyKwh).toFixed(3)} kWh</strong><br />
+                              <span className="text-gray-400 text-xs">
+                                (From delivered heat / effective COP)
+                              </span><br />
+                              Hourly Cost: <strong>${(hourlyCost).toFixed(3)}</strong><br />
+                              <span className="text-gray-400 text-xs">
+                                = {hourlyEnergyKwh.toFixed(3)} kWh × ${utilityCost.toFixed(3)}/kWh
+                                {auxEnergyKwh > 0 && ` + ${auxEnergyKwh.toFixed(3)} kWh aux = $${totalHourlyCost.toFixed(3)}`}
+                              </span>
                             </>
                           );
                         })()}

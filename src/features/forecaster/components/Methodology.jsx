@@ -78,31 +78,33 @@ const Methodology = ({
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-6">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-            View Calculation Methodology
-          </h3>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleCopy}
-            className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-            title="Copy calculation methodology to clipboard"
-          >
-            Copy
-          </button>
-          {show ? (
-            <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-          ) : (
-            <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-          )}
-        </div>
-      </button>
+      <div className="w-full flex items-center justify-between p-6">
+        <button
+          onClick={onToggle}
+          className="flex-1 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors rounded-md -m-2 p-2"
+        >
+          <div className="flex items-center gap-3">
+            <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              View Calculation Methodology
+            </h3>
+          </div>
+          <div className="flex items-center gap-3">
+            {show ? (
+              <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            ) : (
+              <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            )}
+          </div>
+        </button>
+        <button
+          onClick={handleCopy}
+          className="ml-2 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+          title="Copy calculation methodology to clipboard"
+        >
+          Copy
+        </button>
+      </div>
 
       {show && (
         <div

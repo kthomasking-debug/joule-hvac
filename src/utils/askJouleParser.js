@@ -369,6 +369,12 @@ function calculateOfflineAnswer(query) {
     /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|old|worn)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)/.test(
       q
     ) ||
+    /(?:could|can|would|does|is)\s+(?:the|a|my)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)\s+(?:be\s+)?(?:clogged|dirty|filthy|old|worn)/.test(
+      q
+    ) || // "could the filter be clogged" (note: cleanInput removes "could" so this won't match after cleaning)
+    /^(?:the|a|my)\s+(?:filter|air\s+filter|furnace\s+filter|hvac\s+filter)\s+(?:be\s+)?(?:clogged|dirty|filthy|old|worn)/.test(
+      q
+    ) || // "the filter be clogged" (after cleanInput removes "could")
     /(?:why|how)\s+(?:am\s+i|do\s+i)\s+using\s+so\s+much\s+energy.*filter/i.test(q) ||
     /dirty\s+(?:fliter|filter).*question/i.test(q) ||
     /(?:could|can|would|does|is)\s+(?:a\s+)?(?:dirty|clogged|filthy|iced|frozen)\s+(?:coil|evaporator\s+coil|condenser\s+coil|indoor\s+coil|outdoor\s+coil)/.test(
@@ -407,12 +413,16 @@ function calculateOfflineAnswer(query) {
   // Match: "what causes short cycling", "what is short cycling", "explain short cycling", "short cycling???"
   // Don't match: "why is my system short cycling" (specific problem - needs LLM context)
   // Must check this BEFORE other short cycling patterns - check for question marks first
+  // Note: cleanInput removes trailing ? so "short cycling???" becomes "short cycling"
+  // So we need to match standalone "short cycling" as a knowledge question
   if (
-    /^short\s+cycl.*\?+$/i.test(q) || // "short cycling???" with question marks - must be first
+    /^short\s+cycl.*\?+$/i.test(q) || // "short cycling???" with question marks (if not cleaned yet)
+    /^short\s+cycl(?:ing)?\s*$/i.test(q) || // "short cycling" or "short cycle" as standalone phrase (after cleaning)
     (/^what\s+(?:is|causes?|does)\s+short\s+cycl/.test(q) ||
       /^explain\s+short\s+cycl/.test(q) ||
       (/short\s+cycl/.test(q) && /^what\s+(?:is|causes?)/.test(q))) &&
-    !/^(?:why|how)\s+(?:is|are|does)\s+(?:my|the|your)/.test(q) // Exclude "why is my..." questions
+    !/^(?:why|how)\s+(?:is|are|does)\s+(?:my|the|your)/.test(q) && // Exclude "why is my..." questions
+    !/(?:my|the|your|this|system|furnace|ac|unit)\s+short\s+cycl/i.test(q) // Exclude "my system short cycling" (specific problem)
   ) {
     return {
       action: "offlineAnswer",
@@ -4403,6 +4413,18 @@ function parseCommandLocal(query, context = {}) {
 
   // NOTE: Help, score, savings, and system status are handled at the top of this function
   // to ensure they work even when phrased as questions
+
+  // Wiring diagram queries
+  if (
+    /(?:show|display|generate|create|draw|give\s+me|i\s+need|how\s+do\s+i\s+wire|wiring\s+diagram|wire\s+diagram|ecobee\s+wiring|thermostat\s+wiring|how\s+to\s+wire\s+(?:an\s+)?ecobee)/i.test(
+      q
+    ) ||
+    /(?:what\s+(?:are\s+)?(?:the\s+)?wires?|which\s+wires?|where\s+do\s+(?:the\s+)?wires?|how\s+are\s+wires?\s+connected)/i.test(
+      q
+    )
+  ) {
+    return { action: "wiringDiagram", isCommand: true, query: q };
+  }
 
   // Educational queries
   if (

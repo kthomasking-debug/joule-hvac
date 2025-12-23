@@ -24,6 +24,11 @@ const ThermostatStrategyAnalyzer = lazy(() =>
 const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
 const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Tools = lazy(() => import("./pages/Tools"));
+const EnergyPlusLoadCalc = lazy(() => import("./pages/EnergyPlusLoadCalc"));
+const WiringDiagramGenerator = lazy(() => import("./pages/WiringDiagramGenerator"));
+const EquipmentSettingsGuide = lazy(() => import("./pages/EquipmentSettingsGuide"));
+const HVACTroubleshooting = lazy(() => import("./pages/HVACTroubleshooting"));
 const AskJouleHelp = lazy(() => import("./pages/AskJouleHelp"));
 const ContactorDemo = lazy(() => import("./pages/ContactorDemo"));
 const SmartThermostatDemo = lazy(() => import("./pages/SmartThermostatDemo"));
@@ -70,6 +75,10 @@ import {
   ShoppingCart,
   Heart,
   Bug,
+  Calculator,
+  Cable,
+  Wrench,
+  Wrench as Tool,
 } from "lucide-react";
 
 export const routes = [
@@ -375,6 +384,62 @@ export const routes = [
     hideInNav: true,
     inMobileNav: false,
     inPrimaryNav: false,
+  },
+  // ===== TOOLS SECTION =====
+  {
+    path: "/tools",
+    name: "Tools",
+    label: "Tools",
+    icon: Tool,
+    Component: Tools,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "HVAC calculation, wiring, and troubleshooting tools",
+  },
+  {
+    path: "/tools/energyplus",
+    name: "EnergyPlus Load Calc",
+    label: "EnergyPlus Load Calculator",
+    icon: Calculator,
+    Component: EnergyPlusLoadCalc,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "ACCA Manual J-compliant load calcs using DOE EnergyPlus. Get your BTUs, tons, and sizing right the first time. No more guessing on SEER, HSPF, or AFUE ratings.",
+  },
+  {
+    path: "/tools/wiring-diagram",
+    name: "Wiring Diagram Generator",
+    label: "Wiring Diagram Generator",
+    icon: Cable,
+    Component: WiringDiagramGenerator,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Generate ASCII wiring diagrams for Ecobee thermostat installs. Handles PEK setups, heat pump configs, conventional systems, and all that jazz. No C-wire? No problem.",
+  },
+  {
+    path: "/tools/equipment-settings",
+    name: "Equipment Settings Guide",
+    label: "Equipment Settings Guide",
+    icon: SettingsIcon,
+    Component: EquipmentSettingsGuide,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Answers to equipment compatibility Qs and config guides. Boiler setups, heat pump settings, aux heat thresholds - all the deets you need to dial it in.",
+  },
+  {
+    path: "/tools/hvac-troubleshooting",
+    name: "HVAC Troubleshooting",
+    label: "HVAC Troubleshooting",
+    icon: Wrench,
+    Component: HVACTroubleshooting,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Step-by-step troubleshooting guides for common HVAC problems. Short cycling, no heat, frozen coils, pressure switch issues - we got you covered.",
   },
   {
     path: "/onboarding",

@@ -769,8 +769,11 @@ export function computeWeeklyMetrics(
     }
     // Pass hour.time to getPerformanceAtTemp so it can use schedule-aware temperature
     const perf = getPerformanceAtTemp(hour.temp, hour.humidity, hour.time);
-    const energyForHour = perf.electricalKw * ((perf.capacityUtilization || perf.runtime || 0) / 100); // Using capacityUtilization, not time-based runtime
-    const auxEnergyForHour = perf.auxKw;
+    // perf.hpKwh is already energy (kWh) for the timestep, scaled by dtHours
+    // Contract: Do NOT multiply by dtHours - it's already included
+    const energyForHour = perf.hpKwh || 0;
+    // perf.auxKwh is already energy (kWh) for the timestep, scaled by dtHours
+    const auxEnergyForHour = perf.auxKwh || 0;
 
     // Note: The actual indoor temp used is determined inside getPerformanceAtTemp
     // We use the default indoorTemp for achieved temp calculation
