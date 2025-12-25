@@ -233,9 +233,19 @@ export function getCommonWiringDiagrams() {
 
 /**
  * Detect system type from query and return appropriate diagram
+ * Always returns a diagram - defaults to conventional system if unclear
  */
 export function getWiringDiagramForQuery(query) {
-  const q = query.toLowerCase();
+  if (!query || typeof query !== 'string' || query.trim().length === 0) {
+    // Return default conventional diagram for empty queries
+    return generateEcobeeWiringDiagram({
+      hasHeat: true,
+      hasCool: true,
+      hasFan: true,
+    });
+  }
+  
+  const q = query.toLowerCase().trim();
   
   // Detect system type
   let config = {
@@ -247,20 +257,42 @@ export function getWiringDiagramForQuery(query) {
     reversingValve: 'O',
   };
 
-  if (q.includes('heat pump') || q.includes('heatpump')) {
+  // Heat pump detection - expanded keywords
+  const heatPumpKeywords = ['heat pump', 'heatpump', 'hp', 'reversing valve', 'o/b', 'o wire', 'b wire', 'reversing'];
+  const isHeatPump = heatPumpKeywords.some(keyword => q.includes(keyword));
+  
+  if (isHeatPump) {
     config.hasHeatPump = true;
-    if (q.includes('aux') || q.includes('emergency') || q.includes('backup')) {
+    // Aux heat detection - expanded keywords
+    const auxKeywords = ['aux', 'auxiliary', 'emergency', 'backup', 'supplemental', 'strip', 'electric heat', 'resistance heat'];
+    if (auxKeywords.some(keyword => q.includes(keyword))) {
       config.hasAuxHeat = true;
     }
-    if (q.includes('b wire') || q.includes('b terminal') || q.includes('rheem') || q.includes('ruud')) {
+    // B wire detection - expanded keywords
+    const bWireKeywords = ['b wire', 'b terminal', 'rheem', 'ruud', 'energized on heat'];
+    if (bWireKeywords.some(keyword => q.includes(keyword))) {
       config.reversingValve = 'B';
     }
-  } else if (q.includes('heat only') || q.includes('heating only')) {
+  } 
+  // Conventional system detection
+  else if (q.includes('conventional') || q.includes('standard') || q.includes('traditional') || 
+           q.includes('furnace') || q.includes('boiler') || q.includes('gas heat')) {
+    // Default config is already conventional
+  }
+  // Heat only detection - expanded keywords
+  else if (q.includes('heat only') || q.includes('heating only') || q.includes('no cool') || 
+           q.includes('no ac') || q.includes('no cooling') || 
+           (q.includes('only heat') || q.includes('just heat'))) {
     config.hasCool = false;
-  } else if (q.includes('cool only') || q.includes('cooling only') || q.includes('ac only')) {
+  } 
+  // Cool only detection - expanded keywords
+  else if (q.includes('cool only') || q.includes('cooling only') || q.includes('ac only') || 
+           q.includes('no heat') || q.includes('no heating') || q.includes('only cool') || 
+           q.includes('just cool') || q.includes('just ac')) {
     config.hasHeat = false;
   }
 
+  // Accessory detection
   if (q.includes('humidifier') || q.includes('humidify')) {
     config.hasHumidifier = true;
   }
@@ -268,6 +300,7 @@ export function getWiringDiagramForQuery(query) {
     config.hasDehumidifier = true;
   }
 
+  // Always return a diagram - defaults to conventional system if unclear
   return generateEcobeeWiringDiagram(config);
 }
 

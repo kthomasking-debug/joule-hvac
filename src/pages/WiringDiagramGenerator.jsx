@@ -196,9 +196,35 @@ export default function WiringDiagramGenerator() {
     // Try to generate standard diagram
     try {
       const generated = getWiringDiagramForQuery(query);
-      setDiagram(generated);
+      if (generated && generated.trim().length > 0) {
+        setDiagram(generated);
+        setError(null); // Clear any previous errors
+      } else {
+        // Fallback to default conventional diagram if generation failed
+        const defaultDiagram = generateEcobeeWiringDiagram({
+          hasHeat: true,
+          hasCool: true,
+          hasFan: true,
+        });
+        setDiagram(defaultDiagram);
+        setError(null);
+      }
     } catch (err) {
-      setError("Could not generate diagram. Try describing your system type (e.g., 'heat pump with aux heat', 'conventional system', 'no C wire').");
+      // If error message is helpful, use it; otherwise provide generic message
+      const errorMsg = err.message || "Could not generate diagram. Try describing your system type (e.g., 'heat pump with aux heat', 'conventional system', 'no C wire').";
+      setError(errorMsg);
+      // Still try to show a default diagram
+      try {
+        const defaultDiagram = generateEcobeeWiringDiagram({
+          hasHeat: true,
+          hasCool: true,
+          hasFan: true,
+        });
+        setDiagram(defaultDiagram);
+      } catch (fallbackErr) {
+        // If even default fails, just show error
+        console.error("Failed to generate default diagram:", fallbackErr);
+      }
     }
   };
 
