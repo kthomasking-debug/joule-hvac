@@ -49,9 +49,12 @@ export default function EnergyPlusLoadCalc() {
   const [windowType, setWindowType] = useState("double");
   const [orientation, setOrientation] = useState("north");
 
-  // Check service status on mount
+  // Check service status on mount (with delay to avoid immediate console errors)
   useEffect(() => {
-    checkServiceStatus();
+    const timer = setTimeout(() => {
+      checkServiceStatus();
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleRAGSearch = async () => {
@@ -103,9 +106,32 @@ export default function EnergyPlusLoadCalc() {
     }
   };
 
-  const checkServiceStatus = async () => {
+  // Get backend URL (bridge URL if configured, otherwise localhost:3001)
+  const getBackendUrl = () => {
     try {
-      const response = await fetch("http://localhost:3001/api/energyplus/status");
+      const bridgeUrl = localStorage.getItem('jouleBridgeUrl');
+      if (bridgeUrl && bridgeUrl !== 'http://localhost:8080') {
+        // Use bridge URL (remove trailing slash if present)
+        return bridgeUrl.replace(/\/$/, '');
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+    // Fallback to localhost:3001 (Node.js temp server)
+    return 'http://localhost:3001';
+  };
+
+  const checkServiceStatus = async () => {
+    const backendUrl = getBackendUrl();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+      
+      const response = await fetch(`${backendUrl}/api/energyplus/status`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         throw new Error(`Service status check failed: ${response.status}`);
       }
@@ -113,28 +139,50 @@ export default function EnergyPlusLoadCalc() {
       setServiceStatus(status);
     } catch (err) {
       // Service is not available - handle connection errors silently
-      const isConnectionError = !err.message || 
+      // Don't log expected connection errors (browser will log network errors automatically)
+      if (err.name === 'AbortError' || !err.message || 
         err.message.includes('Failed to fetch') || 
         err.message.includes('ERR_CONNECTION_REFUSED') ||
-        err.message.includes('NetworkError');
-      if (isConnectionError) {
+        err.message.includes('NetworkError')) {
         setServiceStatus({
           status: "error",
           energyplus_available: false,
           method: "simplified",
-          error: "EnergyPlus service not available. Click 'Start Service' to launch it.",
+          error: backendUrl.includes('localhost:3001') 
+            ? "Backend server not running. See instructions below to start it."
+            : "EnergyPlus service not available on bridge server.",
+          backendUrl: backendUrl,
+          needsBackend: backendUrl.includes('localhost:3001'),
         });
       } else {
-        // Re-throw unexpected errors
-        throw err;
+        // Only log unexpected errors
+        console.warn("Service status check error:", err);
+        setServiceStatus({
+          status: "error",
+          energyplus_available: false,
+          method: "simplified",
+          error: "EnergyPlus service not available.",
+          backendUrl: backendUrl,
+        });
       }
     }
   };
 
   const handleStartService = async () => {
     setStartingService(true);
+    setError(null);
+    const backendUrl = getBackendUrl();
+    
+    // If using bridge URL, service is already available (no need to start)
+    if (!backendUrl.includes('localhost:3001')) {
+      setError("EnergyPlus service is available on the bridge server. No need to start it separately.");
+      setStartingService(false);
+      checkServiceStatus();
+      return;
+    }
+    
     try {
-      const response = await fetch("http://localhost:3001/api/energyplus/start", {
+      const response = await fetch(`${backendUrl}/api/energyplus/start`, {
         method: "POST",
       });
       const data = await response.json();
@@ -148,8 +196,16 @@ export default function EnergyPlusLoadCalc() {
         setError(data.error || "Failed to start EnergyPlus service");
       }
     } catch (err) {
-      setError(err.message || "Failed to start EnergyPlus service");
-      console.error("Error starting EnergyPlus service:", err);
+      // Only show user-friendly error, don't log connection errors to console
+      const isConnectionError = err.message?.includes('Failed to fetch') || 
+        err.message?.includes('ERR_CONNECTION_REFUSED') ||
+        err.message?.includes('NetworkError');
+      if (isConnectionError) {
+        setError("Backend server is not running. See instructions below.");
+      } else {
+        setError(err.message || "Failed to start EnergyPlus service");
+        console.error("Error starting EnergyPlus service:", err);
+      }
     } finally {
       setStartingService(false);
     }
@@ -173,7 +229,8 @@ export default function EnergyPlusLoadCalc() {
       // Try EnergyPlus API first
       let useSimplified = false;
       try {
-        const response = await fetch("http://localhost:3001/api/energyplus/calculate", {
+        const backendUrl = getBackendUrl();
+      const response = await fetch(`${backendUrl}/api/energyplus/calculate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(params),
@@ -271,7 +328,8 @@ export default function EnergyPlusLoadCalc() {
         throw new Error("Please enter both zip code and equipment SKU");
       }
 
-      const response = await fetch("http://localhost:3001/api/rebates/calculate", {
+      const backendUrl = getBackendUrl();
+      const response = await fetch(`${backendUrl}/api/rebates/calculate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -379,6 +437,43 @@ export default function EnergyPlusLoadCalc() {
               </button>
             )}
           </div>
+          
+          {/* Show instructions if backend is not available */}
+          {serviceStatus?.needsBackend && serviceStatus?.status === "error" && (
+            <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                Backend Server Not Running
+              </h3>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+                The EnergyPlus service requires a backend server. You have two options:
+              </p>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+                    Option 1: Use Python Bridge Server (Recommended for remote access)
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-yellow-700 dark:text-yellow-300 ml-2">
+                    <li>Make sure your Joule Bridge is running (Python server on port 8080)</li>
+                    <li>Go to Settings → Joule Bridge Settings</li>
+                    <li>Enter your bridge URL (e.g., http://192.168.1.100:8080)</li>
+                    <li>Save the settings</li>
+                    <li>Refresh this page - EnergyPlus will use the bridge server</li>
+                  </ol>
+                </div>
+                <div>
+                  <p className="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+                    Option 2: Start Local Node.js Server (For local development)
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-yellow-700 dark:text-yellow-300 ml-2">
+                    <li>Open a terminal in the project directory</li>
+                    <li>Run: <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">npm run temp-server</code></li>
+                    <li>Wait for the server to start on port 3001</li>
+                    <li>Click "Start Service" above to launch EnergyPlus</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -65,6 +65,8 @@ import {
   normalizeStateToAbbreviation,
 } from "../data/fixedChargesByState";
 import * as heatUtils from "../lib/heatUtils";
+import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
+import { getStateCode, fetchLiveElectricityRate, fetchLiveGasRate } from "../lib/eiaRates";
 
 const Section = ({ title, icon, description, children, ...props }) => (
   <div
@@ -1583,20 +1585,136 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
   );
 };
 
-const CostSettings = ({ settings, onSettingChange, userSettings }) => {
-  // Get location for average rate hints
-  const location = userSettings?.location || userSettings?.city;
-  const state = userSettings?.state || "US";
-  const avgRate = state === "GA" ? 0.12 : state === "CA" ? 0.28 : state === "TX" ? 0.11 : 0.15;
+const CostSettings = ({ settings, onSettingChange, userSettings, setToast }) => {
+  // Get location from userSettings or localStorage userLocation
+  const [userLocation, setUserLocation] = useState(() => {
+    try {
+      const stored = localStorage.getItem("userLocation");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  
+  const location = userSettings?.location || userSettings?.city || userLocation?.city;
+  // Get state - could be abbreviation (GA) or full name (Georgia)
+  // Check both userSettings and userLocation
+  const rawState = userSettings?.state || userSettings?.stateName || userLocation?.state;
+  const state = rawState && rawState !== "US" ? rawState : null;
+  
+  // Calculate average rate for display
+  const avgRate = useMemo(() => {
+    if (!state) return 0.15;
+    // Try to get rate for the state (handles both abbreviations and full names)
+    try {
+      return getStateElectricityRate(state);
+    } catch {
+      return 0.15;
+    }
+  }, [state]);
+  
+  // Loading states for rate fetching buttons
+  const [loadingElectricity, setLoadingElectricity] = useState(false);
+  const [loadingGas, setLoadingGas] = useState(false);
   
   // Get default fixed charge from state lookup
   const defaultFixedCharge = useMemo(() => {
-    if (!state || state === "US") return defaultFallbackFixedCharges.electric;
+    if (!state) return defaultFallbackFixedCharges.electric;
     const stateAbbr = normalizeStateToAbbreviation(state);
     return stateAbbr && defaultFixedChargesByState[stateAbbr]
       ? defaultFixedChargesByState[stateAbbr].electric
       : defaultFallbackFixedCharges.electric;
   }, [state]);
+  
+  // Handler to fetch and set electricity rate from state average
+  const handleSetElectricityRate = async () => {
+    if (!state) {
+      setToast?.({ message: "Please set your location first", type: "error" });
+      return;
+    }
+    
+    setLoadingElectricity(true);
+    try {
+      // Try to fetch live rate first
+      const stateCode = getStateCode(state);
+      let rate = null;
+      let source = "";
+      
+      if (stateCode) {
+        try {
+          const liveData = await fetchLiveElectricityRate(stateCode);
+          if (liveData?.rate) {
+            rate = liveData.rate;
+            source = "Live EIA Data";
+          }
+        } catch (e) {
+          console.warn("Failed to fetch live rate, using fallback", e);
+        }
+      }
+      
+      // Fallback to hardcoded state average
+      if (!rate) {
+        rate = getStateElectricityRate(state);
+        source = `${state} Average`;
+      }
+      
+      onSettingChange("utilityCost", rate);
+      setToast?.({ 
+        message: `Electricity rate set to $${rate.toFixed(3)}/kWh (${source})`, 
+        type: "success" 
+      });
+    } catch (error) {
+      console.error("Failed to fetch electricity rate:", error);
+      setToast?.({ message: "Failed to fetch electricity rate", type: "error" });
+    } finally {
+      setLoadingElectricity(false);
+    }
+  };
+  
+  // Handler to fetch and set gas rate from state average
+  const handleSetGasRate = async () => {
+    if (!state) {
+      setToast?.({ message: "Please set your location first", type: "error" });
+      return;
+    }
+    
+    setLoadingGas(true);
+    try {
+      // Try to fetch live rate first
+      const stateCode = getStateCode(state);
+      let rate = null;
+      let source = "";
+      
+      if (stateCode) {
+        try {
+          const liveData = await fetchLiveGasRate(stateCode);
+          if (liveData?.rate) {
+            rate = liveData.rate;
+            source = "Live EIA Data";
+          }
+        } catch (e) {
+          console.warn("Failed to fetch live gas rate, using fallback", e);
+        }
+      }
+      
+      // Fallback to hardcoded state average
+      if (!rate) {
+        rate = getStateGasRate(state);
+        source = `${state} Average`;
+      }
+      
+      onSettingChange("gasCost", rate);
+      setToast?.({ 
+        message: `Gas rate set to $${rate.toFixed(2)}/therm (${source})`, 
+        type: "success" 
+      });
+    } catch (error) {
+      console.error("Failed to fetch gas rate:", error);
+      setToast?.({ message: "Failed to fetch gas rate", type: "error" });
+    } finally {
+      setLoadingGas(false);
+    }
+  };
   
   return (
     <Section 
@@ -1612,7 +1730,7 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
           <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
             Cost per kWh ($)
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-2">
             <span className="text-[#A7B0BA]">$</span>
             <input
               type="number"
@@ -1630,6 +1748,17 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
             />
             <span className="text-xs text-[#7C8894]">/kWh</span>
           </div>
+          {state && (
+            <button
+              type="button"
+              onClick={handleSetElectricityRate}
+              disabled={loadingElectricity}
+              className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-900 text-[#E8EDF3] hover:bg-slate-800 hover:border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title={`Set to ${state} state average`}
+            >
+              {loadingElectricity ? "Loading..." : "Use State Average"}
+            </button>
+          )}
           {location && (
             <p className="text-xs text-blue-400 mt-1.5 max-w-md">
               💡 {location}, {state} average: ${avgRate.toFixed(2)}/kWh (EIA data)
@@ -1645,7 +1774,7 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
         <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
           Gas Cost per Therm ($)
         </label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-2">
           <span className="text-[#A7B0BA]">$</span>
           <input
             type="number"
@@ -1663,6 +1792,17 @@ const CostSettings = ({ settings, onSettingChange, userSettings }) => {
           />
           <span className="text-xs text-[#7C8894]">/therm</span>
         </div>
+        {state && (
+          <button
+            type="button"
+            onClick={handleSetGasRate}
+            disabled={loadingGas}
+            className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-900 text-[#E8EDF3] hover:bg-slate-800 hover:border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={`Set to ${state} state average`}
+          >
+            {loadingGas ? "Loading..." : "Use State Average"}
+          </button>
+        )}
           {location && (
             <p className="text-xs text-blue-400 mt-1.5 max-w-md">
               💡 {location}, {state} average: ~$1.20/therm (EIA data)
@@ -2543,6 +2683,7 @@ const SettingsPage = () => {
             settings={userSettings}
             onSettingChange={setUserSetting}
             userSettings={userSettings}
+            setToast={setToast}
           />
         )}
       </div>

@@ -60,6 +60,14 @@ POST http://bridge-ip:8080/api/bridge/restart
 
 **Use Case:** If a customer reports the bridge stopped working, you can remotely restart it without SSH access.
 
+**Note:** The restart endpoint requires passwordless sudo to be configured. If you get an empty reply, set up passwordless sudo:
+
+```bash
+ssh tom-pc@bridge-ip
+echo 'tom-pc ALL=(ALL) NOPASSWD: /bin/systemctl restart prostat-bridge' | sudo tee /etc/sudoers.d/prostat-bridge
+sudo chmod 0440 /etc/sudoers.d/prostat-bridge
+```
+
 **Response (Success):**
 ```json
 {

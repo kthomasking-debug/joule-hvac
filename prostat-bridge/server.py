@@ -1672,6 +1672,116 @@ async def handle_dust_kicker(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def handle_energyplus_status(request):
+    """GET /api/energyplus/status - Check EnergyPlus service status"""
+    try:
+        # Import energyplus functions (they're in a separate file)
+        import sys
+        import os
+        # Add parent directory to path to import energyplus-service
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        try:
+            # Import from energyplus-service.py (note: Python module names can't have hyphens)
+            # We'll import the functions directly
+            import importlib.util
+            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
+            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
+            energyplus_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(energyplus_module)
+            energyplus_available = getattr(energyplus_module, 'ENERGYPLUS_AVAILABLE', False)
+        except (ImportError, FileNotFoundError, AttributeError) as e:
+            logger.warning(f"Could not import EnergyPlus module: {e}")
+            energyplus_available = False
+        
+        return web.json_response({
+            'status': 'ok',
+            'energyplus_available': energyplus_available,
+            'method': 'simplified' if not energyplus_available else 'energyplus'
+        })
+    except Exception as e:
+        logger.error(f"Error checking EnergyPlus status: {e}")
+        return web.json_response({
+            'status': 'error',
+            'energyplus_available': False,
+            'method': 'simplified',
+            'error': str(e)
+        }, status=500)
+
+async def handle_energyplus_calculate(request):
+    """POST /api/energyplus/calculate - Run EnergyPlus load calculation"""
+    try:
+        params = await request.json()
+        
+        # Import energyplus functions
+        import sys
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        try:
+            # Import from energyplus-service.py
+            import importlib.util
+            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
+            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
+            energyplus_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(energyplus_module)
+            run_energyplus_simulation = getattr(energyplus_module, 'run_energyplus_simulation')
+            results = run_energyplus_simulation(params)
+        except (ImportError, FileNotFoundError, AttributeError) as e:
+            logger.warning(f"Could not import EnergyPlus functions: {e}, using simplified calculation")
+            # Fallback to simplified calculation
+            import importlib.util
+            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
+            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
+            energyplus_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(energyplus_module)
+            calculate_load_simplified = getattr(energyplus_module, 'calculate_load_simplified')
+            results = calculate_load_simplified(params)
+        
+        return web.json_response(results)
+    except Exception as e:
+        logger.error(f"Error calculating EnergyPlus load: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+async def handle_rebates_calculate(request):
+    """POST /api/rebates/calculate - Calculate equipment rebates"""
+    try:
+        data = await request.json()
+        zip_code = data.get('zip_code', '')
+        equipment_sku = data.get('equipment_sku', '')
+        
+        if not zip_code or not equipment_sku:
+            return web.json_response({'error': 'Missing zip_code or equipment_sku'}, status=400)
+        
+        # Import rebate calculation function
+        import sys
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        try:
+            # Import from energyplus-service.py
+            import importlib.util
+            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
+            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
+            energyplus_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(energyplus_module)
+            calculate_rebates = getattr(energyplus_module, 'calculate_rebates')
+            results = calculate_rebates(zip_code, equipment_sku)
+        except (ImportError, FileNotFoundError, AttributeError) as e:
+            logger.warning(f"Could not import rebate calculation: {e}")
+            return web.json_response({'error': 'Rebate calculation not available'}, status=500)
+        
+        return web.json_response(results)
+    except Exception as e:
+        logger.error(f"Error calculating rebates: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
 async def handle_check_bridge_processes(request):
     """GET /api/bridge/processes - Check for multiple bridge processes"""
     import subprocess
@@ -2054,6 +2164,11 @@ async def init_app():
     app.router.add_get('/api/bridge/processes', handle_check_bridge_processes)
     app.router.add_post('/api/bridge/kill-duplicates', handle_kill_duplicate_bridges)
     app.router.add_post('/api/bridge/restart', handle_restart_bridge)
+    
+    # EnergyPlus endpoints
+    app.router.add_get('/api/energyplus/status', handle_energyplus_status)
+    app.router.add_post('/api/energyplus/calculate', handle_energyplus_calculate)
+    app.router.add_post('/api/rebates/calculate', handle_rebates_calculate)
     
     # Enable CORS for all routes
     for route in list(app.router.routes()):

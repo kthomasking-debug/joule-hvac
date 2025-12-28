@@ -125,6 +125,22 @@ const fetchUtilityRate = async (
   setSource,
   rateType = "electricity"
 ) => {
+  // Check if user has manually set the rate - if so, don't overwrite it
+  try {
+    const storedSettings = localStorage.getItem("userSettings");
+    if (storedSettings) {
+      const parsed = JSON.parse(storedSettings);
+      const manualRate = rateType === "electricity" ? parsed.utilityCost : parsed.gasCost;
+      if (manualRate !== undefined && manualRate !== null && Number.isFinite(Number(manualRate))) {
+        // User has manual rate - don't overwrite it
+        setSource("⚙️ Manual Entry");
+        return Number(manualRate);
+      }
+    }
+  } catch (e) {
+    // If we can't check, proceed with fetch
+  }
+
   if (!stateName) {
     setSource("âš ï¸ US National Average");
     const defaultRate =
@@ -1211,18 +1227,51 @@ const SevenDayCostForecaster = () => {
           field: "stateName",
           value: finalStateName,
         });
-        await fetchUtilityRate(
-          finalStateName,
-          setUtilityCost,
-          setElectricityRateSource,
-          "electricity"
-        );
-        await fetchUtilityRate(
-          finalStateName,
-          setGasCost,
-          setGasRateSource,
-          "gas"
-        );
+        // Only fetch and set utility rates if user hasn't manually set them
+        // Check localStorage directly to see if user explicitly set the rate
+        let hasManualElectricityRate = false;
+        let hasManualGasRate = false;
+        try {
+          const storedSettings = localStorage.getItem("userSettings");
+          if (storedSettings) {
+            const parsed = JSON.parse(storedSettings);
+            // If utilityCost exists in stored settings, user has manually set it
+            hasManualElectricityRate = parsed.utilityCost !== undefined && 
+                                      parsed.utilityCost !== null &&
+                                      Number.isFinite(Number(parsed.utilityCost));
+            hasManualGasRate = parsed.gasCost !== undefined && 
+                              parsed.gasCost !== null &&
+                              Number.isFinite(Number(parsed.gasCost));
+          }
+        } catch (e) {
+          // If we can't read localStorage, assume no manual rates
+          console.warn("Could not check localStorage for manual rates", e);
+        }
+        
+        if (!hasManualElectricityRate) {
+          await fetchUtilityRate(
+            finalStateName,
+            setUtilityCost,
+            setElectricityRateSource,
+            "electricity"
+          );
+        } else {
+          // User has manual rate, don't overwrite it - just update the source
+          setElectricityRateSource("⚙️ Manual Entry");
+          // Ensure the manual rate is preserved (don't call setUtilityCost)
+        }
+        
+        if (!hasManualGasRate) {
+          await fetchUtilityRate(
+            finalStateName,
+            setGasCost,
+            setGasRateSource,
+            "gas"
+          );
+        } else {
+          // User has manual rate, just update the source to indicate it's manual
+          setGasRateSource("⚙️ Manual Entry");
+        }
       }
 
       dispatch({ type: "FETCH_ERROR", error: null });
@@ -3041,9 +3090,10 @@ const SevenDayCostForecaster = () => {
                             style={{
                               width: "100%",
                               height: window.innerWidth < 640 ? 260 : 320,
+                              minHeight: window.innerWidth < 640 ? 260 : 320,
                             }}
                           >
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minHeight={window.innerWidth < 640 ? 260 : 320}>
                               <ComposedChart
                                 data={elevationCostData}
                                 margin={{
@@ -4238,23 +4288,46 @@ const SevenDayCostForecaster = () => {
                       {homeShape !== 1.0 && <>Home Shape Factor: {homeShape.toFixed(2)}x<br /></>}
                       Ceiling Height Multiplier: {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}x<br />
                       <br />
-                      Total Heat Loss @ 70°F ΔT: <strong>{(effectiveHeatLoss || 0).toLocaleString()} BTU/hr</strong><br />
-                      {homeShape !== 1.0 ? (
-                        <>
-                          = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {homeShape.toFixed(2)} * {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}<br />
-                        </>
-                      ) : (
-                        <>
-                          = {squareFeet.toLocaleString()} * 22.67 * {insulationLevel.toFixed(2)} * {(1 + (ceilingHeight - 8) * 0.1).toFixed(3)}<br />
-                        </>
-                      )}
-                      <br />
-                      Heat Loss Coefficient: <strong>{(((effectiveHeatLoss || 0) / 70) / squareFeet).toFixed(3)} BTU/(hr·ft²·°F)</strong><br />
-                      Total BTU Loss per °F: <strong>{((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F</strong><br />
+                      {(() => {
+                        // Calculate unrounded value for display
+                        const baseBtuPerSqFt = 22.67;
+                        const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
+                        const unroundedHeatLoss = squareFeet * baseBtuPerSqFt * insulationLevel * homeShape * ceilingMultiplier;
+                        const roundedHeatLoss = effectiveHeatLoss || 0;
+                        const isRounded = Math.abs(unroundedHeatLoss - roundedHeatLoss) > 100; // More than 100 BTU difference indicates rounding
+                        
+                        return (
+                          <>
+                            Total Heat Loss @ 70°F ΔT: <strong>{roundedHeatLoss.toLocaleString()} BTU/hr</strong>
+                            {isRounded && (
+                              <span className="text-gray-400 text-xs"> (rounded from {Math.round(unroundedHeatLoss).toLocaleString()})</span>
+                            )}
+                            <br />
+                            {homeShape !== 1.0 ? (
+                              <>
+                                = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {homeShape.toFixed(2)} × {ceilingMultiplier.toFixed(3)} = {Math.round(unroundedHeatLoss).toLocaleString()} BTU/hr
+                                {isRounded && ` (rounded to ${roundedHeatLoss.toLocaleString()} BTU/hr)`}
+                                <br />
+                              </>
+                            ) : (
+                              <>
+                                = {squareFeet.toLocaleString()} × 22.67 × {insulationLevel.toFixed(2)} × {ceilingMultiplier.toFixed(3)} = {Math.round(unroundedHeatLoss).toLocaleString()} BTU/hr
+                                {isRounded && ` (rounded to ${roundedHeatLoss.toLocaleString()} BTU/hr)`}
+                                <br />
+                              </>
+                            )}
+                            <br />
+                            Heat Loss Coefficient: <strong>{(((roundedHeatLoss) / 70) / squareFeet).toFixed(3)} BTU/(hr·ft²·°F)</strong><br />
+                            Total BTU Loss per °F: <strong>{((roundedHeatLoss) / 70).toFixed(1)} BTU/hr/°F</strong><br />
+                            <span className="text-gray-400 text-xs italic">
+                              Calculation: {((roundedHeatLoss) / 70).toFixed(1)} = {roundedHeatLoss.toLocaleString()} BTU/hr @ 70°F ÷ 70°F<br />
+                              This means: For each 1°F difference between indoor and outdoor temp, your home loses {((roundedHeatLoss) / 70).toFixed(1)} BTU per hour.<br />
+                              Example: At 30°F outside with 70°F inside (40°F difference), heat loss = {((roundedHeatLoss) / 70).toFixed(1)} × 40 = {(((roundedHeatLoss) / 70) * 40).toFixed(0)} BTU/hr<br />
+                            </span>
+                          </>
+                        );
+                      })()}
                       <span className="text-gray-400 text-xs italic">
-                        Calculation: {((effectiveHeatLoss || 0) / 70).toFixed(1)} = {(effectiveHeatLoss || 0).toLocaleString()} BTU/hr @ 70°F ÷ 70°F<br />
-                        This means: For each 1°F difference between indoor and outdoor temp, your home loses {((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU per hour.<br />
-                        Example: At 30°F outside with 70°F inside (40°F difference), heat loss = {((effectiveHeatLoss || 0) / 70).toFixed(1)} × 40 = {(((effectiveHeatLoss || 0) / 70) * 40).toFixed(0)} BTU/hr<br />
                         <br />
                         <strong>Context:</strong> For {squareFeet.toLocaleString()} sq ft, {((effectiveHeatLoss || 0) / 70).toFixed(1)} BTU/hr/°F = {((((effectiveHeatLoss || 0) / 70) / squareFeet) * 1000).toFixed(0)} BTU/hr/°F per 1,000 sq ft. 
                         {(() => {
