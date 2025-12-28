@@ -230,13 +230,51 @@ export default function JouleBridgeSettings() {
       return;
     }
 
+    // Get the bridge URL that will be used (from localStorage or current input)
+    const savedBridgeUrl = localStorage.getItem('jouleBridgeUrl');
+    const currentBridgeUrl = savedBridgeUrl || bridgeUrl;
+    
+    // Warn if trying to pair on localhost
+    if (currentBridgeUrl.includes('localhost') || currentBridgeUrl.includes('127.0.0.1')) {
+      const useLocalhost = confirm(
+        `⚠️ Warning: You are about to pair on LOCALHOST (${currentBridgeUrl}).\n\n` +
+        `If your bridge is running on a remote device (mini PC, Raspberry Pi), you need to:\n` +
+        `1. Enter the remote bridge URL in "Joule Bridge URL" above\n` +
+        `2. Click "Save"\n` +
+        `3. Then try pairing again\n\n` +
+        `Continue pairing on localhost?`
+      );
+      if (!useLocalhost) {
+        return;
+      }
+    }
+    
+    // If URL in input field differs from saved URL, warn user to save first
+    if (savedBridgeUrl && bridgeUrl !== savedBridgeUrl) {
+      const saveFirst = confirm(
+        `⚠️ The bridge URL has been changed but not saved.\n\n` +
+        `Current input: ${bridgeUrl}\n` +
+        `Saved URL: ${savedBridgeUrl}\n\n` +
+        `Pairing will use the SAVED URL (${savedBridgeUrl}).\n\n` +
+        `Click "Save" first if you want to use the new URL.\n\n` +
+        `Continue with saved URL?`
+      );
+      if (!saveFirst) {
+        return;
+      }
+    }
+
     setPairing(true);
     try {
+      // Always use the saved URL (or current input if not saved)
+      const pairingBridgeUrl = savedBridgeUrl || bridgeUrl;
+      console.log(`Pairing device ${deviceId} on bridge: ${pairingBridgeUrl}`);
+      
       await pairDevice(deviceId, pairingCode);
       loadState();
       setPairingCode('');
       setSelectedDevice(null);
-      alert('Successfully paired!');
+      alert(`✅ Successfully paired on ${pairingBridgeUrl}!`);
     } catch (error) {
       alert(`Pairing failed: ${error.message}`);
     } finally {
@@ -599,6 +637,61 @@ export default function JouleBridgeSettings() {
       {/* Discover Devices */}
       {bridgeAvailable && (
         <div className="space-y-3">
+          {/* Show which bridge will be used for pairing */}
+          {(() => {
+            const savedUrl = localStorage.getItem('jouleBridgeUrl');
+            const urlToUse = savedUrl || bridgeUrl;
+            const needsSave = savedUrl && bridgeUrl !== savedUrl;
+            const isLocalhost = urlToUse.includes('localhost') || urlToUse.includes('127.0.0.1');
+            
+            return (
+              <div className={`p-3 border rounded-lg ${
+                needsSave 
+                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+                  : isLocalhost
+                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {needsSave ? (
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                  ) : isLocalhost ? (
+                    <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  )}
+                  <div className={`text-xs ${
+                    needsSave 
+                      ? 'text-amber-800 dark:text-amber-200'
+                      : isLocalhost
+                      ? 'text-yellow-800 dark:text-yellow-200'
+                      : 'text-green-800 dark:text-green-200'
+                  }`}>
+                    <span className="font-semibold">Pairing will use:</span>{' '}
+                    <code className={`px-1.5 py-0.5 rounded font-mono ${
+                      needsSave
+                        ? 'bg-amber-100 dark:bg-amber-900'
+                        : isLocalhost
+                        ? 'bg-yellow-100 dark:bg-yellow-900'
+                        : 'bg-green-100 dark:bg-green-900'
+                    }`}>
+                      {urlToUse}
+                    </code>
+                    {needsSave && (
+                      <span className="ml-2 font-semibold">
+                        ⚠️ URL changed - Click "Save" above to update!
+                      </span>
+                    )}
+                    {!needsSave && isLocalhost && (
+                      <span className="ml-2">
+                        ⚠️ Make sure this is your remote bridge, not localhost!
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Discover Devices</h3>
             <button
