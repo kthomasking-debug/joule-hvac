@@ -2021,7 +2021,9 @@ async def init_app():
     app.router.add_post('/api/pair', handle_pair)
     app.router.add_post('/api/unpair', handle_unpair)
     app.router.add_get('/api/pairing/diagnostics', handle_pairing_diagnostics)
+    app.router.add_get('/api/diagnose', handle_pairing_diagnostics)  # Alias for frontend compatibility
     app.router.add_post('/api/pairing/clear-stale', handle_clear_stale_pairings)
+    app.router.add_post('/api/auto-fix', handle_clear_stale_pairings)  # Alias for frontend compatibility
     app.router.add_get('/api/status', handle_status)
     app.router.add_post('/api/set-temperature', handle_set_temperature)
     app.router.add_post('/api/set-mode', handle_set_mode)
