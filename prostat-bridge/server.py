@@ -827,6 +827,23 @@ async def handle_pair(request):
                 status=400
             )
         
+        # IMPROVEMENT: Always do fresh discovery before pairing to avoid stale device IDs
+        logger.info(f"Performing fresh discovery before pairing attempt...")
+        discovered_devices.clear()  # Clear stale cache
+        fresh_devices = await discover_devices()
+        
+        # Check if requested device_id is still valid
+        if device_id not in discovered_devices:
+            # Provide helpful error with current device IDs
+            current_ids = [d['device_id'] for d in fresh_devices] if fresh_devices else []
+            error_msg = f"Device {device_id} not found in fresh discovery. "
+            if current_ids:
+                error_msg += f"Available devices: {current_ids}. "
+                error_msg += "The device ID may have changed after a HomeKit reset. Use the new device ID."
+            else:
+                error_msg += "No HomeKit devices found on the network."
+            return web.json_response({'error': error_msg}, status=400)
+        
         await pair_device(device_id, pairing_code)
         return web.json_response({'success': True, 'device_id': device_id})
     except Exception as e:
@@ -847,6 +864,109 @@ async def handle_unpair(request):
         return web.json_response({'success': True})
     except Exception as e:
         logger.error(f"Unpairing error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_pairing_diagnostics(request):
+    """GET /api/pairing/diagnostics - Check pairing status and common issues"""
+    try:
+        diagnostics = {
+            'issues': [],
+            'recommendations': [],
+            'status': 'ok'
+        }
+        
+        # 1. Check for stale pairings that don't match discovered devices
+        discovered_devices.clear()
+        fresh_devices = await discover_devices()
+        discovered_ids = set(d['device_id'] for d in fresh_devices) if fresh_devices else set()
+        stored_ids = set(pairings.keys())
+        
+        diagnostics['discovered_devices'] = list(discovered_ids)
+        diagnostics['stored_pairings'] = list(stored_ids)
+        
+        # Check for stale pairings (stored but not discovered)
+        stale_pairings = stored_ids - discovered_ids
+        if stale_pairings:
+            diagnostics['issues'].append({
+                'type': 'stale_pairings',
+                'message': f"Stored pairings not found on network: {list(stale_pairings)}",
+                'severity': 'warning'
+            })
+            diagnostics['recommendations'].append(
+                f"Clear stale pairings with POST /api/unpair for: {list(stale_pairings)}"
+            )
+            diagnostics['status'] = 'warning'
+        
+        # Check for unpaired devices
+        unpaired_devices = discovered_ids - stored_ids
+        if unpaired_devices:
+            diagnostics['issues'].append({
+                'type': 'unpaired_devices',
+                'message': f"Devices available for pairing: {list(unpaired_devices)}",
+                'severity': 'info'
+            })
+        
+        # Check if any paired devices are reachable
+        working_pairings = []
+        broken_pairings = []
+        for device_id in stored_ids & discovered_ids:
+            try:
+                await get_thermostat_data(device_id)
+                working_pairings.append(device_id)
+            except Exception as e:
+                broken_pairings.append({'device_id': device_id, 'error': str(e)})
+        
+        diagnostics['working_pairings'] = working_pairings
+        if broken_pairings:
+            diagnostics['issues'].append({
+                'type': 'broken_pairings',
+                'message': f"Paired devices with errors: {broken_pairings}",
+                'severity': 'error'
+            })
+            diagnostics['status'] = 'error'
+        
+        # Add general recommendations
+        if not fresh_devices:
+            diagnostics['issues'].append({
+                'type': 'no_devices',
+                'message': "No HomeKit devices found on network",
+                'severity': 'error'
+            })
+            diagnostics['recommendations'].append(
+                "Ensure Ecobee is on the same network and HomeKit is enabled"
+            )
+            diagnostics['status'] = 'error'
+        
+        return web.json_response(diagnostics)
+    except Exception as e:
+        logger.error(f"Diagnostics error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_clear_stale_pairings(request):
+    """POST /api/pairing/clear-stale - Remove pairings for devices not on network"""
+    try:
+        discovered_devices.clear()
+        fresh_devices = await discover_devices()
+        discovered_ids = set(d['device_id'] for d in fresh_devices) if fresh_devices else set()
+        
+        cleared = []
+        for device_id in list(pairings.keys()):
+            if device_id not in discovered_ids:
+                try:
+                    await unpair_device(device_id)
+                    cleared.append(device_id)
+                except Exception as e:
+                    logger.warning(f"Failed to clear stale pairing {device_id}: {e}")
+        
+        return web.json_response({
+            'success': True,
+            'cleared_pairings': cleared,
+            'remaining_pairings': list(pairings.keys())
+        })
+    except Exception as e:
+        logger.error(f"Clear stale pairings error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
 
@@ -1652,6 +1772,8 @@ async def init_app():
     app.router.add_get('/api/discover', handle_discover)
     app.router.add_post('/api/pair', handle_pair)
     app.router.add_post('/api/unpair', handle_unpair)
+    app.router.add_get('/api/pairing/diagnostics', handle_pairing_diagnostics)
+    app.router.add_post('/api/pairing/clear-stale', handle_clear_stale_pairings)
     app.router.add_get('/api/status', handle_status)
     app.router.add_post('/api/set-temperature', handle_set_temperature)
     app.router.add_post('/api/set-mode', handle_set_mode)
@@ -1786,6 +1908,9 @@ async def main():
     logger.info("  HomeKit:")
     logger.info("    GET  /api/discover - Discover HomeKit devices")
     logger.info("    POST /api/pair - Pair with device")
+    logger.info("    POST /api/unpair - Unpair from device")
+    logger.info("    GET  /api/pairing/diagnostics - Check pairing issues")
+    logger.info("    POST /api/pairing/clear-stale - Clear stale pairings")
     logger.info("    GET  /api/status?device_id=... - Get thermostat status")
     logger.info("    POST /api/set-temperature - Set temperature")
     logger.info("    POST /api/set-mode - Set HVAC mode")
