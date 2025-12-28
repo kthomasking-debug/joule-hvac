@@ -45,6 +45,21 @@ GET http://bridge-ip:8080/api/ota/check
 POST http://bridge-ip:8080/api/ota/update
 ```
 
+### 4. Restart Bridge Service
+```bash
+POST http://bridge-ip:8080/api/bridge/restart
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Bridge service restarted successfully"
+}
+```
+
+**Use Case:** If a customer reports the bridge stopped working, you can remotely restart it without SSH access.
+
 **Response (Success):**
 ```json
 {

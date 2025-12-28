@@ -1905,6 +1905,47 @@ async def handle_ota_update(request):
         }, status=500)
 
 
+async def handle_restart_bridge(request):
+    """POST /api/bridge/restart - Restart the bridge service remotely"""
+    try:
+        import subprocess
+        
+        logger.info("Remote restart requested")
+        
+        # Restart the service
+        result = subprocess.run(
+            ["sudo", "systemctl", "restart", "prostat-bridge"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            logger.info("Service restarted successfully via API")
+            return web.json_response({
+                "success": True,
+                "message": "Bridge service restarted successfully"
+            })
+        else:
+            logger.error(f"Service restart failed: {result.stderr}")
+            return web.json_response({
+                "success": False,
+                "error": f"Restart failed: {result.stderr}"
+            }, status=500)
+            
+    except subprocess.TimeoutExpired:
+        return web.json_response({
+            "success": False,
+            "error": "Restart timed out"
+        }, status=500)
+    except Exception as e:
+        logger.error(f"Error restarting service: {e}")
+        return web.json_response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+
 async def handle_kill_duplicate_bridges(request):
     """POST /api/bridge/kill-duplicates - Kill all duplicate bridge processes"""
     import subprocess
@@ -2002,6 +2043,7 @@ async def init_app():
     # Bridge process management
     app.router.add_get('/api/bridge/processes', handle_check_bridge_processes)
     app.router.add_post('/api/bridge/kill-duplicates', handle_kill_duplicate_bridges)
+    app.router.add_post('/api/bridge/restart', handle_restart_bridge)
     
     # Enable CORS for all routes
     for route in list(app.router.routes()):
