@@ -2,7 +2,7 @@
 # Remote installation script for bridge on tom-pc-P150HMx
 # Run this from your current PC to install via SSH
 
-MINI_PC="thomas@192.168.0.106"
+MINI_PC="tom-pc@192.168.0.106"
 USB_PATH="/media/thomas/writable"
 
 echo "🔌 Connecting to mini PC..."

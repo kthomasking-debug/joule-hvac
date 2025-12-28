@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-MINI_PC="thomas@192.168.0.106"
+MINI_PC="tom-pc@192.168.0.106"
 
 echo "🔌 Connecting to mini PC at $MINI_PC..."
 echo ""

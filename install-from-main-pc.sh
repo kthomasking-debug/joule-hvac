@@ -3,7 +3,7 @@
 
 set -e
 
-MINI_PC="thomas@192.168.0.106"
+MINI_PC="tom-pc@192.168.0.106"
 
 echo "🔌 Installing bridge on mini PC ($MINI_PC)..."
 echo ""

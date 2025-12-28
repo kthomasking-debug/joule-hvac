@@ -1,7 +1,7 @@
 #!/bin/bash
 # Setup SSH keys for passwordless access to mini PC
 
-MINI_PC="thomas@192.168.0.106"
+MINI_PC="tom-pc@192.168.0.106"
 
 echo "🔑 Setting up SSH key authentication..."
 echo ""
