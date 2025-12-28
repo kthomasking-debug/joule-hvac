@@ -1908,38 +1908,46 @@ async def handle_ota_update(request):
 async def handle_restart_bridge(request):
     """POST /api/bridge/restart - Restart the bridge service remotely"""
     try:
-        import subprocess
+        import asyncio
         
         logger.info("Remote restart requested")
         
-        # Restart the service
-        result = subprocess.run(
-            ["sudo", "systemctl", "restart", "prostat-bridge"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        # Send response immediately, then restart in background
+        # This prevents the connection from being dropped before response is sent
+        async def restart_in_background():
+            try:
+                # Wait a moment to ensure response is sent
+                await asyncio.sleep(0.5)
+                
+                # Restart the service
+                process = await asyncio.create_subprocess_exec(
+                    "sudo", "systemctl", "restart", "prostat-bridge",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+                
+                if process.returncode == 0:
+                    logger.info("Service restarted successfully via API")
+                else:
+                    logger.error(f"Service restart failed: {stderr.decode()}")
+            except asyncio.TimeoutError:
+                logger.error("Service restart timed out")
+            except Exception as e:
+                logger.error(f"Error restarting service: {e}")
         
-        if result.returncode == 0:
-            logger.info("Service restarted successfully via API")
-            return web.json_response({
-                "success": True,
-                "message": "Bridge service restarted successfully"
-            })
-        else:
-            logger.error(f"Service restart failed: {result.stderr}")
-            return web.json_response({
-                "success": False,
-                "error": f"Restart failed: {result.stderr}"
-            }, status=500)
-            
-    except subprocess.TimeoutExpired:
+        # Schedule restart in background
+        asyncio.create_task(restart_in_background())
+        
+        # Return response immediately
         return web.json_response({
-            "success": False,
-            "error": "Restart timed out"
-        }, status=500)
+            "success": True,
+            "message": "Bridge service restart initiated"
+        })
+            
     except Exception as e:
-        logger.error(f"Error restarting service: {e}")
+        logger.error(f"Error initiating service restart: {e}")
         return web.json_response({
             "success": False,
             "error": str(e)
