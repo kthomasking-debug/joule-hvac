@@ -1704,6 +1704,7 @@ async def main():
                 file_size = os.path.getsize(pairing_file)
                 if file_size > 2:  # More than just "{}"
                     # Validate JSON structure before loading (hardens against file corruption)
+                    should_load = True
                     try:
                         with open(pairing_file, 'r') as f:
                             json.load(f)  # Validate JSON is parseable
@@ -1723,40 +1724,41 @@ async def main():
                             except Exception as restore_err:
                                 logger.error(f"Backup restore failed: {restore_err}")
                                 logger.info("Skipping corrupted pairing file - you may need to re-pair")
-                                continue
+                                should_load = False
                         else:
                             logger.info("No backup available - you may need to re-pair")
-                            continue
-                    else:
+                            should_load = False
+                    
+                    if should_load:
                         # Small delay to let network initialize (hardens against network timing issues)
                         await asyncio.sleep(2)
                         controller.load_data(pairing_file)
-                    logger.info(f"Loaded existing pairings from {pairing_file}")
-                    # Populate pairings dictionary from controller's internal pairings
-                    # The controller stores pairings in controller.pairings dict
-                    if hasattr(controller, 'pairings') and controller.pairings:
-                        for alias, pairing_data in controller.pairings.items():
-                            # Get device_id from pairing data or use alias
-                            device_id = pairing_data.get('id') if isinstance(pairing_data, dict) else alias
-                            # Load the pairing object with retry and re-discovery
-                            try:
-                                pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
-                                pairings[device_id] = pairing
-                                logger.info(f"Loaded pairing for device {device_id} (alias: {alias})")
-                            except Exception as e:
-                                logger.warning(f"Failed to load pairing for {alias}: {e}")
-                                # Retry with re-discovery (hardens against IP changes and device unreachable)
+                        logger.info(f"Loaded existing pairings from {pairing_file}")
+                        # Populate pairings dictionary from controller's internal pairings
+                        # The controller stores pairings in controller.pairings dict
+                        if hasattr(controller, 'pairings') and controller.pairings:
+                            for alias, pairing_data in controller.pairings.items():
+                                # Get device_id from pairing data or use alias
+                                device_id = pairing_data.get('id') if isinstance(pairing_data, dict) else alias
+                                # Load the pairing object with retry and re-discovery
                                 try:
-                                    logger.info(f"Attempting re-discovery for {device_id} before retry...")
-                                    await discover_devices()
-                                    await asyncio.sleep(1)
                                     pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
                                     pairings[device_id] = pairing
-                                    logger.info(f"Successfully loaded pairing for {device_id} after re-discovery")
-                                except Exception as e2:
-                                    logger.warning(f"Failed to load pairing for {alias} after re-discovery: {e2}")
-                    else:
-                        logger.info("No pairings found in controller after loading file")
+                                    logger.info(f"Loaded pairing for device {device_id} (alias: {alias})")
+                                except Exception as e:
+                                    logger.warning(f"Failed to load pairing for {alias}: {e}")
+                                    # Retry with re-discovery (hardens against IP changes and device unreachable)
+                                    try:
+                                        logger.info(f"Attempting re-discovery for {device_id} before retry...")
+                                        await discover_devices()
+                                        await asyncio.sleep(1)
+                                        pairing = controller.load_pairing(alias, pairing_data if isinstance(pairing_data, dict) else {})
+                                        pairings[device_id] = pairing
+                                        logger.info(f"Successfully loaded pairing for {device_id} after re-discovery")
+                                    except Exception as e2:
+                                        logger.warning(f"Failed to load pairing for {alias} after re-discovery: {e2}")
+                        else:
+                            logger.info("No pairings found in controller after loading file")
                 else:
                     logger.info(f"Pairing file {pairing_file} is empty, skipping load")
             except Exception as e:

@@ -12,7 +12,10 @@ import {
   Info,
   DollarSign,
   Tag,
+  Database,
+  Search,
 } from "lucide-react";
+import { queryHVACKnowledge } from "../utils/rag/ragQuery";
 import { fullInputClasses } from "../lib/uiClasses";
 
 export default function EnergyPlusLoadCalc() {
@@ -23,6 +26,7 @@ export default function EnergyPlusLoadCalc() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [serviceStatus, setServiceStatus] = useState(null);
+  const [startingService, setStartingService] = useState(false);
 
   // Rebate lookup state
   const [rebateZipCode, setRebateZipCode] = useState("");
@@ -30,6 +34,12 @@ export default function EnergyPlusLoadCalc() {
   const [rebateLoading, setRebateLoading] = useState(false);
   const [rebateResults, setRebateResults] = useState(null);
   const [rebateError, setRebateError] = useState(null);
+
+  // RAG search state
+  const [ragQuery, setRagQuery] = useState("");
+  const [ragResults, setRagResults] = useState(null);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [showRAGSearch, setShowRAGSearch] = useState(false);
 
   // Form state
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 2000);
@@ -43,6 +53,55 @@ export default function EnergyPlusLoadCalc() {
   useEffect(() => {
     checkServiceStatus();
   }, []);
+
+  const handleRAGSearch = async () => {
+    if (!ragQuery.trim()) {
+      return;
+    }
+
+    setRagLoading(true);
+    setRagResults(null);
+    setShowRAGSearch(true);
+
+    try {
+      const result = await queryHVACKnowledge(ragQuery);
+      setRagResults(result);
+      
+      // If RAG found nothing, try Groq fallback
+      if (!result.success) {
+        const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+        const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
+        
+        if (groqApiKey && groqApiKey.trim()) {
+          try {
+            const { askJouleFallback } = await import("../lib/groqAgent");
+            const groqResult = await askJouleFallback(
+              `Load calculation question: ${ragQuery}\n\nAnswer as a senior HVAC engineer. Be specific about Manual J, load calculations, sizing, BTU requirements, and engineering standards.`,
+              groqApiKey,
+              model
+            );
+            
+            if (groqResult.success && groqResult.message) {
+              setRagResults({
+                success: true,
+                content: groqResult.message,
+                sources: [{ title: "AI-Powered Response (Groq)", score: 1 }],
+                isGroqFallback: true,
+              });
+            }
+          } catch (groqErr) {
+            console.error("Groq fallback error:", groqErr);
+            // Keep the RAG "no results" message
+          }
+        }
+      }
+    } catch (err) {
+      console.error("RAG search error:", err);
+      setRagResults({ success: false, message: "Failed to search knowledge base." });
+    } finally {
+      setRagLoading(false);
+    }
+  };
 
   const checkServiceStatus = async () => {
     try {
@@ -63,12 +122,36 @@ export default function EnergyPlusLoadCalc() {
           status: "error",
           energyplus_available: false,
           method: "simplified",
-          error: "EnergyPlus service not available. Please start the service with 'npm run energyplus-service'",
+          error: "EnergyPlus service not available. Click 'Start Service' to launch it.",
         });
       } else {
         // Re-throw unexpected errors
         throw err;
       }
+    }
+  };
+
+  const handleStartService = async () => {
+    setStartingService(true);
+    try {
+      const response = await fetch("http://localhost:3001/api/energyplus/start", {
+        method: "POST",
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        // Wait a moment for service to fully start, then check status
+        setTimeout(() => {
+          checkServiceStatus();
+        }, 2000);
+      } else {
+        setError(data.error || "Failed to start EnergyPlus service");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to start EnergyPlus service");
+      console.error("Error starting EnergyPlus service:", err);
+    } finally {
+      setStartingService(false);
     }
   };
 
@@ -87,27 +170,92 @@ export default function EnergyPlusLoadCalc() {
         orientation,
       };
 
-      const response = await fetch("http://localhost:3001/api/energyplus/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      });
+      // Try EnergyPlus API first
+      let useSimplified = false;
+      try {
+        const response = await fetch("http://localhost:3001/api/energyplus/calculate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(params),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Calculation failed: ${response.status}`);
+        if (response.ok) {
+          const data = await response.json();
+          setResults(data);
+          setLoading(false);
+          return;
+        } else {
+          // API exists but returned error - use simplified
+          useSimplified = true;
+        }
+      } catch (fetchErr) {
+        // Connection error - use simplified fallback
+        if (fetchErr.message.includes("Failed to fetch") || 
+            fetchErr.message.includes("ERR_CONNECTION_REFUSED") ||
+            fetchErr.message.includes("NetworkError")) {
+          useSimplified = true;
+        } else {
+          throw fetchErr;
+        }
       }
 
-      const data = await response.json();
-      setResults(data);
+      // Fallback to simplified Manual J-style calculation
+      if (useSimplified) {
+        const { calculateSystemSizing } = await import("../utils/calculatorEngines");
+        
+        // Map insulation level to quality string
+        // insulationLevel is a number: 0.45, 0.65, 1.0, or 1.4
+        const insulationLevelNum = Number(insulationLevel);
+        const insulationQualityMap = {
+          0.45: "excellent",
+          0.65: "good",
+          1.0: "average",
+          1.4: "poor",
+        };
+        const insulationQuality = insulationQualityMap[insulationLevelNum] || 
+          (insulationLevelNum <= 0.5 ? "excellent" :
+           insulationLevelNum <= 0.8 ? "good" :
+           insulationLevelNum <= 1.2 ? "average" : "poor");
+
+        // Map climate zone to climate string
+        const climateMap = {
+          1: "hot",
+          2: "hot",
+          3: "hot",
+          4: "moderate",
+          5: "moderate",
+          6: "cold",
+          7: "cold",
+        };
+        const climateZoneStr = climateMap[climateZone] || "moderate";
+
+        const simplifiedResults = calculateSystemSizing({
+          squareFeet: Number(squareFeet),
+          ceilingHeight: Number(ceilingHeight),
+          insulationQuality,
+          windowType,
+          climateZone: climateZoneStr,
+          numberOfOccupants: 2, // Default
+        });
+
+        setResults({
+          method: "simplified",
+          heatingLoadBtuHr: simplifiedResults.heatingLoad,
+          coolingLoadBtuHr: simplifiedResults.coolingLoad,
+          heatingTons: simplifiedResults.heatingTons,
+          coolingTons: simplifiedResults.coolingTons,
+          recommendedTons: simplifiedResults.recommendedTons,
+          squareFeet: Number(squareFeet),
+          ceilingHeight: Number(ceilingHeight),
+          insulationLevel,
+          climateZone: Number(climateZone),
+          windowType,
+          orientation,
+        });
+      }
     } catch (err) {
-      // Handle connection errors gracefully
-      if (err.message.includes("Failed to fetch") || err.message.includes("ERR_CONNECTION_REFUSED")) {
-        setError("EnergyPlus service is not running. Please start it with 'npm run energyplus-service' in a separate terminal.");
-      } else {
-        setError(err.message);
-      }
-      console.error("EnergyPlus calculation error:", err);
+      setError(err.message || "Calculation failed. Please check your inputs and try again.");
+      console.error("Load calculation error:", err);
     } finally {
       setLoading(false);
     }
@@ -211,6 +359,25 @@ export default function EnergyPlusLoadCalc() {
                   : serviceStatus.error || "EnergyPlus not available - using Manual J-style simplified calculations"}
               </p>
             </div>
+            {!serviceStatus.energyplus_available && (
+              <button
+                onClick={handleStartService}
+                disabled={startingService}
+                className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {startingService ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Start Service
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -737,6 +904,84 @@ export default function EnergyPlusLoadCalc() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* RAG Knowledge Base Search */}
+      <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-6 border border-indigo-200 dark:border-indigo-700">
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          Search Knowledge Base
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.
+        </p>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={ragQuery}
+              onChange={(e) => setRagQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  handleRAGSearch();
+                }
+              }}
+              placeholder="Example: 'What is Manual J?' or 'How do I calculate heat loss?'"
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            <button
+              onClick={handleRAGSearch}
+              disabled={ragLoading || !ragQuery.trim()}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {ragLoading ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-5 h-5" />
+                  Search
+                </>
+              )}
+            </button>
+          </div>
+          {ragResults && showRAGSearch && (
+            <div className="mt-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-gray-900 dark:text-white">Results</h4>
+                <button
+                  onClick={() => setShowRAGSearch(false)}
+                  className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Hide
+                </button>
+              </div>
+              {ragResults.success ? (
+                <>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {ragResults.content}
+                  </div>
+                  {ragResults.sources && ragResults.sources.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-700">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Sources:</p>
+                      <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                        {ragResults.sources.map((source, idx) => (
+                          <li key={idx}>• {source.title} {source.score && `(relevance: ${source.score.toFixed(1)})`}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {ragResults.message || "No relevant information found."}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Info Section */}

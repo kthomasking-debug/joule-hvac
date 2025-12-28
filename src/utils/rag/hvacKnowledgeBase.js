@@ -1606,9 +1606,10 @@ export const HVAC_KNOWLEDGE_BASE = {
 /**
  * Search the knowledge base for relevant information
  * @param {string} query - Search query
+ * @param {boolean} includeUserKnowledge - Whether to include user-added knowledge (default: true)
  * @returns {Array} Array of relevant knowledge snippets
  */
-export function searchKnowledgeBase(query) {
+export async function searchKnowledgeBase(query, includeUserKnowledge = true) {
   const lowerQuery = query.toLowerCase();
   const results = [];
 
@@ -1845,8 +1846,42 @@ export function searchKnowledgeBase(query) {
     }
   }
 
+  // Include user-added knowledge if enabled
+  if (includeUserKnowledge) {
+    try {
+      const { searchUserKnowledge } = await import("./userKnowledge.js");
+      const userResults = searchUserKnowledge(query);
+      
+      // Add user results with adjusted format
+      userResults.forEach((userEntry) => {
+        // Content is already a snippet from searchUserKnowledge (max 800 chars)
+        const snippet = userEntry.content || "";
+        const summary = snippet.length > 300 
+          ? snippet.substring(0, 300) + "..." 
+          : snippet;
+        
+        results.push({
+          section: "userKnowledge",
+          topic: "userAdded",
+          title: userEntry.title,
+          source: userEntry.source || "User-uploaded document",
+          summary: summary,
+          snippet: snippet, // Store full snippet for formatting
+          relevanceScore: userEntry.relevanceScore,
+          isUserAdded: true,
+          id: userEntry.id,
+        });
+      });
+    } catch (error) {
+      // Silently fail if user knowledge module isn't available
+      if (import.meta.env.DEV) {
+        console.warn("[RAG] User knowledge search failed:", error);
+      }
+    }
+  }
+
   // Sort by relevance score (highest first)
-  results.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  results.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
   return results.slice(0, 5); // Return top 5 results
 }
@@ -1870,14 +1905,23 @@ export function formatKnowledgeForLLM(results) {
       : `[${result.source}]`;
     
     formatted += `${sectionLabel} ${result.title}\n`;
-    formatted += `Summary: ${result.summary}\n\n`;
+    
+    // For user knowledge, use the snippet directly instead of summary
+    if (result.section === "userKnowledge" && result.snippet) {
+      formatted += `${result.snippet}\n\n`;
+    } else {
+      formatted += `Summary: ${result.summary}\n\n`;
+    }
 
-    // Truncate keyConcepts to top 5 to keep context compact
-    if (result.keyConcepts && result.keyConcepts.length > 0) {
+    // Truncate keyConcepts to top 5 to keep context compact (skip for user knowledge)
+    if (result.section !== "userKnowledge" && result.keyConcepts && result.keyConcepts.length > 0) {
       const concepts = result.keyConcepts.slice(0, 5);
       formatted += "Key Concepts:\n";
       concepts.forEach((concept, idx) => {
-        formatted += `  ${idx + 1}. ${concept}\n`;
+        // Don't include full document content in keyConcepts
+        if (typeof concept === "string" && concept.length < 500) {
+          formatted += `  ${idx + 1}. ${concept}\n`;
+        }
       });
       if (result.keyConcepts.length > 5) {
         formatted += `  ... (${result.keyConcepts.length - 5} more concepts)\n`;

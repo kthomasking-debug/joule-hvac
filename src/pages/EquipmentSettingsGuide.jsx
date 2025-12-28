@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Settings, HelpCircle, AlertCircle, CheckCircle2, Copy, Download, Zap } from "lucide-react";
+import { Settings, HelpCircle, AlertCircle, CheckCircle2, Copy, Download, Zap, Database, Search, Loader } from "lucide-react";
+import { queryHVACKnowledge } from "../utils/rag/ragQuery";
 import {
   EQUIPMENT_SETTINGS_DATA,
   getEquipmentSettings,
@@ -271,6 +272,9 @@ export default function EquipmentSettingsGuide() {
   const [diagram, setDiagram] = useState(null);
   const [error, setError] = useState(null);
   const [solutionType, setSolutionType] = useState(null);
+  const [ragResults, setRagResults] = useState(null);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [showRAGSearch, setShowRAGSearch] = useState(false);
 
   const handleGenerate = () => {
     setError(null);
@@ -378,6 +382,117 @@ export default function EquipmentSettingsGuide() {
     }
   };
 
+  const handleRAGSearch = async () => {
+    if (!query.trim()) {
+      setError("Please enter a question to search the knowledge base.");
+      return;
+    }
+
+    setRagLoading(true);
+    setRagResults(null);
+    setError(null);
+    setShowRAGSearch(true);
+
+    try {
+      const result = await queryHVACKnowledge(query);
+      
+      // If RAG found results, synthesize with LLM (proper RAG)
+      if (result.success && result.content) {
+        const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+        const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
+        
+        if (groqApiKey && groqApiKey.trim()) {
+          try {
+            // Proper RAG: Send retrieved context + user question to LLM
+            // Use a RAG-specific prompt that allows using the provided knowledge
+            const ragSystemPrompt = `You are a helpful HVAC assistant answering questions based on provided knowledge. 
+- Use the RELEVANT KNOWLEDGE section to answer the user's question
+- If the knowledge contains relevant information (even if partial), use it to provide a helpful answer
+- Be specific and cite details from the knowledge when available
+- You can provide wiring/equipment guidance when it's in the provided knowledge
+- If the knowledge doesn't contain enough information, say what's missing but still provide what you can
+- Keep responses concise (under 300 words)`;
+
+            const ragUserQuestion = `RELEVANT KNOWLEDGE:
+${result.content}
+
+USER QUESTION: ${query}
+
+Based on the knowledge above, provide a clear, helpful answer. Extract and use any relevant information from the knowledge provided, even if it's not a complete answer.`;
+            
+            // Use answerWithAgent with custom system prompt for better RAG synthesis
+            const { answerWithAgent } = await import("../lib/groqAgent");
+            const groqResult = await answerWithAgent(
+              ragUserQuestion,
+              groqApiKey,
+              null, // thermostatData
+              null, // userSettings
+              null, // userLocation
+              [], // conversationHistory
+              { systemPromptOverride: ragSystemPrompt }
+            );
+            
+            // Convert answerWithAgent format
+            const synthesizedResult = groqResult.error 
+              ? { success: false, message: groqResult.message }
+              : { success: true, message: groqResult.message };
+            
+            if (synthesizedResult.success && synthesizedResult.message) {
+              setRagResults({
+                success: true,
+                content: synthesizedResult.message,
+                sources: result.sources || [],
+                isRAGSynthesized: true,
+              });
+              return; // Exit early with synthesized result
+            }
+          } catch (groqErr) {
+            console.error("RAG synthesis error:", groqErr);
+            // Fall through to show raw RAG results
+          }
+        }
+        
+        // If no Groq API key or synthesis failed, show raw RAG results
+        setRagResults(result);
+      } else {
+        // If RAG found nothing, try Groq fallback
+        const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+        const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
+        
+        if (groqApiKey && groqApiKey.trim()) {
+          try {
+            const { askJouleFallback } = await import("../lib/groqAgent");
+            const groqResult = await askJouleFallback(
+              `Equipment settings question: ${query}\n\nAnswer as a senior HVAC tech. Be helpful and specific about equipment settings, wiring, and configuration.`,
+              groqApiKey,
+              model
+            );
+            
+            if (groqResult.success && groqResult.message) {
+              setRagResults({
+                success: true,
+                content: groqResult.message,
+                sources: [{ title: "AI-Powered Response (Groq)", score: 1 }],
+                isGroqFallback: true,
+              });
+              return;
+            }
+          } catch (groqErr) {
+            console.error("Groq fallback error:", groqErr);
+          }
+        }
+        
+        // Show "no results" message
+        setRagResults(result);
+      }
+    } catch (err) {
+      console.error("RAG search error:", err);
+      setError("Failed to search knowledge base. Please try again.");
+    } finally {
+      setRagLoading(false);
+    }
+  };
+
   const handleDownload = () => {
     if (diagram) {
       const blob = new Blob([diagram], { type: "text/plain" });
@@ -439,6 +554,23 @@ export default function EquipmentSettingsGuide() {
               <Zap className="w-5 h-5" />
               Get Answer
             </button>
+            <button
+              onClick={handleRAGSearch}
+              disabled={ragLoading || !query.trim()}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {ragLoading ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Database className="w-5 h-5" />
+                  Search Knowledge Base
+                </>
+              )}
+            </button>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Press Ctrl+Enter to generate
             </span>
@@ -465,6 +597,54 @@ export default function EquipmentSettingsGuide() {
             </div>
           </div>
         </div>
+
+        {/* RAG Results Display */}
+        {ragResults && showRAGSearch && (
+          <div className="mt-6">
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-6 border border-indigo-200 dark:border-indigo-700">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Knowledge Base Results
+                  </h2>
+                  {ragResults.success && ragResults.sources && ragResults.sources.length > 0 && (
+                    <span className="text-xs bg-indigo-600 text-white px-2 py-1 rounded">
+                      {ragResults.sources.length} source{ragResults.sources.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowRAGSearch(false)}
+                  className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Hide
+                </button>
+              </div>
+              {ragResults.success ? (
+                <>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {ragResults.content}
+                  </div>
+                  {ragResults.sources && ragResults.sources.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-700">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Sources:</p>
+                      <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                        {ragResults.sources.map((source, idx) => (
+                          <li key={idx}>• {source.title} {source.score && `(relevance: ${source.score.toFixed(1)})`}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {ragResults.message || "No relevant information found in the knowledge base."}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (

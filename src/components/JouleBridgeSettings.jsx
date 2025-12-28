@@ -36,30 +36,12 @@ export default function JouleBridgeSettings() {
   const [deviceReachability, setDeviceReachability] = useState({});
   const [diagnostics, setDiagnostics] = useState(null);
   const [autoFixing, setAutoFixing] = useState(false);
-  const [localLLMEnabled, setLocalLLMEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('useLocalBackend') === 'true' || localStorage.getItem('useLocalLLM') === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   useEffect(() => {
     loadState();
     checkHealth();
     runDiagnostics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridgeUrl]);
-
-  // Sync bridge URL with Local LLM settings
-  useEffect(() => {
-    if (bridgeUrl) {
-      try {
-        localStorage.setItem('localBackendUrl', bridgeUrl);
-      } catch {
-        // Ignore localStorage errors
-      }
-    }
   }, [bridgeUrl]);
 
   const runDiagnostics = async () => {
@@ -284,28 +266,7 @@ export default function JouleBridgeSettings() {
     setPrimaryDeviceIdState(deviceId);
   };
 
-  const handleToggleLocalLLM = (enabled) => {
-    setLocalLLMEnabled(enabled);
-    try {
-      localStorage.setItem('useLocalBackend', enabled ? 'true' : 'false');
-      localStorage.setItem('useLocalLLM', enabled ? 'true' : 'false'); // Backward compatibility
-    } catch {
-      // Ignore localStorage errors
-    }
-  };
 
-  const scrollToLocalLLMSettings = () => {
-    // Scroll to advanced settings and expand if needed
-    const advancedSection = document.querySelector('[data-advanced-settings]');
-    if (advancedSection) {
-      advancedSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Try to expand advanced settings
-      const expandButton = advancedSection.querySelector('button');
-      if (expandButton && !expandButton.getAttribute('aria-expanded')) {
-        expandButton.click();
-      }
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -402,36 +363,6 @@ export default function JouleBridgeSettings() {
         </div>
       </div>
 
-      {/* Local LLM Quick Toggle */}
-      <div className="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Server className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <h3 className="font-medium text-gray-900 dark:text-gray-100">Local AI (Ask Joule)</h3>
-          </div>
-          <label className="inline-flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={localLLMEnabled}
-              onChange={(e) => handleToggleLocalLLM(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {localLLMEnabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </label>
-        </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-          Enable local AI queries using the same Joule Bridge server. Keeps your data private and runs completely offline.
-        </p>
-        <button
-          onClick={scrollToLocalLLMSettings}
-          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1"
-        >
-          Advanced settings <ExternalLink className="w-3 h-3" />
-        </button>
-      </div>
-
       {/* Bridge URL Configuration */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -455,6 +386,17 @@ export default function JouleBridgeSettings() {
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Enter your Joule Bridge's IP address or hostname (e.g., http://192.168.1.100:8080)
         </p>
+        {!bridgeAvailable && !checkingHealth && bridgeUrl.includes('localhost') && (
+          <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-amber-800 dark:text-amber-200">
+                <div className="font-semibold mb-1">Using localhost? Bridge might be on another device.</div>
+                <div>If your bridge is running on a mini PC or Raspberry Pi, use its IP address instead (e.g., <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">http://192.168.0.106:8080</code>). Find the IP with: <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">hostname -I</code> on the bridge device.</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bridge Status */}

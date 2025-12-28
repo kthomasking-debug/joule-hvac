@@ -54,8 +54,12 @@ const Hardware = lazy(() => import("./pages/Hardware"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const SummerACIssues = lazy(() => import("./pages/SummerACIssues"));
 const ForecastDebug = lazy(() => import("./pages/ForecastDebug"));
-const BudgetDebug = lazy(() => import("./pages/BudgetDebug"));
 const MonthlyBudget = lazy(() => import("./pages/MonthlyBudget"));
+const AudioTranscription = lazy(() => import("./pages/AudioTranscription"));
+const IPLookup = lazy(() => import("./pages/IPLookup"));
+const PDFToText = lazy(() => import("./pages/PDFToText"));
+const ImageToASCII = lazy(() => import("./pages/ImageToASCII"));
+const ImageToText = lazy(() => import("./pages/ImageToText"));
 
 import {
   Home as HomeIcon,
@@ -79,6 +83,9 @@ import {
   Cable,
   Wrench,
   Wrench as Tool,
+  FileAudio,
+  Network,
+  Image,
 } from "lucide-react";
 
 export const routes = [
@@ -442,6 +449,61 @@ export const routes = [
     description: "Step-by-step troubleshooting guides for common HVAC problems. Short cycling, no heat, frozen coils, pressure switch issues - we got you covered.",
   },
   {
+    path: "/tools/audio-transcription",
+    name: "Audio Transcription",
+    label: "Audio Transcription",
+    icon: FileAudio,
+    Component: AudioTranscription,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Upload WAV files and convert them to text using OpenAI Whisper API. Perfect for transcribing phone calls, meetings, or voice notes.",
+  },
+  {
+    path: "/tools/ip-lookup",
+    name: "IP Lookup",
+    label: "IP Lookup",
+    icon: Network,
+    Component: IPLookup,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Reverse IP address lookup tool. Get location, ISP, timezone, and network information for any IP address.",
+  },
+  {
+    path: "/tools/pdf-to-text",
+    name: "PDF to Text",
+    label: "PDF to Text",
+    icon: FileText,
+    Component: PDFToText,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Extract text from PDF files. Works entirely in your browser - no data is sent to any server. Perfect for converting PDFs to text format.",
+  },
+  {
+    path: "/tools/image-to-ascii",
+    name: "Image to ASCII",
+    label: "Image to ASCII Converter",
+    icon: Image,
+    Component: ImageToASCII,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Convert images to ASCII art. Perfect for extracting diagrams from manuals and adding them to the RAG database.",
+  },
+  {
+    path: "/tools/image-to-text",
+    name: "Image to Text",
+    label: "Image to Text (OCR)",
+    icon: FileText,
+    Component: ImageToText,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Extract text from images and screenshots using OCR. Perfect for extracting text from PDF images or scanned documents.",
+  },
+  {
     path: "/onboarding",
     name: "Onboarding",
     label: "Onboarding",
@@ -583,17 +645,6 @@ export const routes = [
     inMobileNav: true,
     inPrimaryNav: true,
     description: "Current month budget with daily breakdown",
-  },
-  {
-    path: "/analysis/budget-debug",
-    name: "Annual Forecast",
-    label: "Annual Forecast",
-    icon: Bug,
-    Component: BudgetDebug,
-    showInNav: true,
-    inMobileNav: true,
-    inPrimaryNav: true,
-    description: "Annual budget using Ecobee target temp directly (no scheduling)",
   },
   {
     path: "/analysis/analyzer",

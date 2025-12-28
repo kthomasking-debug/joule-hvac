@@ -1,0 +1,48 @@
+==========================================
+  Joule Bridge GUI Installer
+==========================================
+
+To install the bridge WITHOUT using command prompt:
+
+OPTION 1: Double-click the installer
+------------------------------------
+1. Open the file manager (Files/Nautilus)
+2. Navigate to this USB drive
+3. Go to: prostat-bridge folder
+4. Double-click: install-bridge-gui.py
+   (If it asks what to open with, choose "Python 3")
+
+OPTION 2: Right-click and run
+------------------------------
+1. Right-click on: install-bridge-gui.py
+2. Select: "Open With" → "Python 3"
+3. Or: "Properties" → "Permissions" → Check "Execute" → Double-click
+
+OPTION 3: From terminal (if needed)
+------------------------------------
+python3 install-bridge-gui.py
+
+What the installer does:
+------------------------
+- Finds your USB drive automatically
+- Copies bridge files to your home directory
+- Installs Python dependencies
+- Sets up the bridge service
+- Configures static IP (optional)
+- Starts the bridge automatically
+
+After installation:
+-------------------
+- Bridge runs at: http://192.168.0.106:8080
+- Configure in web app: Settings → Joule Bridge Settings
+- Enter: http://192.168.0.106:8080
+
+Need help?
+----------
+If the GUI doesn't work, you can still use the command line:
+  cd ~/prostat-bridge
+  ./pre-configure-bridge.sh --static-ip 192.168.0.106
+
+
+
+

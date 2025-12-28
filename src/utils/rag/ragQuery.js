@@ -7,6 +7,7 @@ import {
   searchKnowledgeBase,
   formatKnowledgeForLLM,
 } from "./hvacKnowledgeBase.js";
+import { addUserKnowledge } from "./userKnowledge.js";
 
 /**
  * Main RAG lookup – returns clean, LLM-ready context
@@ -20,7 +21,7 @@ export async function queryHVACKnowledge(query) {
   }
 
   try {
-    const results = searchKnowledgeBase(query.trim());
+    const results = await searchKnowledgeBase(query.trim());
 
     if (results.length === 0) {
       return {
@@ -126,4 +127,27 @@ export async function queryWithStandards(query) {
     relevantStandards:
       relevantStandards.size > 0 ? Array.from(relevantStandards) : undefined,
   };
+}
+
+/**
+ * Add text content to user knowledge base
+ * @param {string} title - Title for the knowledge entry
+ * @param {string} content - Text content to add
+ * @param {string} source - Source identifier (default: "user-uploaded")
+ * @returns {Object} Result with success status
+ */
+export async function addToUserKnowledge(title, content, source = "user-uploaded") {
+  if (!content || !content.trim()) {
+    return { success: false, error: "Content cannot be empty" };
+  }
+  
+  try {
+    const { addUserKnowledge } = await import("./userKnowledge.js");
+    const result = addUserKnowledge(title, content.trim(), source);
+    // addUserKnowledge already returns { success: boolean, ... }
+    return result;
+  } catch (error) {
+    console.error("[RAG] Failed to add to user knowledge:", error);
+    return { success: false, error: error.message };
+  }
 }

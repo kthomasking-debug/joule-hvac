@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useOutletContext, Link } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import {
   Calendar,
   AlertTriangle,
@@ -700,15 +700,6 @@ const MonthlyBudget = () => {
                   )}
                 </table>
               </div>
-            </div>
-            
-            <div className="mt-6 text-center">
-              <Link 
-                to="/analysis/budget-debug" 
-                className="text-blue-400 hover:text-blue-300 underline text-sm"
-              >
-                View Annual Energy Budget →
-              </Link>
             </div>
           </>
         )}

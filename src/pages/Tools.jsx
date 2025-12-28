@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -39,6 +39,46 @@ export default function Tools() {
       icon: Wrench,
       description: "Step-by-step troubleshooting guides for common HVAC problems. Short cycling, no heat, frozen coils, pressure switch issues - we got you covered.",
       color: "orange",
+    },
+    {
+      path: "/tools/audio-transcription",
+      name: "Audio Transcription",
+      label: "Audio Transcription",
+      icon: FileAudio,
+      description: "Upload WAV files and convert them to text using OpenAI Whisper API. Perfect for transcribing phone calls, meetings, or voice notes.",
+      color: "purple",
+    },
+    {
+      path: "/tools/ip-lookup",
+      name: "IP Lookup",
+      label: "IP Lookup",
+      icon: Network,
+      description: "Reverse IP address lookup tool. Get location, ISP, timezone, and network information for any IP address.",
+      color: "blue",
+    },
+    {
+      path: "/tools/pdf-to-text",
+      name: "PDF to Text",
+      label: "PDF to Text",
+      icon: FileText,
+      description: "Extract text from PDF files. Works entirely in your browser - no data is sent to any server. Perfect for converting PDFs to text format.",
+      color: "green",
+    },
+    {
+      path: "/tools/image-to-ascii",
+      name: "Image to ASCII Converter",
+      label: "Image to ASCII Converter",
+      icon: Image,
+      description: "Convert images to ASCII art. Perfect for extracting diagrams from manuals and adding them to the RAG database. All processing happens in your browser.",
+      color: "blue",
+    },
+    {
+      path: "/tools/image-to-text",
+      name: "Image to Text (OCR)",
+      label: "Image to Text (OCR)",
+      icon: FileText,
+      description: "Extract text from images and screenshots using OCR. Perfect for extracting text from PDF images, screenshots, or scanned documents. All processing happens in your browser.",
+      color: "purple",
     },
   ];
 

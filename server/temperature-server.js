@@ -673,6 +673,86 @@ app.get("/api/energyplus/status", async (req, res) => {
   }
 });
 
+// Start EnergyPlus service endpoint
+app.post("/api/energyplus/start", async (req, res) => {
+  try {
+    // First check if service is already running
+    try {
+      const pythonServiceUrl = process.env.ENERGYPLUS_SERVICE_URL || "http://localhost:3002";
+      const statusResponse = await fetch(`${pythonServiceUrl}/api/energyplus/status`, {
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
+      if (statusResponse.ok) {
+        return res.json({
+          success: true,
+          message: "EnergyPlus service is already running",
+          alreadyRunning: true,
+        });
+      }
+    } catch (checkError) {
+      // Service is not running, proceed to start it
+    }
+
+    // Check if process is already running by checking for Python process with energyplus-service.py
+    const { stdout } = await execAsync("ps aux | grep '[e]nergyplus-service.py' || true");
+    if (stdout.trim()) {
+      return res.json({
+        success: true,
+        message: "EnergyPlus service process found (may be starting up)",
+        alreadyRunning: true,
+      });
+    }
+
+    // Start the service in the background
+    const servicePath = process.env.ENERGYPLUS_SERVICE_PATH || "server/energyplus-service.py";
+    const pythonCmd = process.env.PYTHON_CMD || "python3";
+    
+    // Use nohup to run in background and redirect output
+    const startCmd = `nohup ${pythonCmd} ${servicePath} > /tmp/energyplus-service.log 2>&1 &`;
+    
+    await execAsync(startCmd);
+    
+    // Wait a moment for service to start
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Verify it started
+    try {
+      const pythonServiceUrl = process.env.ENERGYPLUS_SERVICE_URL || "http://localhost:3002";
+      const verifyResponse = await fetch(`${pythonServiceUrl}/api/energyplus/status`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (verifyResponse.ok) {
+        return res.json({
+          success: true,
+          message: "EnergyPlus service started successfully",
+          alreadyRunning: false,
+        });
+      }
+    } catch (verifyError) {
+      // Service may still be starting
+      return res.json({
+        success: true,
+        message: "EnergyPlus service is starting (may take a few seconds)",
+        alreadyRunning: false,
+        warning: "Service may still be initializing",
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: "EnergyPlus service start command executed",
+      alreadyRunning: false,
+    });
+  } catch (error) {
+    console.error("Error starting EnergyPlus service:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "Failed to start EnergyPlus service. Make sure Python 3 is installed and the service file exists.",
+    });
+  }
+});
+
 // Rebate API endpoint - proxy to Python service
 app.post("/api/rebates/calculate", async (req, res) => {
   try {

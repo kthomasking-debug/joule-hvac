@@ -7,6 +7,7 @@ import {
   checkBridgeHealth,
   BridgeConnectionError,
 } from "../lib/jouleBridgeApi";
+import { cToF } from "../lib/units";
 
 /**
  * Context for Joule Bridge state - shared across all pages
@@ -77,13 +78,17 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
       const data = await getThermostatStatus(deviceIdToUse);
 
       if (data) {
+        // Convert temperatures from Celsius to Fahrenheit (HomeKit returns Celsius)
+        const tempF = data.temperature != null ? cToF(data.temperature) : null;
+        const targetTempF = data.target_temperature != null ? cToF(data.target_temperature) : null;
+        
         const normalized = {
           identifier: data.device_id,
           name: data.name || "Ecobee Thermostat",
-          temperature: data.temperature || null,
+          temperature: tempF,
           humidity: data.humidity || null,
-          targetHeatTemp: data.mode === "heat" ? data.target_temperature : null,
-          targetCoolTemp: data.mode === "cool" ? data.target_temperature : null,
+          targetHeatTemp: data.mode === "heat" ? targetTempF : null,
+          targetCoolTemp: data.mode === "cool" ? targetTempF : null,
           mode: data.mode || "off",
           fanMode: "auto",
           isAway: false,

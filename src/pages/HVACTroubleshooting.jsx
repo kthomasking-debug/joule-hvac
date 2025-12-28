@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Wrench, HelpCircle, AlertCircle, CheckCircle2, Copy, Download, Search, Loader } from "lucide-react";
+import { Wrench, HelpCircle, AlertCircle, CheckCircle2, Copy, Download, Search, Loader, Database } from "lucide-react";
+import { queryHVACKnowledge } from "../utils/rag/ragQuery";
 
 /**
  * HVAC Troubleshooting Knowledge Base
@@ -2065,6 +2066,8 @@ export default function HVACTroubleshooting() {
   const [issueType, setIssueType] = useState(null);
   const [loading, setLoading] = useState(false);
   const [usingGroqFallback, setUsingGroqFallback] = useState(false);
+  const [ragResults, setRagResults] = useState(null);
+  const [showRAGSearch, setShowRAGSearch] = useState(false);
 
   const handleSearch = async () => {
     setError(null);
@@ -2108,9 +2111,31 @@ export default function HVACTroubleshooting() {
       }
     }
 
+    // First, try RAG search (includes user-uploaded PDFs)
+    setLoading(true);
+    try {
+      const ragResult = await queryHVACKnowledge(query);
+      if (ragResult.success && ragResult.content) {
+        setRagResults(ragResult);
+        setShowRAGSearch(true);
+        // Use RAG results as primary response
+        setResponse(`From Knowledge Base:\n\n${ragResult.content}\n\n---\n\nFor more detailed troubleshooting steps, see the guide below.`);
+      }
+      // Note: Groq fallback is handled below in the else block
+    } catch (err) {
+      console.error("RAG search error:", err);
+    }
+
     if (detected) {
       setIssueType(detected.key);
-      setResponse(generateTroubleshootingResponse(detected.issue, detected.key));
+      const hardcodedResponse = generateTroubleshootingResponse(detected.issue, detected.key);
+      // Combine with RAG if available
+      if (ragResults && ragResults.success) {
+        setResponse(`${hardcodedResponse}\n\n---\n\nAdditional Information from Knowledge Base:\n\n${ragResults.content}`);
+      } else {
+        setResponse(hardcodedResponse);
+      }
+      setLoading(false);
     } else {
       // Try Groq API fallback
       setLoading(true);
@@ -2359,6 +2384,46 @@ export default function HVACTroubleshooting() {
           </div>
         )}
 
+        {/* RAG Results Display */}
+        {ragResults && ragResults.success && showRAGSearch && (
+          <div className="mt-6">
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-6 border border-indigo-200 dark:border-indigo-700">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Knowledge Base Results
+                  </h2>
+                  {ragResults.sources && ragResults.sources.length > 0 && (
+                    <span className="text-xs bg-indigo-600 text-white px-2 py-1 rounded">
+                      {ragResults.sources.length} source{ragResults.sources.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowRAGSearch(false)}
+                  className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Hide
+                </button>
+              </div>
+              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                {ragResults.content}
+              </div>
+              {ragResults.sources && ragResults.sources.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Sources:</p>
+                  <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                    {ragResults.sources.map((source, idx) => (
+                      <li key={idx}>• {source.title} {source.score && `(relevance: ${source.score.toFixed(1)})`}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Response Display */}
         {response && (
           <div className="mt-6">
@@ -2372,6 +2437,11 @@ export default function HVACTroubleshooting() {
                   {usingGroqFallback && (
                     <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
                       AI-Powered
+                    </span>
+                  )}
+                  {ragResults && ragResults.success && (
+                    <span className="text-xs bg-indigo-600 text-white px-2 py-1 rounded">
+                      + Knowledge Base
                     </span>
                   )}
                 </div>
