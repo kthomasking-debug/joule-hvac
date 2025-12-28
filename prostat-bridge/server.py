@@ -1678,23 +1678,37 @@ async def handle_energyplus_status(request):
         # Import energyplus functions (they're in a separate file)
         import sys
         import os
-        # Add parent directory to path to import energyplus-service
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
+        import importlib.util
         
-        try:
-            # Import from energyplus-service.py (note: Python module names can't have hyphens)
-            # We'll import the functions directly
-            import importlib.util
-            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
-            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
-            energyplus_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(energyplus_module)
-            energyplus_available = getattr(energyplus_module, 'ENERGYPLUS_AVAILABLE', False)
-        except (ImportError, FileNotFoundError, AttributeError) as e:
-            logger.warning(f"Could not import EnergyPlus module: {e}")
-            energyplus_available = False
+        # Get the directory where server.py is located (prostat-bridge/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get the repo root (parent of prostat-bridge/)
+        repo_root = os.path.dirname(current_dir)
+        # Path to energyplus-service.py
+        energyplus_path = os.path.join(repo_root, 'server', 'energyplus-service.py')
+        
+        # Also try alternative paths in case server.py is copied elsewhere
+        alternative_paths = [
+            energyplus_path,  # Standard location: repo_root/server/energyplus-service.py
+            os.path.join(os.path.expanduser('~'), 'git', 'joule-hvac', 'server', 'energyplus-service.py'),  # Remote bridge location
+            os.path.join(current_dir, '..', 'server', 'energyplus-service.py'),  # Relative from prostat-bridge
+        ]
+        
+        energyplus_available = False
+        for path in alternative_paths:
+            if os.path.exists(path):
+                try:
+                    spec = importlib.util.spec_from_file_location("energyplus_service", path)
+                    energyplus_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(energyplus_module)
+                    energyplus_available = getattr(energyplus_module, 'ENERGYPLUS_AVAILABLE', False)
+                    break
+                except Exception as e:
+                    logger.debug(f"Could not load EnergyPlus from {path}: {e}")
+                    continue
+        
+        if not energyplus_available:
+            logger.info("EnergyPlus module not found - using simplified calculations")
         
         return web.json_response({
             'status': 'ok',
@@ -1718,33 +1732,57 @@ async def handle_energyplus_calculate(request):
         # Import energyplus functions
         import sys
         import os
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
+        import importlib.util
         
-        try:
-            # Import from energyplus-service.py
-            import importlib.util
-            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
-            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
-            energyplus_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(energyplus_module)
-            run_energyplus_simulation = getattr(energyplus_module, 'run_energyplus_simulation')
-            results = run_energyplus_simulation(params)
-        except (ImportError, FileNotFoundError, AttributeError) as e:
-            logger.warning(f"Could not import EnergyPlus functions: {e}, using simplified calculation")
-            # Fallback to simplified calculation
-            import importlib.util
-            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
-            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
-            energyplus_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(energyplus_module)
-            calculate_load_simplified = getattr(energyplus_module, 'calculate_load_simplified')
-            results = calculate_load_simplified(params)
+        # Get the directory where server.py is located (prostat-bridge/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get the repo root (parent of prostat-bridge/)
+        repo_root = os.path.dirname(current_dir)
+        # Path to energyplus-service.py
+        energyplus_path = os.path.join(repo_root, 'server', 'energyplus-service.py')
+        
+        # Also try alternative paths
+        alternative_paths = [
+            energyplus_path,  # Standard location
+            os.path.join(os.path.expanduser('~'), 'git', 'joule-hvac', 'server', 'energyplus-service.py'),  # Remote bridge
+            os.path.join(current_dir, '..', 'server', 'energyplus-service.py'),  # Relative
+        ]
+        
+        energyplus_module = None
+        for path in alternative_paths:
+            if os.path.exists(path):
+                try:
+                    spec = importlib.util.spec_from_file_location("energyplus_service", path)
+                    energyplus_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(energyplus_module)
+                    break
+                except Exception as e:
+                    logger.debug(f"Could not load EnergyPlus from {path}: {e}")
+                    continue
+        
+        if energyplus_module:
+            try:
+                run_energyplus_simulation = getattr(energyplus_module, 'run_energyplus_simulation')
+                results = run_energyplus_simulation(params)
+            except AttributeError:
+                # Fallback to simplified
+                calculate_load_simplified = getattr(energyplus_module, 'calculate_load_simplified')
+                results = calculate_load_simplified(params)
+        else:
+            # If module not found, return simplified calculation
+            logger.warning("EnergyPlus module not found, using simplified calculation")
+            results = {
+                'heatingLoadBtuHr': params.get('squareFeet', 2000) * 22.67 * params.get('insulationLevel', 1.0) * 70,
+                'coolingLoadBtuHr': params.get('squareFeet', 2000) * 22.67 * params.get('insulationLevel', 1.0) * 25 * 1.2,
+                'method': 'simplified',
+                'error': 'EnergyPlus module not available - using simplified calculation'
+            }
         
         return web.json_response(results)
     except Exception as e:
         logger.error(f"Error calculating EnergyPlus load: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
 async def handle_rebates_calculate(request):
@@ -1760,26 +1798,50 @@ async def handle_rebates_calculate(request):
         # Import rebate calculation function
         import sys
         import os
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
+        import importlib.util
         
-        try:
-            # Import from energyplus-service.py
-            import importlib.util
-            energyplus_path = os.path.join(parent_dir, 'server', 'energyplus-service.py')
-            spec = importlib.util.spec_from_file_location("energyplus_service", energyplus_path)
-            energyplus_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(energyplus_module)
-            calculate_rebates = getattr(energyplus_module, 'calculate_rebates')
-            results = calculate_rebates(zip_code, equipment_sku)
-        except (ImportError, FileNotFoundError, AttributeError) as e:
-            logger.warning(f"Could not import rebate calculation: {e}")
+        # Get the directory where server.py is located (prostat-bridge/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get the repo root (parent of prostat-bridge/)
+        repo_root = os.path.dirname(current_dir)
+        # Path to energyplus-service.py
+        energyplus_path = os.path.join(repo_root, 'server', 'energyplus-service.py')
+        
+        # Also try alternative paths
+        alternative_paths = [
+            energyplus_path,  # Standard location
+            os.path.join(os.path.expanduser('~'), 'git', 'joule-hvac', 'server', 'energyplus-service.py'),  # Remote bridge
+            os.path.join(current_dir, '..', 'server', 'energyplus-service.py'),  # Relative
+        ]
+        
+        energyplus_module = None
+        for path in alternative_paths:
+            if os.path.exists(path):
+                try:
+                    spec = importlib.util.spec_from_file_location("energyplus_service", path)
+                    energyplus_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(energyplus_module)
+                    break
+                except Exception as e:
+                    logger.debug(f"Could not load EnergyPlus from {path}: {e}")
+                    continue
+        
+        if energyplus_module:
+            try:
+                calculate_rebates = getattr(energyplus_module, 'calculate_rebates')
+                results = calculate_rebates(zip_code, equipment_sku)
+            except AttributeError:
+                logger.warning("calculate_rebates function not found in EnergyPlus module")
+                return web.json_response({'error': 'Rebate calculation not available'}, status=500)
+        else:
+            logger.warning("EnergyPlus module not found for rebate calculation")
             return web.json_response({'error': 'Rebate calculation not available'}, status=500)
         
         return web.json_response(results)
     except Exception as e:
         logger.error(f"Error calculating rebates: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
 async def handle_check_bridge_processes(request):

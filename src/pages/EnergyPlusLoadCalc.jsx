@@ -175,9 +175,9 @@ export default function EnergyPlusLoadCalc() {
     
     // If using bridge URL, service is already available (no need to start)
     if (!backendUrl.includes('localhost:3001')) {
-      setError("EnergyPlus service is available on the bridge server. No need to start it separately.");
+      // Service is available on bridge - just refresh status, don't show error
       setStartingService(false);
-      checkServiceStatus();
+      await checkServiceStatus();
       return;
     }
     
