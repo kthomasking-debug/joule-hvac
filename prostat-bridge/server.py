@@ -1706,6 +1706,205 @@ async def handle_check_bridge_processes(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def handle_ota_version(request):
+    """GET /api/ota/version - Get current bridge version"""
+    try:
+        import subprocess
+        from pathlib import Path
+        
+        # Try to get version from git
+        git_repo = Path.home() / "git" / "joule-hvac"
+        version = "unknown"
+        
+        if (git_repo / ".git").exists():
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=git_repo,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    version = result.stdout.strip()[:8]
+            except Exception:
+                pass
+        
+        # Fallback: check version file
+        version_file = Path.home() / "prostat-bridge" / "VERSION"
+        if version_file.exists():
+            version = version_file.read_text().strip()
+        
+        return web.json_response({
+            "version": version,
+            "service_path": str(Path.home() / "prostat-bridge")
+        })
+    except Exception as e:
+        logger.error(f"Error getting version: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def handle_ota_check(request):
+    """GET /api/ota/check - Check for available updates"""
+    try:
+        import subprocess
+        from pathlib import Path
+        
+        git_repo = Path.home() / "git" / "joule-hvac"
+        repo_url = "https://github.com/kthomasking-debug/joule-hvac.git"
+        
+        # Get current version
+        current_version = "unknown"
+        if (git_repo / ".git").exists():
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=git_repo,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    current_version = result.stdout.strip()[:8]
+            except Exception:
+                pass
+        
+        # Get latest version from GitHub
+        latest_version = None
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", "--heads", repo_url, "main"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                latest_version = result.stdout.split()[0][:8]
+        except Exception as e:
+            logger.warning(f"Could not check for updates: {e}")
+        
+        update_available = latest_version and latest_version != current_version
+        
+        return web.json_response({
+            "current_version": current_version,
+            "latest_version": latest_version or current_version,
+            "update_available": update_available
+        })
+    except Exception as e:
+        logger.error(f"Error checking for updates: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def handle_ota_update(request):
+    """POST /api/ota/update - Perform OTA update"""
+    try:
+        import subprocess
+        import shutil
+        from pathlib import Path
+        from datetime import datetime
+        
+        git_repo = Path.home() / "git" / "joule-hvac"
+        service_path = Path.home() / "prostat-bridge"
+        repo_url = "https://github.com/kthomasking-debug/joule-hvac.git"
+        backup_path = Path.home() / ".joule-bridge-backups"
+        
+        # Create backup
+        backup_path.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = backup_path / f"server.py.{timestamp}"
+        
+        current_server = service_path / "server.py"
+        if current_server.exists():
+            shutil.copy2(current_server, backup_file)
+            logger.info(f"Created backup: {backup_file}")
+        
+        # Update git repo
+        if not (git_repo / ".git").exists():
+            git_repo.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["git", "clone", repo_url, str(git_repo)],
+                check=True,
+                timeout=60
+            )
+        else:
+            subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=git_repo,
+                check=True,
+                timeout=60
+            )
+        
+        # Copy updated server.py
+        source_file = git_repo / "prostat-bridge" / "server.py"
+        if not source_file.exists():
+            raise FileNotFoundError(f"Source file not found: {source_file}")
+        
+        service_path.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_file, service_path / "server.py")
+        
+        # Save version
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=git_repo,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                version = result.stdout.strip()[:8]
+                (service_path / "VERSION").write_text(version)
+        except Exception:
+            pass
+        
+        # Restart service
+        restart_success = False
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "restart", "prostat-bridge"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            restart_success = result.returncode == 0
+        except Exception as e:
+            logger.error(f"Service restart failed: {e}")
+            # Rollback on failure
+            if backup_file.exists():
+                shutil.copy2(backup_file, service_path / "server.py")
+                subprocess.run(["sudo", "systemctl", "restart", "prostat-bridge"], timeout=10)
+                return web.json_response({
+                    "success": False,
+                    "error": "Service restart failed, rolled back to previous version",
+                    "backup": str(backup_file)
+                }, status=500)
+        
+        if restart_success:
+            return web.json_response({
+                "success": True,
+                "version": version if 'version' in locals() else "unknown",
+                "backup": str(backup_file),
+                "message": "Update completed successfully"
+            })
+        else:
+            return web.json_response({
+                "success": False,
+                "error": "Service restart failed"
+            }, status=500)
+            
+    except subprocess.TimeoutExpired:
+        return web.json_response({
+            "success": False,
+            "error": "Update timed out. Check network connection."
+        }, status=500)
+    except Exception as e:
+        logger.error(f"OTA update failed: {e}")
+        return web.json_response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+
 async def handle_kill_duplicate_bridges(request):
     """POST /api/bridge/kill-duplicates - Kill all duplicate bridge processes"""
     import subprocess
@@ -1794,6 +1993,11 @@ async def init_app():
     
     # Health check
     app.router.add_get('/health', lambda r: web.json_response({'status': 'ok'}))
+    
+    # OTA Update endpoints
+    app.router.add_get('/api/ota/version', handle_ota_version)
+    app.router.add_get('/api/ota/check', handle_ota_check)
+    app.router.add_post('/api/ota/update', handle_ota_update)
     
     # Bridge process management
     app.router.add_get('/api/bridge/processes', handle_check_bridge_processes)

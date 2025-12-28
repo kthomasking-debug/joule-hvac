@@ -25,12 +25,28 @@ echo "✅ SSH connection works"
 # Update the code
 echo "📥 Pulling latest code from GitHub..."
 ssh "$BRIDGE_USER@$BRIDGE_IP" << 'EOF'
-    cd ~/git/joule-hvac || { echo "Repository not found. Clone it first: git clone https://github.com/kthomasking-debug/joule-hvac.git ~/git/joule-hvac"; exit 1; }
+    if [ ! -d ~/git/joule-hvac ]; then
+        echo "Repository not found. Cloning..."
+        mkdir -p ~/git
+        cd ~/git
+        git clone https://github.com/kthomasking-debug/joule-hvac.git
+    fi
+    cd ~/git/joule-hvac
     git pull origin main
 EOF
 
 if [ $? -eq 0 ]; then
     echo "✅ Code updated"
+    
+    # Copy updated code to service location
+    echo "📋 Copying updated code to service location..."
+    ssh "$BRIDGE_USER@$BRIDGE_IP" << 'EOF'
+        mkdir -p ~/prostat-bridge
+        cp ~/git/joule-hvac/prostat-bridge/server.py ~/prostat-bridge/server.py
+        # Save version
+        cd ~/git/joule-hvac && git rev-parse HEAD | cut -c1-8 > ~/prostat-bridge/VERSION 2>/dev/null || echo "unknown" > ~/prostat-bridge/VERSION
+        echo "✅ Code copied to service location"
+EOF
     
     # Restart the bridge service
     echo "🔄 Restarting bridge service..."
