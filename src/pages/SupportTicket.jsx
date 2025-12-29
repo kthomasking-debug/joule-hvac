@@ -87,8 +87,8 @@ export default function SupportTicket() {
     });
   };
 
-  // Support email address - configure this to receive tickets
-  const SUPPORT_EMAIL = 'support@joule-hvac.com'; // TODO: Change to your actual email
+  // Support email address
+  const SUPPORT_EMAIL = 'kthomasking@gmail.com';
   
   // Handle form submission - opens email client with ticket
   const handleSubmit = (e) => {
