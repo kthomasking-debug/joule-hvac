@@ -2385,8 +2385,8 @@ const SettingsPage = () => {
           )}
         </div>
 
-        {/* Sticky Side Navigation */}
-        <div className="hidden lg:block fixed left-4 top-1/2 -translate-y-1/2 z-40">
+        {/* Sticky Side Navigation - Right Side */}
+        <div className="hidden lg:block fixed right-4 top-1/2 -translate-y-1/2 z-40">
           <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-4 shadow-xl">
             <div className="space-y-2">
               <div className="px-2 pb-2 mb-2 border-b border-slate-800">
