@@ -536,6 +536,152 @@ Once installed, support can access your bridge remotely!
 
 ---
 
+## Tailscale Key Expiry Handling
+
+### Understanding Key Expiry
+
+**Default Expiry:** Tailscale authentication keys expire after **6 months** by default.
+
+**What Happens When Key Expires:**
+- Device loses connection to Tailscale network
+- Remote access via Tailscale IP stops working
+- Bridge Admin can't connect via Tailscale URL
+- Device appears offline in Tailscale admin console
+
+### Detecting Expired Keys
+
+**Signs of Expired Key:**
+1. **Bridge Admin Page:**
+   - Tailscale IP section shows "not available"
+   - Remote URL is missing
+   - Status shows Tailscale as "not running" or "offline"
+
+2. **Customer Reports:**
+   - "Can't access bridge remotely anymore"
+   - "Tailscale stopped working"
+   - "Bridge Admin shows Tailscale disconnected"
+
+3. **Diagnostic Check:**
+   - Ask customer to run: `tailscale status`
+   - If shows "offline" or "disconnected", key likely expired
+
+### Re-authentication Process
+
+**Step 1: Confirm the Issue**
+
+Ask customer to check Tailscale status:
+```bash
+tailscale status
+```
+
+If device shows as offline, key has expired.
+
+**Step 2: Guide Customer Through Re-authentication**
+
+Send these step-by-step instructions:
+
+```
+Your Tailscale authentication key has expired. Let's re-authenticate:
+
+1. SSH into your bridge:
+   ssh user@your-bridge-ip
+   
+   (If you don't know the IP, check your router's connected devices list)
+
+2. Check current Tailscale status:
+   tailscale status
+
+3. Re-authenticate Tailscale:
+   sudo tailscale up
+
+4. You'll see a URL like this:
+   https://login.tailscale.com/a/xxxxx-xxxxx-xxxxx
+
+5. Open that URL in a web browser on your computer or phone
+
+6. Log in with your Tailscale account (same email you used before)
+
+7. After logging in, verify it's working:
+   tailscale ip -4
+   
+   You should see an IP starting with 100.x.x.x
+
+8. Share the new IP with support if it changed from before
+```
+
+**Step 3: Verify Re-authentication**
+
+After customer completes authentication:
+
+1. **Have customer run:**
+   ```bash
+   tailscale ip -4
+   ```
+
+2. **Get the IP** (should be 100.x.x.x format)
+
+3. **Test connection:**
+   - Paste IP into Bridge Admin URL field: `http://100.x.x.x:8080`
+   - Click "Save & Check"
+   - Verify connection succeeds
+
+4. **Confirm in Bridge Admin:**
+   - Check "Remote Support Access" section
+   - Should show Tailscale IP and "REMOTE ACCESS AVAILABLE"
+
+### Prevention Strategies
+
+**For Support Staff:**
+
+1. **Track Key Expiry Dates:**
+   - Note when customers set up Tailscale
+   - Set reminders 1 month before 6-month expiry
+   - Proactively reach out before keys expire
+
+2. **Use Extended Expiry (if available):**
+   - In Tailscale admin console, you can extend key expiry
+   - Go to: https://login.tailscale.com/admin/machines
+   - Find customer's device
+   - Extend expiry if needed
+
+3. **Document Customer Setup Dates:**
+   - Keep a record of when Tailscale was installed
+   - Calculate expiry date (6 months later)
+   - Schedule follow-up before expiry
+
+**For Production Deployments:**
+
+1. **Use Auth Keys with Extended Expiry:**
+   - Create reusable auth keys in Tailscale admin
+   - Set longer expiry (up to 1 year) or no expiry
+   - Use during initial setup: `sudo tailscale up --authkey=tskey-auth-xxxxx`
+
+2. **Automated Re-authentication Script:**
+   - Create a script that checks expiry and re-authenticates
+   - Run as a cron job monthly
+   - Alert if re-authentication fails
+
+### Quick Reference: Re-authentication Commands
+
+**Customer needs to run:**
+```bash
+# Check status
+tailscale status
+
+# Re-authenticate
+sudo tailscale up
+
+# Verify IP
+tailscale ip -4
+```
+
+**Support staff can verify:**
+- Check Bridge Admin page for Tailscale IP
+- Test connection using Tailscale URL
+- Verify in Tailscale admin console
+
+---
+
 ## Common Issues and Solutions
 
 ### Issue: "Bridge URL not configured"
