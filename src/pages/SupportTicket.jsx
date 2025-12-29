@@ -87,29 +87,38 @@ export default function SupportTicket() {
     });
   };
 
-  // Handle form submission
+  // Support email address - configure this to receive tickets
+  const SUPPORT_EMAIL = 'support@joule-hvac.com'; // TODO: Change to your actual email
+  
+  // Handle form submission - opens email client with ticket
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // For now, just copy the ticket to clipboard
-    // In production, this would send to a support system
     const ticket = generateDiagnosticReport();
-    navigator.clipboard.writeText(ticket).then(() => {
-      setSubmitted(true);
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({
-          name: '',
-          email: '',
-          subject: '',
-          description: '',
-          includeDiagnostics: true,
-        });
-      }, 5000);
-    }).catch(() => {
-      alert('Failed to copy ticket. Please copy the diagnostic report manually.');
-    });
+    
+    // Build mailto URL
+    const subject = encodeURIComponent(`[Support] ${formData.subject}`);
+    const body = encodeURIComponent(ticket);
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    
+    // Also copy to clipboard as backup
+    navigator.clipboard.writeText(ticket).catch(() => {});
+    
+    // Open email client
+    window.open(mailtoUrl, '_blank');
+    
+    setSubmitted(true);
+    // Reset form after 5 seconds
+    setTimeout(() => {
+      setSubmitted(false);
+      setFormData({
+        name: '',
+        email: '',
+        subject: '',
+        description: '',
+        includeDiagnostics: true,
+      });
+    }, 5000);
   };
 
   return (
@@ -130,19 +139,26 @@ export default function SupportTicket() {
             <div className="flex items-center gap-3 mb-4">
               <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
               <h2 className="text-xl font-semibold text-green-900 dark:text-green-100">
-                Ticket Copied to Clipboard!
+                Email Client Opened!
               </h2>
             </div>
             <p className="text-green-800 dark:text-green-200 mb-4">
-              Your support ticket has been copied to your clipboard. Please paste it into an email and send to:
+              Your email client should have opened with the support ticket pre-filled. 
+              Just click Send to submit your ticket.
             </p>
             <div className="bg-white dark:bg-gray-800 rounded-lg p-4 mb-4">
-              <p className="font-mono text-sm text-gray-900 dark:text-white">
-                support@joule-hvac.com
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                <strong>If your email client didn't open:</strong>
+              </p>
+              <p className="font-mono text-sm text-gray-900 dark:text-white mb-2">
+                {SUPPORT_EMAIL}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                The ticket has also been copied to your clipboard - paste it into your email.
               </p>
             </div>
             <p className="text-sm text-green-700 dark:text-green-300">
-              The form will reset in a few seconds. Thank you for contacting support!
+              Thank you for contacting support! We'll respond within 24-48 hours.
             </p>
           </div>
         ) : (
