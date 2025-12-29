@@ -43,9 +43,21 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
     try {
       const available = await checkBridgeHealth();
       setBridgeAvailable(available);
+      if (!available) {
+        // Check if URL is configured - if not, set a helpful error
+        const url = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+        if (!url || url.trim() === '') {
+          setError('Joule Bridge URL not configured. Please set it in Settings.');
+        } else {
+          setError('Joule Bridge is not responding. Make sure it is running.');
+        }
+      } else {
+        setError(null); // Clear error if bridge is available
+      }
       return available;
     } catch (err) {
       setBridgeAvailable(false);
+      setError(err.message || 'Joule Bridge is not available');
       return false;
     }
   }, []);
@@ -57,16 +69,18 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
     if (!deviceIdToUse) {
       try {
         const id = await getPrimaryDeviceId();
+        console.debug("[JouleBridge] Fetched primary device ID:", id);
         if (id) {
           deviceIdToUse = id;
           setPrimaryId(id);
         }
       } catch (e) {
-        console.debug("Could not get primary device ID:", e);
+        console.debug("[JouleBridge] Could not get primary device ID:", e);
       }
     }
     
     if (!deviceIdToUse) {
+      console.debug("[JouleBridge] No device ID available");
       setError("No device paired. Please pair a device first.");
       setConnected(false);
       setLoading(false);
@@ -75,7 +89,9 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
 
     try {
       setError(null);
+      console.debug("[JouleBridge] Fetching status for device:", deviceIdToUse);
       const data = await getThermostatStatus(deviceIdToUse);
+      console.debug("[JouleBridge] Got status data:", data);
 
       if (data) {
         // Convert temperatures from Celsius to Fahrenheit (HomeKit returns Celsius)
@@ -100,18 +116,23 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
           motionSensors: data.motion_sensors || [],
         };
 
+        console.debug("[JouleBridge] ✓ Connected! Normalized data:", normalized);
         setThermostatData(normalized);
         setConnected(true);
+        setBridgeAvailable(true); // Ensure bridge is marked as available when we get data
         setLoading(false);
         return normalized;
       }
 
+      console.debug("[JouleBridge] No data returned from getThermostatStatus");
       setConnected(false);
       setLoading(false);
       return null;
     } catch (err) {
+      console.error("[JouleBridge] Error fetching data:", err.message || err);
+      
       if (!(err instanceof BridgeConnectionError)) {
-        console.error("Error fetching Joule Bridge data:", err);
+        console.error("[JouleBridge] Full error:", err);
       }
       
       // Check if device is paired but not reachable
@@ -119,7 +140,9 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
       if (errorMsg.includes("Connect call failed") || errorMsg.includes("not reachable") || errorMsg.includes("ConnectionError") || errorMsg.includes("Errno 111")) {
         // Device is paired but not reachable (IP may have changed)
         // The bridge will automatically refresh IP and retry, but we should keep trying
-        setError("Device is paired but not reachable. This can happen after server restart if: (1) pairing file is corrupted/incomplete, (2) device IP changed, (3) aiohomekit can't reconstruct pairing object, (4) network not ready, or (5) encryption keys missing. The bridge will automatically reconnect when the device comes back online. If auto-reconnect doesn't work within 30 seconds, go to Settings → Joule Bridge Settings to re-pair the device.");
+        // Use a friendly message - the DeviceOfflineGuide component will show detailed help
+        console.debug("[JouleBridge] Device offline - will retry");
+        setError("Device offline - reconnecting automatically. See Settings for help if needed.");
         // Don't set connected to false immediately - keep trying in the background
         // The polling will continue and eventually reconnect
       } else {

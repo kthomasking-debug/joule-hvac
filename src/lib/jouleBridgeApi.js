@@ -5,20 +5,26 @@
  * This replaces the direct Ecobee API calls with local HAP protocol calls
  */
 
-const JOULE_BRIDGE_URL =
-  import.meta.env.VITE_JOULE_BRIDGE_URL || "http://localhost:8080";
+const JOULE_BRIDGE_URL = import.meta.env.VITE_JOULE_BRIDGE_URL;
 
 /**
- * Get Joule Bridge URL from settings or use default
+ * Get Joule Bridge URL from settings or environment variable
+ * Never uses localhost as fallback - requires explicit configuration
  */
 function getBridgeUrl() {
   try {
     const url = localStorage.getItem("jouleBridgeUrl");
     const finalUrl = url || JOULE_BRIDGE_URL;
+    if (!finalUrl) {
+      throw new Error("Joule Bridge URL not configured. Please set it in Settings.");
+    }
     // Normalize URL - remove trailing slash
     return finalUrl.replace(/\/$/, '');
   } catch {
-    return JOULE_BRIDGE_URL;
+    if (JOULE_BRIDGE_URL) {
+      return JOULE_BRIDGE_URL.replace(/\/$/, '');
+    }
+    throw new Error("Joule Bridge URL not configured. Please set it in Settings.");
   }
 }
 
@@ -37,7 +43,14 @@ export class BridgeConnectionError extends Error {
  * Make API request to Joule Bridge
  */
 async function bridgeRequest(endpoint, options = {}) {
-  const url = getBridgeUrl();
+  // Try to get URL - throw a more helpful error if not configured
+  let url;
+  try {
+    url = getBridgeUrl();
+  } catch (e) {
+    throw new BridgeConnectionError("Joule Bridge URL not configured. Please set it in Settings.");
+  }
+  
   try {
     const { headers, ...restOptions } = options;
     const response = await fetch(`${url}${endpoint}`, {
@@ -49,10 +62,21 @@ async function bridgeRequest(endpoint, options = {}) {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      const errorObj = new Error(`Joule Bridge error: ${response.status} ${error}`);
+      let errorText = await response.text();
+      // Try to parse as JSON to get structured error
+      let errorData = null;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        // Not JSON, use as-is
+      }
+      
+      // Extract error message from JSON response if available
+      const errorMessage = errorData?.error || errorText;
+      const errorObj = new Error(errorMessage);
       errorObj.status = response.status;
       errorObj.isNotFound = response.status === 404;
+      errorObj.originalError = errorData || errorText;
       throw errorObj;
     }
 
@@ -73,11 +97,40 @@ async function bridgeRequest(endpoint, options = {}) {
 
 /**
  * Discover HomeKit devices on the network
+ * HomeKit discovery can take 30-60 seconds, so we use a longer timeout
  */
 export async function discoverDevices() {
   try {
-    const data = await bridgeRequest("/api/discover");
-    return data.devices || [];
+    // Create a custom timeout for discovery (60 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    
+    try {
+      const url = getBridgeUrl();
+      const response = await fetch(`${url}/api/discover`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Discovery failed with status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.devices || [];
+    } catch (innerError) {
+      clearTimeout(timeoutId);
+      if (innerError.name === 'AbortError') {
+        throw new Error("Discovery timed out after 60 seconds. Make sure:\n1. Your Ecobee has HomeKit pairing enabled\n2. Both devices are on the same network\n3. Try clicking Discover again");
+      }
+      throw innerError;
+    }
   } catch (error) {
     console.error("Error discovering devices:", error);
     throw error;
@@ -89,9 +142,9 @@ export async function discoverDevices() {
  */
 export async function pairDevice(deviceId, pairingCode) {
   try {
-    // Pairing can take up to 30 seconds, so use a 35 second timeout
+    // Pairing can take up to 30 seconds, so use a 45 second timeout (backend has 30s + 10s initialization)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     
     try {
       const data = await bridgeRequest("/api/pair", {
@@ -118,12 +171,17 @@ export async function pairDevice(deviceId, pairingCode) {
     } catch (innerError) {
       clearTimeout(timeoutId);
       if (innerError.name === 'AbortError') {
-        throw new Error("Pairing timed out after 35 seconds. Please check the pairing code and try again.");
+        throw new Error("Pairing timed out after 45 seconds. The device may not be responding. Please check:\n1. The pairing code is correct\n2. The device is in pairing mode\n3. Both devices are on the same network");
       }
+      // Preserve the detailed error message from the backend
       throw innerError;
     }
   } catch (error) {
     console.error("Error pairing device:", error);
+    // If error has a message, preserve it; otherwise create a generic one
+    if (!error.message) {
+      error.message = error.toString();
+    }
     throw error;
   }
 }
@@ -278,7 +336,14 @@ export async function setMode(deviceId, mode) {
  * @throws {Error} If there's a specific error that should be displayed to the user
  */
 export async function checkBridgeHealth() {
-  const url = getBridgeUrl();
+  // Try to get URL, but don't throw if not configured - just return false
+  let url;
+  try {
+    url = getBridgeUrl();
+  } catch (e) {
+    // URL not configured - return false instead of throwing
+    return false;
+  }
   
   // Validate URL format
   try {
@@ -562,6 +627,40 @@ export async function startDustKickerCycle() {
     return data;
   } catch (error) {
     console.error("Error starting Dust Kicker cycle:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get Blueair credentials status
+ */
+export async function getBlueairCredentials() {
+  try {
+    const data = await bridgeRequest("/api/blueair/credentials", {
+      method: "GET",
+    });
+    return data;
+  } catch (error) {
+    console.error("Error getting Blueair credentials:", error);
+    throw error;
+  }
+}
+
+/**
+ * Set Blueair credentials
+ */
+export async function setBlueairCredentials(username, password) {
+  try {
+    const data = await bridgeRequest("/api/blueair/credentials", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        password,
+      }),
+    });
+    return data;
+  } catch (error) {
+    console.error("Error setting Blueair credentials:", error);
     throw error;
   }
 }

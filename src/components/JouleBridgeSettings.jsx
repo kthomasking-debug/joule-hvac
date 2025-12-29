@@ -9,16 +9,29 @@ import {
   checkBridgeHealth,
   diagnoseBridge,
   autoFixPairing,
+  getBlueairCredentials,
+  setBlueairCredentials,
 } from '../lib/jouleBridgeApi';
 import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2, Server, ExternalLink, Info, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import EcobeePairingOnboarding from './EcobeePairingOnboarding';
 
 export default function JouleBridgeSettings() {
   const [bridgeUrl, setBridgeUrl] = useState(() => {
     try {
-      return localStorage.getItem('jouleBridgeUrl') || 'http://localhost:8080';
+      // Check saved URL first
+      const savedUrl = localStorage.getItem('jouleBridgeUrl');
+      if (savedUrl) return savedUrl;
+      
+      // Check environment variable
+      const envUrl = import.meta.env.VITE_JOULE_BRIDGE_URL;
+      if (envUrl) return envUrl;
+      
+      // Try mDNS hostname first (joule-bridge.local), then fallback to common IPs
+      // The bridge server advertises itself via mDNS/Bonjour
+      return 'http://joule-bridge.local:8080';
     } catch {
-      return 'http://localhost:8080';
+      return import.meta.env.VITE_JOULE_BRIDGE_URL || 'http://192.168.0.106:8080';
     }
   });
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
@@ -36,15 +49,63 @@ export default function JouleBridgeSettings() {
   const [deviceReachability, setDeviceReachability] = useState({});
   const [diagnostics, setDiagnostics] = useState(null);
   const [autoFixing, setAutoFixing] = useState(false);
+  const [blueairUsername, setBlueairUsername] = useState('');
+  const [blueairPassword, setBlueairPassword] = useState('');
+  const [blueairCredentialsStatus, setBlueairCredentialsStatus] = useState(null);
+  const [savingBlueair, setSavingBlueair] = useState(false);
+  const [showPairingOnboarding, setShowPairingOnboarding] = useState(false);
 
   useEffect(() => {
     loadState();
     checkHealth();
     runDiagnostics();
+    loadBlueairCredentials();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeUrl]);
 
+  const loadBlueairCredentials = async () => {
+    if (!bridgeAvailable) return;
+    try {
+      const status = await getBlueairCredentials();
+      setBlueairCredentialsStatus(status);
+      if (status?.username) {
+        setBlueairUsername(status.username);
+      }
+    } catch (error) {
+      console.debug('Error loading Blueair credentials:', error);
+    }
+  };
+
+  const handleSaveBlueairCredentials = async () => {
+    if (!blueairUsername || !blueairPassword) {
+      alert('Please enter both username and password');
+      return;
+    }
+    setSavingBlueair(true);
+    try {
+      const result = await setBlueairCredentials(blueairUsername, blueairPassword);
+      if (result.success) {
+        alert(`Blueair credentials saved successfully! Found ${result.devices_count || 0} device(s).`);
+        await loadBlueairCredentials();
+        setBlueairPassword(''); // Clear password field
+      } else {
+        alert(`Failed to connect: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      alert(`Error saving credentials: ${error.message || error}`);
+    } finally {
+      setSavingBlueair(false);
+    }
+  };
+
   const runDiagnostics = async () => {
+    // Skip diagnostics if no URL is configured
+    const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+    if (!urlToCheck || urlToCheck.trim() === '') {
+      setDiagnostics(null);
+      return null;
+    }
+    
     try {
       const diag = await diagnoseBridge();
       setDiagnostics(diag);
@@ -74,43 +135,100 @@ export default function JouleBridgeSettings() {
   };
 
   const loadState = async () => {
-    const paired = await getPairedDevices();
-    setPairedDevices(paired);
-    const primaryId = await getPrimaryDeviceId();
-    setPrimaryDeviceIdState(primaryId);
+    // Skip loading state if no URL is configured
+    const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+    if (!urlToCheck || urlToCheck.trim() === '') {
+      setPairedDevices([]);
+      setPrimaryDeviceIdState(null);
+      setDeviceReachability({});
+      return;
+    }
     
-    // Check reachability of each paired device
-    if (paired.length > 0) {
-      const { getThermostatStatus } = await import('../lib/jouleBridgeApi');
-      const reachability = {};
-      for (const deviceId of paired) {
-        try {
-          await getThermostatStatus(deviceId);
-          reachability[deviceId] = true;
-        } catch (error) {
-          reachability[deviceId] = false;
+    try {
+      const paired = await getPairedDevices();
+      setPairedDevices(paired);
+      const primaryId = await getPrimaryDeviceId();
+      setPrimaryDeviceIdState(primaryId);
+      
+      // Check reachability of each paired device
+      if (paired.length > 0) {
+        const { getThermostatStatus } = await import('../lib/jouleBridgeApi');
+        const reachability = {};
+        for (const deviceId of paired) {
+          try {
+            await getThermostatStatus(deviceId);
+            reachability[deviceId] = true;
+          } catch (error) {
+            reachability[deviceId] = false;
+          }
         }
+        setDeviceReachability(reachability);
+      } else {
+        setDeviceReachability({});
       }
-      setDeviceReachability(reachability);
-    } else {
+    } catch (error) {
+      // If there's an error loading state, just set empty defaults
+      console.error('Error loading state:', error);
+      setPairedDevices([]);
+      setPrimaryDeviceIdState(null);
       setDeviceReachability({});
     }
   };
 
   const checkHealth = async () => {
+    // Use current bridgeUrl state (from input field or saved value)
+    // Try mDNS hostname first, then fallback to common IPs
+    const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL || 'http://joule-bridge.local:8080';
+    
+    if (!urlToCheck || urlToCheck.trim() === '') {
+      setBridgeAvailable(false);
+      setHealthError('Joule Bridge URL not configured. Please enter the URL above and click "Save".');
+      setCheckingHealth(false);
+      return;
+    }
+
     setCheckingHealth(true);
     setHealthError(null);
     setDuplicateProcesses(null);
+    
     try {
-      const available = await checkBridgeHealth();
-      setBridgeAvailable(available);
-      if (!available) {
-        setHealthError('Bridge did not respond. Make sure it is running and accessible.');
-      } else {
-        // Clear any previous errors on success
-        setHealthError(null);
-        // Check for duplicate processes
-        await checkDuplicateProcesses();
+      // Validate URL format
+      try {
+        new URL(urlToCheck);
+      } catch (e) {
+        throw new Error(`Invalid URL format: ${urlToCheck}. Use format: http://hostname:port (e.g., http://192.168.0.106:8080)`);
+      }
+
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      try {
+        const response = await fetch(`${urlToCheck}/health`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'omit',
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const available = true;
+          setBridgeAvailable(available);
+          setHealthError(null);
+          // Check for duplicate processes
+          await checkDuplicateProcesses();
+        } else {
+          setBridgeAvailable(false);
+          setHealthError('Bridge did not respond. Make sure it is running and accessible.');
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Connection timeout. The bridge may be slow to respond or not running.');
+        }
+        throw fetchError;
       }
     } catch (error) {
       console.error('Health check error:', error);
@@ -120,9 +238,9 @@ export default function JouleBridgeSettings() {
       if (errorMessage.includes('timeout')) {
         errorMessage = 'Connection timeout. The bridge may be slow to respond or not running.';
       } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_CONNECTION_REFUSED')) {
-        errorMessage = 'Cannot connect to bridge. Make sure it is running on ' + (localStorage.getItem('jouleBridgeUrl') || bridgeUrl);
+        errorMessage = 'Cannot connect to bridge. Make sure it is running on ' + urlToCheck;
       } else if (errorMessage.includes('Invalid URL')) {
-        errorMessage = 'Invalid URL format. Use format: http://hostname:port (e.g., http://localhost:8080)';
+        errorMessage = 'Invalid URL format. Use format: http://hostname:port (e.g., http://192.168.0.106:8080)';
       }
       setHealthError(errorMessage);
     } finally {
@@ -213,11 +331,20 @@ export default function JouleBridgeSettings() {
 
   const handleDiscover = async () => {
     setDiscovering(true);
+    setDevices([]); // Clear previous results
     try {
+      // HomeKit discovery can take 30-60 seconds
       const discovered = await discoverDevices();
-      setDevices(discovered);
+      if (discovered && discovered.length > 0) {
+        setDevices(discovered);
+      } else {
+        alert('No HomeKit devices found.\n\nMake sure:\n1. Your Ecobee has HomeKit pairing enabled (Menu → Settings → Installation Settings → HomeKit)\n2. Both the bridge and Ecobee are on the same network\n3. Try clicking Discover again - discovery can take up to 60 seconds');
+        setDevices([]);
+      }
     } catch (error) {
-      alert(`Failed to discover devices: ${error.message}`);
+      console.error('Discovery error:', error);
+      const errorMsg = error.message || 'Failed to discover devices';
+      alert(`Failed to discover devices: ${errorMsg}\n\nIf this persists, check:\n1. Bridge is running and accessible\n2. Ecobee has HomeKit pairing enabled\n3. Both devices are on the same network`);
       setDevices([]);
     } finally {
       setDiscovering(false);
@@ -411,7 +538,7 @@ export default function JouleBridgeSettings() {
             type="text"
             value={bridgeUrl}
             onChange={(e) => setBridgeUrl(e.target.value)}
-            placeholder="http://localhost:8080"
+            placeholder="http://192.168.0.106:8080"
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
           <button
@@ -436,6 +563,89 @@ export default function JouleBridgeSettings() {
           </div>
         )}
       </div>
+
+      {/* Blueair Credentials Configuration */}
+      {bridgeAvailable && (
+        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+            <span>🌬️</span>
+            Blueair Air Purifier Credentials
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Configure your Blueair account credentials to enable air purifier control.
+          </p>
+          
+          {blueairCredentialsStatus && (
+            <div className={`mb-4 p-3 rounded-lg border ${
+              blueairCredentialsStatus.connected
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                {blueairCredentialsStatus.connected ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                )}
+                <div className="text-sm">
+                  {blueairCredentialsStatus.connected ? (
+                    <span className="text-green-800 dark:text-green-200">
+                      Connected: {blueairCredentialsStatus.devices_count || 0} device(s) found
+                    </span>
+                  ) : (
+                    <span className="text-yellow-800 dark:text-yellow-200">
+                      {blueairCredentialsStatus.has_credentials 
+                        ? 'Credentials saved but not connected. Check username/password.'
+                        : 'No credentials configured'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Email / Username
+              </label>
+              <input
+                type="text"
+                value={blueairUsername}
+                onChange={(e) => setBlueairUsername(e.target.value)}
+                placeholder="bunnyrita@gmail.com"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                value={blueairPassword}
+                onChange={(e) => setBlueairPassword(e.target.value)}
+                placeholder="Enter Blueair password"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <button
+              onClick={handleSaveBlueairCredentials}
+              disabled={savingBlueair || !blueairUsername || !blueairPassword}
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {savingBlueair ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Credentials & Test Connection'
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bridge Status */}
       <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -640,9 +850,25 @@ export default function JouleBridgeSettings() {
           {/* Show which bridge will be used for pairing */}
           {(() => {
             const savedUrl = localStorage.getItem('jouleBridgeUrl');
-            const urlToUse = savedUrl || bridgeUrl;
+            const envUrl = import.meta.env.VITE_JOULE_BRIDGE_URL;
+            const urlToUse = savedUrl || envUrl || bridgeUrl;
             const needsSave = savedUrl && bridgeUrl !== savedUrl;
-            const isLocalhost = urlToUse.includes('localhost') || urlToUse.includes('127.0.0.1');
+            const isLocalhost = urlToUse && (urlToUse.includes('localhost') || urlToUse.includes('127.0.0.1'));
+            const isEmpty = !urlToUse || urlToUse.trim() === '';
+            
+            if (isEmpty) {
+              return (
+                <div className="p-3 border rounded-lg bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                    <div className="text-xs text-red-800 dark:text-red-200">
+                      <span className="font-semibold">⚠️ Bridge URL not configured!</span>
+                      <span className="ml-2">Please set the Joule Bridge URL above (e.g., http://192.168.0.106:8080)</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             
             return (
               <div className={`p-3 border rounded-lg ${
@@ -920,43 +1146,48 @@ export default function JouleBridgeSettings() {
         </div>
       )}
       
-      {/* Show warning if device is paired but not reachable */}
+      {/* Show button to start pairing onboarding if device is paired but not reachable */}
       {bridgeAvailable && pairedDevices.length > 0 && (() => {
         const unreachableDevices = pairedDevices.filter(id => deviceReachability[id] === false);
         const hasUnreachable = unreachableDevices.length > 0;
         if (!hasUnreachable) return null;
         
         return (
-          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-              <div className="text-sm text-yellow-700 dark:text-yellow-300">
-                <p className="font-medium mb-1">Device paired but not reachable</p>
-                <p className="text-xs mb-2">Your device is paired but not reachable. This often happens after server restart if pairing data didn't load correctly, or if the device's IP address changed.</p>
-                <p className="text-xs font-semibold mb-1">Why pairing data might not load correctly:</p>
-                <ul className="text-xs mb-2 ml-4 list-disc space-y-1">
-                  <li><strong>File corruption:</strong> The pairing file (pairings.json) may be corrupted or incompletely written if the server crashed during save</li>
-                  <li><strong>IP address change:</strong> If the device's IP changed (DHCP renewal), the saved pairing data points to the old IP</li>
-                  <li><strong>Library limitations:</strong> aiohomekit's load_pairing() may fail if the pairing object can't be reconstructed from saved metadata</li>
-                  <li><strong>Network timing:</strong> Server starts before network is ready, so device discovery fails</li>
-                  <li><strong>Data format mismatch:</strong> Pairing data structure may be incompatible after aiohomekit library updates</li>
-                  <li><strong>Missing encryption keys:</strong> HomeKit requires encryption keys that may not be fully persisted in the pairing file</li>
-                </ul>
-                <p className="text-xs font-semibold mb-1">Why re-pairing is needed:</p>
-                <p className="text-xs mb-2">HomeKit pairing data includes encryption keys and connection info stored in memory. The pairing file only contains metadata. If load_pairing() fails, the bridge can't reconstruct the active pairing object needed to connect.</p>
-                <p className="text-xs font-semibold mb-1">To fix:</p>
-                <ol className="text-xs ml-4 list-decimal space-y-1">
-                  <li>Click "Unpair" below to remove the current pairing</li>
-                  <li>Click "Discover" to find your Ecobee</li>
-                  <li>Enter the 8-digit pairing code from your Ecobee screen (Menu → Settings → Installation Settings → HomeKit)</li>
-                  <li>Click "Pair" and wait up to 45 seconds</li>
-                </ol>
-                <p className="text-xs mt-2 text-gray-600 dark:text-gray-400">The bridge will automatically reconnect once the device is reachable again.</p>
+          <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Device Offline
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Your Ecobee is paired but not responding. The bridge will automatically try to reconnect, but if it doesn't work within 30 seconds, you may need to re-pair.
+                </p>
+                <button
+                  onClick={() => setShowPairingOnboarding(true)}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  <HelpCircle className="w-4 h-4 mr-2" />
+                  Re-pair Device (Step-by-Step Guide)
+                </button>
               </div>
             </div>
           </div>
         );
       })()}
+
+      {/* Pairing Onboarding Modal */}
+      {showPairingOnboarding && (
+        <EcobeePairingOnboarding
+          onClose={() => {
+            setShowPairingOnboarding(false);
+            loadState(); // Refresh state after pairing
+          }}
+          onComplete={() => {
+            setShowPairingOnboarding(false);
+            loadState(); // Refresh state after pairing
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -49,10 +49,16 @@ export function useBlueair(deviceIndex = 0, pollInterval = 10000) {
         setError(null); // Don't show error for missing device
         return null;
       }
-      // Only log non-connection errors (connection refused is expected when Bridge isn't available)
-      if (!(err instanceof BridgeConnectionError)) {
-        console.debug("Error fetching Blueair status:", err); // Changed to debug to reduce noise
+      // Handle bridge connection errors gracefully
+      if (err instanceof BridgeConnectionError || 
+          (err.message && err.message.includes('not configured'))) {
+        setConnected(false);
+        setLoading(false);
+        setError(err.message);
+        return null;
       }
+      // Only log non-connection errors
+      console.debug("Error fetching Blueair status:", err);
       setError(err.message);
       setConnected(false);
       setLoading(false);
