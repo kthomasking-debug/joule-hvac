@@ -9,35 +9,15 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-// TTS service URL - defaults to same host as temperature-server.js
-// In production, this should point to wherever temperature-server.js is running
-// (e.g., if temp-server runs on bridge server at http://bridge.local:3001, 
-//  then TTS should be at http://bridge.local:3001/api/tts)
+// TTS service URL - now runs on the bridge server (same as bridge API)
 const getTTSServiceUrl = () => {
-  // Check for explicit TTS service URL
-  if (import.meta.env.VITE_TTS_SERVICE_URL) {
-    return import.meta.env.VITE_TTS_SERVICE_URL;
-  }
+  // Get bridge URL from localStorage or environment variable
+  const bridgeUrl = (typeof localStorage !== 'undefined' ? localStorage.getItem('jouleBridgeUrl') : null) || 
+                    import.meta.env.VITE_JOULE_BRIDGE_URL || 
+                    'http://joule-bridge.local:8080';
   
-  // Check for backend URL (where temperature-server.js runs)
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 
-                     (typeof localStorage !== 'undefined' ? localStorage.getItem('localBackendUrl') : null);
-  
-  if (backendUrl) {
-    // Remove trailing slash and add /api/tts
-    const baseUrl = backendUrl.replace(/\/$/, '');
-    // If backendUrl is like http://bridge.local:8080, we need to use port 3001 for temp-server
-    // But if it's already pointing to temp-server, use that
-    if (backendUrl.includes(':3001')) {
-      return `${baseUrl}/api/tts`;
-    }
-    // Otherwise assume temp-server is on same host, different port
-    const url = new URL(backendUrl);
-    return `${url.protocol}//${url.hostname}:3001/api/tts`;
-  }
-  
-  // Fallback to localhost (for development)
-  return "http://localhost:3001/api/tts";
+  // Remove trailing slash
+  return bridgeUrl.replace(/\/$/, '');
 };
 
 const TTS_SERVICE_URL = getTTSServiceUrl();
