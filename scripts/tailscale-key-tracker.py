@@ -29,8 +29,18 @@ import argparse
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import ics
-from ics import Calendar, Event
+try:
+    from icalendar import Calendar, Event
+    HAS_ICALENDAR = True
+except ImportError:
+    try:
+        import ics
+        from ics import Calendar, Event
+        HAS_ICALENDAR = True
+        USE_ICS_LIB = True
+    except ImportError:
+        HAS_ICALENDAR = False
+        USE_ICS_LIB = False
 
 # Configuration
 DATA_FILE = Path.home() / ".joule-devices.json"

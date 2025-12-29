@@ -11,7 +11,7 @@ fi
 
 # Install required Python packages
 echo "📦 Installing required packages..."
-pip3 install ics --user
+pip3 install icalendar --user || pip3 install ics --user
 
 # Make script executable
 chmod +x "$(dirname "$0")/tailscale-key-tracker.py"
