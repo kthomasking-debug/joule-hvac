@@ -22,7 +22,18 @@
 
 ### Step 2: Find Your Bridge
 
-**Option A: Check Your Router (Easiest)**
+**Option A: Use Hostname (Easiest - Try This First!)**
+
+The bridge automatically advertises itself on your network. You can access it using:
+
+1. **Open your web app** (the Netlify website)
+2. **Go to Settings** → **Joule Bridge Settings**
+3. **The app will automatically try:** `http://joule-bridge.local:8080`
+4. **Click "Refresh"** - if you see a green checkmark ✅, you're done!
+
+**If that doesn't work, try Option B or C below.**
+
+**Option B: Check Your Router**
 
 1. **Open a web browser** on any device (phone, tablet, computer)
 2. **Type this in the address bar:** `192.168.0.1` (or `192.168.1.1` if that doesn't work)
@@ -31,7 +42,7 @@
 5. **Find "Joule Bridge"** or "raspberrypi" in the list
 6. **Write down the IP address** (looks like `192.168.0.100`)
 
-**Option B: Use the Sticker**
+**Option C: Use the Sticker**
 
 - Look at the sticker on the mini computer
 - It has a MAC address (looks like `AA:BB:CC:DD:EE:FF`)
@@ -40,13 +51,21 @@
 
 ### Step 3: Connect Your Web App
 
+**If Option A worked (hostname), you're done! Skip to Step 4.**
+
+**If you need to use an IP address:**
+
 1. **Open your web app** (the Netlify website)
 2. **Go to Settings** → **Joule Bridge Settings**
-3. **Enter the IP address** you found (e.g., `http://192.168.0.100:8080`)
+3. **Enter the IP address** you found in the format: `http://192.168.0.100:8080`
+   - Replace `192.168.0.100` with the actual IP address from Step 2
+   - The format must be: `http://IP_ADDRESS:8080`
 4. **Click "Save"**
 5. **Click "Refresh"** - you should see a green checkmark ✅
 
 **Success!** Your bridge is now connected.
+
+**Note:** If you see an error about "Bridge URL not configured", make sure you've entered the URL correctly and clicked "Save".
 
 ### Step 4: Pair Your Ecobee
 

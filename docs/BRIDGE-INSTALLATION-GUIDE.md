@@ -122,7 +122,19 @@ If it works, press `Ctrl+C` to stop the bridge. We'll set it up as a service nex
 
 ## Step 5: Configure the Bridge for Your Network
 
-### 5.1 Find Your Mini Computer's IP Address
+### 5.1 Bridge Discovery (Automatic)
+
+The bridge automatically advertises itself on your local network using mDNS/Bonjour. This means:
+
+- **Users can access it as:** `http://joule-bridge.local:8080`
+- **No need to find the IP address** - the hostname works automatically
+- **Works on most modern networks** (Windows, Mac, Linux, iOS, Android)
+
+The web app will automatically try this hostname first, so most users won't need to configure anything!
+
+### 5.2 Find Your Mini Computer's IP Address (Optional)
+
+If mDNS doesn't work on your network, you can use the IP address instead:
 
 ```bash
 # On Linux
@@ -132,7 +144,7 @@ ip addr show | grep "inet "
 hostname -I
 ```
 
-Note your IP address (e.g., `192.168.1.100`). You'll need this to configure your Netlify website.
+Note your IP address (e.g., `192.168.1.100`). Users can enter this in the format: `http://192.168.1.100:8080`
 
 ### 5.2 Configure Firewall (if needed)
 
@@ -208,24 +220,35 @@ sudo journalctl -u joule-bridge -n 50
 
 ## Step 7: Configure Your Netlify Website
 
-### 7.1 Set Bridge URL in Environment Variables
+### 7.1 Set Bridge URL in Environment Variables (Optional)
 
-In your Netlify dashboard or `netlify.toml`, set:
+**⚠️ Important:** The bridge URL can be set via environment variable OR configured by users in the Settings page. The app will never default to localhost.
+
+In your Netlify dashboard or `netlify.toml`, you can optionally set:
 
 ```bash
-VITE_BRIDGE_URL=http://YOUR_MINI_PC_IP:8080
+VITE_JOULE_BRIDGE_URL=http://YOUR_MINI_PC_IP:8080
 ```
 
 Replace `YOUR_MINI_PC_IP` with your mini computer's IP address (e.g., `http://192.168.1.100:8080`).
 
+**Note:** If you don't set this environment variable, users must configure the bridge URL in the Settings page. The app will show an error if no bridge URL is configured.
+
 ### 7.2 Update Your React App
 
-Your React app should already be configured to use `VITE_BRIDGE_URL`. Check that it's being used correctly in your bridge context:
+**⚠️ Important:** The React app requires an explicit bridge URL. It will never use localhost as a fallback.
+
+Your React app should already be configured to use `VITE_JOULE_BRIDGE_URL`. The code should look like:
 
 ```javascript
-// Should use import.meta.env.VITE_BRIDGE_URL
-const bridgeUrl = import.meta.env.VITE_BRIDGE_URL || 'http://localhost:8080';
+// Uses environment variable or localStorage - never localhost
+const bridgeUrl = import.meta.env.VITE_JOULE_BRIDGE_URL || localStorage.getItem('jouleBridgeUrl');
+if (!bridgeUrl) {
+  throw new Error('Joule Bridge URL not configured');
+}
 ```
+
+Make sure to set `VITE_JOULE_BRIDGE_URL` in your build environment, or users must configure it in the Settings page.
 
 ## Step 8: Pair Your Ecobee
 
@@ -301,8 +324,10 @@ If you want to access the bridge from outside your local network:
 ### 10.2 Update Netlify Environment Variable
 
 ```bash
-VITE_BRIDGE_URL=http://YOUR_PUBLIC_IP:8080
+VITE_JOULE_BRIDGE_URL=http://YOUR_PUBLIC_IP:8080
 ```
+
+**⚠️ Security Warning:** Exposing the bridge to the internet requires additional security measures. Consider using a VPN or reverse proxy with authentication instead.
 
 Or use a dynamic DNS service if your public IP changes.
 
@@ -341,10 +366,12 @@ which python3
 
 ### Website Can't Connect to Bridge
 
-- Verify `VITE_BRIDGE_URL` is set correctly
-- Check firewall allows port 8080
-- Test from mini computer: `curl http://localhost:8080/health`
-- Check CORS settings if needed
+- **Verify bridge URL is configured:** Check Settings → Joule Bridge Settings shows a valid URL (not localhost)
+- **Check environment variable:** If using `VITE_JOULE_BRIDGE_URL`, verify it's set correctly in your build environment
+- **Check localStorage:** Verify `jouleBridgeUrl` is set in browser localStorage
+- **Check firewall:** Ensure firewall allows port 8080
+- **Test from mini computer:** `curl http://localhost:8080/health` (from the bridge computer itself)
+- **Check CORS settings:** If needed, verify CORS is configured on the bridge
 
 ## Service Management Commands
 
