@@ -54,14 +54,34 @@ export default function JouleBridgeSettings() {
   const [blueairCredentialsStatus, setBlueairCredentialsStatus] = useState(null);
   const [savingBlueair, setSavingBlueair] = useState(false);
   const [showPairingOnboarding, setShowPairingOnboarding] = useState(false);
+  const [bridgeInfo, setBridgeInfo] = useState(null);
 
   useEffect(() => {
     loadState();
     checkHealth();
     runDiagnostics();
     loadBlueairCredentials();
+    loadBridgeInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeUrl]);
+
+  const loadBridgeInfo = async () => {
+    if (!bridgeAvailable) {
+      setBridgeInfo(null);
+      return;
+    }
+    try {
+      const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL || 'http://joule-bridge.local:8080';
+      const response = await fetch(`${urlToCheck}/api/bridge/info`);
+      if (response.ok) {
+        const info = await response.json();
+        setBridgeInfo(info);
+      }
+    } catch (error) {
+      console.debug('Error loading bridge info:', error);
+      setBridgeInfo(null);
+    }
+  };
 
   const loadBlueairCredentials = async () => {
     if (!bridgeAvailable) return;
