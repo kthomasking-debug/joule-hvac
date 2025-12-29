@@ -223,18 +223,25 @@ def send_alerts():
 
 def generate_calendar():
     """Generate iCal calendar file with all expiry dates"""
-    devices = load_devices()
-    calendar = Calendar()
+    if not HAS_ICALENDAR:
+        print("❌ Calendar library not installed. Install with: pip3 install icalendar --user")
+        return None
     
-    for device in devices:
-        expiry_date = datetime.strptime(device['expiry_date'], "%Y-%m-%d")
-        alert_date = expiry_date - timedelta(days=ALERT_DAYS_BEFORE)
+    devices = load_devices()
+    
+    if USE_ICS_LIB:
+        # Using ics library
+        calendar = Calendar()
         
-        # Alert event (30 days before)
-        alert_event = Event()
-        alert_event.name = f"⚠️ Tailscale Key Expiry Alert: {device['customer_name']}"
-        alert_event.begin = alert_date
-        alert_event.description = f"""
+        for device in devices:
+            expiry_date = datetime.strptime(device['expiry_date'], "%Y-%m-%d")
+            alert_date = expiry_date - timedelta(days=ALERT_DAYS_BEFORE)
+            
+            # Alert event (30 days before)
+            alert_event = Event()
+            alert_event.name = f"⚠️ Tailscale Key Expiry Alert: {device['customer_name']}"
+            alert_event.begin = alert_date
+            alert_event.description = f"""
 Customer: {device['customer_name']}
 Email: {device['customer_email']}
 Tailscale IP: {device.get('tailscale_ip', 'Not provided')}
@@ -243,27 +250,67 @@ Expiry Date: {device['expiry_date']}
 Action: Contact customer to re-authenticate Tailscale key.
 See Admin Manual for instructions.
 """
-        alert_event.make_all_day()
-        calendar.events.add(alert_event)
-        
-        # Expiry event
-        expiry_event = Event()
-        expiry_event.name = f"🔴 Tailscale Key Expires: {device['customer_name']}"
-        expiry_event.begin = expiry_date
-        expiry_event.description = f"""
+            alert_event.make_all_day()
+            calendar.events.add(alert_event)
+            
+            # Expiry event
+            expiry_event = Event()
+            expiry_event.name = f"🔴 Tailscale Key Expires: {device['customer_name']}"
+            expiry_event.begin = expiry_date
+            expiry_event.description = f"""
 Customer: {device['customer_name']}
 Email: {device['customer_email']}
 Tailscale IP: {device.get('tailscale_ip', 'Not provided')}
 
 Key expires today! Customer needs to re-authenticate immediately.
 """
-        expiry_event.make_all_day()
-        calendar.events.add(expiry_event)
-    
-    # Save calendar file
-    calendar_file = Path.home() / "tailscale-key-expiry.ics"
-    with open(calendar_file, 'w') as f:
-        f.writelines(calendar)
+            expiry_event.make_all_day()
+            calendar.events.add(expiry_event)
+        
+        # Save calendar file
+        calendar_file = Path.home() / "tailscale-key-expiry.ics"
+        with open(calendar_file, 'w') as f:
+            f.writelines(calendar)
+    else:
+        # Using icalendar library
+        calendar = ICalCalendar()
+        calendar.add('prodid', '-//Joule HVAC//Tailscale Key Tracker//EN')
+        calendar.add('version', '2.0')
+        
+        for device in devices:
+            expiry_date = datetime.strptime(device['expiry_date'], "%Y-%m-%d")
+            alert_date = expiry_date - timedelta(days=ALERT_DAYS_BEFORE)
+            
+            # Alert event (30 days before)
+            alert_event = ICalEvent()
+            alert_event.add('summary', f"⚠️ Tailscale Key Expiry Alert: {device['customer_name']}")
+            alert_event.add('dtstart', alert_date.date())
+            alert_event.add('dtend', (alert_date + timedelta(days=1)).date())
+            alert_event.add('description', f"""Customer: {device['customer_name']}
+Email: {device['customer_email']}
+Tailscale IP: {device.get('tailscale_ip', 'Not provided')}
+Expiry Date: {device['expiry_date']}
+
+Action: Contact customer to re-authenticate Tailscale key.
+See Admin Manual for instructions.""")
+            calendar.add_component(alert_event)
+            
+            # Expiry event
+            expiry_event = ICalEvent()
+            expiry_event.add('summary', f"🔴 Tailscale Key Expires: {device['customer_name']}")
+            expiry_event.add('dtstart', expiry_date.date())
+            expiry_event.add('dtend', (expiry_date + timedelta(days=1)).date())
+            expiry_event.add('description', f"""Customer: {device['customer_name']}
+Email: {device['customer_email']}
+Tailscale IP: {device.get('tailscale_ip', 'Not provided')}
+
+Key expires today! Customer needs to re-authenticate immediately.""")
+            calendar.add_component(expiry_event)
+        
+        # Save calendar file
+        calendar_file = Path.home() / "tailscale-key-expiry.ics"
+        with open(calendar_file, 'wb') as f:
+            f.write(calendar.to_ical())
     
     print(f"✅ Calendar generated: {calendar_file}")
     print(f"   Import this file into Google Calendar, Outlook, or Apple Calendar")
