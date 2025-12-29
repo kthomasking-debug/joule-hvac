@@ -51,7 +51,7 @@ export default function MarkdownPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-4" />
           <p className="text-gray-600 dark:text-gray-400">Loading document...</p>
@@ -62,7 +62,7 @@ export default function MarkdownPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4 py-20">
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
           <div className="flex items-start gap-3 mb-4">
             <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0 mt-1" />
@@ -97,9 +97,9 @@ export default function MarkdownPage() {
   const title = titleMatch ? titleMatch[1] : filename?.replace('.md', '').replace(/-/g, ' ') || 'Document';
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+    <div>
+      {/* Document Header */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg mb-4">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <button
@@ -124,7 +124,7 @@ export default function MarkdownPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 prose prose-lg dark:prose-invert max-w-none">
           <MarkdownViewer content={content} />
         </div>
