@@ -7,24 +7,23 @@
 
 const JOULE_BRIDGE_URL = import.meta.env.VITE_JOULE_BRIDGE_URL;
 
+// Default bridge URL (mDNS hostname) - used when nothing is saved
+const DEFAULT_BRIDGE_URL = 'http://joule-bridge.local:8080';
+
 /**
  * Get Joule Bridge URL from settings or environment variable
- * Never uses localhost as fallback - requires explicit configuration
+ * Falls back to mDNS hostname (joule-bridge.local:8080) if nothing configured
  */
 function getBridgeUrl() {
   try {
-    const url = localStorage.getItem("jouleBridgeUrl");
-    const finalUrl = url || JOULE_BRIDGE_URL;
-    if (!finalUrl) {
-      throw new Error("Joule Bridge URL not configured. Please set it in Settings.");
-    }
+    // Priority: localStorage > environment variable > default
+    const savedUrl = localStorage.getItem("jouleBridgeUrl");
+    const finalUrl = savedUrl || JOULE_BRIDGE_URL || DEFAULT_BRIDGE_URL;
     // Normalize URL - remove trailing slash
     return finalUrl.replace(/\/$/, '');
   } catch {
-    if (JOULE_BRIDGE_URL) {
-      return JOULE_BRIDGE_URL.replace(/\/$/, '');
-    }
-    throw new Error("Joule Bridge URL not configured. Please set it in Settings.");
+    // Fallback chain
+    return (JOULE_BRIDGE_URL || DEFAULT_BRIDGE_URL).replace(/\/$/, '');
   }
 }
 
@@ -43,14 +42,7 @@ export class BridgeConnectionError extends Error {
  * Make API request to Joule Bridge
  */
 async function bridgeRequest(endpoint, options = {}) {
-  // Try to get URL - throw a more helpful error if not configured
-  let url;
-  try {
-    url = getBridgeUrl();
-  } catch (e) {
-    throw new BridgeConnectionError("Joule Bridge URL not configured. Please set it in Settings.");
-  }
-  
+  const url = getBridgeUrl();
   try {
     const { headers, ...restOptions } = options;
     const response = await fetch(`${url}${endpoint}`, {
@@ -336,14 +328,7 @@ export async function setMode(deviceId, mode) {
  * @throws {Error} If there's a specific error that should be displayed to the user
  */
 export async function checkBridgeHealth() {
-  // Try to get URL, but don't throw if not configured - just return false
-  let url;
-  try {
-    url = getBridgeUrl();
-  } catch (e) {
-    // URL not configured - return false instead of throwing
-    return false;
-  }
+  const url = getBridgeUrl();
   
   // Validate URL format
   try {
