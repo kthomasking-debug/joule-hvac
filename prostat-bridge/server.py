@@ -2516,6 +2516,122 @@ async def handle_kill_duplicate_bridges(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def handle_bridge_logs(request):
+    """GET /api/bridge/logs - Get recent bridge logs for remote debugging"""
+    try:
+        lines = int(request.query.get('lines', 100))
+        lines = min(lines, 500)  # Cap at 500 lines
+        
+        logs = []
+        
+        # Try to read from journalctl first (systemd logs)
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "journalctl", "-u", "prostat-bridge", "-n", str(lines), "--no-pager",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5)
+            if process.returncode == 0 and stdout:
+                logs = stdout.decode().strip().split('\n')
+        except Exception as e:
+            logger.debug(f"Could not read journalctl logs: {e}")
+        
+        # Fallback to /tmp/prostat-bridge.log
+        if not logs:
+            log_file = Path("/tmp/prostat-bridge.log")
+            if log_file.exists():
+                try:
+                    with open(log_file, 'r') as f:
+                        all_lines = f.readlines()
+                        logs = [l.rstrip() for l in all_lines[-lines:]]
+                except Exception as e:
+                    logger.debug(f"Could not read log file: {e}")
+        
+        return web.json_response({
+            "success": True,
+            "lines": len(logs),
+            "logs": logs
+        })
+    except Exception as e:
+        logger.error(f"Error getting logs: {e}")
+        return web.json_response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+
+async def handle_bridge_info(request):
+    """GET /api/bridge/info - Get comprehensive bridge system info for support"""
+    try:
+        import platform
+        import sys
+        
+        info = {
+            "hostname": socket.gethostname(),
+            "platform": platform.platform(),
+            "python_version": sys.version,
+            "local_ip": get_local_ip(),
+            "uptime": None,
+            "memory": None,
+            "disk": None,
+        }
+        
+        # Get uptime
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+                hours = int(uptime_seconds // 3600)
+                minutes = int((uptime_seconds % 3600) // 60)
+                info["uptime"] = f"{hours}h {minutes}m"
+        except Exception:
+            pass
+        
+        # Get memory info
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                meminfo = {}
+                for line in f:
+                    parts = line.split(':')
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = int(parts[1].strip().split()[0])
+                        meminfo[key] = value
+                
+                total_mb = meminfo.get('MemTotal', 0) / 1024
+                available_mb = meminfo.get('MemAvailable', 0) / 1024
+                info["memory"] = {
+                    "total_mb": round(total_mb),
+                    "available_mb": round(available_mb),
+                    "used_percent": round((1 - available_mb / total_mb) * 100) if total_mb > 0 else 0
+                }
+        except Exception:
+            pass
+        
+        # Get disk info
+        try:
+            import shutil
+            total, used, free = shutil.disk_usage('/')
+            info["disk"] = {
+                "total_gb": round(total / (1024**3), 1),
+                "free_gb": round(free / (1024**3), 1),
+                "used_percent": round(used / total * 100)
+            }
+        except Exception:
+            pass
+        
+        return web.json_response({
+            "success": True,
+            **info
+        })
+    except Exception as e:
+        logger.error(f"Error getting bridge info: {e}")
+        return web.json_response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+
 async def init_app():
     """Initialize the aiohttp application"""
     app = web.Application()
@@ -2570,6 +2686,8 @@ async def init_app():
     app.router.add_get('/api/bridge/processes', handle_check_bridge_processes)
     app.router.add_post('/api/bridge/kill-duplicates', handle_kill_duplicate_bridges)
     app.router.add_post('/api/bridge/restart', handle_restart_bridge)
+    app.router.add_get('/api/bridge/logs', handle_bridge_logs)
+    app.router.add_get('/api/bridge/info', handle_bridge_info)
     
     # EnergyPlus endpoints
     app.router.add_get('/api/energyplus/status', handle_energyplus_status)

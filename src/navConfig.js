@@ -16,7 +16,7 @@ const CalculationMethodology = lazy(() =>
   import("./pages/CalculationMethodology")
 );
 const HomeDashboard = lazy(() => import("./pages/Home"));
-const MissionControlSimple = lazy(() => import("./pages/MissionControlSimple"));
+const HomeHealth = lazy(() => import("./pages/HomeHealth"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const ThermostatStrategyAnalyzer = lazy(() =>
   import("./pages/ThermostatStrategyAnalyzer")
@@ -53,13 +53,16 @@ const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const SummerACIssues = lazy(() => import("./pages/SummerACIssues"));
-const ForecastDebug = lazy(() => import("./pages/ForecastDebug"));
+const WeeklyForecast = lazy(() => import("./pages/WeeklyForecast"));
 const MonthlyBudget = lazy(() => import("./pages/MonthlyBudget"));
 const AudioTranscription = lazy(() => import("./pages/AudioTranscription"));
 const IPLookup = lazy(() => import("./pages/IPLookup"));
 const PDFToText = lazy(() => import("./pages/PDFToText"));
 const ImageToASCII = lazy(() => import("./pages/ImageToASCII"));
 const ImageToText = lazy(() => import("./pages/ImageToText"));
+const BlueairControl = lazy(() => import("./pages/BlueairControl"));
+const OptimizationHub = lazy(() => import("./pages/OptimizationHub"));
+const BridgeSupport = lazy(() => import("./pages/BridgeSupport"));
 
 import {
   Home as HomeIcon,
@@ -86,6 +89,7 @@ import {
   FileAudio,
   Network,
   Image,
+  Sparkles,
 } from "lucide-react";
 
 export const routes = [
@@ -104,11 +108,11 @@ export const routes = [
   // },
   // ===== THE GOLDEN PATH: 5 MAIN TABS =====
   {
-    path: "/mission-control",
+    path: "/home-health",
     name: "Home Health",
     label: "Home Health",
     icon: Heart,
-    Component: MissionControlSimple,
+    Component: HomeHealth,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
@@ -191,6 +195,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Dehumidifier and air purifier control",
+  },
+  {
+    path: "/control/blueair",
+    name: "Blueair Control",
+    label: "Blueair Control",
+    icon: Wind,
+    Component: BlueairControl,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Control your Blueair air purifier",
   },
   {
     path: "/summer/ac-issues",
@@ -293,6 +308,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "App settings - redirects to /config",
+  },
+  {
+    path: "/bridge-support",
+    name: "Bridge Support",
+    label: "Bridge Support",
+    icon: Server,
+    Component: BridgeSupport,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Remote bridge administration and troubleshooting for support staff",
   },
   // ===== HIDDEN/ADVANCED TOOLS (Not in main nav) =====
   {
@@ -625,11 +651,11 @@ export const routes = [
     description: "Visualize heat pump performance and see when backup heat is needed.",
   },
   {
-    path: "/analysis/forecast-debug",
+    path: "/analysis/weekly-forecast",
     name: "Weekly Forecast",
     label: "Weekly Forecast",
     icon: Bug,
-    Component: ForecastDebug,
+    Component: WeeklyForecast,
     showInNav: true,
     inMobileNav: true,
     inPrimaryNav: true,
@@ -667,6 +693,17 @@ export const routes = [
     inMobileNav: true,
     inPrimaryNav: true,
     description: "7-day cost forecast",
+  },
+  {
+    path: "/optimize",
+    name: "Optimizer",
+    label: "Optimizer",
+    icon: Sparkles,
+    Component: OptimizationHub,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Smart optimization hub - save money with one-click optimizations",
   },
   {
     path: "/config",
