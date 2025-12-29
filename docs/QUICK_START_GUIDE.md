@@ -1,5 +1,8 @@
 # Quick Start: Your Talking Thermostat
 
+> **Note:** For complete setup instructions, see `docs/USER_MANUAL.md`  
+> This guide focuses specifically on voice commands and AI Mode features.
+
 ## 🎙️ Try It Now
 
 ### 1. Access AI Mode

@@ -2,8 +2,9 @@
 
 This workspace contains a React + Vite app and supporting scripts for HVAC/energy tools, including optional hardware integration for development.
 
-- User Manual: see `docs/THERMOSTAT_USER_MANUAL.md` for setup, hardware options (BlinkStick, USB‑Serial LED, Arduino), and the Short‑Cycle Test.
-- Relay Setup & Safety: see `docs/relay-setup.md`.
+- **User Manual**: See `docs/USER_MANUAL.md` for complete end-user setup guide (includes setup, pairing, troubleshooting, and voice commands)
+- **Technical Installation**: See `docs/BRIDGE-INSTALLATION-GUIDE.md` for developers/advanced users
+- **Relay Setup & Safety**: See `docs/relay-setup.md`
 
 ## Development
 
@@ -43,12 +44,18 @@ The Joule Bridge enables local-only thermostat control via HomeKit. The bridge s
 
 - **Complete Setup Guide**: See `prostat-bridge/README.md` for detailed installation, pairing, and troubleshooting
 - **API Documentation**: See `prostat-bridge/README.md` for all API endpoints
-- **Default URL**: `http://localhost:8080`
-- **Health Check**: `curl http://localhost:8080/health`
+- **Bridge URL**: Must be configured explicitly (e.g., `http://192.168.0.106:8080`)
+- **Health Check**: `curl http://YOUR_BRIDGE_IP:8080/health`
 
 ### Configuration
 
-The web app connects to the bridge at `http://localhost:8080` by default. You can configure a custom bridge URL in the app's Settings page (Joule Bridge Settings → Advanced settings).
+**⚠️ Important:** The web app requires an explicit bridge URL configuration. It will **never** use localhost as a fallback.
+
+1. **Find your bridge IP address** (e.g., `192.168.0.106`)
+2. **Configure in Settings**: Go to Settings → Joule Bridge Settings → Enter bridge URL (e.g., `http://192.168.0.106:8080`)
+3. **Click Save** and verify connection status
+
+Alternatively, set the `VITE_JOULE_BRIDGE_URL` environment variable during build.
 
 ### Troubleshooting
 

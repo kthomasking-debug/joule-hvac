@@ -1,5 +1,8 @@
 # How to Pair the Bridge with Your Ecobee
 
+> **⚠️ This guide has been consolidated into `USER_MANUAL.md`**  
+> **Please see `docs/USER_MANUAL.md` for the complete user manual. This guide is kept for reference only.**
+
 This guide walks you through pairing your Joule Bridge with your Ecobee thermostat using HomeKit.
 
 ## Prerequisites
@@ -36,15 +39,24 @@ If your Ecobee is already paired to Apple HomeKit, you **must unpair it first**:
 
 **Why?** HomeKit devices can only be paired to **ONE controller at a time**. If it's paired to Apple HomeKit, it won't pair to the bridge.
 
-### Step 2: Configure Bridge URL (If Needed)
+### Step 2: Configure Bridge URL (Required)
 
-1. **Open your web app** (Netlify site or localhost)
-2. Go to **Settings** → **Joule Bridge Settings**
-3. **Enter your bridge URL:**
-   - If bridge is on same computer: `http://localhost:8080`
-   - If bridge is on mini computer: `http://192.168.1.100:8080` (replace with your bridge's IP)
-4. Click **Save**
-5. Wait for "Bridge Status: Connected" (green checkmark)
+**⚠️ Important:** You must configure the bridge URL. The app will never use localhost as a fallback.
+
+1. **Find your bridge IP address:**
+   - Check your router's connected devices list
+   - Or run `hostname -I` on the bridge computer
+   - Example: `192.168.0.106`
+
+2. **Open your web app** (Netlify site)
+3. Go to **Settings** → **Joule Bridge Settings**
+4. **Enter your bridge URL:**
+   - Format: `http://YOUR_BRIDGE_IP:8080`
+   - Example: `http://192.168.0.106:8080` (replace with your actual bridge IP)
+5. Click **Save**
+6. Wait for "Bridge Status: Connected" (green checkmark)
+
+**Note:** If you see an error about bridge URL not being configured, you must set it explicitly. The app requires a remote bridge URL and will not default to localhost.
 
 ### Step 3: Discover Your Ecobee
 
@@ -67,7 +79,10 @@ If your Ecobee is already paired to Apple HomeKit, you **must unpair it first**:
 2. Click the **"Pair"** button next to your Ecobee
 3. **Enter the 8-digit pairing code** from your Ecobee screen
    - Format: `XXX-XX-XXX` (with dashes)
-   - Example: `640-54-831`
+   - Example: `640-54-831` or `810-85-888`
+   - **Flexible input:** You can type with or without dashes:
+     - `810-85-888` (recommended)
+     - `81085888` (auto-formatted to `810-85-888`)
    - The input field will auto-format as you type
 4. Click **"Pair"** button
 5. **Wait up to 45 seconds** - pairing can take time
@@ -80,9 +95,11 @@ If your Ecobee is already paired to Apple HomeKit, you **must unpair it first**:
 - ✅ Green checkmark next to device
 
 **If pairing fails:**
-- ✅ Verify pairing code is correct (check dashes: `XXX-XX-XXX`)
-- ✅ Make sure Ecobee is still in pairing mode
+- ✅ Verify pairing code is correct (8 digits, format `XXX-XX-XXX`)
+- ✅ You can enter code with or without dashes - both work
+- ✅ Make sure Ecobee is still in pairing mode (code visible on screen)
 - ✅ Check that Ecobee isn't paired to Apple HomeKit
+- ✅ Check the detailed error message - it will provide specific troubleshooting steps
 - ✅ Try unpairing and pairing again
 
 ### Step 5: Verify Pairing Works
@@ -145,6 +162,10 @@ curl -X POST http://localhost:8080/api/pair \
     "pairing_code": "640-54-831"
   }'
 ```
+
+**Note:** The `pairing_code` can be entered with or without dashes:
+- `"640-54-831"` (recommended)
+- `"64054831"` (auto-formatted to `640-54-831`)
 
 **Success Response:**
 ```json
@@ -212,9 +233,13 @@ curl "http://localhost:8080/api/status?device_id=cc:73:51:2d:3b:0b"
      5. Use the **NEW** pairing code shown on screen
 
 3. **Incorrect Pairing Code Format**
-   - The pairing code must be in format: `XXX-XX-XXX` (with dashes)
-   - Example: `640-54-831` (not `64054831`)
+   - The pairing code must be 8 digits in format: `XXX-XX-XXX` (with dashes)
+   - Example: `640-54-831` or `810-85-888`
+   - **Flexible input:** You can enter with or without dashes:
+     - `810-85-888` (recommended)
+     - `81085888` (auto-formatted to `810-85-888`)
    - Enter the exact code shown on your Ecobee screen
+   - The bridge automatically validates and formats the code
 
 4. **Network Connectivity Issues**
    - Ensure Ecobee and Bridge are on the same Wi-Fi network
@@ -230,9 +255,36 @@ curl "http://localhost:8080/api/status?device_id=cc:73:51:2d:3b:0b"
    - Try restarting the Ecobee and enabling pairing mode again
 
 **Error Messages Explained:**
-- `"Pairing initialization timed out"` - Device didn't respond within 45 seconds. Check pairing mode and network.
+
+The bridge now provides detailed, actionable error messages with step-by-step troubleshooting:
+
+- `"Pairing initialization timed out"` - Device didn't respond within 10 seconds. This means:
+  - Device is not in HomeKit pairing mode (check Ecobee screen - code must be visible)
+  - Device is already paired to Apple Home (must unpair first - see #2 above)
+  - Network connectivity issues between bridge and device
+  - Device is powered off or disconnected from WiFi
+  - **Solution:** Verify pairing mode is active on Ecobee screen, unpair from Apple Home if needed, check network connectivity
+
+- `"Pairing timed out"` - The pairing process took longer than 30 seconds. Usually means:
+  - Incorrect pairing code (double-check all 8 digits match Ecobee screen)
+  - Device not fully in pairing mode
+  - Network latency issues
+  - **Solution:** Verify code matches Ecobee screen exactly, wait 30 seconds and try again with same code
+
 - `"Device is already paired to another controller"` - Unpair from Apple HomeKit first (see #2 above).
+
 - `"Device not found. Please discover devices first"` - Run discovery first, then use the device_id from the results.
+
+**Enhanced Error Display:**
+- The web interface now shows detailed error messages with:
+  - Clear explanation of what went wrong
+  - Possible causes list
+  - Step-by-step solutions
+  - Visual indicators (✓/✗) for success/failure
+- Check bridge logs for comprehensive diagnostics:
+  ```bash
+  journalctl -u prostat-bridge -f | grep -i "pairing\|error"
+  ```
 
 ### Device Shows "Paired but Not Reachable"
 
@@ -304,6 +356,54 @@ Once paired, the bridge can:
 - Fan control
 
 For full Ecobee features, use the Ecobee API (requires Ecobee account and API key).
+
+## Enhanced Diagnostics & Logging
+
+The bridge now includes comprehensive logging and error diagnostics:
+
+### Pairing Code Format Flexibility
+
+- **Accepts both formats:** `81085888` or `810-85-888`
+- **Auto-formatting:** Automatically converts to `XXX-XX-XXX` format
+- **Validation:** Ensures exactly 8 digits before attempting pairing
+- **Clear errors:** Provides specific error messages if format is incorrect
+
+### Detailed Error Messages
+
+When pairing fails, you'll see:
+- **Clear explanation** of what went wrong
+- **Possible causes** list
+- **Step-by-step solutions** specific to the error
+- **Visual indicators** (✓/✗) in the web interface
+
+### Comprehensive Logging
+
+The bridge logs detailed information during pairing:
+- Pairing code validation and formatting
+- Device reachability checks
+- Timing information for each step
+- Full error details with tracebacks
+- HomeKit protocol errors (if applicable)
+
+**View pairing logs:**
+```bash
+# If running as systemd service
+journalctl -u prostat-bridge -f | grep -i "pairing"
+
+# View recent pairing attempts
+journalctl -u prostat-bridge -n 100 | grep -E "pairing|Pairing|=== Starting"
+```
+
+### Frontend Debug Logging
+
+The web app includes debug logging (visible in browser console):
+- `[JouleBridge]` prefix for all bridge-related logs
+- Device ID resolution
+- Status fetch attempts
+- Connection state changes
+- Error details
+
+**To view:** Open browser Developer Tools (F12) → Console tab
 
 ## Next Steps
 

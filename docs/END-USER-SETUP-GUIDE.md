@@ -1,5 +1,8 @@
 # Simple Setup Guide for End Users
 
+> **⚠️ This guide has been consolidated into `USER_MANUAL.md`**  
+> **Please see `docs/USER_MANUAL.md` for the complete, up-to-date user manual with table of contents.**
+
 **For people who just want it to work - no technical knowledge needed!**
 
 ## What's in the Box
