@@ -301,6 +301,12 @@ export default function BridgeSupport() {
       lines.push('--- System Info ---');
       lines.push(`Hostname: ${status.systemInfo.hostname}`);
       lines.push(`Local IP: ${status.systemInfo.local_ip}`);
+      if (status.systemInfo.tailscale_ip) {
+        lines.push(`Tailscale IP: ${status.systemInfo.tailscale_ip} (REMOTE ACCESS AVAILABLE)`);
+        lines.push(`Remote URL: http://${status.systemInfo.tailscale_ip}:8080`);
+      } else {
+        lines.push(`Tailscale: Not installed or not running`);
+      }
       lines.push(`Platform: ${status.systemInfo.platform}`);
       lines.push(`Uptime: ${status.systemInfo.uptime || 'N/A'}`);
       if (status.systemInfo.memory) {
@@ -552,6 +558,76 @@ export default function BridgeSupport() {
                 <span className="font-mono">{status.processes.pids?.join(', ') || 'None'}</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Tailscale Remote Access */}
+        {status.connected && status.systemInfo && (
+          <div className={`rounded-xl p-6 border ${
+            status.systemInfo.tailscale_ip 
+              ? 'bg-purple-900/20 border-purple-700' 
+              : 'bg-slate-800/50 border-slate-700'
+          }`}>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Wifi className="w-5 h-5 text-purple-400" />
+              Remote Support Access (Tailscale)
+            </h2>
+            
+            {status.systemInfo.tailscale_ip ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-purple-900/30 rounded-lg border border-purple-600">
+                  <p className="text-purple-300 text-sm mb-2">🎉 Tailscale is active! You can access this bridge remotely:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 bg-slate-900 rounded-lg text-purple-200 font-mono">
+                      http://{status.systemInfo.tailscale_ip}:8080
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`http://${status.systemInfo.tailscale_ip}:8080`);
+                        setCopyFeedback('Copied!');
+                        setTimeout(() => setCopyFeedback(''), 2000);
+                      }}
+                      className="px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  {status.systemInfo.tailscale?.dns_name && (
+                    <p className="text-xs text-purple-400 mt-2">
+                      Also available at: <code className="bg-slate-900 px-1 rounded">{status.systemInfo.tailscale.dns_name}</code>
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400">
+                  As long as you're on the same Tailscale network, you can paste this URL into the Bridge URL field above to access this bridge remotely.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-900 rounded-lg">
+                  <p className="text-slate-400 text-sm mb-2">
+                    {status.systemInfo.tailscale?.installed === false 
+                      ? '❌ Tailscale is not installed on this bridge'
+                      : status.systemInfo.tailscale?.running === false
+                        ? '⏸️ Tailscale is installed but not running'
+                        : '⚠️ Tailscale IP not available'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    To enable remote support access, the user needs to install Tailscale on their bridge.
+                  </p>
+                </div>
+                
+                <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-700">
+                  <p className="text-blue-400 font-medium mb-2">📋 Setup Instructions for User:</p>
+                  <ol className="list-decimal list-inside text-xs text-blue-300 space-y-1">
+                    <li>SSH into bridge: <code className="bg-slate-900 px-1 rounded">ssh user@{status.systemInfo.local_ip}</code></li>
+                    <li>Install Tailscale: <code className="bg-slate-900 px-1 rounded">curl -fsSL https://tailscale.com/install.sh | sh</code></li>
+                    <li>Authenticate: <code className="bg-slate-900 px-1 rounded">sudo tailscale up</code></li>
+                    <li>Share the Tailscale IP with support</li>
+                  </ol>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

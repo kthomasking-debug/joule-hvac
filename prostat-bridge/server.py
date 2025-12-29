@@ -2561,17 +2561,81 @@ async def handle_bridge_logs(request):
         }, status=500)
 
 
+def get_tailscale_ip():
+    """Get Tailscale IP address if available"""
+    try:
+        import subprocess
+        # Try to get Tailscale IP
+        result = subprocess.run(['tailscale', 'ip', '-4'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            ip = result.stdout.strip()
+            if ip and ip.startswith('100.'):  # Tailscale IPs are in 100.x.x.x range
+                return ip
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        pass
+    
+    # Fallback: check network interfaces for tailscale0
+    try:
+        import subprocess
+        result = subprocess.run(['ip', 'addr', 'show', 'tailscale0'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if 'inet ' in line:
+                    # Extract IP from line like "    inet 100.x.x.x/32 scope global tailscale0"
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        ip = parts[1].split('/')[0]
+                        if ip.startswith('100.'):
+                            return ip
+    except Exception:
+        pass
+    
+    return None
+
+
+def get_tailscale_status():
+    """Get Tailscale connection status"""
+    try:
+        import subprocess
+        result = subprocess.run(['tailscale', 'status', '--json'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            import json
+            status = json.loads(result.stdout)
+            return {
+                "installed": True,
+                "running": status.get('BackendState') == 'Running',
+                "logged_in": status.get('Self', {}).get('Online', False),
+                "hostname": status.get('Self', {}).get('HostName', ''),
+                "dns_name": status.get('Self', {}).get('DNSName', '').rstrip('.'),
+            }
+    except FileNotFoundError:
+        return {"installed": False}
+    except Exception as e:
+        return {"installed": True, "error": str(e)}
+    
+    return {"installed": False}
+
+
 async def handle_bridge_info(request):
     """GET /api/bridge/info - Get comprehensive bridge system info for support"""
     try:
         import platform
         import sys
         
+        # Get Tailscale info for remote support
+        tailscale_ip = get_tailscale_ip()
+        tailscale_status = get_tailscale_status()
+        
         info = {
             "hostname": socket.gethostname(),
             "platform": platform.platform(),
             "python_version": sys.version,
             "local_ip": get_local_ip(),
+            "tailscale_ip": tailscale_ip,
+            "tailscale": tailscale_status,
             "uptime": None,
             "memory": None,
             "disk": None,
