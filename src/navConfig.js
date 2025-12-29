@@ -63,6 +63,7 @@ const ImageToText = lazy(() => import("./pages/ImageToText"));
 const BlueairControl = lazy(() => import("./pages/BlueairControl"));
 const OptimizationHub = lazy(() => import("./pages/OptimizationHub"));
 const BridgeSupport = lazy(() => import("./pages/BridgeSupport"));
+const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 
 import {
   Home as HomeIcon,
@@ -90,6 +91,7 @@ import {
   Network,
   Image,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 
 export const routes = [
@@ -312,7 +314,7 @@ export const routes = [
   {
     path: "/bridge-support",
     name: "Bridge Support",
-    label: "Bridge Support",
+    label: "Bridge Admin",
     icon: Server,
     Component: BridgeSupport,
     showInNav: false,
