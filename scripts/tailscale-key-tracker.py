@@ -29,9 +29,14 @@ import argparse
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+# Try to import calendar libraries
+HAS_ICALENDAR = False
+USE_ICS_LIB = False
+
 try:
-    from icalendar import Calendar, Event
+    from icalendar import Calendar as ICalCalendar, Event as ICalEvent
     HAS_ICALENDAR = True
+    USE_ICS_LIB = False
 except ImportError:
     try:
         import ics
