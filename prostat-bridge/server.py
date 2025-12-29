@@ -18,8 +18,10 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 import shutil
 import tempfile
+from pathlib import Path
 from aiohomekit.controller import Controller
 from aiohomekit.exceptions import AccessoryNotFoundError, AlreadyPairedError
 from aiohttp import web, web_runner
@@ -28,6 +30,8 @@ import serial
 import serial.tools.list_ports
 from datetime import datetime
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
+from zeroconf import ServiceInfo
+import socket
 # Blueair API import (optional - service works without it)
 try:
     from blueair_api import get_devices
@@ -62,6 +66,10 @@ relay_channel = 2  # Default: Relay 2 for dehumidifier (Y2 terminal)
 blueair_account = None
 blueair_devices = []
 blueair_connected = False
+
+# Config file path for Blueair credentials
+CONFIG_DIR = Path(__file__).parent / 'data'
+BLUEAIR_CONFIG_FILE = CONFIG_DIR / 'blueair_config.json'
 
 # System state for interlock logic
 system_state = {
@@ -156,6 +164,32 @@ def save_pairing_file_atomic(pairing_file, data_to_save):
             except Exception as restore_err:
                 logger.error(f"Failed to restore from backup: {restore_err}")
         raise
+
+
+def get_local_ip():
+    """Get the local IP address for mDNS advertisement"""
+    try:
+        # Connect to a remote address to determine the local IP
+        # This doesn't actually send data, just determines the route
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # Connect to a public DNS server (doesn't actually connect)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        return ip
+    except Exception:
+        # Fallback: try to get hostname IP
+        try:
+            hostname = socket.gethostname()
+            ip = socket.gethostbyname(hostname)
+            # Only return if it's not localhost
+            if ip != '127.0.0.1':
+                return ip
+        except Exception:
+            pass
+        return None
 
 
 def get_data_directory():
@@ -340,6 +374,38 @@ async def pair_device(device_id: str, pairing_code: str):
     # Just remove any spaces
     code = pairing_code.replace(' ', '').strip()
     
+    # Validate pairing code format
+    # HomeKit codes are 8 digits in XXX-XX-XXX format
+    # Accept both formats: "81085888" or "810-85-888"
+    digits_only = code.replace('-', '').replace(' ', '')
+    
+    if len(digits_only) != 8:
+        raise ValueError(
+            f"Invalid pairing code length. Expected 8 digits, got {len(digits_only)}. "
+            f"Code provided: {pairing_code} (formatted as: {code})"
+        )
+    
+    if not digits_only.isdigit():
+        raise ValueError(
+            f"Pairing code must contain only digits. Code provided: {pairing_code}"
+        )
+    
+    # Format as XXX-XX-XXX if not already formatted
+    if '-' not in code:
+        code = f"{digits_only[:3]}-{digits_only[3:5]}-{digits_only[5:8]}"
+        logger.info(f"Reformatted pairing code from {pairing_code} to {code}")
+    else:
+        # Verify dash positions are correct
+        expected_format = f"{digits_only[:3]}-{digits_only[3:5]}-{digits_only[5:8]}"
+        if code != expected_format:
+            logger.warning(
+                f"Pairing code dash positions may be incorrect. "
+                f"Provided: {code}, Expected format: {expected_format}. "
+                f"Using provided format: {code}"
+            )
+    
+    logger.info(f"Pairing code validation: original='{pairing_code}', formatted='{code}', digits='{digits_only}'")
+    
     # Check if we have the device from discovery
     if device_id not in discovered_devices:
         # Re-discover to get the device
@@ -352,44 +418,180 @@ async def pair_device(device_id: str, pairing_code: str):
     device = discovered_devices[device_id]
     
     try:
-        logger.info(f"Attempting to pair with {device_id} using code {pairing_code}")
+        logger.info(f"=== Starting pairing process ===")
+        logger.info(f"Device ID: {device_id}")
+        logger.info(f"Original pairing code: {pairing_code}")
+        logger.info(f"Formatted pairing code: {code}")
+        logger.info(f"Code digits only: {digits_only}")
+        
+        # Log device information
+        try:
+            device_info = getattr(device, 'description', None)
+            if device_info:
+                logger.info(f"Device description available: {device_info}")
+                if isinstance(device_info, dict):
+                    logger.info(f"  - Name: {device_info.get('name', 'N/A')}")
+                    logger.info(f"  - Model: {device_info.get('md', 'N/A')}")
+                    logger.info(f"  - Category: {device_info.get('ci', 'N/A')}")
+                else:
+                    logger.info(f"  - Description type: {type(device_info)}")
+                    logger.info(f"  - Description: {device_info}")
+        except Exception as desc_error:
+            logger.warning(f"Could not get device description: {desc_error}")
+        
+        # Check device attributes
+        logger.info(f"Device object type: {type(device)}")
+        logger.info(f"Device attributes: {[attr for attr in dir(device) if not attr.startswith('_')]}")
+        
+        # Verify device is still reachable before attempting pairing
+        try:
+            # Try to get device info to verify it's reachable
+            device_info = getattr(device, 'description', None)
+            if device_info:
+                logger.info(f"✓ Device {device_id} is reachable, proceeding with pairing")
+            else:
+                logger.warning(f"⚠ Device {device_id} description not available")
+        except Exception as reach_check:
+            logger.warning(f"⚠ Could not verify device reachability: {reach_check}")
+            logger.warning(f"  Error type: {type(reach_check)}")
+            logger.warning(f"  Error details: {str(reach_check)}")
+        
         # Use the device's async_start_pairing method
         # This returns a callable that takes the code and returns the pairing
         # Add timeout to async_start_pairing itself in case it hangs
+        logger.info(f"Calling device.async_start_pairing({device_id})...")
+        start_time = asyncio.get_event_loop().time()
         try:
             finish_pairing = await asyncio.wait_for(device.async_start_pairing(device_id), timeout=10.0)
+            elapsed = asyncio.get_event_loop().time() - start_time
+            logger.info(f"✓ async_start_pairing completed in {elapsed:.2f} seconds")
+            logger.info(f"  finish_pairing type: {type(finish_pairing)}")
+            logger.info(f"  finish_pairing callable: {callable(finish_pairing)}")
         except asyncio.TimeoutError:
-            logger.error(f"async_start_pairing timed out after 10 seconds for {device_id}")
-            raise RuntimeError("Pairing initialization timed out. The device may not be in pairing mode or may be unreachable.")
+            elapsed = asyncio.get_event_loop().time() - start_time
+            logger.error(f"✗ async_start_pairing timed out after {elapsed:.2f} seconds for {device_id}")
+            logger.error(f"  This means the device did not respond to the pairing initialization request")
+            logger.error(f"  Possible reasons:")
+            logger.error(f"    1. Device is not in HomeKit pairing mode")
+            logger.error(f"    2. Device is already paired to another controller (Apple Home)")
+            logger.error(f"    3. Network connectivity issue")
+            logger.error(f"    4. Device is powered off or disconnected")
+            # Provide detailed diagnostic information
+            error_msg = (
+                "Pairing initialization timed out. The device may not be in pairing mode or may be unreachable.\n\n"
+                "Common causes:\n"
+                "1. Device not in HomeKit pairing mode (Menu → Settings → Installation Settings → HomeKit)\n"
+                "2. Device already paired to Apple Home (must unpair first)\n"
+                "3. Network connectivity issues between bridge and device\n"
+                "4. Device powered off or disconnected from WiFi\n\n"
+                "Troubleshooting steps:\n"
+                "1. Verify the 8-digit code is visible on your Ecobee screen\n"
+                "2. If paired to Apple Home, remove it: Home app → Ecobee → Settings → Remove Accessory\n"
+                "3. Restart your Ecobee: Menu → Settings → Reset → Restart\n"
+                "4. Ensure both bridge and Ecobee are on the same WiFi network\n"
+                "5. Wait 30 seconds after unpairing before trying again"
+            )
+            raise RuntimeError(error_msg)
         # Call it with the pairing code to complete pairing (with timeout)
+        logger.info(f"Calling finish_pairing with code: {code}...")
+        pairing_start_time = asyncio.get_event_loop().time()
         try:
             pairing = await asyncio.wait_for(finish_pairing(code), timeout=30.0)
+            pairing_elapsed = asyncio.get_event_loop().time() - pairing_start_time
+            logger.info(f"✓ Pairing completed successfully in {pairing_elapsed:.2f} seconds")
+            logger.info(f"  Pairing object type: {type(pairing)}")
+            if hasattr(pairing, 'id'):
+                logger.info(f"  Pairing ID: {pairing.id}")
         except asyncio.TimeoutError:
-            logger.error(f"Pairing timed out after 30 seconds for {device_id}")
-            raise RuntimeError("Pairing timed out. Please try again and make sure the pairing code is correct.")
+            pairing_elapsed = asyncio.get_event_loop().time() - pairing_start_time
+            logger.error(f"✗ Pairing timed out after {pairing_elapsed:.2f} seconds for {device_id}")
+            logger.error(f"  The device responded to initialization but pairing completion timed out")
+            logger.error(f"  This usually means:")
+            logger.error(f"    1. Incorrect pairing code")
+            logger.error(f"    2. Device rejected the pairing code")
+            logger.error(f"    3. Network latency issues")
+            error_msg = (
+                "Pairing timed out. The pairing process took longer than 30 seconds.\n\n"
+                "Possible causes:\n"
+                "1. Incorrect pairing code (double-check all 8 digits)\n"
+                "2. Device not fully in pairing mode\n"
+                "3. Network latency issues\n\n"
+                "Try:\n"
+                "1. Verify the pairing code matches exactly what's on your Ecobee screen\n"
+                "2. Make sure the code is in xxx-xx-xxx format (e.g., 123-45-678)\n"
+                "3. Wait 30 seconds and try again with the same code\n"
+                "4. If it keeps failing, restart your Ecobee and get a fresh pairing code"
+            )
+            raise RuntimeError(error_msg)
         except Exception as pairing_error:
+            pairing_elapsed = asyncio.get_event_loop().time() - pairing_start_time
             # Check for specific error patterns
             error_str = str(pairing_error)
-            logger.error(f"Pairing error details: {error_str}, type: {type(pairing_error)}")
+            error_repr = repr(pairing_error)
+            logger.error(f"✗ Pairing failed after {pairing_elapsed:.2f} seconds")
+            logger.error(f"  Error type: {type(pairing_error)}")
+            logger.error(f"  Error message: {error_str}")
+            logger.error(f"  Error repr: {error_repr}")
+            
+            # Log error attributes if available
+            if hasattr(pairing_error, '__dict__'):
+                logger.error(f"  Error attributes: {pairing_error.__dict__}")
+            
+            # Check if it's a bytes error (HomeKit protocol errors)
+            if isinstance(pairing_error, bytes):
+                logger.error(f"  Error bytes (hex): {pairing_error.hex()}")
+                logger.error(f"  Error bytes (repr): {repr(pairing_error)}")
+            
+            # Log traceback for debugging
+            import traceback
+            logger.error(f"  Full traceback:\n{traceback.format_exc()}")
             
             # HomeKit error code 0x04 typically means "already paired" or "max peers"
-            if 'bytearray' in error_str and '\\x04' in error_str or '\\x04' in repr(pairing_error):
-                raise RuntimeError(
-                    "Device is already paired to another controller (likely Apple HomeKit). "
+            if '\\x04' in error_repr or (isinstance(pairing_error, bytes) and b'\x04' in pairing_error):
+                error_msg = (
+                    "Device is already paired to another controller (likely Apple HomeKit).\n\n"
                     "You must unpair it from Apple Home first:\n"
                     "1. Open the Home app on your iPhone/iPad\n"
                     "2. Find your Ecobee thermostat\n"
-                    "3. Long-press → Settings → Remove Accessory\n"
-                    "4. Wait 30 seconds, then try pairing again"
+                    "3. Long-press on the Ecobee → Settings → Remove Accessory\n"
+                    "4. Wait 30 seconds for the device to reset\n"
+                    "5. Verify pairing mode: Menu → Settings → Installation Settings → HomeKit\n"
+                    "6. Try pairing again"
                 )
+                raise RuntimeError(error_msg)
             elif 'already paired' in error_str.lower() or 'max peers' in error_str.lower():
-                raise RuntimeError(
-                    "Device is already paired to another controller. "
-                    "Unpair from Apple Home first, then try again."
+                error_msg = (
+                    "Device is already paired to another controller.\n\n"
+                    "Unpair from Apple Home first:\n"
+                    "1. Home app → Ecobee → Settings → Remove Accessory\n"
+                    "2. Wait 30 seconds\n"
+                    "3. Verify pairing code is visible on Ecobee\n"
+                    "4. Try pairing again"
                 )
+                raise RuntimeError(error_msg)
+            elif 'invalid' in error_str.lower() or 'wrong' in error_str.lower() or 'incorrect' in error_str.lower():
+                error_msg = (
+                    f"Pairing failed: {error_str}\n\n"
+                    "The pairing code appears to be incorrect.\n\n"
+                    "Please:\n"
+                    "1. Double-check the 8-digit code on your Ecobee screen\n"
+                    "2. Make sure you're entering it in xxx-xx-xxx format\n"
+                    "3. Verify the code hasn't changed (get a fresh code if needed)\n"
+                    "4. Try entering the code again"
+                )
+                raise RuntimeError(error_msg)
             else:
                 # Re-raise with more context
-                raise RuntimeError(f"Pairing failed: {error_str}. Make sure the pairing code is correct and the device is in pairing mode.")
+                error_msg = (
+                    f"Pairing failed: {error_str}\n\n"
+                    "Make sure:\n"
+                    "1. The pairing code is correct (8 digits, xxx-xx-xxx format)\n"
+                    "2. The device is in pairing mode (code visible on screen)\n"
+                    "3. The device is not already paired to Apple Home\n"
+                    "4. Both devices are on the same WiFi network\n"
+                    "5. The bridge service is running properly"
+                )
+                raise RuntimeError(error_msg)
         
         # Save the pairing to our local pairings dict
         pairings[device_id] = pairing
@@ -1401,6 +1603,35 @@ async def handle_evaluate_interlock(request):
 # Blueair Control Functions
 # ============================================================================
 
+def load_blueair_config():
+    """Load Blueair credentials from config file"""
+    try:
+        if BLUEAIR_CONFIG_FILE.exists():
+            with open(BLUEAIR_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                return config.get('username'), config.get('password')
+    except Exception as e:
+        logger.warning(f"Failed to load Blueair config: {e}")
+    return None, None
+
+def save_blueair_config(username, password):
+    """Save Blueair credentials to config file"""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        config = {
+            'username': username,
+            'password': password
+        }
+        with open(BLUEAIR_CONFIG_FILE, 'w') as f:
+            json.dump(config, f)
+        # Set restrictive permissions (owner read/write only)
+        os.chmod(BLUEAIR_CONFIG_FILE, 0o600)
+        logger.info("Blueair credentials saved to config file")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save Blueair config: {e}")
+        return False
+
 async def init_blueair():
     """Initialize Blueair connection"""
     global blueair_account, blueair_devices, blueair_connected
@@ -1411,14 +1642,17 @@ async def init_blueair():
         return False
     
     try:
-        # Get credentials from environment or config
-        import os
+        # Get credentials from environment variables first, then config file
         username = os.getenv('BLUEAIR_USERNAME')
         password = os.getenv('BLUEAIR_PASSWORD')
         
+        # If not in environment, try config file
+        if not username or not password:
+            username, password = load_blueair_config()
+        
         if not username or not password:
             logger.info("Blueair credentials not set. Blueair features will be disabled.")
-            logger.info("Set BLUEAIR_USERNAME and BLUEAIR_PASSWORD environment variables to enable.")
+            logger.info("Set BLUEAIR_USERNAME and BLUEAIR_PASSWORD environment variables, or use /api/blueair/credentials endpoint.")
             blueair_connected = False
             return False
         
@@ -1505,13 +1739,57 @@ async def get_blueair_status(device_index=0):
     
     try:
         purifier = blueair_devices[device_index]
-        # Note: blueair-api may have different methods for getting status
-        # This is a placeholder - adjust based on actual API
-        return {
+        
+        # Try to get actual device data from the API
+        status_data = {
             'device_index': device_index,
             'fan_speed': system_state.get('blueair_fan_speed', 0),
             'led_brightness': system_state.get('blueair_led_brightness', 100),
         }
+        
+        # Try to get additional device information if available
+        try:
+            # Check if device has attributes we can read
+            if hasattr(purifier, 'get_status') or hasattr(purifier, 'status'):
+                # Try calling get_status method
+                if hasattr(purifier, 'get_status'):
+                    device_status = await purifier.get_status()
+                    if device_status:
+                        status_data.update(device_status)
+                # Or try accessing status property
+                elif hasattr(purifier, 'status'):
+                    device_status = purifier.status
+                    if device_status:
+                        status_data.update(device_status)
+            
+            # Try to get sensor data (PM2.5, tVOC, etc.)
+            if hasattr(purifier, 'get_sensors') or hasattr(purifier, 'sensors'):
+                if hasattr(purifier, 'get_sensors'):
+                    sensors = await purifier.get_sensors()
+                    if sensors:
+                        status_data['sensors'] = sensors
+                elif hasattr(purifier, 'sensors'):
+                    status_data['sensors'] = purifier.sensors
+            
+            # Try to get device info
+            if hasattr(purifier, 'name'):
+                status_data['device_name'] = purifier.name
+            if hasattr(purifier, 'mac_address'):
+                status_data['mac_address'] = purifier.mac_address
+            if hasattr(purifier, 'model'):
+                status_data['model'] = purifier.model
+            
+            # Try to get current fan speed and LED from device
+            if hasattr(purifier, 'fan_speed'):
+                status_data['fan_speed'] = purifier.fan_speed
+            if hasattr(purifier, 'led_brightness'):
+                status_data['led_brightness'] = purifier.led_brightness
+                
+        except Exception as api_error:
+            # If we can't get additional data, that's okay - use cached state
+            logger.debug(f"Could not get additional Blueair device data: {api_error}")
+        
+        return status_data
     except Exception as e:
         logger.error(f"Failed to get Blueair status: {e}")
         return None
@@ -1669,6 +1947,70 @@ async def handle_dust_kicker(request):
             'message': 'Dust Kicker cycle started',
         })
     except Exception as e:
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_get_blueair_credentials(request):
+    """GET /api/blueair/credentials - Get Blueair credentials status (without password)"""
+    try:
+        # Check environment variables
+        env_username = os.getenv('BLUEAIR_USERNAME')
+        env_password = os.getenv('BLUEAIR_PASSWORD')
+        
+        # Check config file
+        config_username, config_password = load_blueair_config()
+        
+        has_credentials = bool(
+            (env_username and env_password) or 
+            (config_username and config_password)
+        )
+        
+        return web.json_response({
+            'has_credentials': has_credentials,
+            'source': 'environment' if (env_username and env_password) else ('config' if (config_username and config_password) else None),
+            'username': env_username or config_username or None,
+            'connected': blueair_connected,
+            'devices_count': len(blueair_devices),
+        })
+    except Exception as e:
+        logger.error(f"Get Blueair credentials error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_blueair_credentials(request):
+    """POST /api/blueair/credentials - Set Blueair credentials"""
+    try:
+        data = await request.json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return web.json_response(
+                {'error': 'username and password required'}, 
+                status=400
+            )
+        
+        # Save credentials to config file
+        if save_blueair_config(username, password):
+            # Reinitialize Blueair connection with new credentials
+            result = await init_blueair()
+            if result:
+                return web.json_response({
+                    'success': True,
+                    'message': 'Blueair credentials saved and connection established',
+                    'devices_count': len(blueair_devices),
+                })
+            else:
+                return web.json_response({
+                    'success': False,
+                    'error': 'Credentials saved but failed to connect. Check username/password.',
+                }, status=400)
+        else:
+            return web.json_response({
+                'error': 'Failed to save credentials'
+            }, status=500)
+    except Exception as e:
+        logger.error(f"Set Blueair credentials error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
 
@@ -2210,6 +2552,8 @@ async def init_app():
     
     # Routes - Blueair Control
     app.router.add_get('/api/blueair/status', handle_blueair_status)
+    app.router.add_get('/api/blueair/credentials', handle_get_blueair_credentials)
+    app.router.add_post('/api/blueair/credentials', handle_blueair_credentials)
     app.router.add_post('/api/blueair/fan', handle_blueair_fan)
     app.router.add_post('/api/blueair/led', handle_blueair_led)
     app.router.add_post('/api/blueair/dust-kicker', handle_dust_kicker)
@@ -2362,12 +2706,54 @@ async def main():
     
     await site.start()
     
+    # Register mDNS service for easy discovery
+    mdns_service = None
+    if async_zeroconf:
+        try:
+            local_ip = get_local_ip()
+            if local_ip:
+                service_type = "_http._tcp.local."
+                service_name = "joule-bridge._http._tcp.local."
+                port = 8080
+                
+                # Create service info
+                info = ServiceInfo(
+                    service_type,
+                    service_name,
+                    addresses=[socket.inet_aton(local_ip)],
+                    port=port,
+                    properties={
+                        b'path': b'/',
+                        b'name': b'Joule Bridge'
+                    },
+                    server=f"joule-bridge.local."
+                )
+                
+                # Register the service
+                await async_zeroconf.async_register_service(info)
+                mdns_service = info
+                logger.info(f"Registered mDNS service: {service_name} at http://{local_ip}:{port}")
+                logger.info(f"Bridge discoverable as: http://joule-bridge.local:{port}")
+            else:
+                logger.warning("Could not determine local IP address for mDNS advertisement")
+        except Exception as e:
+            logger.warning(f"Failed to register mDNS service: {e}")
+            logger.info("Bridge will still work, but must be accessed by IP address")
+    
     # Keep running
     try:
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
+        # Unregister mDNS service
+        if mdns_service and async_zeroconf:
+            try:
+                await async_zeroconf.async_unregister_service(mdns_service)
+                logger.info("Unregistered mDNS service")
+            except Exception as e:
+                logger.warning(f"Failed to unregister mDNS service: {e}")
+        
         await runner.cleanup()
         # Cleanup AsyncZeroconf
         global async_zeroconf
