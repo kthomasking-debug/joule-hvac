@@ -2632,6 +2632,132 @@ async def handle_bridge_info(request):
         }, status=500)
 
 
+# ============================================================================
+# TTS (Text-to-Speech) Handlers - Optional Feature
+# ============================================================================
+
+# Global TTS model cache
+tts_model = None
+tts_available = False
+
+def load_tts_model():
+    """Load Coqui TTS model (lazy loading). Returns True if successful."""
+    global tts_model, tts_available
+    
+    if tts_model is not None:
+        return True
+    
+    try:
+        from TTS.api import TTS
+        
+        logger.info("Loading Coqui TTS model...")
+        model_name = os.getenv("TTS_MODEL", "tts_models/en/ljspeech/tacotron2-DDC")
+        
+        tts = TTS(model_name=model_name, progress_bar=False)
+        tts_model = tts
+        tts_available = True
+        
+        logger.info(f"TTS model loaded: {model_name}")
+        return True
+        
+    except ImportError:
+        logger.warning("Coqui TTS not installed. TTS features disabled. Install with: pip install TTS")
+        tts_available = False
+        return False
+    except Exception as e:
+        logger.error(f"Failed to load TTS model: {e}")
+        tts_available = False
+        return False
+
+
+async def handle_tts_health(request):
+    """GET /api/tts/health - TTS service health check"""
+    model_loaded = load_tts_model()
+    return web.json_response({
+        "status": "ok" if model_loaded else "unavailable",
+        "model_loaded": model_loaded,
+        "service": "coqui-tts"
+    })
+
+
+async def handle_tts_synthesize(request):
+    """POST /api/tts/synthesize - Convert text to speech"""
+    try:
+        data = await request.json()
+        text = data.get("text", "")
+        speaker_id = data.get("speaker_id", None)
+        language = data.get("language", "en")
+        
+        if not text:
+            return web.json_response({"error": "Text is required"}, status=400)
+        
+        # Load model if not already loaded
+        if not load_tts_model():
+            return web.json_response({
+                "error": "TTS model not available. Install Coqui TTS: pip install TTS"
+            }, status=503)
+        
+        logger.info(f"Synthesizing speech for text: {text[:50]}...")
+        
+        # Generate audio
+        import numpy as np
+        import soundfile as sf
+        import io
+        import base64
+        
+        wav = tts_model.tts(text=text, speaker=speaker_id, language=language)
+        
+        # Ensure audio is in correct format
+        if isinstance(wav, np.ndarray):
+            if wav.dtype != np.float32:
+                wav = wav.astype(np.float32)
+            if wav.max() > 1.0 or wav.min() < -1.0:
+                wav = wav / np.max(np.abs(wav))
+        
+        # Write to bytes buffer
+        buffer = io.BytesIO()
+        sf.write(buffer, wav, 22050, format='WAV')
+        buffer.seek(0)
+        
+        # Convert to base64 for JSON response
+        audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        
+        return web.json_response({
+            "audio": audio_base64,
+            "format": "wav",
+            "sample_rate": 22050,
+            "text": text
+        })
+        
+    except Exception as e:
+        logger.error(f"TTS synthesis error: {e}", exc_info=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def handle_tts_voices(request):
+    """GET /api/tts/voices - Get available voices"""
+    try:
+        if not load_tts_model():
+            return web.json_response({"voices": []})
+        
+        voices = []
+        try:
+            if hasattr(tts_model, 'speaker_manager') and tts_model.speaker_manager:
+                speaker_ids = tts_model.speaker_manager.speaker_ids
+                voices = [{"id": sid, "name": f"Speaker {sid}"} for sid in speaker_ids]
+        except:
+            pass
+        
+        if not voices:
+            voices = [{"id": None, "name": "Default"}]
+        
+        return web.json_response({"voices": voices})
+        
+    except Exception as e:
+        logger.error(f"Error getting voices: {e}")
+        return web.json_response({"voices": []})
+
+
 async def init_app():
     """Initialize the aiohttp application"""
     app = web.Application()
