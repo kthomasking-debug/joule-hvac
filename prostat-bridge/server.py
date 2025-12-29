@@ -2694,6 +2694,11 @@ async def init_app():
     app.router.add_post('/api/energyplus/calculate', handle_energyplus_calculate)
     app.router.add_post('/api/rebates/calculate', handle_rebates_calculate)
     
+    # TTS endpoints (optional feature)
+    app.router.add_get('/api/tts/health', handle_tts_health)
+    app.router.add_post('/api/tts/synthesize', handle_tts_synthesize)
+    app.router.add_get('/api/tts/voices', handle_tts_voices)
+    
     # Enable CORS for all routes
     for route in list(app.router.routes()):
         cors.add(route)
