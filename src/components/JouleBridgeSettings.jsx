@@ -478,8 +478,18 @@ export default function JouleBridgeSettings() {
         </p>
       </div>
       
-      {/* Documentation Link */}
-      <div className="mb-4">
+      {/* Documentation Links */}
+      <div className="mb-4 space-y-2">
+        <Link
+          to="/docs/USER_MANUAL.md"
+          className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+        >
+          <FileText className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            📘 User Manual - Complete setup and usage guide
+          </span>
+          <ExternalLink className="w-3 h-3" />
+        </Link>
         <Link
           to="/hardware"
           className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
