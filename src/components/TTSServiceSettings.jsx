@@ -95,8 +95,8 @@ export default function TTSServiceSettings() {
         </div>
       </div>
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-        High-quality, natural-sounding speech synthesis using open-source Coqui TTS.
-        No API keys required. Runs locally on your machine.
+        <strong>Advanced Feature:</strong> Self-hosted TTS service for power users.
+        Most users should use "Browser TTS" (toggle above) or ElevenLabs instead.
       </p>
 
       {/* Service Status */}
@@ -135,138 +135,23 @@ export default function TTSServiceSettings() {
 
         {!ttsAvailable && !checkingHealth && (
           <div className="mt-2">
-            <p className="text-sm text-red-600 dark:text-red-400">
-              TTS service is not available. Start the service to enable open-source TTS.
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Optional advanced feature - not required for normal use.
             </p>
-            {healthError && (
-              <p className="text-xs text-red-500 dark:text-red-500 mt-1">
-                Error: {healthError}
-              </p>
-            )}
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Service URL: {TTS_SERVICE_URL}
-            </p>
-            <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                🚀 How to Start the TTS Service:
-              </p>
-              <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                <p className="text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>
-                    <strong>📍 Run on Bridge Server (Recommended):</strong>
-                    <br /><br />
-                    The TTS service should run on your <strong>bridge server</strong> (the same device running <code className="px-1 bg-blue-100 dark:bg-blue-900 rounded">prostat-bridge/server.py</code>). This ensures it's always available and doesn't depend on the user's device.
-                    <br /><br />
-                    <strong>Steps:</strong>
-                    <ol className="list-decimal list-inside ml-2 mt-1 space-y-1">
-                      <li>SSH into your bridge server</li>
-                      <li>Navigate to the project directory (where <code className="px-1 bg-blue-100 dark:bg-blue-900 rounded">server/tts-service.py</code> is located)</li>
-                      <li>Run the command below</li>
-                      <li>Optionally set it up as a systemd service to auto-start on boot</li>
-                    </ol>
-                  </span>
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    <strong>Option 1: Using NPM script (recommended):</strong>
-                  </p>
-                  <div className="flex items-center gap-2 mb-2">
-                    <code className="flex-1 px-2 py-1.5 bg-gray-800 dark:bg-gray-900 text-green-400 text-xs rounded font-mono break-all">
-                      npm run tts-service
-                    </code>
-                    <button
-                      onClick={() => {
-                        const command = 'npm run tts-service';
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(command).then(() => {
-                            alert('Command copied to clipboard!');
-                          });
-                        }
-                      }}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    <strong>Option 2: Direct Python command:</strong>
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 px-2 py-1.5 bg-gray-800 dark:bg-gray-900 text-green-400 text-xs rounded font-mono break-all">
-                      python3 server/tts-service.py
-                    </code>
-                    <button
-                      onClick={() => {
-                        const command = 'python3 server/tts-service.py';
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(command).then(() => {
-                            alert('Command copied to clipboard!');
-                          });
-                        }
-                      }}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>
-                    <strong>First time setup on bridge server:</strong>
-                    <ol className="list-decimal list-inside ml-2 mt-1 space-y-1">
-                      <li>Install Python dependencies:
-                        <code className="block mt-1 px-2 py-1 bg-gray-800 dark:bg-gray-900 text-green-400 rounded font-mono text-xs">
-                          pip install -r requirements.txt
-                        </code>
-                      </li>
-                      <li>Make sure the service is accessible from your bridge server's IP/port</li>
-                    </ol>
-                  </span>
-                </p>
-              </div>
-              <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
-                <p className="text-xs text-green-700 dark:text-green-300 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>
-                    <strong>💡 Optional: Auto-start on boot (systemd service):</strong>
-                    <br />
-                    To make the TTS service start automatically when the bridge server boots, create a systemd service file:
-                    <code className="block mt-1 px-2 py-1 bg-gray-800 dark:bg-gray-900 text-green-400 rounded font-mono text-xs whitespace-pre-wrap">
-{`sudo nano /etc/systemd/system/joule-tts.service
-
-[Unit]
-Description=Joule HVAC TTS Service
-After=network.target
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/path/to/joule-hvac
-ExecStart=/usr/bin/python3 server/tts-service.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-
-# Then enable and start:
-sudo systemctl enable joule-tts
-sudo systemctl start joule-tts`}
-                    </code>
-                    (Replace <code className="px-1 bg-green-100 dark:bg-green-900 rounded">/path/to/joule-hvac</code> with your actual project path and <code className="px-1 bg-green-100 dark:bg-green-900 rounded">pi</code> with your username)
-                  </span>
-                </p>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                After starting the service, click "Refresh" above to check status.
+            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  <strong>💡 Most users don't need this:</strong>
+                  <br />
+                  • Use "Browser TTS" (toggle above) for built-in voice synthesis
+                  <br />
+                  • Or use ElevenLabs for premium quality
+                  <br />
+                  <br />
+                  This Coqui TTS service is only for advanced users who want to run their own TTS server.
+                  Contact support if you need help setting this up.
+                </span>
               </p>
             </div>
           </div>
