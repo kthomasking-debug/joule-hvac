@@ -62,7 +62,7 @@
 ### Step 3: Find the Raspberry Pi's IP Address
 
 **Option A: Check Router (Easiest)**
-- Log into your router admin page (usually `http://192.168.0.1` or `http://192.168.1.1`)
+- Log into your router settings page (usually `http://192.168.0.1` or `http://192.168.1.1`)
 - Look at "Connected Devices" or "DHCP Clients"
 - Find your Raspberry Pi (hostname will be `raspberrypi` or `joule-bridge` if you set it)
 - Note the IP address (e.g., `192.168.0.100`)
@@ -119,7 +119,7 @@ If you can't configure WiFi before first boot, you have two options:
 2. **Connect Ethernet cable** from router to adapter
 3. **Plug adapter into Raspberry Pi** USB port
 4. **Boot the Pi** - it will get IP via Ethernet
-5. **Find IP from router** admin page
+5. **Find IP from router** settings page
 6. **SSH in** and configure WiFi
 7. **Disconnect Ethernet** - WiFi will take over
 

@@ -79,7 +79,7 @@ Can't find the bridge?
 
 Can't access router?
 → Try 192.168.1.1 if 192.168.0.1 doesn't work
-→ Check router label for admin address
+→ Check router label for settings address
 → Ask your internet provider
 
 Need more help?

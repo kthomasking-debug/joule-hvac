@@ -72,7 +72,7 @@ Ask Joule is a local, client-side assistant designed to be privacy-conscious whi
 
 ## Ask Joule Command Center
 
-For power users and administrators, a dedicated "Ask Joule Command Center" page provides a deeper command audit view and administration utilities:
+For power users and support staff, a dedicated "Ask Joule Command Center" page provides a deeper command audit view and management utilities:
 
 - View command history with timestamps and details.
 - Export the audit history as JSON or CSV for backup or review.

@@ -12,7 +12,7 @@ This folder contains all documentation for the Joule HVAC project.
 - **`docs/`** (this folder) - Main documentation repository
   - Source of truth for all documentation
   - Used by developers and support staff
-  - Includes both user and admin documentation
+  - Includes both user and support documentation
 
 - **`public/docs/`** - Public-facing documentation
   - Served on the website (if applicable)

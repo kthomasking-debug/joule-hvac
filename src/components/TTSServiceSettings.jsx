@@ -76,7 +76,7 @@ export default function TTSServiceSettings() {
       </div>
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
         <strong>Advanced Feature:</strong> Optional high-quality TTS using Coqui (runs on bridge server).
-        Most users should use "Browser TTS" (toggle above) or ElevenLabs instead.
+        Most users should use "Browser TTS" (toggle above) or premium TTS service instead.
       </p>
 
       {/* Service Status */}
@@ -124,9 +124,9 @@ export default function TTSServiceSettings() {
                 <span>
                   <strong>💡 Most users don't need this:</strong>
                   <br />
-                  • Use "Browser TTS" (toggle above) for built-in voice synthesis
+                  • Use "Browser TTS" (toggle above) for built-in voice synthesis (free)
                   <br />
-                  • Or use ElevenLabs for premium quality
+                  • Or subscribe to premium TTS service for high-quality voices
                   <br />
                   <br />
                   This Coqui TTS service runs on your bridge server and requires installing additional Python packages.

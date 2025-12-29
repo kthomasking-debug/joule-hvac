@@ -63,7 +63,9 @@ const ImageToText = lazy(() => import("./pages/ImageToText"));
 const BlueairControl = lazy(() => import("./pages/BlueairControl"));
 const OptimizationHub = lazy(() => import("./pages/OptimizationHub"));
 const BridgeSupport = lazy(() => import("./pages/BridgeSupport"));
+const RemoteSettings = lazy(() => import("./pages/RemoteSettings"));
 const SupportTicket = lazy(() => import("./pages/SupportTicket"));
+const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
 
 import {
   Home as HomeIcon,
@@ -92,6 +94,8 @@ import {
   Image,
   Sparkles,
   MessageSquare,
+  Chrome,
+  MapPin,
 } from "lucide-react";
 
 export const routes = [
@@ -146,7 +150,7 @@ export const routes = [
   {
     path: "/analysis/budget",
     name: "Budget",
-    label: "Budget",
+    label: "Monthly Forecast",
     icon: TrendingUp,
     Component: Analysis,
     showInNav: false,
@@ -313,14 +317,25 @@ export const routes = [
   },
   {
     path: "/bridge-support",
-    name: "Bridge Support",
-    label: "Bridge Admin",
+    name: "Bridge Diagnostics",
+    label: "Bridge Diagnostics",
     icon: Server,
     Component: BridgeSupport,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "Remote bridge administration and troubleshooting for support staff",
+    description: "Self-service diagnostics and troubleshooting. Check status, view logs, and perform basic maintenance tasks.",
+  },
+  {
+    path: "/remote-settings",
+    name: "Remote Settings",
+    label: "Remote Settings",
+    icon: SettingsIcon,
+    Component: RemoteSettings,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Configure all user settings remotely via Tailscale. Accessible through Bridge Diagnostics.",
   },
   // ===== HIDDEN/ADVANCED TOOLS (Not in main nav) =====
   {
@@ -544,14 +559,25 @@ export const routes = [
   },
   {
     path: "/tools/bridge-support",
-    name: "Bridge Support",
-    label: "Bridge Admin",
+    name: "Bridge Diagnostics",
+    label: "Bridge Diagnostics",
     icon: Server,
     Component: BridgeSupport,
     showInNav: true,
     inMobileNav: true,
     inPrimaryNav: false,
-    description: "Remote bridge administration and troubleshooting for support staff",
+    description: "Self-service diagnostics and troubleshooting. Check status, view logs, and perform basic maintenance tasks.",
+  },
+  {
+    path: "/tools/offline-launcher",
+    name: "Offline Launcher",
+    label: "Offline Launcher",
+    icon: Chrome,
+    Component: OfflineLauncher,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: false,
+    description: "Launch the app in Chrome for offline access. Cache the app while online, then use it even when your internet connection is down.",
   },
   {
     path: "/onboarding",
@@ -676,7 +702,7 @@ export const routes = [
   },
   {
     path: "/analysis/weekly-forecast",
-    name: "Weekly Forecast",
+    name: "Simulator",
     label: "Weekly Forecast",
     icon: Bug,
     Component: WeeklyForecast,
@@ -697,6 +723,28 @@ export const routes = [
     description: "Current month budget with daily breakdown",
   },
   {
+    path: "/analysis/city-comparison",
+    name: "City Comparison",
+    label: "City Comparison",
+    icon: MapPin,
+    Component: Analysis,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Compare heating costs between different cities and climates",
+  },
+  {
+    path: "/analysis/annual",
+    name: "Annual Forecast",
+    label: "Annual Forecast",
+    icon: TrendingUp,
+    Component: Analysis,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "View annual heating and cooling cost breakdown",
+  },
+  {
     path: "/analysis/analyzer",
     name: "Analyze System",
     label: "Analyze System",
@@ -709,8 +757,8 @@ export const routes = [
   },
   {
     path: "/analysis/forecast",
-    name: "What If",
-    label: "What If",
+    name: "Simulator",
+    label: "Weekly Forecast",
     icon: Calendar,
     Component: Analysis,
     showInNav: true,

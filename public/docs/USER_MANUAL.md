@@ -367,7 +367,7 @@ Your Joule system includes a talking thermostat with voice control!
 ### "Can't Access Router"
 
 - Router address is usually `192.168.0.1` or `192.168.1.1`
-- Check the label on your router for the admin address
+- Check the label on your router for the settings address
 - Or ask your internet provider
 
 ### "Bridge IP Changed After Power Outage"
@@ -536,7 +536,7 @@ To control your thermostat when away from home, or to enable remote support acce
    This will show an IP starting with `100.x.x.x`
 
 5. **Share with support (optional):**
-   - Your Tailscale IP will appear in Bridge Admin → Remote Support Access
+   - Your Tailscale IP will appear in Bridge Diagnostics → Remote Support Access
    - Include it in support tickets for faster remote assistance
 
 **Note:** This is completely optional. Most users only need local access. Tailscale is mainly useful if you want remote support or to access your bridge when away from home.

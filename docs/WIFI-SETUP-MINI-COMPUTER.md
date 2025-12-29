@@ -48,7 +48,7 @@ If the mini computer is already running or you can't pre-configure:
 
 1. Connect an Ethernet cable from your router to the mini computer
 2. Wait 30 seconds for it to get an IP address
-3. Check your router's admin page for the connected device's IP
+3. Check your router's settings page for the connected device's IP
 4. Or use network scanner: `nmap -sn 192.168.1.0/24`
 
 ### Step 2: SSH In
@@ -169,7 +169,7 @@ ip link show
 ### Find WiFi Network Name (SSID)
 
 If you don't know your WiFi name:
-- Check your router's admin page
+- Check your router's settings page
 - Check another connected device's WiFi settings
 - Use `sudo iwlist wlan0 scan` to see available networks
 
@@ -183,7 +183,7 @@ hostname -I
 ip addr show wlan0 | grep "inet "
 
 # Check router's DHCP client list
-# (Log into router admin page)
+# (Log into router settings page)
 ```
 
 ## Quick Reference

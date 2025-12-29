@@ -47,7 +47,7 @@ curl -v https://192.168.0.104
 
 ### Method 4: Check Router Logs
 
-Many routers log device names or manufacturers. Check your router's admin panel for:
+Many routers log device names or manufacturers. Check your router's settings panel for:
 - Device manufacturer
 - Device type
 - Connection history
@@ -159,10 +159,10 @@ nmap -sn 192.168.0.0/24
 nmap -A 192.168.0.104
 ```
 
-### Using Router Admin Panel
+### Using Router Settings Panel
 
 Most routers have a device list:
-1. Log into router admin (usually `192.168.0.1` or `192.168.1.1`)
+1. Log into router settings (usually `192.168.0.1` or `192.168.1.1`)
 2. Look for "Connected Devices" or "DHCP Clients"
 3. Find `192.168.0.104` and check:
    - Device name

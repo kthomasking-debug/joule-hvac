@@ -4,7 +4,8 @@ import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle, ChevronDown, C
 import { inputClasses, fullInputClasses, selectClasses } from '../lib/uiClasses';
 import { DashboardLink } from '../components/DashboardLink';
 import { fetchGeocodeCandidates, chooseBestCandidate, reverseGeocode } from '../utils/geocode';
-import { fetchStateAverageGasPrice } from '../lib/eia';
+import { fetchStateAverageGasPrice, fetchStateAverageRate } from '../lib/eia';
+import { getStateCode } from '../lib/eiaRates';
 import { getDefrostPenalty, getEffectiveSquareFeet } from '../lib/heatUtils';
 import useForecast from '../hooks/useForecast';
 import { useUnitSystem, formatTemperatureFromF, formatCapacityFromKbtuh } from '../lib/units';
@@ -76,7 +77,9 @@ const GasVsHeatPump = () => {
   const [showStatePickerModal, setShowStatePickerModal] = useState(false);
   const [fetchingGasPrice, setFetchingGasPrice] = useState(false);
   const [gasPriceFetchError, setGasPriceFetchError] = useState(null);
-  const eiaApiKey = import.meta.env.VITE_EIA_API_KEY || '';
+  const [fetchingEnergyCosts, setFetchingEnergyCosts] = useState(false);
+  const [energyCostsError, setEnergyCostsError] = useState(null);
+  const eiaApiKey = import.meta.env.VITE_EIA_API_KEY || 'pXrJWdC9XCSfDMaXVEQTfuIhKfY8l7V3d0VwYEva';
 
   // --- Building Characteristics - REMOVED (now using context) ---
   // const [squareFeet, setSquareFeet] = useState(1500);
@@ -151,7 +154,7 @@ const GasVsHeatPump = () => {
   const [showCandidateList, setShowCandidateList] = useState(false);
   const [lowHeatLossWarning, setLowHeatLossWarning] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode, setSimpleMode] = useState(true);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   // Basic US state abbreviation to name mapping for better geocoding disambiguation
@@ -385,6 +388,79 @@ const GasVsHeatPump = () => {
     }
   };
 
+  // Handler for fetching both electricity and gas costs from EIA
+  const handleApplyEnergyCosts = async () => {
+    if (!eiaApiKey) {
+      setEnergyCostsError('EIA API key is required.');
+      return;
+    }
+
+    if (!foundLocationName && !locationQuery) {
+      setEnergyCostsError('Please enter a location first.');
+      return;
+    }
+
+    setFetchingEnergyCosts(true);
+    setEnergyCostsError(null);
+
+    try {
+      // Extract state from location name (e.g., "Chicago, IL" -> "IL")
+      const locationStr = foundLocationName || locationQuery || '';
+      const stateMatch = locationStr.match(/,?\s*([A-Z]{2})\s*$/);
+      let stateCode = null;
+
+      if (stateMatch) {
+        stateCode = stateMatch[1];
+      } else {
+        // Try to extract state name and convert to code
+        const parts = locationStr.split(',').map(s => s.trim());
+        if (parts.length >= 2) {
+          const stateName = parts[parts.length - 1];
+          stateCode = getStateCode(stateName);
+        }
+      }
+
+      if (!stateCode) {
+        setEnergyCostsError('Could not determine state from location. Please use format "City, ST".');
+        setFetchingEnergyCosts(false);
+        return;
+      }
+
+      // Fetch both electricity and gas costs
+      const [electricityResult, gasResult] = await Promise.all([
+        fetchStateAverageRate(eiaApiKey, stateCode),
+        fetchStateAverageGasPrice(eiaApiKey, stateCode),
+      ]);
+
+      if (electricityResult && electricityResult.rate) {
+        setUtilityCost(parseFloat(electricityResult.rate.toFixed(3)));
+        if (setUserSetting) {
+          setUserSetting('utilityCost', parseFloat(electricityResult.rate.toFixed(3)));
+        }
+      }
+
+      if (gasResult && gasResult.rate) {
+        setGasCostPerTherm(parseFloat(gasResult.rate.toFixed(3)));
+        if (setUserSetting) {
+          setUserSetting('gasCost', parseFloat(gasResult.rate.toFixed(3)));
+        }
+      }
+
+      if (!electricityResult && !gasResult) {
+        setEnergyCostsError(`No data found for ${stateCode}. Try another location.`);
+      } else if (!electricityResult) {
+        setEnergyCostsError(`Electricity data not found, but gas cost was updated.`);
+      } else if (!gasResult) {
+        setEnergyCostsError(`Gas data not found, but electricity cost was updated.`);
+      }
+
+    } catch (error) {
+      setEnergyCostsError(error.message || 'Failed to fetch energy costs from EIA.');
+    } finally {
+      setFetchingEnergyCosts(false);
+    }
+  };
+
   // Auto-load location from onboarding on mount
   useEffect(() => {
     // If we already have coordinates from onboarding, set the found location name
@@ -546,21 +622,18 @@ const GasVsHeatPump = () => {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <label className={`flex items-center gap-2 ${(!location || !forecast || forecastLoading) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-              <input
-                type="checkbox"
-                checked={simpleMode}
-                onChange={(e) => setSimpleMode(e.target.checked)}
-                disabled={!location || !forecast || forecastLoading}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <span className={`text-sm ${(!location || !forecast || forecastLoading) ? 'text-gray-500' : 'text-gray-300'}`}>
-                Simple mode
-                {(!location || !forecast || forecastLoading) && (
-                  <span className="ml-1 text-xs text-gray-500">(enter location first)</span>
-                )}
-              </span>
-            </label>
+            <button
+              type="button"
+              onClick={() => setSimpleMode(!simpleMode)}
+              disabled={!location || !forecast || forecastLoading}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                !simpleMode
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-700`}
+            >
+              Details
+            </button>
             <DashboardLink />
           </div>
         </div>
@@ -581,26 +654,28 @@ const GasVsHeatPump = () => {
 
       {/* ---------------- STEP 1 ---------------- */}
       {!simpleMode && (
-      <section className="bg-[#11161e] border border-[#1f2937] rounded-xl p-6 mb-8">
-        <h2 className="text-xl font-semibold text-white mb-1">Step 1 · Your Building & Systems</h2>
-        <p className="text-gray-400 text-sm mb-6">
+      <section className="bg-[#11161e] border border-[#1f2937] rounded-xl p-4 mb-6">
+        <h2 className="text-lg font-semibold text-white mb-0.5">Step 1 · Your Building & Systems</h2>
+        <p className="text-gray-400 text-xs mb-3">
           Tell Joule what you're heating so we don't compare apples to igloos.
         </p>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-3 gap-4">
           {/* ---- HOME DETAILS ---- */}
           <div>
-            <h3 className="text-lg font-semibold text-blue-300 mb-1">Your Home</h3>
-            <p className="text-gray-500 text-xs mb-3">size & shell</p>
-            <div className="space-y-4 text-sm">
+            <h3 className="text-base font-semibold text-blue-300 mb-0.5">Your Home</h3>
+            <p className="text-gray-500 text-xs mb-2">size & shell</p>
+            <div className="space-y-2.5 text-sm">
               <div>
-                <label className="block text-gray-300 mb-1">Home size (sq ft)</label>
-                <input type="range" min="800" max="4000" step="100" value={squareFeet} onChange={(e) => setSquareFeetContext(Number(e.target.value))} className="w-full mb-2" />
-                <span className="text-lg font-bold text-white">{squareFeet.toLocaleString()} sq ft</span>
-                <p className="text-gray-500 text-xs mt-1">Heated floor area only.</p>
+                <label className="block text-gray-300 mb-0.5 text-xs">Home size (sq ft)</label>
+                <input type="range" min="800" max="4000" step="100" value={squareFeet} onChange={(e) => setSquareFeetContext(Number(e.target.value))} className="w-full mb-1" />
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-white">{squareFeet.toLocaleString()} sq ft</span>
+                  <p className="text-gray-500 text-xs">Heated floor area only.</p>
+                </div>
               </div>
               <div>
-                <label className="block text-gray-300 mb-1">Insulation Quality</label>
+                <label className="block text-gray-300 mb-0.5 text-xs">Insulation Quality</label>
                 <select value={insulationLevel} onChange={(e) => setInsulationLevelContext(Number(e.target.value))} className={selectClasses}>
                   <option value={1.4}>Poor (pre-1980, minimal upgrades)</option>
                   <option value={1.0}>Average (1990s-2000s, code-min)</option>
@@ -612,19 +687,19 @@ const GasVsHeatPump = () => {
               <div className="border border-[#1c2733] rounded-lg overflow-hidden">
                 <button
                   onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-[#0c1218] transition-colors text-left"
+                  className="w-full flex items-center justify-between p-2 hover:bg-[#0c1218] transition-colors text-left"
                 >
-                  <span className="text-sm font-medium text-gray-300">Advanced details (optional)</span>
+                  <span className="text-xs font-medium text-gray-300">Advanced details (optional)</span>
                   {showAdvancedDetails ? (
-                    <ChevronUp className="w-4 h-4 text-gray-400" />
+                    <ChevronUp className="w-3 h-3 text-gray-400" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                    <ChevronDown className="w-3 h-3 text-gray-400" />
                   )}
                 </button>
                 {showAdvancedDetails && (
-                  <div className="p-3 space-y-4 border-t border-[#1c2733] bg-[#0c1218]">
+                  <div className="p-2 space-y-2.5 border-t border-[#1c2733] bg-[#0c1218]">
                     <div>
-                      <label className="block text-gray-300 mb-1">Building Shape</label>
+                      <label className="block text-gray-300 mb-0.5 text-xs">Building Shape</label>
                       <select value={homeShape} onChange={(e) => setHomeShapeContext(Number(e.target.value))} className={selectClasses}>
                         <option value={0.9}>Two-Story (less exterior surface)</option>
                         <option value={1.0}>Split-Level / Standard</option>
@@ -632,7 +707,7 @@ const GasVsHeatPump = () => {
                         <option value={1.15}>Manufactured Home</option>
                         <option value={2.2}>Cabin / A-Frame</option>
                       </select>
-                      <p className="text-gray-500 text-xs mt-1">Affects surface area exposure and heat loss.</p>
+                      <p className="text-gray-500 text-xs mt-0.5">Affects surface area exposure and heat loss.</p>
                       {/* Loft toggle - only show for Cabin/A-Frame */}
                       {homeShape >= 1.2 && homeShape < 1.3 && (
                         <div className="mt-3">
@@ -652,7 +727,7 @@ const GasVsHeatPump = () => {
                       )}
                     </div>
                     <div>
-                      <label className="block text-gray-300 mb-1">Average Ceiling Height</label>
+                      <label className="block text-gray-300 mb-0.5 text-xs">Average Ceiling Height</label>
                       <select value={ceilingHeight} onChange={(e) => setCeilingHeightContext(Number(e.target.value))} className={selectClasses}>
                         <option value={8}>8 feet (standard)</option>
                         <option value={9}>9 feet</option>
@@ -660,7 +735,7 @@ const GasVsHeatPump = () => {
                         <option value={12}>12 feet (vaulted)</option>
                         <option value={16}>16+ feet (cathedral)</option>
                       </select>
-                      <p className="text-gray-500 text-xs mt-1">Higher ceilings increase heating volume and energy needs.</p>
+                      <p className="text-gray-500 text-xs mt-0.5">Higher ceilings increase heating volume and energy needs.</p>
                     </div>
                   </div>
                 )}
@@ -668,14 +743,14 @@ const GasVsHeatPump = () => {
             </div>
           </div>
           {/* ---- SYSTEM CARDS ---- */}
-          <div className="space-y-6">
+          <div className="md:col-span-2 grid md:grid-cols-2 gap-4">
             {/* HEAT PUMP CARD */}
-            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-blue-300 mb-1">Heat Pump</h3>
-              <p className="text-gray-500 text-xs mb-3">efficiency & size</p>
-              <div className="space-y-4 text-sm">
+            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-3">
+              <h3 className="text-base font-semibold text-blue-300 mb-0.5">Heat Pump</h3>
+              <p className="text-gray-500 text-xs mb-2">efficiency & size</p>
+              <div className="space-y-2.5 text-sm">
                 <div>
-                  <label className="block text-gray-300 mb-1">Capacity</label>
+                  <label className="block text-gray-300 mb-0.5 text-xs">Capacity</label>
                   <select value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={selectClasses}>
                     {Object.entries(capacities).map(([btu, ton]) => (
                       <option key={btu} value={btu}>
@@ -709,12 +784,12 @@ const GasVsHeatPump = () => {
                   })()}
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Efficiency (HSPF2/SEER2)</label>
-                  <div className="flex flex-wrap gap-2 mb-2">
+                  <label className="block text-gray-300 mb-0.5 text-xs">Efficiency (HSPF2/SEER2)</label>
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
                     <button
                       type="button"
                       onClick={() => setEfficiency(15)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         efficiency >= 14 && efficiency <= 15
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -725,7 +800,7 @@ const GasVsHeatPump = () => {
                     <button
                       type="button"
                       onClick={() => setEfficiency(17)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         efficiency >= 16 && efficiency <= 17
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -736,7 +811,7 @@ const GasVsHeatPump = () => {
                     <button
                       type="button"
                       onClick={() => setEfficiency(19)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         efficiency >= 18 && efficiency <= 20
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -747,7 +822,7 @@ const GasVsHeatPump = () => {
                     <button
                       type="button"
                       onClick={() => setEfficiency(21)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         efficiency >= 21
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -765,25 +840,38 @@ const GasVsHeatPump = () => {
                   )}
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Electricity Cost ($/kWh)</label>
-                  <input type="range" min="0.05" max="0.50" step="0.01" value={utilityCost} onChange={(e) => setUtilityCost(Number(e.target.value))} className="w-full mb-2" />
-                  <span className="text-lg font-bold text-white">${utilityCost.toFixed(2)} / kWh</span>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className="block text-gray-300 text-xs">Electricity Cost ($/kWh)</label>
+                    <button
+                      type="button"
+                      onClick={handleApplyEnergyCosts}
+                      disabled={fetchingEnergyCosts || (!foundLocationName && !locationQuery)}
+                      className="px-2 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {fetchingEnergyCosts ? 'Loading...' : 'Apply Energy Costs'}
+                    </button>
+                  </div>
+                  <input type="range" min="0.05" max="0.50" step="0.01" value={utilityCost} onChange={(e) => setUtilityCost(Number(e.target.value))} className="w-full mb-1" />
+                  <span className="text-base font-bold text-white">${utilityCost.toFixed(2)} / kWh</span>
+                  {energyCostsError && (
+                    <p className="text-xs text-red-400 mt-1">{energyCostsError}</p>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* GAS FURNACE CARD */}
-            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-red-300 mb-1">Gas Furnace</h3>
-              <p className="text-gray-500 text-xs mb-3">efficiency & fuel price</p>
-              <div className="space-y-4 text-sm">
+            <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-3">
+              <h3 className="text-base font-semibold text-red-300 mb-0.5">Gas Furnace</h3>
+              <p className="text-gray-500 text-xs mb-2">efficiency & fuel price</p>
+              <div className="space-y-2.5 text-sm">
                 <div>
-                  <label className="block text-gray-300 mb-1">AFUE (%)</label>
-                  <div className="flex flex-wrap gap-2 mb-2">
+                  <label className="block text-gray-300 mb-0.5 text-xs">AFUE (%)</label>
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
                     <button
                       type="button"
                       onClick={() => setGasFurnaceAFUE(0.80)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         Math.round(gasFurnaceAFUE * 100) === 80
                           ? 'bg-red-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -794,7 +882,7 @@ const GasVsHeatPump = () => {
                     <button
                       type="button"
                       onClick={() => setGasFurnaceAFUE(0.90)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         Math.round(gasFurnaceAFUE * 100) === 90
                           ? 'bg-red-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -805,7 +893,7 @@ const GasVsHeatPump = () => {
                     <button
                       type="button"
                       onClick={() => setGasFurnaceAFUE(0.95)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                         Math.round(gasFurnaceAFUE * 100) >= 95
                           ? 'bg-red-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -814,14 +902,14 @@ const GasVsHeatPump = () => {
                       95%+ (high-efficiency)
                     </button>
                   </div>
-                  <input type="range" min={80} max={98} value={gasFurnaceAFUE * 100} onChange={(e) => setGasFurnaceAFUE(Number(e.target.value) / 100)} className="w-full mb-2" />
-                  <span className="text-lg font-bold text-white">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
+                  <input type="range" min={80} max={98} value={gasFurnaceAFUE * 100} onChange={(e) => setGasFurnaceAFUE(Number(e.target.value) / 100)} className="w-full mb-1" />
+                  <span className="text-base font-bold text-white">{(gasFurnaceAFUE * 100).toFixed(0)}%</span>
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Gas Cost ($/therm)</label>
-                  <input type="range" min="0.5" max="3.0" step="0.05" value={gasCostPerTherm} onChange={(e) => setGasCostPerTherm(Number(e.target.value))} className="w-full mb-2" />
-                  <span className="text-lg font-bold text-white">${gasCostPerTherm.toFixed(2)} / therm</span>
-                  <div className="mt-3 p-3 rounded-lg bg-[#0a0f14] border border-[#1c2733] space-y-2">
+                  <label className="block text-gray-300 mb-0.5 text-xs">Gas Cost ($/therm)</label>
+                  <input type="range" min="0.5" max="3.0" step="0.05" value={gasCostPerTherm} onChange={(e) => setGasCostPerTherm(Number(e.target.value))} className="w-full mb-1" />
+                  <span className="text-base font-bold text-white">${gasCostPerTherm.toFixed(2)} / therm</span>
+                  <div className="mt-2 p-2 rounded-lg bg-[#0a0f14] border border-[#1c2733] space-y-1.5">
                     <GasMcfConverter onApply={(val) => setGasCostPerTherm(val)} />
                     <div className="flex flex-wrap items-center gap-2">
                       <a
@@ -832,14 +920,24 @@ const GasVsHeatPump = () => {
                       >
                         EIA State Gas Prices
                       </a>
-                      <button
-                        type="button"
-                        className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        onClick={() => setShowStatePickerModal(true)}
-                        disabled={!eiaApiKey}
-                      >
-                        {!eiaApiKey ? 'API Key Required' : 'Fetch State Average'}
-                      </button>
+                      {!eiaApiKey ? (
+                        <a
+                          href="https://www.eia.gov/opendata/register.php"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors inline-block"
+                        >
+                          API Key Required
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                          onClick={() => setShowStatePickerModal(true)}
+                        >
+                          Fetch State Average
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -848,7 +946,7 @@ const GasVsHeatPump = () => {
           </div>
         </div>
 
-        <p className="mt-6 text-gray-500 text-xs">
+        <p className="mt-3 text-gray-500 text-xs">
           These inputs define your home's heat loss and how hard each system must work.
         </p>
       </section>

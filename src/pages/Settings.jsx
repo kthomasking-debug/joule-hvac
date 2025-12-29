@@ -429,7 +429,7 @@ const TTSEngineToggle = () => {
     try {
       return localStorage.getItem("useBrowserTTS") === "true";
     } catch {
-      return false; // Default to ElevenLabs
+      return false; // Default to premium TTS (if available)
     }
   });
 
@@ -455,13 +455,13 @@ const TTSEngineToggle = () => {
           className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
         />
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Use Browser TTS (instead of ElevenLabs)
+          Use Browser TTS (instead of Premium TTS)
         </span>
       </label>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
         {useBrowserTTS
-          ? "Using browser's built-in text-to-speech. No API credits used."
-          : "Using ElevenLabs for high-quality voice synthesis. API credits will be used."}
+          ? "Using browser's built-in text-to-speech. Free and unlimited."
+          : "Using premium TTS service (ElevenLabs) - requires monthly subscription. High-quality voice synthesis with natural-sounding speech."}
       </p>
     </div>
   );
@@ -2321,6 +2321,24 @@ const SettingsPage = () => {
     { id: "thermostat", label: "Thermostat Behavior", number: "4", icon: ThermometerSun, description: "Describe your typical thermostat behavior (for estimates only)" },
     { id: "bridge-ai", label: "Bridge & AI", number: "5", icon: Server, description: "Connect hardware and configure AI features" },
   ];
+
+  // Handle hash navigation (e.g., /settings#comfort-settings)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash === "#comfort-settings") {
+      // Expand thermostat section if collapsed
+      setExpandedSections(prev => ({ ...prev, "thermostat": true }));
+      // Scroll to comfort settings after a short delay to allow render
+      setTimeout(() => {
+        const element = document.getElementById("comfort-settings");
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Also expand the comfort section in ThermostatSettingsPanel
+          // This will be handled by the component's internal state
+        }
+      }, 100);
+    }
+  }, []);
 
   // Track active section on scroll
   useEffect(() => {

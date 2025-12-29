@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, TrendingDown } from 'lucide-react';
 
-const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings }) => {
+const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week" }) => {
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500/20 via-teal-500/20 to-sky-500/20 dark:from-emerald-900/40 dark:via-teal-900/40 dark:to-sky-900/40 border-2 border-emerald-400/50 dark:border-emerald-600/50 rounded-2xl p-5 shadow-2xl shadow-emerald-500/20 dark:shadow-emerald-900/30 backdrop-blur-sm">
       {/* Animated background glow */}
@@ -33,7 +33,7 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
             <span className="text-5xl font-black bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">
               ${(weeklyCost ?? 0).toFixed(2)}
             </span>
-            <span className="text-lg text-gray-500 dark:text-gray-400 font-medium">for this week</span>
+            <span className="text-lg text-gray-500 dark:text-gray-400 font-medium">for this {timePeriod}</span>
             {location && (
               <span className="text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 {location.split('(')[0].trim()} at {temp ?? 70}°F

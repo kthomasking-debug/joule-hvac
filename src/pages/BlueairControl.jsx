@@ -26,6 +26,17 @@ export default function BlueairControl() {
   const [deviceIndex, setDeviceIndex] = useState(0);
   const blueair = useBlueair(deviceIndex, 5000); // Poll every 5 seconds
   
+  // Configuration form state
+  const [showConfigForm, setShowConfigForm] = useState(false);
+  const [configType, setConfigType] = useState('local'); // 'local' or 'cloud'
+  const [macAddress, setMacAddress] = useState('');
+  const [localIp, setLocalIp] = useState('');
+  const [cloudUsername, setCloudUsername] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState(null);
+  const [configSuccess, setConfigSuccess] = useState(false);
+  
   // Recheck bridge availability when page loads (in case URL was just configured)
   useEffect(() => {
     // Update local state when context changes
@@ -104,6 +115,75 @@ export default function BlueairControl() {
     }
   };
 
+  // Load existing configuration when form opens
+  useEffect(() => {
+    if (showConfigForm && bridgeAvailable) {
+      const loadConfig = async () => {
+        try {
+          const config = await getBlueairCredentials();
+          if (config) {
+            if (config.mac_address) {
+              setMacAddress(config.mac_address);
+              setConfigType('local');
+            }
+            if (config.local_ip) {
+              setLocalIp(config.local_ip);
+              setConfigType('local');
+            }
+            if (config.username) {
+              setCloudUsername(config.username);
+              setConfigType('cloud');
+            }
+          }
+        } catch (err) {
+          // Ignore errors - form will start empty
+        }
+      };
+      loadConfig();
+    }
+  }, [showConfigForm, bridgeAvailable]);
+
+  const handleSaveConfig = async (e) => {
+    e.preventDefault();
+    setConfigLoading(true);
+    setConfigError(null);
+    setConfigSuccess(false);
+
+    try {
+      if (configType === 'local') {
+        // Local ESP32 configuration
+        if (!macAddress && !localIp) {
+          setConfigError('Please enter either MAC address or IP address');
+          setConfigLoading(false);
+          return;
+        }
+        await setBlueairLocalConfig(macAddress || null, localIp || null);
+        setConfigSuccess(true);
+        setTimeout(() => {
+          setShowConfigForm(false);
+          blueair.refresh();
+        }, 2000);
+      } else {
+        // Cloud API configuration
+        if (!cloudUsername || !cloudPassword) {
+          setConfigError('Username and password are required');
+          setConfigLoading(false);
+          return;
+        }
+        await setBlueairCredentials(cloudUsername, cloudPassword);
+        setConfigSuccess(true);
+        setTimeout(() => {
+          setShowConfigForm(false);
+          blueair.refresh();
+        }, 2000);
+      }
+    } catch (err) {
+      setConfigError(err.message || 'Failed to save configuration');
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
       <div className="max-w-4xl mx-auto">
@@ -177,13 +257,13 @@ export default function BlueairControl() {
                     : (
                       <>
                         {blueair.error || 'Blueair not configured. '}
-                        <Link 
-                          to="/config#joule-bridge" 
+                        <button
+                          onClick={() => setShowConfigForm(true)}
                           className="inline-flex items-center gap-1 underline font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                         >
                           <Settings className="w-4 h-4" />
-                          Configure Blueair credentials
-                        </Link>
+                          Configure Blueair Device
+                        </button>
                       </>
                     )}
                 </p>
@@ -447,6 +527,168 @@ export default function BlueairControl() {
           </div>
         )}
 
+        {/* Configuration Form Modal */}
+        {showConfigForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Configure Blueair Device
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowConfigForm(false);
+                    setConfigError(null);
+                    setConfigSuccess(false);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Config Type Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Device Type
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfigType('local')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      configType === 'local'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    Local ESP32 Device
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfigType('cloud')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      configType === 'cloud'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    Cloud API
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveConfig} className="space-y-4">
+                {configType === 'local' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        MAC Address <span className="text-gray-500 font-normal">(recommended for auto-discovery)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={macAddress}
+                        onChange={(e) => {
+                          // Auto-format MAC address as user types
+                          let value = e.target.value.toUpperCase().replace(/[^0-9A-F:-]/g, '');
+                          // Auto-add colons/dashes
+                          if (value.length > 2 && !value.includes(':') && !value.includes('-')) {
+                            value = value.match(/.{1,2}/g)?.join(':') || value;
+                          }
+                          setMacAddress(value);
+                        }}
+                        placeholder="D0-EF-76-1B-B8-1C"
+                        maxLength={17}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Find this in your router's connected devices list. Format: XX-XX-XX-XX-XX-XX or XX:XX:XX:XX:XX:XX
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        IP Address <span className="text-gray-500 font-normal">(optional, if you have a static IP)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={localIp}
+                        onChange={(e) => setLocalIp(e.target.value)}
+                        placeholder="192.168.0.107"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Leave empty to use MAC address auto-discovery (recommended). The bridge will automatically find your device even if its IP changes.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Username
+                      </label>
+                      <input
+                        type="text"
+                        value={cloudUsername}
+                        onChange={(e) => setCloudUsername(e.target.value)}
+                        placeholder="Your Blueair account email"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Password
+                      </label>
+                      <input
+                        type="password"
+                        value={cloudPassword}
+                        onChange={(e) => setCloudPassword(e.target.value)}
+                        placeholder="Your Blueair account password"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {configError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-800 dark:text-red-200">{configError}</p>
+                  </div>
+                )}
+
+                {configSuccess && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <p className="text-sm text-green-800 dark:text-green-200">
+                      Configuration saved! Reconnecting...
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConfigForm(false);
+                      setConfigError(null);
+                      setConfigSuccess(false);
+                    }}
+                    className="flex-1 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={configLoading}
+                    className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {configLoading ? 'Saving...' : 'Save Configuration'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Info Section */}
         <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
@@ -457,7 +699,7 @@ export default function BlueairControl() {
             <li>LED brightness: 0% (off) to 100% (full brightness)</li>
             <li>Dust Kicker: Runs HVAC fan for 30 seconds, then Blueair at max for 10 minutes</li>
             <li>Device status updates every 5 seconds</li>
-            <li>Requires Blueair credentials configured in bridge settings (BLUEAIR_USERNAME, BLUEAIR_PASSWORD)</li>
+            <li>Supports both local ESP32 devices (via MAC address auto-discovery) and cloud API</li>
           </ul>
         </div>
       </div>

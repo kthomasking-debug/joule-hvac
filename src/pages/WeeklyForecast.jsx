@@ -505,22 +505,29 @@ const WeeklyForecast = () => {
   );
   
   return (
-    <div className="min-h-screen bg-[#0C0F14] text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="page-gradient-overlay min-h-screen">
+      <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-2 lg:py-2 bg-slate-800/40 dark:bg-slate-800/20 rounded-2xl">
         {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-            <Calendar className="w-7 h-7 text-yellow-400" />
-            Weekly Forecast
-          </h1>
-          <p className="text-base text-gray-300 mt-2 max-w-3xl">
+        <div className="mb-2 animate-fade-in-up pt-1 pb-1">
+          <p className="text-muted text-xs leading-relaxed mb-1 italic">
             See your heating and cooling costs for the next 7 days based on the weather forecast and your current Ecobee thermostat setting.
           </p>
-        </header>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="icon-container icon-container-gradient">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h1 className="heading-primary text-xl md:text-2xl font-bold mb-1">
+                Weekly Forecast
+              </h1>
+            </div>
+          </div>
+          <div className="h-px bg-gradient-to-r from-transparent via-gray-300/30 dark:via-gray-600/30 to-transparent mt-1"></div>
+        </div>
         
         {/* Dismissible Info Banner */}
         {!dismissedInfoBanner && (
-          <div className="mb-6 p-4 rounded-lg border border-blue-700/50 bg-blue-900/20 relative">
+          <div className="mb-3 glass-card p-3 border-blue-500/30 bg-blue-900/20 relative">
             <button
               onClick={handleDismissBanner}
               className="absolute top-2 right-2 text-gray-400 hover:text-white transition-colors"
@@ -543,12 +550,12 @@ const WeeklyForecast = () => {
         )}
         
         {/* Connection Status */}
-        <div className={`mb-6 p-4 rounded-lg border ${
+        <div className={`mb-3 glass-card p-3 ${
           isConnected 
-            ? "bg-emerald-900/20 border-emerald-700" 
+            ? "border-emerald-500/30 bg-emerald-900/20" 
             : jouleBridge.bridgeAvailable
-            ? "bg-yellow-900/20 border-yellow-700"
-            : "bg-red-900/20 border-red-700"
+            ? "border-yellow-500/30 bg-yellow-900/20"
+            : "border-red-500/30 bg-red-900/20"
         }`}>
           <div className="flex items-center gap-3">
             {isConnected ? (
@@ -605,59 +612,59 @@ const WeeklyForecast = () => {
         </div>
         
         {/* Current Values Panel */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           {/* Ecobee Target Temp */}
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="glass-card p-3">
+            <div className="flex items-center gap-2 text-muted text-xs mb-1">
               <Thermometer className="w-4 h-4" />
               Ecobee Target
             </div>
             <div className="text-2xl font-bold text-orange-400">
               {ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-muted mt-1">
               From HomeKit
             </div>
           </div>
           
           {/* Current Indoor Temp */}
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="glass-card p-3">
+            <div className="flex items-center gap-2 text-muted text-xs mb-1">
               <Thermometer className="w-4 h-4" />
               Indoor Now
             </div>
             <div className="text-2xl font-bold text-blue-400">
               {currentIndoorTemp !== null ? formatTemperatureFromF(currentIndoorTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-muted mt-1">
               Current reading
             </div>
           </div>
           
           {/* Outdoor Temp */}
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="glass-card p-3">
+            <div className="flex items-center gap-2 text-muted text-xs mb-1">
               <Thermometer className="w-4 h-4" />
               Outdoor Now
             </div>
             <div className="text-2xl font-bold text-cyan-400">
               {currentOutdoorTemp !== null ? formatTemperatureFromF(currentOutdoorTemp, effectiveUnitSystem, { decimals: 0 }) : "—"}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-muted mt-1">
               Weather forecast
             </div>
           </div>
           
           {/* Electricity Rate */}
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="glass-card p-3">
+            <div className="flex items-center gap-2 text-muted text-xs mb-1">
               <DollarSign className="w-4 h-4" />
               Electricity
             </div>
             <div className="text-2xl font-bold text-green-400">
               ${electricityRate.toFixed(3)}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-muted mt-1">
               {rateSource}
             </div>
           </div>
@@ -665,9 +672,9 @@ const WeeklyForecast = () => {
         
         {/* Hero Section: Weekly Totals */}
         {weeklyTotals && dailyCosts && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             {/* Weekly Total Cost */}
-            <div className="bg-gradient-to-br from-green-600/30 to-green-800/30 border-2 border-green-600/60 rounded-xl p-6 shadow-lg">
+            <div className="glass-card-gradient glass-card p-4 border-2 border-green-500/40 bg-green-900/20 shadow-lg">
               <div className="text-sm text-green-200 mb-2 font-medium">7-DAY TOTAL COST</div>
               <div className="text-4xl font-bold text-white mb-2">${weeklyTotals.cost}</div>
               <div className="text-sm text-green-300">
@@ -676,7 +683,7 @@ const WeeklyForecast = () => {
             </div>
             
             {/* Daily Average */}
-            <div className="bg-gradient-to-br from-blue-600/30 to-blue-800/30 border-2 border-blue-600/60 rounded-xl p-6 shadow-lg">
+            <div className="glass-card-gradient glass-card p-4 border-2 border-blue-500/40 bg-blue-900/20 shadow-lg">
               <div className="text-sm text-blue-200 mb-2 font-medium">DAILY AVERAGE</div>
               <div className="text-3xl font-bold text-white mb-2">${(parseFloat(weeklyTotals.cost) / 7).toFixed(2)}</div>
               <div className="text-xs text-blue-300">
@@ -686,7 +693,7 @@ const WeeklyForecast = () => {
             
             {/* Backup Heat */}
             {parseFloat(weeklyTotals.auxKwh) > 0 && (
-              <div className="bg-gradient-to-br from-orange-600/30 to-red-800/30 border-2 border-orange-600/60 rounded-xl p-6 shadow-lg">
+              <div className="glass-card-gradient glass-card p-4 border-2 border-orange-500/40 bg-orange-900/20 shadow-lg">
                 <div className="text-sm text-orange-200 mb-2 font-medium">BACKUP HEAT</div>
                 <div className="text-3xl font-bold text-white mb-2">{formatEnergyFromKwh(parseFloat(weeklyTotals.auxKwh), effectiveUnitSystem, { decimals: 1 })}</div>
                 <div className="text-xs text-orange-300">
@@ -699,23 +706,23 @@ const WeeklyForecast = () => {
         
         {/* Tabbed Interface */}
         {!isConnected ? (
-          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6 text-center">
+          <div className="glass-card p-4 border-yellow-500/30 bg-yellow-900/20 text-center">
             <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
             <p className="text-yellow-200">Connect to Joule Bridge to see forecast calculations</p>
           </div>
         ) : forecastLoading ? (
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-6 text-center">
+          <div className="glass-card p-4 text-center">
             <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-2" />
             <p className="text-gray-400">Loading weather forecast...</p>
           </div>
         ) : forecastError ? (
-          <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 text-center">
+          <div className="glass-card p-4 border-red-500/30 bg-red-900/20 text-center">
             <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
             <p className="text-red-200">Error loading forecast: {forecastError}</p>
           </div>
         ) : dailyCosts ? (
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg overflow-hidden">
-            <div className="p-4 border-b border-[#222A35]">
+          <div className="glass-card overflow-hidden">
+            <div className="p-3 border-b border-gray-200/20 dark:border-gray-700/20">
               <h2 className="text-lg font-semibold">7-Day Heating Cost Forecast</h2>
               <p className="text-sm text-gray-400">
                 Using constant target: <span className="text-orange-400 font-bold">{ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}</span>
@@ -731,14 +738,14 @@ const WeeklyForecast = () => {
             </div>
             
             {/* Tab Navigation */}
-            <div className="border-b border-[#222A35] bg-[#1D232C]">
+            <div className="border-b border-gray-200/20 dark:border-gray-700/20 bg-gray-50/5 dark:bg-gray-900/20">
               <div className="flex flex-wrap gap-2 p-2">
                 <button
                   onClick={() => setActiveTab("forecast")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                     activeTab === "forecast"
                       ? "bg-blue-600 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                      : "text-gray-400 dark:text-gray-300 hover:text-white hover:bg-gray-800/40"
                   }`}
                 >
                   <BarChart3 className="w-4 h-4" />
@@ -749,7 +756,7 @@ const WeeklyForecast = () => {
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                     activeTab === "system"
                       ? "bg-blue-600 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                      : "text-gray-400 dark:text-gray-300 hover:text-white hover:bg-gray-800/40"
                   }`}
                 >
                   <Settings className="w-4 h-4" />
@@ -761,7 +768,7 @@ const WeeklyForecast = () => {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                       activeTab === "technical"
                         ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:text-white hover:bg-[#222A35]"
+                        : "text-gray-400 dark:text-gray-300 hover:text-white hover:bg-gray-800/40"
                     }`}
                   >
                     <Code className="w-4 h-4" />
@@ -772,7 +779,7 @@ const WeeklyForecast = () => {
             </div>
             
             {/* Tab Content */}
-            <div className="p-4">
+            <div className="p-3">
               {activeTab === "forecast" && (
                 <div>
                   <div className="mb-4">
@@ -788,18 +795,18 @@ const WeeklyForecast = () => {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-[#1D232C]">
+                      <thead className="bg-gray-50/5 dark:bg-gray-900/20">
                         <tr>
-                          <th className="px-4 py-3 text-left text-gray-300 font-medium">Day</th>
-                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Average temperature for this day">Avg Temp</th>
-                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Minimum and maximum temperatures">Min/Max</th>
-                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Total heating energy (Heat Pump + Backup)">Heating kWh</th>
-                          <th className="px-4 py-3 text-right text-gray-300 font-medium" title="Daily cost">Cost</th>
+                          <th className="px-4 py-3 text-left text-gray-300 dark:text-gray-100 font-medium">Day</th>
+                          <th className="px-4 py-3 text-right text-gray-300 dark:text-gray-100 font-medium" title="Average temperature for this day">Avg Temp</th>
+                          <th className="px-4 py-3 text-right text-gray-300 dark:text-gray-100 font-medium" title="Minimum and maximum temperatures">Min/Max</th>
+                          <th className="px-4 py-3 text-right text-gray-300 dark:text-gray-100 font-medium" title="Total heating energy (Heat Pump + Backup)">Heating kWh</th>
+                          <th className="px-4 py-3 text-right text-gray-300 dark:text-gray-100 font-medium" title="Daily cost">Cost</th>
                         </tr>
                       </thead>
                 <tbody>
                         {dailyCosts.map((day, idx) => (
-                          <tr key={day.date} className={idx % 2 === 0 ? "bg-[#151A21]" : "bg-[#1A1F27]"}>
+                          <tr key={day.date} className={idx % 2 === 0 ? "bg-white/5 dark:bg-white/5" : "bg-gray-50/5 dark:bg-gray-900/10"}>
                             <td className="px-4 py-3 font-medium">
                               {day.dayName}
                               {idx === 0 && dailyCosts[0]?.isPartialDay && (
@@ -838,9 +845,9 @@ const WeeklyForecast = () => {
               {activeTab === "system" && (
                 <div>
                   <h2 className="text-xl font-semibold text-white mb-4">System Specifications</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
-                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Efficiency Ratings</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="glass-card p-3">
+                      <h3 className="text-sm font-semibold text-gray-300 dark:text-gray-100 mb-2">Efficiency Ratings</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-400">HSPF2 (Heating):</span>
@@ -852,8 +859,8 @@ const WeeklyForecast = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
-                      <h3 className="text-sm font-semibold text-gray-300 mb-3">System Capacity</h3>
+                    <div className="glass-card p-3">
+                      <h3 className="text-sm font-semibold text-gray-300 dark:text-gray-100 mb-2">System Capacity</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-400">Capacity:</span>
@@ -866,8 +873,8 @@ const WeeklyForecast = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
-                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Building Characteristics</h3>
+                    <div className="glass-card p-3">
+                      <h3 className="text-sm font-semibold text-gray-300 dark:text-gray-100 mb-2">Building Characteristics</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-400">Heat Loss Factor:</span>
@@ -875,8 +882,8 @@ const WeeklyForecast = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="bg-[#1A1F27] border border-[#222A35] rounded-lg p-4">
-                      <h3 className="text-sm font-semibold text-gray-300 mb-3">Cost Settings</h3>
+                    <div className="glass-card p-3">
+                      <h3 className="text-sm font-semibold text-gray-300 dark:text-gray-100 mb-2">Cost Settings</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-400">Electricity Rate:</span>
@@ -904,14 +911,14 @@ const WeeklyForecast = () => {
                     {showFormula ? (
                       <button
                         onClick={() => setShowFormula(false)}
-                        className="w-full mb-4 p-2 bg-[#1A1F27] border border-[#222A35] rounded text-sm text-gray-400 hover:text-white transition-colors"
+                        className="w-full mb-3 p-2 glass-card text-sm text-gray-400 dark:text-gray-300 hover:text-white transition-colors"
                       >
                         Hide Detailed Formulas
                       </button>
                     ) : (
                       <button
                         onClick={() => setShowFormula(true)}
-                        className="w-full mb-4 p-2 bg-[#1A1F27] border border-[#222A35] rounded text-sm text-gray-400 hover:text-white transition-colors"
+                        className="w-full mb-3 p-2 glass-card text-sm text-gray-400 dark:text-gray-300 hover:text-white transition-colors"
                       >
                         Show Detailed Calculation Formulas
                       </button>
@@ -922,8 +929,8 @@ const WeeklyForecast = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-6 text-center">
-            <p className="text-gray-400">No forecast data available</p>
+          <div className="glass-card p-4 text-center">
+            <p className="text-gray-400 dark:text-gray-300">No forecast data available</p>
           </div>
         )}
       </div>

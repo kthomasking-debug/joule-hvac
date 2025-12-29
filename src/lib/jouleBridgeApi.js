@@ -632,7 +632,7 @@ export async function getBlueairCredentials() {
 }
 
 /**
- * Set Blueair credentials
+ * Set Blueair credentials (cloud API) or local device config (ESP32)
  */
 export async function setBlueairCredentials(username, password) {
   try {
@@ -646,6 +646,25 @@ export async function setBlueairCredentials(username, password) {
     return data;
   } catch (error) {
     console.error("Error setting Blueair credentials:", error);
+    throw error;
+  }
+}
+
+/**
+ * Set Blueair local device configuration (MAC address and/or IP for ESP32)
+ */
+export async function setBlueairLocalConfig(macAddress, localIp) {
+  try {
+    const data = await bridgeRequest("/api/blueair/credentials", {
+      method: "POST",
+      body: JSON.stringify({
+        mac_address: macAddress,
+        local_ip: localIp,
+      }),
+    });
+    return data;
+  } catch (error) {
+    console.error("Error setting Blueair local config:", error);
     throw error;
   }
 }

@@ -349,6 +349,20 @@ export default function ThermostatSettingsPanel() {
       window.removeEventListener("thermostatSettingsChanged", handleChange);
   }, []);
 
+  // Expand comfort section when navigated to with #comfort-settings hash
+  useEffect(() => {
+    if (window.location.hash === '#comfort-settings') {
+      setExpandedSections(prev => ({ ...prev, comfort: true }));
+      // Scroll to comfort settings section after a brief delay to ensure it's rendered
+      setTimeout(() => {
+        const comfortElement = document.getElementById('comfort-settings');
+        if (comfortElement) {
+          comfortElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 200);
+    }
+  }, []);
+
   // Expand schedule section when navigated to with #schedule hash
   useEffect(() => {
     if (window.location.hash === '#schedule') {
@@ -1230,8 +1244,9 @@ export default function ThermostatSettingsPanel() {
       {/* Comfort Settings */}
       {matchesSearch("comfortSettings", "Comfort Settings") && (
         <div
+          id="comfort-settings"
           ref={(el) => (sectionRefs.current.comfort = el)}
-          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg scroll-mt-24"
         >
           <button
             onClick={() => toggleSection("comfort")}

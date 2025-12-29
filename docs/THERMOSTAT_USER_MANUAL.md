@@ -212,7 +212,7 @@ Endpoint:
 - LED stays on
   - Send a second `on: false` call or click again if the UI toggles off.
 - Permissions / ports
-  - Keep server on `localhost`; avoid running as admin; ensure nothing else binds port `3005`.
+  - Keep server on `localhost`; avoid running with elevated privileges; ensure nothing else binds port `3005`.
 
 ---
 

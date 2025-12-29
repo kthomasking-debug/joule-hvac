@@ -14,7 +14,19 @@ import {
   Settings,
   Info,
   GraduationCap,
+  BarChart3,
+  Zap,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import {
   inputClasses,
   fullInputClasses,
@@ -23,9 +35,11 @@ import {
 import { DashboardLink } from "../components/DashboardLink";
 import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
 import ThermostatScheduleClock from "../components/ThermostatScheduleClock";
+import AnswerCard from "../components/AnswerCard";
 import {
   loadThermostatSettings,
 } from "../lib/thermostatSettings";
+import OneClickOptimizer from "../components/optimization/OneClickOptimizer";
 import useMonthlyForecast from "../hooks/useMonthlyForecast";
 import useHistoricalHourly from "../hooks/useHistoricalHourly";
 import {
@@ -128,8 +142,6 @@ function getTypicalCDD(month) {
 }
 
 function estimateTypicalHDDCost(params) {
-  console.log('estimateTypicalHDDCost called with:', { month: params.month, locationData: params.locationData });
-  
   // Use the same scaling logic as annual breakdown for consistency
   const monthlyHDDDist = [1200, 1000, 600, 200, 50, 10, 0, 0, 20, 200, 500, 1100]; // Jan-Dec
   const totalTypicalHDD = monthlyHDDDist.reduce((a, b) => a + b, 0); // ~4880
@@ -144,8 +156,6 @@ function estimateTypicalHDDCost(params) {
   // Scale monthly HDD to location's annual total (same as annual breakdown)
   const monthIndex = params.month - 1; // Convert 1-12 to 0-11
   const monthHDD = totalTypicalHDD > 0 ? (monthlyHDDDist[monthIndex] / totalTypicalHDD) * annualHDD : 0;
-  
-  console.log('HDD calculation:', { annualHDD, monthIndex, monthHDD, monthlyHDDDistValue: monthlyHDDDist[monthIndex] });
   
   // Calculate temperature multiplier - use actual thermostat settings first
   // Priority: 1) userSettings.winterThermostatDay/Night, 2) thermostatSettings comfortSettings, 3) defaults
@@ -190,8 +200,6 @@ function estimateTypicalHDDCost(params) {
     electricityRate: params.electricityRate,
   });
   
-  console.log('Before multiplier:', { estimate, winterTempMultiplier });
-  
   // Apply temperature multiplier (same as annual breakdown)
   if (estimate && estimate.cost > 0) {
     estimate.cost = estimate.cost * winterTempMultiplier;
@@ -199,8 +207,6 @@ function estimateTypicalHDDCost(params) {
   
   // Fixed costs are now handled by calculateMonthlyEstimate wrapper
   // No need to add them here to avoid double-counting
-  
-  console.log('Final estimate:', estimate);
   params.setEstimate(estimate);
 }
 
@@ -246,7 +252,7 @@ function estimateTypicalCDDCost(params) {
   params.setEstimate(estimate);
 }
 
-const MonthlyBudgetPlanner = () => {
+const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const { unitSystem } = useUnitSystem();
   const outletContext = useOutletContext() || {};
   const { userSettings, setUserSetting } = outletContext;
@@ -507,7 +513,7 @@ const MonthlyBudgetPlanner = () => {
   const setUseElectricAuxHeat = (v) => setUserSetting("useElectricAuxHeat", v);
 
   // Component-specific state
-  const [mode, setMode] = useState("budget");
+  const [mode, setMode] = useState(initialMode);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1); // Default to current month
   const [locationData, setLocationData] = useState(null);
   const [monthlyEstimate, setMonthlyEstimate] = useState(null);
@@ -528,8 +534,8 @@ const MonthlyBudgetPlanner = () => {
   );
   const [forecastModel, setForecastModel] = useState("typical"); // "typical" | "current" | "polarVortex"
   const [showAnnualPlanner, setShowAnnualPlanner] = useState(false); // Collapsed by default for reduced cognitive load
-  const [showThermostatSchedule, setShowThermostatSchedule] = useState(false); // Collapsed by default - cost is primary
   const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default - less important
+  const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [thermostatModel, setThermostatModel] = useState("current"); // "current" | "flat70" | "flat68" | "custom"
   
   // Daily forecast for breakdown
@@ -1539,419 +1545,186 @@ const MonthlyBudgetPlanner = () => {
   const thermostatEquivalency = calculateThermostatEquivalency();
 
   return (
-    <div className="page-gradient-overlay min-h-screen">
-      <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-2 lg:py-2 bg-slate-800/40 dark:bg-slate-800/20 rounded-2xl">
-        <DashboardLink />
-
-        {/* Page Header - Hero Level */}
-        <div className="mb-2 animate-fade-in-up pt-1 pb-1">
-          {/* Description at the top */}
-          <p className="text-muted text-xs leading-relaxed mb-1 italic">
-            Plan your monthly heating and cooling budget — and see how small thermostat changes affect your bill.
-          </p>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="icon-container icon-container-gradient">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <h1 className="heading-primary text-xl md:text-2xl font-bold mb-1">
-                Budget
-              </h1>
-            </div>
-          </div>
-          {/* Subtle divider under header */}
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-300/30 dark:via-gray-600/30 to-transparent mt-1"></div>
-        </div>
-
-      {/* Mode Toggle */}
-      <div className="flex justify-center mb-3">
-        <div className="inline-flex rounded-lg glass-card p-1">
-          <button
-            onClick={() => setMode("budget")}
-            className={`px-6 py-2 rounded-md font-semibold transition-all ${
-              mode === "budget"
-                ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md"
-                : "text-high-contrast hover:opacity-80"
-            }`}
-          >
-            👤 My Budget
-          </button>
-          <button
-            onClick={() => setMode("comparison")}
-            className={`px-6 py-2 rounded-md font-semibold transition-all ${
-              mode === "comparison"
-                ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md"
-                : "text-high-contrast hover:opacity-80"
-            }`}
-          >
-            🏙️ City Comparison
-          </button>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-[#0C0F14]">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       {/* Quick Answer - Monthly Cost Estimate at Top */}
       {mode === "budget" && monthlyEstimate && (
-        <div
-          className={`glass-card-gradient glass-card p-3 md:p-4 mb-4 animate-fade-in-up relative overflow-hidden ${
-            energyMode === "cooling"
-              ? "border-cyan-500/40 shadow-lg shadow-cyan-500/10"
-              : "border-green-500/40 shadow-lg shadow-green-500/10"
-          }`}
-        >
-          {/* Subtle glow effect */}
-          <div className={`absolute inset-0 opacity-20 blur-3xl ${
-            energyMode === "cooling" ? "bg-cyan-500" : "bg-green-500"
-          }`}></div>
-          
-          <div className="text-center relative z-10">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              {energyMode === "cooling" ? (
-                <span className="text-4xl">🧊</span>
-              ) : (
-                <span className="text-4xl">🔥</span>
-              )}
-              <p
-                className={`text-sm font-semibold uppercase tracking-wider ${
-                  energyMode === "cooling"
-                    ? "text-cyan-400"
-                    : "text-green-400"
-                }`}
-              >
-                ESTIMATED MONTHLY{" "}
-                {energyMode === "cooling" ? "COOLING" : "HEATING"} COST
-                {energyMode === "heating" && " (typical winter month)"}
-              </p>
-            </div>
-            
-            {/* Prominent dollar amount - Simplified like AnswerCard */}
-            <div className="mb-3">
-              <div className="flex items-baseline gap-3">
-                <span className={`text-5xl md:text-6xl font-black bg-gradient-to-r ${
-                  energyMode === "cooling"
-                    ? "from-cyan-600 to-teal-600"
-                    : "from-green-600 to-emerald-600"
-                } bg-clip-text text-transparent`}>
-                  ${monthlyEstimate.cost.toFixed(2)}
-                </span>
-                <span className="text-lg text-slate-400 font-medium">for this month</span>
-                {locationData && (
-                  <span className="text-sm text-slate-400 ml-auto">
-                    {locationData.city}, {locationData.state} at {Math.round(effectiveIndoorTemp)}°F
-                  </span>
-                )}
-              </div>
-              {monthlyEstimate.fixedCost > 0 && (
-                <p className="text-xs text-slate-400 mt-2">
-                  (Includes ${monthlyEstimate.fixedCost.toFixed(2)} fixed fees)
-                </p>
-              )}
-            </div>
-            {forecastModel === "polarVortex" && dailyForecast && dailyForecast.length > 0 && (
-              <div className="mt-4 p-4 glass-card border-red-500/30 bg-red-900/10 rounded-lg">
-                <p className="text-sm font-semibold text-red-500 mb-2">⚠️ Polar Vortex Scenario</p>
-                <p className="text-xs text-high-contrast">
-                  This estimate is <strong>30-40% higher</strong> than a typical year due to the -5°F temperature anomaly. 
-                  This helps you prepare for worst-case winter conditions.
-                </p>
-              </div>
-            )}
-            {/* Expose method for testing */}
-            <span
-              data-testid="monthly-method"
-              data-method={monthlyEstimate.method}
-              className="sr-only"
-            >
-              {monthlyEstimate.method}
-            </span>
-            <p
-              className={`text-sm md:text-base mb-3 text-high-contrast/80 leading-relaxed`}
-            >
-              Typical{" "}
-              {activeMonths.find((m) => m.value === selectedMonth)?.label} bill
-              for <strong className="text-high-contrast">{Math.round(effectiveIndoorTemp)}°F</strong> (weighted average: {indoorTemp}°F day, {nighttimeTemp}°F night)
-              {energyMode === "heating" && locationData && (() => {
-                const monthlyHDD = getTypicalHDD(selectedMonth);
-                const annualHDD = getAnnualHDD(locationData.city, locationData.state);
-                // Scale to actual location HDD if available
-                const scaledHDD = annualHDD > 0 ? Math.round((monthlyHDD / 4880) * annualHDD) : Math.round(monthlyHDD);
-                return (
-                  <span className="block text-sm mt-1 text-muted" title="Heating Degree Days (HDD) measure how cold a month usually is. More cold days = more heating.">
-                    Cold-weather severity (typical for {activeMonths.find((m) => m.value === selectedMonth)?.label}): {scaledHDD} HDD
-                  </span>
-                );
-              })()}
-              {monthlyEstimate.method === "gasFurnace" && (
-                <span className="block text-sm mt-1">
-                  (Gas Furnace at {Math.round(afue * 100)}% AFUE)
-                </span>
-              )}
-              {monthlyEstimate.method === "cooling" && (
-                <span className="block text-sm mt-1">
-                  (Cooling: {monthlyEstimate.seer2} SEER2,{" "}
-                  {monthlyEstimate.tons} tons)
-                </span>
-              )}
-            </p>
-            <div className="grid grid-cols-2 gap-3 text-center text-sm mb-3">
-              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
-                <p className="font-bold text-lg text-high-contrast mb-1">
-                  {monthlyEstimate.method === "gasFurnace"
-                    ? `${Math.round(monthlyEstimate.therms ?? 0)} therms`
-                    : formatEnergyFromKwh(monthlyEstimate.energy ?? 0, unitSystem, { decimals: 0 })}
-                </p>
-                <p className="text-xs text-muted">
-                  Typical Monthly Energy
-                </p>
-              </div>
-              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
-                <p className="font-bold text-lg text-high-contrast mb-1">
-                  ${(monthlyEstimate.cost / monthlyEstimate.days).toFixed(2)}
-                </p>
-                <p className="text-xs text-muted">
-                  Average Daily Cost
-                </p>
-              </div>
-            </div>
-            
-            {/* Bill Breakdown Strip */}
-            <div className="mt-2 pt-2 border-t border-gray-200/30 dark:border-gray-700/30">
-              <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Heating:</span>
-                  <span className="font-semibold text-high-contrast">
-                    {energyMode === "heating" 
-                      ? `$${monthlyEstimate.cost.toFixed(2)}`
-                      : "$0.00"}
-                  </span>
-                </div>
-                <span className="text-muted">•</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Cooling:</span>
-                  <span className="font-semibold text-high-contrast">
-                    {energyMode === "cooling" 
-                      ? `$${monthlyEstimate.cost.toFixed(2)}`
-                      : "$0.00"}
-                  </span>
-                </div>
-                <span className="text-muted">•</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Fan/other:</span>
-                  <span className="font-semibold text-high-contrast">$0.00</span>
-                </div>
-              </div>
-              <p className="text-xs text-muted text-center mt-3">
-                Assumes: {indoorTemp}°F day / {nighttimeTemp}°F night, 30-year typical weather.
-              </p>
-            </div>
-            
-            {monthlyEstimate.excludedAuxEnergy > 0 && (
-              <div className="mt-4 glass-card p-glass-sm border-yellow-500/30 text-sm text-high-contrast">
-                <p>
-                  <strong>Note:</strong> This estimate <em>excludes</em>{" "}
-                  electric auxiliary heat (
-                  {formatEnergyFromKwh(monthlyEstimate.excludedAuxEnergy, unitSystem, { decimals: 0 })}) because
-                  you have turned off 'Count electric auxiliary heat'.
-                </p>
-              </div>
-            )}
-            {typeof monthlyEstimate.unmetHours === "number" &&
-              monthlyEstimate.unmetHours > 0 &&
-              energyMode === "cooling" && (
-                <div className="mt-6 glass-card p-glass border-orange-500/30 text-sm text-high-contrast">
-                  <p>
-                    <strong>Notice:</strong> Estimated{" "}
-                    {monthlyEstimate.unmetHours} unmet hours this month. Your
-                    system may struggle to maintain {Math.round(effectiveIndoorTemp)}°F.
-                  </p>
-                </div>
-              )}
-          </div>
+        <div className="mb-3">
+          <AnswerCard
+            loading={false}
+            location={locationData ? `${locationData.city}, ${locationData.state}` : null}
+            temp={Math.round(effectiveIndoorTemp)}
+            weeklyCost={monthlyEstimate.cost}
+            energyMode={energyMode}
+            primarySystem={primarySystem}
+            timePeriod="month"
+          />
         </div>
       )}
 
+
       {/* Thermostat Settings Panel - Enhanced CTA */}
       {mode === "budget" && (
-        <div className="glass-card-gradient glass-card p-5 mb-4 animate-fade-in-up border-2 border-orange-500/40 bg-orange-50/10 dark:bg-orange-950/10 rounded-xl shadow-lg">
-          <div className="text-center mb-3">
-            <h2 className="text-lg font-bold text-high-contrast mb-1 flex items-center justify-center gap-2">
-              <span className="text-2xl">⬇️</span>
+        <div className="glass-card-gradient glass-card p-3 mb-2 animate-fade-in-up border-2 border-orange-500/40 bg-orange-50/10 dark:bg-orange-950/10 rounded-xl shadow-lg">
+          <div className="text-center mb-2">
+            <h2 className="text-base font-bold text-high-contrast mb-0.5 flex items-center justify-center gap-1">
+              <span className="text-lg">⬇️</span>
               <span>Want to lower this bill?</span>
             </h2>
-            <p className="text-muted text-base italic">
+            <p className="text-muted text-xs italic">
               Small, realistic thermostat changes can reduce costs — without sacrificing comfort.
             </p>
           </div>
 
           {/* Compact Thermostat Summary - Always visible */}
           {energyMode === "heating" && (
-            <div className="glass-card p-3 mb-2 border-blue-500/30 bg-white/5 dark:bg-white/5 rounded-lg">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 text-high-contrast flex-1">
-                  <Thermometer className="w-6 h-6 text-blue-500 flex-shrink-0" />
+            <div className="glass-card p-2 mb-2 border-blue-500/30 bg-white/5 dark:bg-white/5 rounded-lg">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-high-contrast flex-1">
+                  <Thermometer className="w-4 h-4 text-blue-500 flex-shrink-0" />
                   <div className="flex-1">
-                    <p className="text-base font-semibold">
+                    <p className="text-sm font-semibold">
                       Daytime: <span className="text-blue-400">{indoorTemp}°F</span> · Nighttime: <span className="text-blue-400">{nighttimeTemp}°F</span>
                     </p>
-                    <p className="text-sm text-muted mt-1">
+                    <p className="text-xs text-muted">
                       {daytimeTime} - {nighttimeTime}
                     </p>
                     {potentialSavings && potentialSavings.dollars > 0.5 && (
-                      <p className="text-sm text-green-500 dark:text-green-400 font-medium mt-2">
+                      <p className="text-xs text-green-500 dark:text-green-400 font-medium mt-1">
                         💰 If you switch to our recommended schedule, this month would cost about <strong>${potentialSavings.dollars.toFixed(2)}</strong> less.
                       </p>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowThermostatSchedule(!showThermostatSchedule)}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-bold hover:from-orange-400 hover:to-orange-500 transition-all text-sm flex items-center gap-2 shadow-xl hover:shadow-2xl transform hover:scale-105 ring-2 ring-orange-400/60 whitespace-nowrap"
-                >
-                  {showThermostatSchedule ? (
-                    <>
-                      <ChevronUp className="w-4 h-4" />
-                      Hide Schedule
-                    </>
-                  ) : (
-                    <>
-                      <Settings className="w-4 h-4" />
-                      Edit schedule & update cost
-                    </>
-                  )}
-                </button>
+                <div className="flex-shrink-0">
+                  <OneClickOptimizer
+                    currentDayTemp={indoorTemp || 70}
+                    currentNightTemp={nighttimeTemp || 68}
+                    mode={energyMode}
+                    weatherForecast={adjustedForecast?.slice(0, 7) || []}
+                    electricRate={utilityCost}
+                    heatLossFactor={getEffectiveHeatLossFactor}
+                    hspf2={hspf2 || efficiency}
+                    onApplySchedule={(schedule) => {
+                      setIndoorTemp(schedule.dayTemp);
+                      setNighttimeTemp(schedule.nightTemp);
+                      if (setUserSetting) {
+                        setUserSetting("winterThermostatDay", schedule.dayTemp);
+                        setUserSetting("winterThermostatNight", schedule.nightTemp);
+                      }
+                    }}
+                    compact={true}
+                  />
+                </div>
               </div>
             </div>
           )}
 
-          {/* Temperature Sliders for What-If Analysis */}
-          <div className="animate-fade-in mb-4">
-            <div className="glass-card-gradient glass-card p-3 mb-2 animate-fade-in-up">
-              <div className="text-center mb-2">
-                <h3 className="text-lg font-bold mb-1">
-                  🌡️ Thermostat Settings
-                </h3>
-                <p className="text-muted text-xs">
-                  Adjust temperatures to see how they affect your monthly costs
-                </p>
-              </div>
+          {/* Temperature Sliders for What-If Analysis - Always visible */}
+          <div className="animate-fade-in mb-2">
+            <div className="glass-card-gradient glass-card p-2 mb-2 animate-fade-in-up">
+              <h3 className="text-xs font-bold mb-2 text-center">
+                🌡️ Thermostat Settings
+              </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Winter Settings */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {/* Temperature Settings */}
+                <div className="md:col-span-2">
                   {energyMode === "heating" && (
                     <div className="glass-card p-2 border-blue-500/30">
-                      <h3 className="text-xs font-bold text-high-contrast mb-2 flex items-center gap-2">
-                        <Thermometer size={18} className="text-blue-500" />
-                        Winter Heating (Dec-Feb)
-                      </h3>
-                      <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-high-contrast mb-1.5 flex items-center gap-1">
+                        <Thermometer size={14} className="text-blue-500" />
+                        Winter Heating
+                      </h4>
+                      <div className="space-y-1.5">
                         <div>
-                          <label className="block text-xs font-semibold text-high-contrast mb-1">
-                            Daytime Setting (6am-10pm)
+                          <label className="block text-xs text-high-contrast mb-0.5">
+                            Day: <span className="text-blue-500 font-bold">{userSettings?.winterThermostatDay ?? indoorTemp ?? 70}°F</span>
                           </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="60"
-                              max="78"
-                              value={userSettings?.winterThermostatDay ?? indoorTemp ?? 70}
-                              onChange={(e) => {
-                                const temp = Number(e.target.value);
-                                setIndoorTemp(temp);
-                                setThermostatModel("custom");
-                                if (setUserSetting) {
-                                  setUserSetting("winterThermostatDay", temp);
-                                }
-                              }}
-                              className="flex-grow"
-                            />
-                            <span className="font-bold text-xl text-blue-500 w-14 text-right">
-                              {userSettings?.winterThermostatDay ?? indoorTemp ?? 70}°F
-                            </span>
-                          </div>
+                          <input
+                            type="range"
+                            min="60"
+                            max="78"
+                            value={userSettings?.winterThermostatDay ?? indoorTemp ?? 70}
+                            onChange={(e) => {
+                              const temp = Number(e.target.value);
+                              setIndoorTemp(temp);
+                              setThermostatModel("custom");
+                              if (setUserSetting) {
+                                setUserSetting("winterThermostatDay", temp);
+                              }
+                            }}
+                            className="w-full"
+                          />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-high-contrast mb-1">
-                            Nighttime Setting (10pm-6am)
+                          <label className="block text-xs text-high-contrast mb-0.5">
+                            Night: <span className="text-blue-500 font-bold">{userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}°F</span>
                           </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="60"
-                              max="78"
-                              value={userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}
-                              onChange={(e) => {
-                                const temp = Number(e.target.value);
-                                setNighttimeTemp(temp);
-                                setThermostatModel("custom");
-                                if (setUserSetting) {
-                                  setUserSetting("winterThermostatNight", temp);
-                                }
-                              }}
-                              className="flex-grow"
-                            />
-                            <span className="font-bold text-xl text-blue-500 w-14 text-right">
-                              {userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}°F
-                            </span>
-                          </div>
+                          <input
+                            type="range"
+                            min="60"
+                            max="78"
+                            value={userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}
+                            onChange={(e) => {
+                              const temp = Number(e.target.value);
+                              setNighttimeTemp(temp);
+                              setThermostatModel("custom");
+                              if (setUserSetting) {
+                                setUserSetting("winterThermostatNight", temp);
+                              }
+                            }}
+                            className="w-full"
+                          />
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Summer Settings */}
                   {energyMode === "cooling" && (
                     <div className="glass-card p-2 border-cyan-500/30">
-                      <h3 className="text-xs font-bold text-high-contrast mb-2 flex items-center gap-2">
-                        <Thermometer size={18} className="text-cyan-500" />
-                        Summer Cooling (Jun-Aug)
-                      </h3>
-                      <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-high-contrast mb-1.5 flex items-center gap-1">
+                        <Thermometer size={14} className="text-cyan-500" />
+                        Summer Cooling
+                      </h4>
+                      <div className="space-y-1.5">
                         <div>
-                          <label className="block text-xs font-semibold text-high-contrast mb-1">
-                            Daytime Setting (6am-10pm)
+                          <label className="block text-xs text-high-contrast mb-0.5">
+                            Day: <span className="text-cyan-500 font-bold">{summerThermostat || 75}°F</span>
                           </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="68"
-                              max="80"
-                              value={summerThermostat || 75}
-                              onChange={(e) => {
-                                const temp = Number(e.target.value);
-                                setThermostatModel("custom");
-                                if (setUserSetting) {
-                                  setUserSetting("summerThermostat", temp);
-                                }
-                              }}
-                              className="flex-grow"
-                            />
-                            <span className="font-bold text-xl text-cyan-500 w-14 text-right">
-                              {summerThermostat || 75}°F
-                            </span>
-                          </div>
+                          <input
+                            type="range"
+                            min="68"
+                            max="80"
+                            value={summerThermostat || 75}
+                            onChange={(e) => {
+                              const temp = Number(e.target.value);
+                              setThermostatModel("custom");
+                              if (setUserSetting) {
+                                setUserSetting("summerThermostat", temp);
+                              }
+                            }}
+                            className="w-full"
+                          />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-high-contrast mb-1">
-                            Nighttime Setting (10pm-6am)
+                          <label className="block text-xs text-high-contrast mb-0.5">
+                            Night: <span className="text-cyan-500 font-bold">{summerThermostatNight || summerThermostat || 72}°F</span>
                           </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="68"
-                              max="82"
-                              value={summerThermostatNight || summerThermostat || 72}
-                              onChange={(e) => {
-                                const temp = Number(e.target.value);
-                                setThermostatModel("custom");
-                                if (setUserSetting) {
-                                  setUserSetting("summerThermostatNight", temp);
-                                }
-                              }}
-                              className="flex-grow"
-                            />
-                            <span className="font-bold text-xl text-cyan-500 w-14 text-right">
-                              {summerThermostatNight || summerThermostat || 72}°F
-                            </span>
-                          </div>
+                          <input
+                            type="range"
+                            min="68"
+                            max="82"
+                            value={summerThermostatNight || summerThermostat || 72}
+                            onChange={(e) => {
+                              const temp = Number(e.target.value);
+                              setThermostatModel("custom");
+                              if (setUserSetting) {
+                                setUserSetting("summerThermostatNight", temp);
+                              }
+                            }}
+                            className="w-full"
+                          />
                         </div>
                       </div>
                     </div>
@@ -1959,22 +1732,16 @@ const MonthlyBudgetPlanner = () => {
                 </div>
 
                 {/* Schedule Time Selectors */}
-                <div className="mt-4 pt-4 border-t border-slate-700/50">
-                  <div className="text-center mb-3">
-                    <h4 className="text-sm font-semibold text-high-contrast mb-2">
-                      Schedule Times
-                    </h4>
-                    <p className="text-xs text-muted mb-3">
-                      Set when daytime and nighttime temperatures start
-                    </p>
-                  </div>
+                <div className="glass-card p-2 border-slate-500/30">
+                  <h4 className="text-xs font-bold text-high-contrast mb-1.5">
+                    Schedule Times
+                  </h4>
                   <ThermostatScheduleClock
                     daytimeStart={daytimeTime || "06:00"}
                     setbackStart={nighttimeTime || "22:00"}
                     onDaytimeStartChange={(time) => {
                       setDaytimeTime(time);
                       if (setUserSetting) {
-                        // Store in user settings if needed
                         const timeToHours = (timeStr) => {
                           const [hours, minutes] = timeStr.split(":").map(Number);
                           return hours + minutes / 60;
@@ -1997,427 +1764,81 @@ const MonthlyBudgetPlanner = () => {
                 </div>
               </div>
             </div>
+          </div>
 
           {/* Aux Heat Toggle - Show for heat pumps */}
           {primarySystem === "heatPump" && energyMode === "heating" && (
-            <div className="glass-card p-2 border-amber-500/30">
-              <h3 className="text-xs font-bold mb-2 flex items-center gap-2">
-                <Thermometer size={18} className="text-amber-500" />
-                Auxiliary Heat Settings
-              </h3>
-              <div className="space-y-3">
-                <label className="inline-flex items-center gap-2 text-sm text-high-contrast">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={!!useElectricAuxHeat}
-                    onChange={(e) =>
-                      setUseElectricAuxHeat(!!e.target.checked)
-                    }
-                    aria-label="Include electric auxiliary resistance heat in monthly energy and cost estimates"
-                    title="When enabled, electric auxiliary resistance backup heat will be counted toward monthly electricity and cost estimates"
-                  />
-                  <span className="font-medium">
-                    Count electric auxiliary heat in estimates
-                  </span>
-                </label>
-                {!useElectricAuxHeat && (
-                  <div className="mt-3 p-3 glass-card border-amber-500/30 text-xs">
-                    <p className="text-high-contrast">
-                      <strong>⚠️ Aux heat disabled:</strong> Minimum
-                      achievable indoor temp is approximately{" "}
-                      <strong>
-                        {(() => {
-                          // Estimate minimum indoor temp based on heat pump capacity vs building heat loss
-                          const tonsMap = {
-                            18: 1.5,
-                            24: 2.0,
-                            30: 2.5,
-                            36: 3.0,
-                            42: 3.5,
-                            48: 4.0,
-                            60: 5.0,
-                          };
-                          const tons = tonsMap[capacity] || 3.0;
-                          const designHeatLoss = heatUtils.calculateHeatLoss({
-                            squareFeet,
-                            insulationLevel,
-                            homeShape,
-                            ceilingHeight,
-                          });
-                          const heatLossPerDegF = designHeatLoss / 70;
-
-                          // At 5°F outdoor, heat pump provides ~40% capacity (typical cold climate HP)
-                          const outdoorTemp = 5;
-                          const heatPumpCapacityAt5F = tons * 12000 * 0.4; // BTU/hr
-
-                          // Find indoor temp where heat loss equals heat pump output
-                          const minIndoorTemp =
-                            outdoorTemp +
-                            heatPumpCapacityAt5F / heatLossPerDegF;
-
-                          return Math.round(
-                            Math.min(indoorTemp, Math.max(40, minIndoorTemp))
-                          );
-                        })()}
-                        °F
-                      </strong>{" "}
-                      at design conditions (5°F outdoor). Below this, the heat
-                      pump cannot maintain your setpoint without supplemental
-                      heat.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Settings Section - Moved to bottom so cost stays visible */}
-      <div className="mt-6 mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Settings className="w-4 h-4 text-blue-500" />
-          <h2 className="text-sm font-bold text-high-contrast">⚙️ Settings</h2>
-        </div>
-        <p className="text-xs text-muted mb-3 italic">These are the assumptions behind your estimate. You can adjust them to better match your home and how you like to live.</p>
-        
-        {/* Group inputs in 2x2 grid on desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-          {/* Location Display - Budget Mode */}
-          {mode === "budget" && (
-            <div className="md:col-span-2">
-              <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Location</h3>
-              {locationData ? (
-                <div className="glass-card p-2 animate-fade-in-up">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
-                    <MapPin className="text-blue-500" size={18} />
-                    <span>Your Location</span>
-                  </label>
-              <div className="flex items-center gap-2 text-high-contrast">
-                <span className="font-semibold">
-                  {locationData.city}, {locationData.state}
-                </span>
-                <span className="text-sm text-muted">
-                  ({locationData?.latitude?.toFixed(2) ?? "N/A"}°,{" "}
-                  {locationData?.longitude?.toFixed(2) ?? "N/A"}°)
-                </span>
-              </div>
-              {typeof monthlyEstimate?.electricityRate === "number" && (
-                <div className="text-xs text-muted mt-2">
-                  <div className="font-medium">
-                    Electricity rate: $
-                    {monthlyEstimate.electricityRate.toFixed(3)}/kWh
-                  </div>
-                  {electricityRateSourceA && (
-                    <div className="text-xs opacity-80 mt-0.5">
-                      {electricityRateSourceA}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="glass-card p-3 animate-fade-in-up border-yellow-500/30">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
-                <MapPin className="text-yellow-500" size={18} />
-                <span>Location</span>
-              </label>
-              <div className="flex items-center gap-2 text-high-contrast">
-                <AlertTriangle size={18} className="text-yellow-500" />
-                <span>
-                  Please set your location in the{" "}
-                  <Link
-                    to="/cost-forecaster"
-                    className="font-semibold underline hover:opacity-80"
-                  >
-                    7-Day Forecaster
-                  </Link>{" "}
-                  first to use this tool.
-                </span>
-              </div>
-            </div>
-          )}
-            </div>
-        )}
-        
-        {/* Month Selector */}
-        <div>
-          <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Month Selection</h3>
-          <div className="glass-card p-2 animate-fade-in-up">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
-              <Calendar className="text-blue-500" size={18} />
-              <span>Select Month</span>
-            </label>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className={selectClasses}
-          >
-            {activeMonths.map((month) => (
-              <option key={month.value} value={month.value}>
-                {month.label}
-              </option>
-            ))}
-          </select>
-          </div>
-        </div>
-
-        {/* Forecast Model Selector - Winter Severity Feature */}
-        {energyMode === "heating" && (
-          <div>
-            <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Weather Model</h3>
-            <div className="glass-card p-2 animate-fade-in-up border-blue-500/30">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
-                <Cloud className="text-blue-500" size={18} />
-                <span>Weather data: Typical year (30-year average)</span>
-              <span className="ml-2 relative group">
-                <Info 
-                  size={14} 
-                  className="inline text-blue-500 cursor-help" 
-                  title="TMY3 (Typical Meteorological Year 3) is a standardized weather dataset representing typical conditions based on 30 years of historical data. This provides a reliable baseline for energy cost estimates."
+            <div className="glass-card p-2 border-amber-500/30 mb-2">
+              <label className="inline-flex items-center gap-2 text-xs text-high-contrast">
+                <Thermometer size={14} className="text-amber-500" />
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={!!useElectricAuxHeat}
+                  onChange={(e) =>
+                    setUseElectricAuxHeat(!!e.target.checked)
+                  }
+                  aria-label="Include electric auxiliary resistance heat in monthly energy and cost estimates"
+                  title="When enabled, electric auxiliary resistance backup heat will be counted toward monthly electricity and cost estimates"
                 />
-              </span>
-            </label>
-            <select
-              value={forecastModel}
-              onChange={(e) => setForecastModel(e.target.value)}
-              className={selectClasses}
-            >
-              <option value="typical">Typical year (30-year average)</option>
-              <option value="current">Current Forecast (NOAA/NWS) - Live Data</option>
-              <option value="polarVortex">Polar Vortex (Worst Case) - -5°F Anomaly</option>
-            </select>
-            {forecastModel === "polarVortex" && (
-              <div className="mt-3 p-3 glass-card border-red-500/30 bg-red-900/10">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-high-contrast">
-                    <p className="font-semibold mb-1">❄️ Polar Vortex Scenario Active</p>
-                    <p className="text-muted">
-                      This forecast applies a <strong>-5°F temperature offset</strong> to all outdoor temperatures, 
-                      simulating a severe winter pattern. Your estimated costs will be <strong>30-40% higher</strong> 
-                      than typical years. This helps you prepare for worst-case scenarios.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {forecastModel === "current" && dailyForecast && dailyForecast.some(d => d.source === "forecast") && (
-              <div className="mt-3 p-2 glass-card border-blue-500/30 bg-blue-900/10 text-xs text-high-contrast">
-                <p>✓ Using live 10-day forecast + historical averages for remaining days</p>
-              </div>
-            )}
-            </div>
-          </div>
-        )}
+                <span className="font-medium">
+                  Count electric auxiliary heat in estimates
+                </span>
+              </label>
+              {!useElectricAuxHeat && (
+                <div className="mt-2 p-2 glass-card border-amber-500/30 text-xs">
+                  <p className="text-high-contrast">
+                    <strong>⚠️ Aux heat disabled:</strong> Minimum
+                    achievable indoor temp is approximately{" "}
+                    <strong>
+                      {(() => {
+                        // Estimate minimum indoor temp based on heat pump capacity vs building heat loss
+                        const tonsMap = {
+                          18: 1.5,
+                          24: 2.0,
+                          30: 2.5,
+                          36: 3.0,
+                          42: 3.5,
+                          48: 4.0,
+                          60: 5.0,
+                        };
+                        const tons = tonsMap[capacity] || 3.0;
+                        const designHeatLoss = heatUtils.calculateHeatLoss({
+                          squareFeet,
+                          insulationLevel,
+                          homeShape,
+                          ceilingHeight,
+                        });
+                        const heatLossPerDegF = designHeatLoss / 70;
 
-        {/* Fixed Utility Charges Input */}
-        <div>
-          <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Utility Fees</h3>
-          <div className="glass-card p-2 animate-fade-in-up border-gray-500/30">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
-              <DollarSign className="text-blue-500" size={18} />
-              <span>Fixed Monthly Charges</span>
-            </label>
-            <div className="space-y-2">
-              <div>
-                <label className="block text-xs text-muted mb-1">Fixed Electric Fee ($/mo)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={fixedElectricCost}
-                    onChange={(e) => setUserSetting("fixedElectricCost", parseFloat(e.target.value) || 0)}
-                    className={`${inputClasses} pl-7`}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              
-              {primarySystem === "gasFurnace" && (
-                <div>
-                  <label className="block text-xs text-muted mb-1">Fixed Gas Fee ($/mo)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={fixedGasCost}
-                      onChange={(e) => setUserSetting("fixedGasCost", parseFloat(e.target.value) || 0)}
-                      className={`${inputClasses} pl-7`}
-                      placeholder="0.00"
-                    />
-                  </div>
+                        // At 5°F outdoor, heat pump provides ~40% capacity (typical cold climate HP)
+                        const outdoorTemp = 5;
+                        const heatPumpCapacityAt5F = tons * 12000 * 0.4; // BTU/hr
+
+                        // Find indoor temp where heat loss equals heat pump output
+                        const minIndoorTemp =
+                          outdoorTemp +
+                          heatPumpCapacityAt5F / heatLossPerDegF;
+
+                        return Math.round(
+                          Math.min(indoorTemp, Math.max(40, minIndoorTemp))
+                        );
+                      })()}
+                      °F
+                    </strong>{" "}
+                    at design conditions (5°F outdoor). Below this, the heat
+                    pump cannot maintain your setpoint without supplemental
+                    heat.
+                  </p>
                 </div>
               )}
             </div>
-            <p className="text-[10px] text-muted mt-2">
-              Prefilled using typical fixed charges for your state. Adjust to match your bill.
-            </p>
-          </div>
-        </div>
-        </div>
-      </div>
-
-      {/* Location Status - Comparison Mode */}
-      {mode === "comparison" && (
-        // Two-city comparison mode
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-3">
-          {/* Location A */}
-          <div className="glass-card p-glass animate-fade-in-up border-blue-500/30">
-            <div className="text-xs font-semibold text-blue-500 mb-1">
-              LOCATION A
-            </div>
-            {locationData ? (
-              <>
-                <div className="flex items-center gap-2 text-high-contrast">
-                  <MapPin size={16} className="text-blue-500" />
-                  <span className="font-semibold">
-                    {locationData.city}, {locationData.state}
-                  </span>
-                </div>
-                {typeof locationData.elevation === "number" && (
-                  <div className="text-[11px] text-muted mt-0.5 opacity-90">
-                    Elevation: ~{Math.round(locationData.elevation)} ft
-                  </div>
-                )}
-                {typeof monthlyEstimate?.electricityRate === "number" && (
-                  <div className="text-xs text-muted mt-1">
-                    <div>
-                      ${monthlyEstimate.electricityRate.toFixed(3)}/kWh{" "}
-                      {locationData.state && `(${locationData.state})`}
-                    </div>
-                    {electricityRateSourceA && (
-                      <div className="text-[10px] opacity-75 mt-0.5">
-                        {electricityRateSourceA}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-high-contrast text-sm">
-                Set location in{" "}
-                <Link to="/cost-forecaster" className="underline">
-                  Forecaster
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Location B */}
-          <div className="glass-card p-glass animate-fade-in-up border-green-500/30">
-            <div className="text-xs font-semibold text-green-500 mb-1">
-              LOCATION B
-            </div>
-            {locationDataB ? (
-              <>
-                <div className="flex items-center gap-2 text-high-contrast">
-                  <MapPin size={16} className="text-green-500" />
-                  <span className="font-semibold">
-                    {locationDataB.city}, {locationDataB.state}
-                  </span>
-                  <button
-                    onClick={() => setLocationDataB(null)}
-                    className="ml-auto text-xs underline hover:opacity-80"
-                  >
-                    Change
-                  </button>
-                </div>
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
-                  <div className="text-[11px] text-muted">
-                    Station Elevation: ~
-                    {Math.round(locationDataB.elevation ?? 0)} ft
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-[11px] text-muted whitespace-nowrap">
-                      Home Elevation:
-                    </label>
-                    <input
-                      type="number"
-                      value={elevationOverrideB ?? ""}
-                      onChange={(e) =>
-                        setElevationOverrideB(
-                          e.target.value === "" ? null : Number(e.target.value)
-                        )
-                      }
-                      className={inputClasses}
-                      placeholder={`${Math.round(
-                        locationDataB.elevation ?? 0
-                      )}`}
-                    />
-                    <span className="text-[11px] text-muted">
-                      ft
-                    </span>
-                  </div>
-                  <div className="sm:col-span-2 text-[10px] text-muted opacity-80">
-                    Applies standard lapse rate ≈ 3.5°F per 1000 ft to outdoor
-                    temps
-                  </div>
-                </div>
-                {typeof monthlyEstimateB?.electricityRate === "number" && (
-                  <div className="text-xs text-muted mt-1">
-                    <div>
-                      ${monthlyEstimateB.electricityRate.toFixed(3)}/kWh{" "}
-                      {locationDataB.state && `(${locationDataB.state})`}
-                    </div>
-                    {electricityRateSourceB && (
-                      <div className="text-[10px] opacity-75 mt-0.5">
-                        {electricityRateSourceB}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={cityInputB}
-                    onChange={(e) => setCityInputB(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleCitySearchB()}
-                    placeholder="Enter city (e.g., Chicago, IL)"
-                    className={fullInputClasses}
-                  />
-                  <button
-                    onClick={handleCitySearchB}
-                    disabled={loadingB}
-                    className="px-3 py-1 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                  >
-                    {loadingB ? "..." : "Search"}
-                  </button>
-                </div>
-                {errorB && (
-                  <div className="mt-2 text-sm text-red-500 flex items-start gap-2">
-                    <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                    <span>{errorB}</span>
-                  </div>
-                )}
-              </div>
-            )}
-            {!locationDataB && searchStatusB && (
-              <div
-                className={`mt-2 text-xs p-2 rounded ${
-                  searchStatusB.type === "success"
-                    ? "glass-card border-green-500/30 text-high-contrast"
-                    : "glass-card border-red-500/30 text-high-contrast"
-                }`}
-              >
-                {searchStatusB.message}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
-
-      {/* Daily Forecast Breakdown - Removed for simplified design */}
-      {false && mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && monthlyEstimate && (
+      {/* Daily Forecast Breakdown - Monthly Forecast */}
+      {mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && monthlyEstimate && (
         <div className="mt-12 pt-8 border-t-2 border-gray-300/30 dark:border-gray-700/30">
           <div className="glass-card p-6 mb-6 animate-fade-in-up border-gray-500/30">
             {/* Collapsible Header */}
@@ -2428,7 +1849,7 @@ const MonthlyBudgetPlanner = () => {
               <div className="flex items-center gap-3">
                 <Cloud className="w-5 h-5 text-blue-500" />
                 <h3 className="text-lg font-bold text-high-contrast">
-                  Daily Forecast Breakdown
+                  Monthly Forecast
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -2454,11 +1875,16 @@ const MonthlyBudgetPlanner = () => {
           {showDailyForecast && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-4 mb-4 border border-gray-200 dark:border-gray-700 animate-fade-in">
               <div className="mb-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
               {activeMonths.find((m) => m.value === selectedMonth)?.label} {new Date().getFullYear()} - 
-              First 15 days use forecast data, remaining days use historical averages
+              Forecast-Based Estimate
             </p>
             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-gray-700 dark:text-gray-300 mb-2">
+                <strong>⚠️ Note:</strong> This forecast-based total may differ from the "30-year typical" estimate above. 
+                The main estimate uses long-term climate average for budgeting, while this table uses actual forecast data 
+                (first 15 days from NWS forecast, remaining days from historical average).
+              </p>
               <p className="text-xs text-gray-700 dark:text-gray-300">
                 <strong>Data Sources:</strong> Daily forecast data is fetched from{" "}
                 <a
@@ -2478,7 +1904,7 @@ const MonthlyBudgetPlanner = () => {
                 >
                   National Weather Service (NWS)
                 </a>
-                . The first 15 days use real-time forecast data, while days 16-31 use 10-year historical averages from the Open-Meteo archive API.
+                . The first 15 days use real-time forecast data, while days 16-31 use 10-year historical average from the Open-Meteo archive API.
               </p>
             </div>
           </div>
@@ -2493,6 +1919,125 @@ const MonthlyBudgetPlanner = () => {
             <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-4 text-sm text-red-800 dark:text-red-200 mb-4">
               <p><strong>Error loading forecast:</strong> {forecastError}</p>
             </div>
+          )}
+
+          {/* Sinusoidal Temperature Graph */}
+          {!forecastLoading && !forecastError && adjustedForecast && adjustedForecast.length > 0 && (
+            (() => {
+            // Generate hourly temperature data for the entire month using sinusoidal calculation
+            const graphData = [];
+            
+            adjustedForecast.forEach((day, dayIndex) => {
+              const lowTemp = day.low;
+              const highTemp = day.high;
+              const tempRange = highTemp - lowTemp;
+              const avgTemp = day.avg;
+              
+              // Generate 24 hourly data points for this day
+              for (let hour = 0; hour < 24; hour++) {
+                // Same sinusoidal calculation as used in the energy calculation
+                const phase = ((hour - 6) / 12) * Math.PI;
+                const tempOffset = Math.cos(phase - Math.PI) * (tempRange / 2);
+                const hourlyTemp = avgTemp + tempOffset;
+                
+                // Calculate time label
+                const hourLabel = hour === 0 ? '12 AM' : 
+                                 hour < 12 ? `${hour} AM` : 
+                                 hour === 12 ? '12 PM' : 
+                                 `${hour - 12} PM`;
+                
+                graphData.push({
+                  day: day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                  hour: hour,
+                  hourLabel: dayIndex === 0 ? hourLabel : '', // Only show labels for first day to avoid clutter
+                  temperature: Math.round(hourlyTemp * 10) / 10,
+                  date: day.date,
+                  dayIndex: dayIndex,
+                });
+              }
+            });
+            
+            return (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowSinusoidalGraph(!showSinusoidalGraph)}
+                  className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700"
+                >
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-blue-500" />
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Sinusoidal Temperature Profile (Entire Month)
+                    </span>
+                  </div>
+                  {showSinusoidalGraph ? (
+                    <ChevronUp className="w-5 h-5 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-500" />
+                  )}
+                </button>
+                
+                {showSinusoidalGraph && (
+                  <div className="mt-3 bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                      This graph shows the hourly temperature profile for each day of the month, calculated using a sinusoidal curve. 
+                      Temperatures are lowest around 6 AM and highest around 2 PM, creating a realistic daily temperature cycle.
+                    </p>
+                    <div className="w-full" style={{ height: '400px' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={graphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis 
+                            dataKey="day" 
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            stroke="#6b7280"
+                            tick={{ fontSize: 10 }}
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis 
+                            label={{ value: 'Temperature (°F)', angle: -90, position: 'insideLeft' }}
+                            stroke="#6b7280"
+                            tick={{ fontSize: 10 }}
+                          />
+                          <Tooltip 
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                const hourLabel = data.hour === 0 ? '12 AM' : 
+                                                 data.hour < 12 ? `${data.hour} AM` : 
+                                                 data.hour === 12 ? '12 PM' : 
+                                                 `${data.hour - 12} PM`;
+                                return (
+                                  <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+                                    <p className="text-xs font-semibold">{data.day}</p>
+                                    <p className="text-xs text-gray-600 dark:text-gray-400">{hourLabel}</p>
+                                    <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                      {data.temperature.toFixed(1)}°F
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="temperature" 
+                            stroke="#3b82f6" 
+                            strokeWidth={1.5}
+                            dot={false}
+                            name="Temperature (°F)"
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+            })()
           )}
           
           {!forecastLoading && !forecastError && (() => {
@@ -2522,20 +2067,37 @@ const MonthlyBudgetPlanner = () => {
               if (tempDiff > 0) {
                 if (energyMode === "heating" && primarySystem === "heatPump") {
                   // Use hourly performance calculation for each hour of the day
-                  // Simplified: use average temp and humidity for the day
+                  // Create a realistic temperature profile using low/high temps
+                  // Temperature typically lowest at ~6 AM, highest at ~2 PM
                   const avgHumidity = day.humidity || 50;
                   
-                  // Calculate for 24 hours
+                  // Calculate for 24 hours with realistic temperature profile
                   const dtHours = 1.0; // 1 hour per timestep
                   for (let hour = 0; hour < 24; hour++) {
+                    // Create a realistic daily temperature curve
+                    // Lowest temp typically around 6 AM, highest around 2 PM (14:00)
+                    // Use a sine wave approximation: temp = avg + amplitude * sin(phase)
+                    const lowTemp = day.low;
+                    const highTemp = day.high;
+                    const tempRange = highTemp - lowTemp;
+                    const avgTemp = day.avg;
+                    
+                    // Phase: 0 at 6 AM (hour 6), peaks at 2 PM (hour 14)
+                    // Shift so minimum is at hour 6, maximum at hour 14
+                    const phase = ((hour - 6) / 12) * Math.PI; // -π at 6 AM, 0 at 12 PM, +π at 6 PM
+                    // Use cosine to shift: cos(phase - π) gives -1 at 6 AM, +1 at 2 PM
+                    const tempOffset = Math.cos(phase - Math.PI) * (tempRange / 2);
+                    const hourlyTemp = avgTemp + tempOffset;
+                    
                     const perf = heatUtils.computeHourlyPerformance(
                       {
                         tons,
                         indoorTemp: effectiveIndoorTemp,
                         designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
                         compressorPower,
+                        hspf2: hspf2 || efficiency,
                       },
-                      day.avg,
+                      hourlyTemp,
                       avgHumidity,
                       dtHours
                     );
@@ -2612,10 +2174,18 @@ const MonthlyBudgetPlanner = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {dailyMetrics.map((day, idx) => (
+                    {dailyMetrics.map((day, idx) => {
+                      // Check if this day is today
+                      const today = new Date();
+                      const dayDate = new Date(day.date);
+                      const isToday = dayDate.toDateString() === today.toDateString();
+                      
+                      return (
                       <tr 
                         key={idx} 
-                        className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 ${
+                          isToday ? 'bg-blue-100 dark:bg-blue-900/30 font-semibold' : ''
+                        }`}
                       >
                         <td className="py-2 px-3 text-gray-900 dark:text-gray-100">{day.day}</td>
                         <td className="py-2 px-3 text-gray-700 dark:text-gray-300">
@@ -2642,10 +2212,11 @@ const MonthlyBudgetPlanner = () => {
                           </span>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     <tr className="border-t-2 border-gray-300 dark:border-gray-600 font-bold bg-gray-50 dark:bg-gray-900/50">
                       <td colSpan={primarySystem === "heatPump" && energyMode === "heating" && useElectricAuxHeat ? 3 : 2} className="py-3 px-3 text-gray-900 dark:text-gray-100">
-                        Monthly Total
+                        Monthly Total (Forecast-Based)
                       </td>
                       <td className="py-3 px-3 text-right text-gray-900 dark:text-gray-100">
                         {Math.round(totalForecastEnergy * 10) / 10} kWh
@@ -2654,7 +2225,12 @@ const MonthlyBudgetPlanner = () => {
                         <td className="py-3 px-3"></td>
                       )}
                       <td className="py-3 px-3 text-right text-gray-900 dark:text-gray-100">
-                        ${Math.round(totalForecastCost * 100) / 100}
+                        ${(Math.round(totalForecastCost * 100) / 100).toFixed(2)}
+                        {monthlyEstimate?.fixedCost > 0 && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400 font-normal block mt-1">
+                            + ${monthlyEstimate.fixedCost.toFixed(2)} fixed fees = ${(Math.round(totalForecastCost * 100) / 100 + monthlyEstimate.fixedCost).toFixed(2)} total
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3"></td>
                     </tr>
@@ -2665,6 +2241,1248 @@ const MonthlyBudgetPlanner = () => {
           })()}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Settings Section - Moved to bottom so cost stays visible */}
+      <div className="mt-6 mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Settings className="w-4 h-4 text-blue-500" />
+          <h2 className="text-sm font-bold text-high-contrast">⚙️ Settings</h2>
+        </div>
+        
+        {/* Group inputs in 3-column grid on desktop for compact layout */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+          {/* Location Display - Budget Mode */}
+          {mode === "budget" && (
+            <div className="glass-card p-2 animate-fade-in-up">
+              <div className="flex items-center gap-1.5 mb-1">
+                <MapPin className="text-blue-500" size={14} />
+                <span className="text-xs font-semibold text-high-contrast">Location</span>
+              </div>
+              {locationData ? (
+                <>
+                  <div className="text-xs font-semibold text-high-contrast">
+                    {locationData.city}, {locationData.state}
+                  </div>
+                  {typeof monthlyEstimate?.electricityRate === "number" && (
+                    <div className="text-[10px] text-muted mt-0.5">
+                      ${monthlyEstimate.electricityRate.toFixed(3)}/kWh
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-[10px] text-yellow-600 dark:text-yellow-400">
+                  Set in <Link to="/cost-forecaster" className="underline">Forecaster</Link>
+                </div>
+              )}
+            </div>
+          )}
+        
+        {/* Month Selector */}
+        <div className="glass-card p-2 animate-fade-in-up">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Calendar className="text-blue-500" size={14} />
+            <span className="text-xs font-semibold text-high-contrast">Month</span>
+          </div>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className={`${selectClasses} text-xs py-1`}
+          >
+            {activeMonths.map((month) => (
+              <option key={month.value} value={month.value}>
+                {month.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Forecast Model Selector - Winter Severity Feature */}
+        {energyMode === "heating" && (
+          <div className="glass-card p-2 animate-fade-in-up border-blue-500/30">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Cloud className="text-blue-500" size={14} />
+              <span className="text-xs font-semibold text-high-contrast">Weather</span>
+            </div>
+            <select
+              value={forecastModel}
+              onChange={(e) => setForecastModel(e.target.value)}
+              className={`${selectClasses} text-xs py-1`}
+            >
+              <option value="typical">Typical (30-Yr Avg)</option>
+              <option value="current">Current Forecast</option>
+              <option value="polarVortex">Polar Vortex (-5°F)</option>
+            </select>
+            {forecastModel === "polarVortex" && (
+              <div className="mt-1.5 p-1.5 glass-card border-red-500/30 bg-red-900/10 text-[10px] text-high-contrast">
+                <p className="font-semibold">⚠️ 30-40% higher costs</p>
+              </div>
+            )}
+            {forecastModel === "current" && dailyForecast && dailyForecast.some(d => d.source === "forecast") && (
+              <div className="mt-1.5 p-1.5 glass-card border-blue-500/30 bg-blue-900/10 text-[10px] text-high-contrast">
+                <p>✓ Live forecast active</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fixed Utility Charges Input */}
+        <div className="glass-card p-2 animate-fade-in-up border-gray-500/30">
+          <div className="flex items-center gap-1.5 mb-1">
+            <DollarSign className="text-blue-500" size={14} />
+            <span className="text-xs font-semibold text-high-contrast">Fixed Fees</span>
+          </div>
+          <div className="space-y-1">
+            <div>
+              <label className="block text-[10px] text-muted mb-0.5">Electric ($/mo)</label>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={fixedElectricCost}
+                  onChange={(e) => setUserSetting("fixedElectricCost", parseFloat(e.target.value) || 0)}
+                  className={`${inputClasses} pl-6 text-xs py-1`}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            
+            {primarySystem === "gasFurnace" && (
+              <div>
+                <label className="block text-[10px] text-muted mb-0.5">Gas ($/mo)</label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={fixedGasCost}
+                    onChange={(e) => setUserSetting("fixedGasCost", parseFloat(e.target.value) || 0)}
+                    className={`${inputClasses} pl-6 text-xs py-1`}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {/* Location Status - Comparison Mode */}
+      {mode === "comparison" && (
+        // Two-city comparison mode
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-3">
+          {/* Location A */}
+          <div className="glass-card p-2 animate-fade-in-up border-blue-500/30">
+            <div className="text-[10px] font-semibold text-blue-500 mb-1">
+              LOCATION A
+            </div>
+            {locationData ? (
+              <>
+                <div className="flex items-center gap-1.5 text-high-contrast mb-1">
+                  <MapPin size={14} className="text-blue-500" />
+                  <span className="text-xs font-semibold">
+                    {locationData.city}, {locationData.state}
+                  </span>
+                </div>
+                {typeof locationData.elevation === "number" && (
+                  <div className="text-[10px] text-muted mb-1">
+                    Elevation: ~{Math.round(locationData.elevation)} ft
+                  </div>
+                )}
+                {typeof monthlyEstimate?.electricityRate === "number" && (
+                  <div className="text-[10px] text-muted">
+                    ${monthlyEstimate.electricityRate.toFixed(3)}/kWh
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-high-contrast text-xs">
+                Set in <Link to="/cost-forecaster" className="underline">Forecaster</Link>
+              </div>
+            )}
+          </div>
+
+          {/* Location B */}
+          <div className="glass-card p-2 animate-fade-in-up border-green-500/30">
+            <div className="text-[10px] font-semibold text-green-500 mb-1">
+              LOCATION B
+            </div>
+            {locationDataB ? (
+              <>
+                <div className="flex items-center gap-1.5 text-high-contrast mb-1">
+                  <MapPin size={14} className="text-green-500" />
+                  <span className="text-xs font-semibold">
+                    {locationDataB.city}, {locationDataB.state}
+                  </span>
+                  <button
+                    onClick={() => setLocationDataB(null)}
+                    className="ml-auto text-[10px] underline hover:opacity-80"
+                  >
+                    Change
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 items-end mb-1">
+                  <div className="text-[10px] text-muted">
+                    Station: ~{Math.round(locationDataB.elevation ?? 0)} ft
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-muted whitespace-nowrap">
+                      Home:
+                    </label>
+                    <input
+                      type="number"
+                      value={elevationOverrideB ?? ""}
+                      onChange={(e) =>
+                        setElevationOverrideB(
+                          e.target.value === "" ? null : Number(e.target.value)
+                        )
+                      }
+                      className={`${inputClasses} text-xs py-0.5 px-1`}
+                      placeholder={`${Math.round(
+                        locationDataB.elevation ?? 0
+                      )}`}
+                    />
+                    <span className="text-[10px] text-muted">
+                      ft
+                    </span>
+                  </div>
+                </div>
+                <div className="text-[9px] text-muted opacity-80 mb-1">
+                  Lapse rate: 3.5°F per 1000 ft
+                </div>
+                {typeof monthlyEstimateB?.electricityRate === "number" && (
+                  <div className="text-[10px] text-muted">
+                    ${monthlyEstimateB.electricityRate.toFixed(3)}/kWh
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={cityInputB}
+                    onChange={(e) => setCityInputB(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleCitySearchB()}
+                    placeholder="Enter city (e.g., Chicago, IL)"
+                    className={fullInputClasses}
+                  />
+                  <button
+                    onClick={handleCitySearchB}
+                    disabled={loadingB}
+                    className="px-3 py-1 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loadingB ? "..." : "Search"}
+                  </button>
+                </div>
+                {errorB && (
+                  <div className="mt-2 text-sm text-red-500 flex items-start gap-2">
+                    <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>{errorB}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {!locationDataB && searchStatusB && (
+              <div
+                className={`mt-2 text-xs p-2 rounded ${
+                  searchStatusB.type === "success"
+                    ? "glass-card border-green-500/30 text-high-contrast"
+                    : "glass-card border-red-500/30 text-high-contrast"
+                }`}
+              >
+                {searchStatusB.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {/* Annual Forecast Display */}
+      {mode === "annual" && locationData && (
+        <div className="glass-card-gradient glass-card p-glass-lg mb-4 animate-fade-in-up">
+          <div className="text-center mb-6">
+            <h2 className="heading-primary mb-2">
+              📅 Annual Forecast
+            </h2>
+            <p className="text-muted">
+              Your annual heating and cooling cost breakdown by month
+            </p>
+          </div>
+          {(() => {
+            // Use the same annual calculation logic from "Show me the math"
+            const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+            const annualCDD = getAnnualCDD(locationData.city, locationData.state);
+            
+            const safeFixedElectric = Number(fixedElectricCost) || 0;
+            const safeFixedGas = Number(fixedGasCost) || 0;
+
+            const monthlyHDDDist = [1200, 1000, 600, 200, 50, 10, 0, 0, 20, 200, 500, 1100]; 
+            const monthlyCDDDist = [0, 0, 10, 60, 150, 300, 450, 400, 250, 100, 10, 0];
+            
+            const totalTypicalHDD = monthlyHDDDist.reduce((a, b) => a + b, 0); 
+            const totalTypicalCDD = monthlyCDDDist.reduce((a, b) => a + b, 0); 
+            
+            // Load thermostat comfort settings for all modes (home, away, sleep) - like Ecobee auto mode
+            const deadband = 5; // Typical Ecobee deadband (5°F between heat and cool)
+            
+            // Default setpoints (Ecobee standard)
+            let homeHeatSetPoint = 70;
+            let homeCoolSetPoint = 75;
+            let awayHeatSetPoint = 62;
+            let awayCoolSetPoint = 85;
+            let sleepHeatSetPoint = 66;
+            let sleepCoolSetPoint = 78;
+            
+            // Get schedule times for determining which mode is active
+            let daytimeStartTime = "06:00"; // Default: home mode starts at 6 AM
+            let nighttimeStartTime = "22:00"; // Default: sleep mode starts at 10 PM
+            
+            try {
+              const thermostatSettings = loadThermostatSettings();
+              const comfortSettings = thermostatSettings?.comfortSettings;
+              const schedule = thermostatSettings?.schedule;
+              
+              // Load home mode setpoints
+              if (comfortSettings?.home?.heatSetPoint !== undefined) {
+                homeHeatSetPoint = comfortSettings.home.heatSetPoint;
+              } else if (userSettings?.winterThermostatDay !== undefined) {
+                homeHeatSetPoint = userSettings.winterThermostatDay;
+              }
+              
+              if (comfortSettings?.home?.coolSetPoint !== undefined) {
+                homeCoolSetPoint = comfortSettings.home.coolSetPoint;
+              } else if (userSettings?.summerThermostat !== undefined) {
+                homeCoolSetPoint = userSettings.summerThermostat;
+              }
+              
+              // Load away mode setpoints
+              if (comfortSettings?.away?.heatSetPoint !== undefined) {
+                awayHeatSetPoint = comfortSettings.away.heatSetPoint;
+              }
+              if (comfortSettings?.away?.coolSetPoint !== undefined) {
+                awayCoolSetPoint = comfortSettings.away.coolSetPoint;
+              }
+              
+              // Load sleep mode setpoints
+              if (comfortSettings?.sleep?.heatSetPoint !== undefined) {
+                sleepHeatSetPoint = comfortSettings.sleep.heatSetPoint;
+              } else if (userSettings?.winterThermostatNight !== undefined) {
+                sleepHeatSetPoint = userSettings.winterThermostatNight;
+              }
+              
+              if (comfortSettings?.sleep?.coolSetPoint !== undefined) {
+                sleepCoolSetPoint = comfortSettings.sleep.coolSetPoint;
+              } else if (userSettings?.summerThermostatNight !== undefined) {
+                sleepCoolSetPoint = userSettings.summerThermostatNight;
+              }
+              
+              // Get schedule times (for determining which mode is active at different hours)
+              if (schedule?.weekly && schedule.weekly[0]) {
+                // Use Monday's schedule as representative (or first day with entries)
+                const daySchedule = schedule.weekly[0];
+                const homeEntry = daySchedule.find(e => e.comfortSetting === "home");
+                const sleepEntry = daySchedule.find(e => e.comfortSetting === "sleep");
+                
+                if (homeEntry?.time) {
+                  daytimeStartTime = homeEntry.time;
+                }
+                if (sleepEntry?.time) {
+                  nighttimeStartTime = sleepEntry.time;
+                }
+              }
+              
+              // Ensure deadbands are maintained for all modes
+              if (homeCoolSetPoint < homeHeatSetPoint + deadband) {
+                homeCoolSetPoint = homeHeatSetPoint + deadband;
+              }
+              if (awayCoolSetPoint < awayHeatSetPoint + deadband) {
+                awayCoolSetPoint = awayHeatSetPoint + deadband;
+              }
+              if (sleepCoolSetPoint < sleepHeatSetPoint + deadband) {
+                sleepCoolSetPoint = sleepHeatSetPoint + deadband;
+              }
+            } catch (error) {
+              console.warn("Could not load thermostat settings, using defaults:", error);
+            }
+            
+            // Helper function to determine which comfort mode is active at a given hour
+            const getComfortModeForHour = (hour, dayOfWeek = 0) => {
+              // Convert hour to time string (HH:MM format)
+              const timeStr = `${String(hour).padStart(2, '0')}:00`;
+              
+              try {
+                const thermostatSettings = loadThermostatSettings();
+                const schedule = thermostatSettings?.schedule;
+                
+                // If schedule is disabled or not available, default to home during day, sleep at night
+                if (!schedule?.enabled || !schedule?.weekly) {
+                  // Simple day/night logic
+                  const hourNum = hour;
+                  if (hourNum >= 6 && hourNum < 22) {
+                    return "home";
+                  } else {
+                    return "sleep";
+                  }
+                }
+                
+                // Get schedule for this day of week
+                const daySchedule = schedule.weekly[dayOfWeek] || schedule.weekly[0] || [];
+                
+                // Find the most recent schedule entry before or at current time
+                let currentMode = "home"; // Default
+                for (const entry of daySchedule) {
+                  if (entry.time <= timeStr) {
+                    currentMode = entry.comfortSetting;
+                  } else {
+                    break;
+                  }
+                }
+                
+                return currentMode;
+              } catch {
+                // Fallback: simple day/night logic
+                const hourNum = hour;
+                if (hourNum >= 6 && hourNum < 22) {
+                  return "home";
+                } else {
+                  return "sleep";
+                }
+              }
+            };
+            
+            // Helper function to get setpoints for a given comfort mode
+            const getSetpointsForMode = (mode) => {
+              switch (mode) {
+                case "home":
+                  return { heat: homeHeatSetPoint, cool: homeCoolSetPoint };
+                case "away":
+                  return { heat: awayHeatSetPoint, cool: awayCoolSetPoint };
+                case "sleep":
+                  return { heat: sleepHeatSetPoint, cool: sleepCoolSetPoint };
+                default:
+                  return { heat: homeHeatSetPoint, cool: homeCoolSetPoint };
+              }
+            };
+            
+            // Calculate weighted average indoor temps for heating and cooling
+            // Use a representative day to determine average setpoints across all modes
+            // For simplicity, we'll use home mode for day hours and sleep mode for night hours
+            const avgWinterIndoorTemp = (homeHeatSetPoint * 16 + sleepHeatSetPoint * 8) / 24;
+            const winterTempMultiplier = (avgWinterIndoorTemp - 35) / 30;
+            
+            const avgSummerIndoorTemp = (homeCoolSetPoint * 16 + sleepCoolSetPoint * 8) / 24;
+            const summerTempMultiplier = (85 - avgSummerIndoorTemp) / 20;
+            
+            // Helper function to generate hourly temperatures using sinusoidal pattern
+            // Low temp typically occurs around 6 AM, high temp around 6 PM
+            const generateHourlyTemps = (dailyLow, dailyHigh, daysInMonth, monthIndex) => {
+              const hours = [];
+              const tempRange = dailyHigh - dailyLow;
+              const avgTemp = (dailyHigh + dailyLow) / 2;
+              
+              for (let day = 0; day < daysInMonth; day++) {
+                for (let hour = 0; hour < 24; hour++) {
+                  // Sinusoidal pattern: low at 6 AM (hour 6), high at 6 PM (hour 18)
+                  // Phase: ((hour - 6) / 12) * PI gives us low at hour 6, high at hour 18
+                  const phase = ((hour - 6) / 12) * Math.PI;
+                  const tempOffset = Math.cos(phase - Math.PI) * (tempRange / 2);
+                  const hourlyTemp = avgTemp + tempOffset;
+                  
+                  hours.push({
+                    temp: hourlyTemp,
+                    humidity: 50,
+                    time: new Date(2025, monthIndex, day + 1, hour),
+                  });
+                }
+              }
+              return hours;
+            };
+            
+            let annualVariableHeating = 0;
+            let annualVariableCooling = 0;
+            let annualHeatingCost = 0;
+            let annualCoolingCost = 0;
+            
+            const monthlyHeatingCosts = [];
+            const monthlyCoolingCosts = [];
+            const monthlyHDDValues = [];
+            const monthlyCDDValues = [];
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Track data source for display
+            let usesHistoricalHourly = false;
+            let usesSinusoidalApprox = false;
+            
+            for (let month = 0; month < 12; month++) {
+              // 1. Calculate Load
+              const monthHDD = totalTypicalHDD > 0 ? (monthlyHDDDist[month] / totalTypicalHDD) * annualHDD : 0;
+              const monthCDD = totalTypicalCDD > 0 ? (monthlyCDDDist[month] / totalTypicalCDD) * annualCDD : 0;
+              
+              monthlyHDDValues.push(Math.round(monthHDD));
+              monthlyCDDValues.push(Math.round(monthCDD));
+              
+              let monthVariableHeating = 0;
+              let monthVariableCooling = 0;
+              let monthHeatingCost = 0; // Will include fixed
+              let monthCoolingCost = 0; // Will include fixed
+              
+              // 2. Physics Cost: Heating (variable only)
+              if (monthHDD > 0) {
+                // Use hourly historical data for aux heat if available (heat pumps only)
+                if (primarySystem === "heatPump" && historicalHourly && historicalHourly.length > 0 && balancePoint !== null) {
+                  // Filter hours for this month from historical data
+                  const monthHours = historicalHourly.filter(hour => {
+                    const hourDate = new Date(hour.time);
+                    return hourDate.getMonth() === month;
+                  });
+                  
+                  if (monthHours.length > 0) {
+                    usesHistoricalHourly = true;
+                    const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                    const tons = tonsMap[capacity] || 3.0;
+                    const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+                      squareFeet,
+                      insulationLevel,
+                      homeShape,
+                      ceilingHeight,
+                    });
+                    
+                    // Calculate aux heat hour-by-hour
+                    let totalHeatPumpKwh = 0;
+                    let totalAuxKwh = 0;
+                    
+                    monthHours.forEach(hour => {
+                      const dtHours = 1.0; // 1 hour per timestep
+                      
+                      // Determine which comfort mode is active for this hour
+                      const hourDate = new Date(hour.time);
+                      const dayOfWeek = hourDate.getDay();
+                      const hourOfDay = hourDate.getHours();
+                      const activeMode = getComfortModeForHour(hourOfDay, dayOfWeek);
+                      const setpoints = getSetpointsForMode(activeMode);
+                      
+                      // Auto-mode logic: determine if heating or cooling is needed based on outdoor temp vs setpoints
+                      // Like Ecobee auto mode: heating runs when outdoor temp < heatSetPoint, cooling runs when outdoor temp > coolSetPoint
+                      const needsHeating = hour.temp < setpoints.heat;
+                      const needsCooling = hour.temp > setpoints.cool;
+                      // Between heatSetPoint and coolSetPoint: no HVAC needed (deadband)
+                      
+                      if (needsHeating) {
+                        // Use the appropriate indoor temp for the active mode
+                        const indoorTempForMode = activeMode === "sleep" ? sleepHeatSetPoint : 
+                                                  activeMode === "away" ? awayHeatSetPoint : 
+                                                  homeHeatSetPoint;
+                        
+                        // Calculate heating energy
+                        const perf = heatUtils.computeHourlyPerformance(
+                          {
+                            tons: tons,
+                            indoorTemp: indoorTempForMode,
+                            designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
+                            compressorPower: null,
+                          },
+                          hour.temp,
+                          hour.humidity ?? 50,
+                          dtHours
+                        );
+                        
+                        // AGGREGATION RULES: Sum energy directly - NEVER multiply by dtHours
+                        if (perf.hpKwh !== undefined) {
+                          totalHeatPumpKwh += perf.hpKwh;
+                        } else {
+                          // Fallback for backward compatibility
+                          totalHeatPumpKwh += perf.electricalKw * (perf.capacityUtilization / 100) * dtHours;
+                        }
+                        
+                        // Aux heat energy (only when needed)
+                        if (hour.temp < balancePoint && useElectricAuxHeat) {
+                          if (perf.auxKwh !== undefined && perf.auxKwh > 0) {
+                            totalAuxKwh += perf.auxKwh;
+                          } else if (perf.auxKw > 0) {
+                            // Fallback for backward compatibility
+                            totalAuxKwh += perf.auxKw * dtHours;
+                          }
+                        }
+                      }
+                      // If cooling is needed, it would be calculated separately (not in this heating-only path)
+                      // If neither heating nor cooling needed (in deadband), no energy used
+                    });
+                    
+                    // Scale to full month if we don't have complete data
+                    const daysInMonth = new Date(new Date().getFullYear(), month + 1, 0).getDate();
+                    const expectedHours = daysInMonth * 24;
+                    if (monthHours.length < expectedHours * 0.8) {
+                      const scaleFactor = expectedHours / monthHours.length;
+                      totalHeatPumpKwh *= scaleFactor;
+                      totalAuxKwh *= scaleFactor;
+                    }
+                    
+                    // Calculate costs
+                    const totalHeatingKwh = totalHeatPumpKwh + totalAuxKwh;
+                    monthVariableHeating = totalHeatingKwh * utilityCost * winterTempMultiplier;
+                    monthHeatingCost = monthVariableHeating;
+                  } else {
+                    // Fallback: Generate hourly temps using sinusoidal pattern
+                    usesSinusoidalApprox = true;
+                    const daysInMonth = new Date(new Date().getFullYear(), month + 1, 0).getDate();
+                    
+                    // Estimate typical daily low/high for this month based on HDD
+                    // Typical winter: low around 30-40°F, high around 50-60°F depending on location
+                    // Use a simple approximation: if monthHDD is high, it's colder
+                    const baseTemp = 50; // Base temperature for the month
+                    const tempRange = 20; // Typical 20°F range between low and high
+                    const dailyLow = baseTemp - (monthHDD / 30); // Colder months have lower temps
+                    const dailyHigh = dailyLow + tempRange;
+                    
+                    const monthHours = generateHourlyTemps(dailyLow, dailyHigh, daysInMonth, month);
+                    
+                    if (primarySystem === "heatPump" && balancePoint !== null) {
+                      const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
+                      const tons = tonsMap[capacity] || 3.0;
+                      const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
+                        squareFeet,
+                        insulationLevel,
+                        homeShape,
+                        ceilingHeight,
+                      });
+                      
+                      let totalHeatPumpKwh = 0;
+                      let totalAuxKwh = 0;
+                      
+                      monthHours.forEach(hour => {
+                        const dtHours = 1.0;
+                        
+                        // Determine which comfort mode is active for this hour
+                        const hourDate = new Date(hour.time);
+                        const dayOfWeek = hourDate.getDay();
+                        const hourOfDay = hourDate.getHours();
+                        const activeMode = getComfortModeForHour(hourOfDay, dayOfWeek);
+                        const setpoints = getSetpointsForMode(activeMode);
+                        
+                        // Auto-mode logic: determine if heating or cooling is needed based on outdoor temp vs setpoints
+                        const needsHeating = hour.temp < setpoints.heat;
+                        const needsCooling = hour.temp > setpoints.cool;
+                        // Between heatSetPoint and coolSetPoint: no HVAC needed (deadband)
+                        
+                        if (needsHeating) {
+                          // Use the appropriate indoor temp for the active mode
+                          const indoorTempForMode = activeMode === "sleep" ? sleepHeatSetPoint : 
+                                                    activeMode === "away" ? awayHeatSetPoint : 
+                                                    homeHeatSetPoint;
+                          
+                          // Calculate heating energy
+                          const perf = heatUtils.computeHourlyPerformance(
+                            {
+                              tons: tons,
+                              indoorTemp: indoorTempForMode,
+                              designHeatLossBtuHrAt70F: estimatedDesignHeatLoss,
+                              compressorPower: null,
+                            },
+                            hour.temp,
+                            hour.humidity ?? 50,
+                            dtHours
+                          );
+                          
+                          if (perf.hpKwh !== undefined) {
+                            totalHeatPumpKwh += perf.hpKwh;
+                          } else {
+                            totalHeatPumpKwh += perf.electricalKw * (perf.capacityUtilization / 100) * dtHours;
+                          }
+                          
+                          // Aux heat energy (only when needed) - nighttime is colder, so aux is more likely
+                          if (hour.temp < balancePoint && useElectricAuxHeat) {
+                            if (perf.auxKwh !== undefined && perf.auxKwh > 0) {
+                              totalAuxKwh += perf.auxKwh;
+                            } else if (perf.auxKw > 0) {
+                              totalAuxKwh += perf.auxKw * dtHours;
+                            }
+                          }
+                        }
+                        // If cooling is needed, it would be calculated separately (not in this heating-only path)
+                        // If neither heating nor cooling needed (in deadband), no energy used
+                      });
+                      
+                      const totalHeatingKwh = totalHeatPumpKwh + totalAuxKwh;
+                      monthVariableHeating = totalHeatingKwh * utilityCost * winterTempMultiplier;
+                      monthHeatingCost = monthVariableHeating;
+                    } else {
+                      // Standard HDD-based estimate for non-heat-pump systems
+                      const est = estimateMonthlyHeatingCostFromHDD({
+                        hdd: monthHDD,
+                        squareFeet,
+                        insulationLevel,
+                        homeShape,
+                        ceilingHeight,
+                        hspf: hspf2,
+                        electricityRate: utilityCost,
+                      });
+                      if (est?.cost > 0) {
+                        monthVariableHeating = est.cost * winterTempMultiplier;
+                        monthHeatingCost = monthVariableHeating;
+                      }
+                    }
+                  }
+                } else {
+                  // Standard HDD-based estimate (non-heat-pump or no historical data)
+                  const est = estimateMonthlyHeatingCostFromHDD({
+                    hdd: monthHDD,
+                    squareFeet,
+                    insulationLevel,
+                    homeShape,
+                    ceilingHeight,
+                    hspf: hspf2,
+                    electricityRate: utilityCost,
+                  });
+                  if (est?.cost > 0) {
+                    monthVariableHeating = est.cost * winterTempMultiplier;
+                    monthHeatingCost = monthVariableHeating;
+                  }
+                }
+              }
+              
+              
+              // 3. Physics Cost: Cooling (variable only)
+              if (monthCDD > 0) {
+                const est = estimateMonthlyCoolingCostFromCDD({
+                  cdd: monthCDD,
+                  squareFeet,
+                  insulationLevel,
+                  homeShape,
+                  ceilingHeight,
+                  seer2: efficiency,
+                  electricityRate: utilityCost,
+                  capacity: coolingCapacity || capacity,
+                  solarExposure,
+                });
+                if (est?.cost > 0) {
+                  monthVariableCooling = est.cost * summerTempMultiplier;
+                  monthCoolingCost = monthVariableCooling;
+                }
+              }
+
+              // C. Apply Fixed Costs (Crucial Step)
+              // If Gas Furnace: Always add gas fixed cost to heating bucket
+              if (primarySystem === "gasFurnace") {
+                monthHeatingCost += safeFixedGas;
+              }
+              
+              // Electric Fixed Cost: Assign to the "dominant" fuel/mode for that month for display
+              const isCoolingSeason = [4, 5, 6, 7, 8, 9].includes(month); // May-Oct
+              if (monthCoolingCost > monthHeatingCost) {
+                monthCoolingCost += safeFixedElectric;
+              } else if (monthHeatingCost > monthCoolingCost) {
+                monthHeatingCost += safeFixedElectric;
+              } else {
+                // If equal (e.g. 0 vs 0), assign based on season
+                if (isCoolingSeason) monthCoolingCost += safeFixedElectric;
+                else monthHeatingCost += safeFixedElectric;
+              }
+              
+              // D. Accumulate
+              annualVariableHeating += monthVariableHeating;
+              annualVariableCooling += monthVariableCooling;
+              annualHeatingCost += monthHeatingCost;
+              annualCoolingCost += monthCoolingCost;
+
+              // E. Push to Arrays (with fixed costs included for display)
+              monthlyHeatingCosts.push(monthHeatingCost);
+              monthlyCoolingCosts.push(monthCoolingCost);
+            }
+            
+            const annualFixedOnly = (safeFixedElectric * 12) + (primarySystem === "gasFurnace" ? safeFixedGas * 12 : 0);
+            const totalAnnualCost = annualVariableHeating + annualVariableCooling + annualFixedOnly;
+            
+            return (
+              <>
+                {/* Target Temperature Settings - All Modes */}
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-green-800 dark:text-green-200">
+                      🌡️ Target Temperatures (Auto Mode - All Comfort Settings)
+                    </p>
+                    <Link
+                      to="/settings#comfort-settings"
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-xs font-medium"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Configure in Settings
+                    </Link>
+                  </div>
+                  <div className="text-xs text-green-700 dark:text-green-300 space-y-2">
+                    {/* Home Mode */}
+                    <div className="bg-white dark:bg-gray-800 rounded p-2 border border-green-200 dark:border-green-800">
+                      <p className="font-semibold text-green-800 dark:text-green-200 mb-1">🏠 Home Mode</p>
+                      <p className="text-green-700 dark:text-green-300">
+                        <strong>Heating:</strong> {homeHeatSetPoint}°F (runs when outdoor temp &lt; {homeHeatSetPoint}°F) • 
+                        <strong> Cooling:</strong> {homeCoolSetPoint}°F (runs when outdoor temp &gt; {homeCoolSetPoint}°F)
+                      </p>
+                      <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">
+                        Active during daytime/occupied hours (typically {daytimeStartTime} - {nighttimeStartTime})
+                      </p>
+                    </div>
+                    
+                    {/* Sleep Mode */}
+                    <div className="bg-white dark:bg-gray-800 rounded p-2 border border-green-200 dark:border-green-800">
+                      <p className="font-semibold text-green-800 dark:text-green-200 mb-1">🌙 Sleep Mode</p>
+                      <p className="text-green-700 dark:text-green-300">
+                        <strong>Heating:</strong> {sleepHeatSetPoint}°F (runs when outdoor temp &lt; {sleepHeatSetPoint}°F) • 
+                        <strong> Cooling:</strong> {sleepCoolSetPoint}°F (runs when outdoor temp &gt; {sleepCoolSetPoint}°F)
+                      </p>
+                      <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">
+                        Active during nighttime/sleep hours (typically {nighttimeStartTime} - {daytimeStartTime})
+                      </p>
+                    </div>
+                    
+                    {/* Away Mode */}
+                    <div className="bg-white dark:bg-gray-800 rounded p-2 border border-green-200 dark:border-green-800">
+                      <p className="font-semibold text-green-800 dark:text-green-200 mb-1">🚶 Away Mode</p>
+                      <p className="text-green-700 dark:text-green-300">
+                        <strong>Heating:</strong> {awayHeatSetPoint}°F (runs when outdoor temp &lt; {awayHeatSetPoint}°F) • 
+                        <strong> Cooling:</strong> {awayCoolSetPoint}°F (runs when outdoor temp &gt; {awayCoolSetPoint}°F)
+                      </p>
+                      <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">
+                        Active when schedule indicates away/unoccupied periods
+                      </p>
+                    </div>
+                    
+                    <p className="mt-2 text-green-600 dark:text-green-400">
+                      These setpoints are loaded from your thermostat's comfort settings. 
+                      If not configured, defaults to Ecobee standard: Home (70°F/75°F), Sleep (66°F/78°F), Away (62°F/85°F). 
+                      The forecast uses auto-mode logic with schedule-aware mode switching: heating runs when outdoor temp is below the heating setpoint, 
+                      cooling runs when outdoor temp is above the cooling setpoint. Each mode uses its own setpoints based on the schedule.
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Data Source Information */}
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                    📊 Temperature Data Source
+                  </p>
+                  <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                    {usesHistoricalHourly ? (
+                      <p>
+                        ✅ <strong>Using historical hourly temperature data</strong> from Open-Meteo API. 
+                        This provides the most accurate aux heat calculations for heat pumps, accounting for 
+                        nighttime temperature drops when aux heat is most likely needed.
+                      </p>
+                    ) : usesSinusoidalApprox ? (
+                      <p>
+                        📈 <strong>Using sinusoidal temperature approximation</strong> based on monthly HDD/CDD data. 
+                        Daily temperatures follow a sinusoidal pattern (lowest around 6 AM, highest around 6 PM) 
+                        to accurately model nighttime heating costs and aux heat needs. This ensures heating costs 
+                        reflect that nights are colder and aux heat is more likely needed during nighttime hours.
+                      </p>
+                    ) : (
+                      <p>
+                        📊 <strong>Using HDD/CDD-based monthly averages</strong> from location climate data. 
+                        This provides a good estimate for annual costs but doesn't account for daily temperature 
+                        cycles. For more accurate aux heat calculations with heat pumps, historical hourly data 
+                        or sinusoidal approximations are recommended.
+                      </p>
+                    )}
+                    <p className="mt-2 text-blue-600 dark:text-blue-400">
+                      <strong>Why this matters:</strong> Nighttime temperatures are typically 10-20°F colder than 
+                      daytime temperatures. For heat pumps, this means aux heat is more likely needed at night, 
+                      which significantly increases heating costs. The sinusoidal pattern ensures these nighttime 
+                      aux heat needs are properly accounted for.
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Summary Boxes */}
+                <div className="grid grid-cols-2 gap-4 text-sm mb-6">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3">
+                    <p className="font-semibold text-blue-700 dark:text-blue-300">
+                      Annual Heating (energy only)
+                    </p>
+                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                      ${annualVariableHeating.toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      {Math.round(annualHDD)} HDD
+                    </p>
+                  </div>
+                  <div className="bg-cyan-50 dark:bg-cyan-900/30 rounded-lg p-3">
+                    <p className="font-semibold text-cyan-700 dark:text-cyan-300">
+                      Annual Cooling (energy only)
+                    </p>
+                    <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400">
+                      ${annualVariableCooling.toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      {Math.round(annualCDD)} CDD
+                    </p>
+                  </div>
+                </div>
+                
+                {annualFixedOnly > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-900/30 rounded-lg p-3 mb-4">
+                    <p className="font-semibold text-gray-700 dark:text-gray-300">
+                      Annual Fixed Charges
+                    </p>
+                    <p className="text-lg font-bold text-gray-600 dark:text-gray-400">
+                      ${annualFixedOnly.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-3 mb-4">
+                  <p className="font-semibold text-indigo-700 dark:text-indigo-300 mb-1">
+                    Total Annual HVAC Cost (energy + fixed)
+                  </p>
+                  <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                    ${totalAnnualCost.toFixed(2)}
+                  </p>
+                  {annualFixedOnly > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                        = ${annualVariableHeating.toFixed(2)} (heating) + ${annualVariableCooling.toFixed(2)} (cooling) + ${annualFixedOnly.toFixed(2)} (fixed)
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    This works out to about <strong>${(annualHeatingCost / 12).toFixed(2)}/month</strong> in heating and <strong>${(annualCoolingCost / 12).toFixed(2)}/month</strong> in cooling on average.
+                  </p>
+                </div>
+                  
+                {/* Monthly Breakdown */}
+                <div className="mt-6 space-y-4">
+                  <h4 className="font-semibold text-high-contrast text-lg mb-3">Monthly Breakdown</h4>
+                  
+                  {/* Combined Monthly Costs - Shows total cost per month, highlighting months with both heating and cooling */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+                    <p className="font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Total Monthly Costs (Heating + Cooling)</p>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-3">
+                      Some months require both heating and cooling depending on daily temperatures. This shows the combined cost for each month.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                      {monthNames.map((monthName, idx) => {
+                        const heatingCost = monthlyHeatingCosts[idx];
+                        const coolingCost = monthlyCoolingCosts[idx];
+                        const totalCost = heatingCost + coolingCost;
+                        const hasBoth = heatingCost > 0 && coolingCost > 0;
+                        const hdd = monthlyHDDValues[idx];
+                        const cdd = monthlyCDDValues[idx];
+                        const percent = totalAnnualCost > 0 ? (totalCost / totalAnnualCost) * 100 : 0;
+                        
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`bg-white dark:bg-gray-800 rounded p-2 border-2 ${
+                              hasBoth 
+                                ? 'border-purple-400 dark:border-purple-600' 
+                                : 'border-indigo-200 dark:border-indigo-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="font-semibold text-xs text-indigo-600 dark:text-indigo-400">{monthName}</p>
+                              {hasBoth && (
+                                <span className="text-[10px] bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">
+                                  Both
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">${totalCost.toFixed(2)}</p>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 mt-1">
+                              {heatingCost > 0 && (
+                                <p className="text-blue-600 dark:text-blue-400">
+                                  🔥 ${heatingCost.toFixed(2)} ({hdd} HDD)
+                                </p>
+                              )}
+                              {coolingCost > 0 && (
+                                <p className="text-cyan-600 dark:text-cyan-400">
+                                  ❄️ ${coolingCost.toFixed(2)} ({cdd} CDD)
+                                </p>
+                              )}
+                              {totalCost > 0 && (
+                                <p className="text-gray-500 dark:text-gray-400 mt-1">
+                                  {percent.toFixed(1)}% of annual
+                                </p>
+                              )}
+                              {totalCost === 0 && (
+                                <p className="text-gray-400 dark:text-gray-500 italic">No HVAC needed</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Heating Months */}
+                  {annualHeatingCost > 0 && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                      <p className="font-semibold text-blue-700 dark:text-blue-300 mb-3">Heating Costs by Month</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {monthNames.map((monthName, idx) => {
+                          const cost = monthlyHeatingCosts[idx];
+                          const hdd = monthlyHDDValues[idx];
+                          const percent = annualHeatingCost > 0 ? (cost / annualHeatingCost) * 100 : 0;
+                          return (
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded p-2 border border-blue-200 dark:border-blue-800">
+                              <p className="font-semibold text-xs text-blue-600 dark:text-blue-400">{monthName}</p>
+                              <p className="text-sm font-bold text-blue-700 dark:text-blue-300">${cost.toFixed(2)}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{hdd} HDD</p>
+                              {cost > 0 && <p className="text-xs text-gray-500 dark:text-gray-400">{percent.toFixed(1)}%</p>}
+                              {cost === 0 && hdd === 0 && <p className="text-xs text-gray-400 dark:text-gray-500 italic">No heating needed</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Cooling Months */}
+                  {annualCoolingCost > 0 && (
+                    <div className="bg-cyan-50 dark:bg-cyan-900/20 rounded-lg p-4">
+                      <p className="font-semibold text-cyan-700 dark:text-cyan-300 mb-3">Cooling Costs by Month</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {monthNames.map((monthName, idx) => {
+                          const cost = monthlyCoolingCosts[idx];
+                          const cdd = monthlyCDDValues[idx];
+                          const percent = annualCoolingCost > 0 ? (cost / annualCoolingCost) * 100 : 0;
+                          return (
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded p-2 border border-cyan-200 dark:border-cyan-800">
+                              <p className="font-semibold text-xs text-cyan-600 dark:text-cyan-400">{monthName}</p>
+                              <p className="text-sm font-bold text-cyan-700 dark:text-cyan-300">${cost.toFixed(2)}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{cdd} CDD</p>
+                              {cost > 0 && <p className="text-xs text-gray-500 dark:text-gray-400">{percent.toFixed(1)}%</p>}
+                              {cost === 0 && cdd === 0 && <p className="text-xs text-gray-400 dark:text-gray-500 italic">No cooling needed</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Sinusoidal Temperature Graphs */}
+                <div className="mt-8 space-y-6">
+                  <h4 className="font-semibold text-high-contrast text-lg mb-4">Annual Temperature Profiles</h4>
+                  
+                  {/* Winter Months Graph */}
+                  {annualHeatingCost > 0 && (() => {
+                    // Include all months that have heating needs (HDD > 0), including transition months
+                    const activeWinterMonths = monthNames.map((_, idx) => idx).filter(m => monthlyHDDValues[m] > 0);
+                    
+                    // Create data structure: one row per hour, with columns for each month
+                    const winterGraphData = [];
+                    for (let hour = 0; hour < 24; hour++) {
+                      const hourData = {
+                        hour: hour,
+                        hourLabel: hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`,
+                      };
+                      
+                      activeWinterMonths.forEach(monthIdx => {
+                        const monthHDD = totalTypicalHDD > 0 ? (monthlyHDDDist[monthIdx] / totalTypicalHDD) * annualHDD : 0;
+                        if (monthHDD > 0) {
+                          // Estimate typical daily low/high for this month
+                          const baseTemp = 50;
+                          const tempRange = 20;
+                          const dailyLow = baseTemp - (monthHDD / 30);
+                          const dailyHigh = dailyLow + tempRange;
+                          const avgTemp = (dailyHigh + dailyLow) / 2;
+                          const tempRangeValue = dailyHigh - dailyLow;
+                          
+                          // Calculate hourly temperature using sinusoidal pattern
+                          const phase = ((hour - 6) / 12) * Math.PI;
+                          const tempOffset = Math.cos(phase - Math.PI) * (tempRangeValue / 2);
+                          const hourlyTemp = avgTemp + tempOffset;
+                          
+                          hourData[monthNames[monthIdx]] = Math.round(hourlyTemp * 10) / 10;
+                        }
+                      });
+                      
+                      winterGraphData.push(hourData);
+                    }
+                    
+                    return (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                        <h5 className="font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
+                          <Thermometer className="w-5 h-5" />
+                          Winter Temperature Profile (Heating Season)
+                        </h5>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
+                          Hourly temperature patterns for months with heating needs. 
+                          Shows how nighttime temperatures drop significantly, requiring more heating and potentially aux heat for heat pumps. 
+                          Transition months (like April, May, September, October) may also require cooling during warmer days.
+                        </p>
+                        <div className="w-full" style={{ height: '400px' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={winterGraphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="hour" 
+                                label={{ value: 'Hour of Day', position: 'insideBottom', offset: -5 }}
+                                stroke="#6b7280"
+                                tick={{ fontSize: 10 }}
+                                tickFormatter={(value) => {
+                                  if (value === 0) return '12 AM';
+                                  if (value < 12) return `${value} AM`;
+                                  if (value === 12) return '12 PM';
+                                  return `${value - 12} PM`;
+                                }}
+                              />
+                              <YAxis 
+                                label={{ value: 'Temperature (°F)', angle: -90, position: 'insideLeft' }}
+                                stroke="#6b7280"
+                                tick={{ fontSize: 10 }}
+                              />
+                              <Tooltip 
+                                content={({ active, payload }) => {
+                                  if (active && payload && payload.length) {
+                                    const data = payload[0].payload;
+                                    return (
+                                      <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+                                        <p className="text-xs font-semibold">{data.hourLabel}</p>
+                                        {payload.map((entry, idx) => (
+                                          <p key={idx} className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                            {entry.name}: {entry.value?.toFixed(1)}°F
+                                          </p>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Legend />
+                              {activeWinterMonths.map((monthIdx, idx) => (
+                                <Line
+                                  key={monthIdx}
+                                  type="monotone"
+                                  dataKey={monthNames[monthIdx]}
+                                  name={monthNames[monthIdx]}
+                                  stroke={idx === 0 ? "#3b82f6" : idx === 1 ? "#2563eb" : idx === 2 ? "#1d4ed8" : idx === 3 ? "#1e40af" : idx === 4 ? "#1e3a8a" : "#1e3a8a"}
+                                  strokeWidth={2}
+                                  dot={false}
+                                  connectNulls
+                                />
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Summer Months Graph */}
+                  {annualCoolingCost > 0 && (() => {
+                    // Include all months that have cooling needs (CDD > 0), including transition months
+                    const activeSummerMonths = monthNames.map((_, idx) => idx).filter(m => monthlyCDDValues[m] > 0);
+                    
+                    // Create data structure: one row per hour, with columns for each month
+                    const summerGraphData = [];
+                    for (let hour = 0; hour < 24; hour++) {
+                      const hourData = {
+                        hour: hour,
+                        hourLabel: hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`,
+                      };
+                      
+                      activeSummerMonths.forEach(monthIdx => {
+                        const monthCDD = totalTypicalCDD > 0 ? (monthlyCDDDist[monthIdx] / totalTypicalCDD) * annualCDD : 0;
+                        if (monthCDD > 0) {
+                          // Estimate typical daily low/high for this month
+                          // Typical summer: low around 60-70°F, high around 80-90°F
+                          const baseTemp = 75;
+                          const tempRange = 20;
+                          const dailyLow = baseTemp - (monthCDD / 20); // Warmer months have higher temps
+                          const dailyHigh = dailyLow + tempRange;
+                          const avgTemp = (dailyHigh + dailyLow) / 2;
+                          const tempRangeValue = dailyHigh - dailyLow;
+                          
+                          // Calculate hourly temperature using sinusoidal pattern
+                          const phase = ((hour - 6) / 12) * Math.PI;
+                          const tempOffset = Math.cos(phase - Math.PI) * (tempRangeValue / 2);
+                          const hourlyTemp = avgTemp + tempOffset;
+                          
+                          hourData[monthNames[monthIdx]] = Math.round(hourlyTemp * 10) / 10;
+                        }
+                      });
+                      
+                      summerGraphData.push(hourData);
+                    }
+                    
+                    return (
+                      <div className="bg-cyan-50 dark:bg-cyan-900/20 rounded-lg p-4 border border-cyan-200 dark:border-cyan-800">
+                        <h5 className="font-semibold text-cyan-700 dark:text-cyan-300 mb-3 flex items-center gap-2">
+                          <Thermometer className="w-5 h-5" />
+                          Summer Temperature Profile (Cooling Season)
+                        </h5>
+                        <p className="text-xs text-cyan-600 dark:text-cyan-400 mb-3">
+                          Hourly temperature patterns for months with cooling needs. 
+                          Shows how daytime temperatures peak in the afternoon, requiring more cooling during peak hours. 
+                          Transition months (like April, May, September, October) may also require heating during cooler nights.
+                        </p>
+                        <div className="w-full" style={{ height: '400px' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={summerGraphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="hour" 
+                                label={{ value: 'Hour of Day', position: 'insideBottom', offset: -5 }}
+                                stroke="#6b7280"
+                                tick={{ fontSize: 10 }}
+                                tickFormatter={(value) => {
+                                  if (value === 0) return '12 AM';
+                                  if (value < 12) return `${value} AM`;
+                                  if (value === 12) return '12 PM';
+                                  return `${value - 12} PM`;
+                                }}
+                              />
+                              <YAxis 
+                                label={{ value: 'Temperature (°F)', angle: -90, position: 'insideLeft' }}
+                                stroke="#6b7280"
+                                tick={{ fontSize: 10 }}
+                              />
+                              <Tooltip 
+                                content={({ active, payload }) => {
+                                  if (active && payload && payload.length) {
+                                    const data = payload[0].payload;
+                                    return (
+                                      <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+                                        <p className="text-xs font-semibold">{data.hourLabel}</p>
+                                        {payload.map((entry, idx) => (
+                                          <p key={idx} className="text-sm font-bold text-cyan-600 dark:text-cyan-400">
+                                            {entry.name}: {entry.value?.toFixed(1)}°F
+                                          </p>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Legend />
+                              {activeSummerMonths.map((monthIdx, idx) => (
+                                <Line
+                                  key={monthIdx}
+                                  type="monotone"
+                                  dataKey={monthNames[monthIdx]}
+                                  name={monthNames[monthIdx]}
+                                  stroke={idx === 0 ? "#06b6d4" : idx === 1 ? "#0891b2" : idx === 2 ? "#0e7490" : idx === 3 ? "#155e75" : idx === 4 ? "#164e63" : "#164e63"}
+                                  strokeWidth={2}
+                                  dot={false}
+                                  connectNulls
+                                />
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -3685,30 +4503,27 @@ const MonthlyBudgetPlanner = () => {
 
       {/* Annual Budget Comparison */}
       {mode === "comparison" && locationData && locationDataB && (
-        <div className="glass-card-gradient glass-card p-glass-lg mb-4 animate-fade-in-up">
-          <div className="text-center mb-6">
-            <h2 className="heading-secondary mb-2">
+        <div className="glass-card-gradient glass-card p-3 mb-2 animate-fade-in-up">
+          <div className="text-center mb-3">
+            <h2 className="text-base font-bold mb-1">
               📅 Annual Budget Comparison
             </h2>
-            <p className="text-muted">
-              Estimated yearly HVAC costs for both locations
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-glass">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
             {/* Location A Annual */}
-            <div className="glass-card p-glass border-blue-500/30">
+            <div className="glass-card p-2 border-blue-500/30">
               <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="flex items-center justify-center gap-1.5 mb-1">
                   <MapPin
-                    size={16}
+                    size={14}
                     className="text-blue-500"
                   />
-                  <h3 className="font-semibold text-high-contrast">
+                  <h3 className="text-xs font-semibold text-high-contrast">
                     {locationData.city}, {locationData.state}
                   </h3>
                 </div>
-                <div className="text-4xl font-black text-high-contrast mb-2">
+                <div className="text-3xl font-black text-high-contrast mb-1">
                   $
                   {(() => {
                     // Calculate annual cost by summing all 12 months
@@ -3765,25 +4580,25 @@ const MonthlyBudgetPlanner = () => {
                     return Math.max(0, totalAnnualCost).toFixed(2);
                   })()}
                 </div>
-                <p className="text-xs text-muted">
-                  Estimated annual cost
+                <p className="text-[10px] text-muted">
+                  Annual cost
                 </p>
               </div>
             </div>
 
             {/* Location B Annual */}
-            <div className="glass-card p-glass border-green-500/30">
+            <div className="glass-card p-2 border-green-500/30">
               <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="flex items-center justify-center gap-1.5 mb-1">
                   <MapPin
-                    size={16}
+                    size={14}
                     className="text-green-500"
                   />
-                  <h3 className="font-semibold text-high-contrast">
+                  <h3 className="text-xs font-semibold text-high-contrast">
                     {locationDataB.city}, {locationDataB.state}
                   </h3>
                 </div>
-                <div className="text-4xl font-black text-high-contrast mb-2">
+                <div className="text-3xl font-black text-high-contrast mb-1">
                   $
                   {(() => {
                     // Calculate annual cost by summing all 12 months for Location B
@@ -3839,17 +4654,12 @@ const MonthlyBudgetPlanner = () => {
                     return Math.max(0, totalAnnualCost).toFixed(2);
                   })()}
                 </div>
-                <p className="text-xs text-muted">
-                  Estimated annual cost
+                <p className="text-[10px] text-muted">
+                  Annual cost
                 </p>
               </div>
             </div>
           </div>
-
-          <p className="text-xs text-muted mt-4 italic text-center">
-            * Simplified estimates for budgeting purposes based on typical
-            climate patterns
-          </p>
 
           {/* Climate Flex Score Card */}
           {locationData && locationDataB && (() => {
@@ -3898,39 +4708,36 @@ const MonthlyBudgetPlanner = () => {
             if (!isWarmer || savings < 10) return null; // Only show if Location A is warmer and savings are meaningful
             
             return (
-              <div className="mt-6 glass-card p-glass border-green-500/30 bg-gradient-to-br from-green-900/10 to-emerald-900/10">
+              <div className="mt-3 glass-card p-2 border-green-500/30 bg-gradient-to-br from-green-900/10 to-emerald-900/10">
                 <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 mb-3">
-                    <span className="text-2xl">🌎</span>
-                    <h3 className="text-lg font-bold text-high-contrast">Climate Flex</h3>
+                  <div className="flex items-center justify-center gap-1.5 mb-2">
+                    <span className="text-lg">🌎</span>
+                    <h3 className="text-sm font-bold text-high-contrast">Climate Flex</h3>
                   </div>
-                  <p className="text-sm text-gray-300 mb-4 leading-relaxed">
-                    Your heat pump works way less hard in your climate.
-                  </p>
                   
-                  <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                    <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-3">
-                      <div className="text-gray-400 text-xs mb-1">{locationData.city} winter load</div>
-                      <div className="text-blue-400 font-bold">{annualHDDA.toLocaleString()} HDD</div>
+                  <div className="grid grid-cols-2 gap-2 mb-2 text-xs">
+                    <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-2">
+                      <div className="text-gray-400 text-[10px] mb-0.5">{locationData.city} winter</div>
+                      <div className="text-blue-400 font-bold text-sm">{annualHDDA.toLocaleString()} HDD</div>
                     </div>
-                    <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-3">
-                      <div className="text-gray-400 text-xs mb-1">{locationDataB.city} winter load</div>
-                      <div className="text-orange-400 font-bold">{annualHDDB.toLocaleString()} HDD</div>
-                      <div className="text-xs text-gray-500 mt-1">~{heatLoadRatio}× more</div>
+                    <div className="bg-[#0c1218] border border-[#1c2733] rounded-lg p-2">
+                      <div className="text-gray-400 text-[10px] mb-0.5">{locationDataB.city} winter</div>
+                      <div className="text-orange-400 font-bold text-sm">{annualHDDB.toLocaleString()} HDD</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">~{heatLoadRatio}× more</div>
                     </div>
                   </div>
                   
-                  <div className="bg-[#0f2b1c] border border-[#234435] rounded-lg p-4 mb-4">
-                    <div className="text-green-400 font-bold text-lg mb-1">
-                      ${Math.abs(savings).toFixed(2)} saved per year
+                  <div className="bg-[#0f2b1c] border border-[#234435] rounded-lg p-2 mb-2">
+                    <div className="text-green-400 font-bold text-base mb-0.5">
+                      ${Math.abs(savings).toFixed(2)} saved/year
                     </div>
-                    <div className="text-xs text-gray-400">
-                      Simply by living where air doesn't hurt your face
+                    <div className="text-[10px] text-gray-400">
+                      Living where air doesn't hurt your face
                     </div>
                   </div>
                   
-                  <p className="text-xs text-gray-400 italic leading-relaxed">
-                    Physics says: living here saves you money before you even touch your thermostat.
+                  <p className="text-[10px] text-gray-400 italic">
+                    Physics: saves money before you touch your thermostat.
                   </p>
                 </div>
               </div>
@@ -4189,7 +4996,7 @@ const MonthlyBudgetPlanner = () => {
                 ⚠️ Disclaimer
               </p>
               <p className="text-sm text-high-contrast/90 leading-relaxed">
-                <strong>This is a planning estimate, not a bill.</strong> It's based on long-term weather averages. Your real costs will change with actual weather and how you use your system.
+                <strong>This is a planning estimate, not a bill.</strong> It's based on long-term weather average. Your real costs will change with actual weather and how you use your system.
               </p>
             </div>
           </div>
@@ -4493,7 +5300,7 @@ const MonthlyBudgetPlanner = () => {
                           <p className="font-semibold text-green-600 dark:text-green-400 mb-2">📊 Using Hourly Historical Data</p>
                           <div className="mb-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-300 dark:border-green-700">
                             <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                              <strong>Aux heat risk (varies by winter):</strong> Monthly costs use typical climate averages, but aux heat depends on <em>cold snaps</em>.
+                              <strong>Aux heat risk (varies by winter):</strong> Monthly costs use typical climate average, but aux heat depends on <em>cold snaps</em>.
                             </p>
                             <div className="flex items-center gap-2 flex-wrap mb-2">
                               <span className="text-xs text-gray-600 dark:text-gray-400">Choose a weather year:</span>

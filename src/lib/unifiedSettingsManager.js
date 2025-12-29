@@ -165,6 +165,26 @@ export const SETTING_VALIDATORS = {
     return { valid: true };
   },
 
+  indoorTemp: (value) => {
+    if (typeof value !== "number" || value < 50 || value > 85) {
+      return {
+        valid: false,
+        error: "Indoor temperature must be between 50 and 85°F",
+      };
+    }
+    return { valid: true };
+  },
+
+  nighttimeTemp: (value) => {
+    if (typeof value !== "number" || value < 50 || value > 85) {
+      return {
+        valid: false,
+        error: "Nighttime temperature must be between 50 and 85°F",
+      };
+    }
+    return { valid: true };
+  },
+
   squareFeet: (value) => {
     if (typeof value !== "number" || value < 100 || value > 10000) {
       return {

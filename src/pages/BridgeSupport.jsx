@@ -15,13 +15,118 @@ import {
   Cpu,
   Copy,
   ExternalLink,
-  FileText
+  FileText,
+  Volume2,
+  Zap,
+  Settings
 } from 'lucide-react';
+import TTSServiceSettings from '../components/TTSServiceSettings';
+
+// Voice Persona Selector Component (extracted from Settings.jsx)
+const VoicePersonaSelector = () => {
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(() => {
+    try {
+      return localStorage.getItem("askJouleVoice") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    const loadVoices = () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoices = voices
+          .filter((v) => v.lang.startsWith("en"))
+          .sort((a, b) => {
+            const aIsGB = a.lang === "en-GB" || a.name.toLowerCase().includes("uk") || a.name.toLowerCase().includes("british");
+            const bIsGB = b.lang === "en-GB" || b.name.toLowerCase().includes("uk") || b.name.toLowerCase().includes("british");
+            if (aIsGB && !bIsGB) return -1;
+            if (!aIsGB && bIsGB) return 1;
+            const aIsMale = a.name.toLowerCase().includes("male");
+            const bIsMale = b.name.toLowerCase().includes("male");
+            if (aIsMale && !bIsMale) return -1;
+            if (!aIsMale && bIsMale) return 1;
+            return a.name.localeCompare(b.name);
+          });
+        setAvailableVoices(englishVoices);
+      }
+    };
+
+    loadVoices();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
+  const handleVoiceChange = (e) => {
+    const voiceName = e.target.value;
+    setSelectedVoice(voiceName);
+    try {
+      if (voiceName) {
+        localStorage.setItem("askJouleVoice", voiceName);
+      } else {
+        localStorage.removeItem("askJouleVoice");
+      }
+    } catch (err) {
+      console.warn("Failed to save voice preference:", err);
+    }
+  };
+
+  const getVoiceLabel = (voice) => {
+    const lang = voice.lang === "en-GB" ? "🇬🇧 British" : voice.lang === "en-US" ? "🇺🇸 American" : "🇬🇧/🇺🇸";
+    const gender = voice.name.toLowerCase().includes("male") ? "♂ Male" : voice.name.toLowerCase().includes("female") ? "♀ Female" : "";
+    return `${lang} ${gender ? `- ${gender}` : ""} - ${voice.name}`;
+  };
+
+  if (availableVoices.length === 0) {
+    return (
+      <div className="text-sm text-slate-400">
+        Loading voices...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label
+        htmlFor="voice-picker-bridge"
+        className="block text-sm font-medium text-slate-300 mb-2"
+      >
+        Voice Persona
+      </label>
+      <select
+        id="voice-picker-bridge"
+        value={selectedVoice}
+        onChange={handleVoiceChange}
+        className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        aria-label="Voice persona selection"
+      >
+        <option value="">Default (Auto-select best voice)</option>
+        {availableVoices.map((voice) => (
+          <option key={voice.name} value={voice.name}>
+            {getVoiceLabel(voice)}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1.5 text-xs text-slate-400 max-w-2xl leading-relaxed">
+        Choose a voice for Ask Joule. British English voices sound more formal and authoritative (JARVIS-like).
+      </p>
+    </div>
+  );
+};
 
 /**
- * Bridge Support Page
- * Remote administration and troubleshooting for the Joule Bridge
- * Designed for support staff to help users without SSH access
+ * Bridge Diagnostics Page
+ * Self-service diagnostics and troubleshooting for the Joule Bridge
+ * Check status, view logs, and perform basic maintenance tasks
  */
 export default function BridgeSupport() {
   const [bridgeUrl, setBridgeUrl] = useState(() => {
@@ -62,6 +167,15 @@ export default function BridgeSupport() {
     loading: false, 
     success: false, 
     error: null 
+  });
+
+  // Voice settings state
+  const [useBrowserTTS, setUseBrowserTTS] = useState(() => {
+    try {
+      return localStorage.getItem("useBrowserTTS") === "true";
+    } catch {
+      return false;
+    }
   });
 
   // Fetch helper with timeout
@@ -415,8 +529,8 @@ export default function BridgeSupport() {
           <div className="flex items-center gap-3">
             <Server className="w-8 h-8 text-blue-400" />
             <div>
-              <h1 className="text-2xl font-bold">Bridge Support</h1>
-              <p className="text-slate-400 text-sm">Remote administration & troubleshooting</p>
+              <h1 className="text-2xl font-bold">Bridge Diagnostics</h1>
+              <p className="text-slate-400 text-sm">Check status, view logs, and troubleshoot issues</p>
             </div>
           </div>
           <button
@@ -888,6 +1002,74 @@ export default function BridgeSupport() {
           </div>
         )}
 
+        {/* Voice Settings */}
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Volume2 className="w-5 h-5" />
+            Voice Settings
+          </h2>
+          
+          <div className="space-y-6">
+            {/* Browser TTS Toggle */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useBrowserTTS}
+                  onChange={(e) => {
+                    const useBrowser = e.target.checked;
+                    setUseBrowserTTS(useBrowser);
+                    try {
+                      localStorage.setItem("useBrowserTTS", useBrowser.toString());
+                      window.dispatchEvent(new Event("ttsEngineChanged"));
+                    } catch (err) {
+                      console.warn("Failed to save TTS engine preference:", err);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-sm font-medium text-slate-300">
+                  Use Browser TTS (instead of Premium TTS)
+                </span>
+              </label>
+              <p className="mt-1 text-xs text-slate-400 ml-6">
+                {useBrowserTTS
+                  ? "Using browser's built-in text-to-speech. Free and unlimited."
+                  : "Using premium TTS service (ElevenLabs) - requires monthly subscription. High-quality voice synthesis with natural-sounding speech."}
+              </p>
+            </div>
+
+            {/* Coqui TTS Service */}
+            <div>
+              <TTSServiceSettings />
+            </div>
+
+            {/* Voice Persona Selector */}
+            <VoicePersonaSelector />
+          </div>
+        </div>
+
+        {/* Remote Settings Configuration */}
+        {status.connected && (
+          <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Remote Settings Configuration
+            </h2>
+            <p className="text-sm text-slate-400 mb-4">
+              Configure all user settings remotely via Tailscale. Access the full settings page to modify system, building, thermostat, and energy settings.
+            </p>
+            <Link
+              to="/remote-settings"
+              state={{ bridgeUrl }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-white font-medium"
+            >
+              <Settings className="w-4 h-4" />
+              Open Remote Settings
+            </Link>
+          </div>
+        )}
+
         {/* Documentation Links */}
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -914,7 +1096,7 @@ export default function BridgeSupport() {
             >
               <FileText className="w-5 h-5 text-purple-400" />
               <div>
-                <p className="font-medium text-white">Admin Manual</p>
+                <p className="font-medium text-white">Support Manual</p>
                 <p className="text-xs text-slate-400">Remote support and troubleshooting for support staff</p>
               </div>
               <ExternalLink className="w-4 h-4 text-slate-400 ml-auto" />

@@ -230,7 +230,7 @@ The bridge automatically advertises itself on your network. You can access it us
 ### "Can't Access Router"
 
 - Router address is usually `192.168.0.1` or `192.168.1.1`
-- Check the label on your router for the admin address
+- Check the label on your router for the settings address
 - Or ask your internet provider
 
 ### "Bridge IP Changed After Power Outage"

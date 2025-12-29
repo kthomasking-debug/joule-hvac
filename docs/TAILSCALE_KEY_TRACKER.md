@@ -248,10 +248,10 @@ pip3 install ics --user
 - Calendar event reminder
 - Follow up if customer hasn't re-authenticated
 
-## Integration with Admin Manual
+## Integration with Support Manual
 
 When you receive an alert:
-1. Check Admin Manual section: "Tailscale Key Expiry Handling"
+1. Check Support Manual section: "Tailscale Key Expiry Handling"
 2. Follow re-authentication instructions
 3. Guide customer through `sudo tailscale up`
 4. Verify new IP if changed

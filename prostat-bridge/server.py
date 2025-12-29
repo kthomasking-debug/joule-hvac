@@ -66,6 +66,12 @@ relay_channel = 2  # Default: Relay 2 for dehumidifier (Y2 terminal)
 blueair_account = None
 blueair_devices = []
 blueair_connected = False
+blueair_local_ip = None  # For local ESP32 devices (cached IP)
+blueair_local_mode = False  # True = local ESP32, False = cloud API
+blueair_mac_address = None  # MAC address for auto-discovery (e.g., "D0-EF-76-1B-B8-1C")
+blueair_last_discovery = None  # Timestamp of last discovery attempt
+blueair_esp32_username = None  # ESP32 API username
+blueair_esp32_password = None  # ESP32 API password
 
 # Config file path for Blueair credentials
 CONFIG_DIR = Path(__file__).parent / 'data'
@@ -1604,40 +1610,226 @@ async def handle_evaluate_interlock(request):
 # ============================================================================
 
 def load_blueair_config():
-    """Load Blueair credentials from config file"""
+    """Load Blueair configuration from config file"""
     try:
         if BLUEAIR_CONFIG_FILE.exists():
             with open(BLUEAIR_CONFIG_FILE, 'r') as f:
                 config = json.load(f)
-                return config.get('username'), config.get('password')
+                return (
+                    config.get('username'),
+                    config.get('password'),
+                    config.get('mac_address'),
+                    config.get('local_ip'),
+                    config.get('esp32_username'),
+                    config.get('esp32_password')
+                )
     except Exception as e:
         logger.warning(f"Failed to load Blueair config: {e}")
-    return None, None
+    return None, None, None, None, None, None
 
-def save_blueair_config(username, password):
-    """Save Blueair credentials to config file"""
+def save_blueair_config(username=None, password=None, mac_address=None, local_ip=None, esp32_username=None, esp32_password=None):
+    """Save Blueair configuration to config file"""
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        config = {
-            'username': username,
-            'password': password
-        }
+        
+        # Load existing config to preserve values not being updated
+        existing_config = {}
+        if BLUEAIR_CONFIG_FILE.exists():
+            try:
+                with open(BLUEAIR_CONFIG_FILE, 'r') as f:
+                    existing_config = json.load(f)
+            except:
+                pass
+        
+        # Update only provided values
+        config = {**existing_config}
+        if username is not None:
+            config['username'] = username
+        if password is not None:
+            config['password'] = password
+        if mac_address is not None:
+            config['mac_address'] = mac_address.upper().replace('-', ':')
+        if local_ip is not None:
+            config['local_ip'] = local_ip
+        if esp32_username is not None:
+            config['esp32_username'] = esp32_username
+        if esp32_password is not None:
+            config['esp32_password'] = esp32_password
+        
         with open(BLUEAIR_CONFIG_FILE, 'w') as f:
-            json.dump(config, f)
+            json.dump(config, f, indent=2)
         # Set restrictive permissions (owner read/write only)
         os.chmod(BLUEAIR_CONFIG_FILE, 0o600)
-        logger.info("Blueair credentials saved to config file")
+        logger.info("Blueair configuration saved to config file")
         return True
     except Exception as e:
         logger.error(f"Failed to save Blueair config: {e}")
         return False
 
-async def init_blueair():
-    """Initialize Blueair connection"""
-    global blueair_account, blueair_devices, blueair_connected
+async def discover_blueair_esp32():
+    """Discover Blueair ESP32 device on local network using mDNS or MAC address"""
+    global blueair_local_ip, blueair_mac_address
     
+    # Get MAC address from environment or config file (priority: env > config)
+    mac_env = os.getenv('BLUEAIR_MAC_ADDRESS', '').upper().replace('-', ':')
+    if not mac_env:
+        # Try loading from config file
+        _, _, mac_from_config, _, _, _ = load_blueair_config()
+        if mac_from_config:
+            mac_env = mac_from_config.upper().replace('-', ':')
+    
+    if mac_env:
+        blueair_mac_address = mac_env
+    
+    # Try mDNS discovery first (if ESP32 advertises itself as blueair.local)
+    try:
+        from zeroconf.asyncio import AsyncZeroconf
+        from zeroconf import ServiceBrowser, ServiceListener
+        
+        class BlueairListener(ServiceListener):
+            def __init__(self):
+                self.found_ip = None
+            
+            def add_service(self, zeroconf, service_type, name):
+                info = zeroconf.get_service_info(service_type, name)
+                if info and info.addresses:
+                    self.found_ip = str(info.addresses[0])
+                    logger.info(f"Found Blueair ESP32 via mDNS: {self.found_ip}")
+        
+        listener = BlueairListener()
+        zeroconf = AsyncZeroconf()
+        browser = ServiceBrowser(zeroconf.zeroconf, "_http._tcp.local.", listener)
+        
+        # Wait up to 2 seconds for discovery
+        await asyncio.sleep(2)
+        
+        if listener.found_ip:
+            blueair_local_ip = listener.found_ip
+            browser.cancel()
+            await zeroconf.async_close()
+            return listener.found_ip
+        
+        browser.cancel()
+        await zeroconf.async_close()
+    except Exception as e:
+        logger.debug(f"mDNS discovery failed: {e}")
+    
+    # Fall back to MAC address scanning if MAC is provided
+    if blueair_mac_address:
+        try:
+            import subprocess
+            import re
+            
+            # Try arp command (Linux)
+            try:
+                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=5)
+                for line in result.stdout.split('\n'):
+                    if blueair_mac_address.replace(':', '-').lower() in line.lower():
+                        # Extract IP from arp output (format: hostname (192.168.0.107) at ...)
+                        match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\)', line)
+                        if match:
+                            found_ip = match.group(1)
+                            logger.info(f"Found Blueair ESP32 via ARP scan: {found_ip}")
+                            blueair_local_ip = found_ip
+                            return found_ip
+            except Exception as e:
+                logger.debug(f"ARP scan failed: {e}")
+        except Exception as e:
+            logger.debug(f"MAC address discovery failed: {e}")
+    
+    return None
+
+
+async def _try_rediscover_blueair():
+    """Try to rediscover Blueair ESP32 if connection fails (background task)"""
+    global blueair_local_ip, blueair_last_discovery
+    
+    # Only rediscover if it's been more than 30 seconds since last attempt
+    if blueair_last_discovery:
+        time_diff = (datetime.now() - blueair_last_discovery).total_seconds()
+        if time_diff < 30:
+            return  # Too soon to retry
+    
+    try:
+        discovered_ip = await discover_blueair_esp32()
+        if discovered_ip and discovered_ip != blueair_local_ip:
+            logger.info(f"Blueair ESP32 IP changed: {blueair_local_ip} -> {discovered_ip}")
+            blueair_local_ip = discovered_ip
+            blueair_last_discovery = datetime.now()
+    except Exception as e:
+        logger.debug(f"Rediscovery attempt failed: {e}")
+
+
+async def init_blueair():
+    """Initialize Blueair connection (cloud API or local ESP32)"""
+    global blueair_account, blueair_devices, blueair_connected, blueair_local_ip, blueair_local_mode, blueair_last_discovery
+    
+    # Check for manual IP override first (highest priority)
+    manual_ip = os.getenv('BLUEAIR_LOCAL_IP')
+    if manual_ip:
+        blueair_local_ip = manual_ip
+        blueair_local_mode = True
+        blueair_connected = True
+        blueair_devices = [{'ip': manual_ip, 'name': 'Blueair ESP32', 'local': True}]
+        logger.info(f"Blueair local ESP32 mode (manual IP): {manual_ip}")
+        return True
+    
+    # Try auto-discovery (finds device by MAC address)
+    discovered_ip = await discover_blueair_esp32()
+    if discovered_ip:
+        # IMPORTANT: Verify the device actually has a web API before enabling local mode
+        # (The Blueair Pure 211 Max is a commercial product that only works via cloud API,
+        # even though it has a MAC address we can find. It has no local web server.)
+        try:
+            import aiohttp
+            from aiohttp import BasicAuth
+            url = f"http://{discovered_ip}/api/status"
+            auth = None
+            if blueair_esp32_username and blueair_esp32_password:
+                auth = BasicAuth(blueair_esp32_username, blueair_esp32_password)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    if resp.status == 200:
+                        blueair_local_ip = discovered_ip
+                        blueair_local_mode = True
+                        blueair_connected = True
+                        blueair_devices = [{'ip': discovered_ip, 'name': 'Blueair ESP32', 'local': True}]
+                        blueair_last_discovery = datetime.now()
+                        logger.info(f"Blueair local ESP32 mode (auto-discovered): {discovered_ip}")
+                        return True
+                    else:
+                        logger.info(f"Device at {discovered_ip} found by MAC but HTTP returned {resp.status} - not an ESP32 web server")
+        except Exception as e:
+            logger.info(f"Device at {discovered_ip} found by MAC but has no web API: {e}")
+            logger.info("This is likely a commercial Blueair device - will use cloud API instead.")
+    
+    # If we have a cached IP from previous discovery, try it
+    if blueair_local_ip:
+        # Verify the cached IP is still reachable
+        try:
+            import aiohttp
+            from aiohttp import BasicAuth
+            url = f"http://{blueair_local_ip}/api/status"
+            auth = None
+            if blueair_esp32_username and blueair_esp32_password:
+                auth = BasicAuth(blueair_esp32_username, blueair_esp32_password)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                    if resp.status == 200:
+                        blueair_local_mode = True
+                        blueair_connected = True
+                        blueair_devices = [{'ip': blueair_local_ip, 'name': 'Blueair ESP32', 'local': True}]
+                        logger.info(f"Blueair local ESP32 mode (cached IP): {blueair_local_ip}")
+                        return True
+        except:
+            # Cached IP is no longer valid, clear it and try discovery again
+            logger.warning(f"Cached Blueair IP {blueair_local_ip} is no longer reachable, will retry discovery")
+            blueair_local_ip = None
+    
+    # Fall back to cloud API
     if not BLUEAIR_AVAILABLE:
         logger.info("Blueair API not available - Blueair features disabled")
+        logger.info("Set BLUEAIR_LOCAL_IP environment variable for local ESP32 device.")
         blueair_connected = False
         return False
     
@@ -1645,14 +1837,21 @@ async def init_blueair():
         # Get credentials from environment variables first, then config file
         username = os.getenv('BLUEAIR_USERNAME')
         password = os.getenv('BLUEAIR_PASSWORD')
+        mac_from_env = os.getenv('BLUEAIR_MAC_ADDRESS')
+        ip_from_env = os.getenv('BLUEAIR_LOCAL_IP')
         
         # If not in environment, try config file
         if not username or not password:
-            username, password = load_blueair_config()
+            username, password, mac_from_config, ip_from_config, esp32_user, esp32_pass = load_blueair_config()
+            if mac_from_config and not mac_from_env:
+                blueair_mac_address = mac_from_config.upper().replace('-', ':')
+            if ip_from_config and not ip_from_env:
+                manual_ip = ip_from_config
         
         if not username or not password:
             logger.info("Blueair credentials not set. Blueair features will be disabled.")
             logger.info("Set BLUEAIR_USERNAME and BLUEAIR_PASSWORD environment variables, or use /api/blueair/credentials endpoint.")
+            logger.info("Alternatively, set BLUEAIR_LOCAL_IP for local ESP32 device.")
             blueair_connected = False
             return False
         
@@ -1661,6 +1860,7 @@ async def init_blueair():
             blueair_devices = await get_devices(username=username, password=password)
             blueair_account = None  # Not needed with new API
             blueair_connected = True
+            blueair_local_mode = False
             logger.info(f"Blueair connected: {len(blueair_devices)} device(s) found")
             return True
         except Exception as api_error:
@@ -1681,7 +1881,7 @@ async def control_blueair_fan(device_index=0, speed=0):
         device_index: Device index (default: 0 for first device)
         speed: Fan speed (0=off, 1=low, 2=medium, 3=max)
     """
-    global blueair_account, blueair_devices, blueair_connected
+    global blueair_account, blueair_devices, blueair_connected, blueair_local_mode, blueair_local_ip
     
     if not blueair_connected or not blueair_devices:
         raise Exception("Blueair not connected")
@@ -1690,11 +1890,31 @@ async def control_blueair_fan(device_index=0, speed=0):
         raise Exception(f"Device index {device_index} out of range")
     
     try:
-        purifier = blueair_devices[device_index]
-        await purifier.set_fan_speed(speed)
-        system_state['blueair_fan_speed'] = speed
-        logger.info(f"Blueair fan speed set to {speed}")
-        return True
+        # Local ESP32 mode
+        if blueair_local_mode and blueair_local_ip:
+            import aiohttp
+            from aiohttp import BasicAuth
+            url = f"http://{blueair_local_ip}/api/fan"
+            auth = None
+            if blueair_esp32_username and blueair_esp32_password:
+                auth = BasicAuth(blueair_esp32_username, blueair_esp32_password)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json={'speed': speed}, auth=auth, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        system_state['blueair_fan_speed'] = speed
+                        logger.info(f"Blueair ESP32 fan speed set to {speed}")
+                        return True
+                    elif resp.status == 401:
+                        raise Exception(f"ESP32 authentication failed (401). Check username/password.")
+                    else:
+                        raise Exception(f"ESP32 returned status {resp.status}")
+        else:
+            # Cloud API mode
+            purifier = blueair_devices[device_index]
+            await purifier.set_fan_speed(speed)
+            system_state['blueair_fan_speed'] = speed
+            logger.info(f"Blueair fan speed set to {speed}")
+            return True
     except Exception as e:
         logger.error(f"Failed to control Blueair fan: {e}")
         raise
@@ -1708,7 +1928,7 @@ async def control_blueair_led(device_index=0, brightness=100):
         device_index: Device index (default: 0 for first device)
         brightness: LED brightness (0-100, 0=off)
     """
-    global blueair_account, blueair_devices, blueair_connected
+    global blueair_account, blueair_devices, blueair_connected, blueair_local_mode, blueair_local_ip
     
     if not blueair_connected or not blueair_devices:
         raise Exception("Blueair not connected")
@@ -1717,11 +1937,36 @@ async def control_blueair_led(device_index=0, brightness=100):
         raise Exception(f"Device index {device_index} out of range")
     
     try:
-        purifier = blueair_devices[device_index]
-        await purifier.set_led_brightness(brightness)
-        system_state['blueair_led_brightness'] = brightness
-        logger.info(f"Blueair LED brightness set to {brightness}%")
-        return True
+        # Local ESP32 mode
+        if blueair_local_mode and blueair_local_ip:
+            import aiohttp
+            from aiohttp import BasicAuth
+            url = f"http://{blueair_local_ip}/api/led"
+            auth = None
+            if blueair_esp32_username and blueair_esp32_password:
+                auth = BasicAuth(blueair_esp32_username, blueair_esp32_password)
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json={'brightness': brightness}, auth=auth, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            system_state['blueair_led_brightness'] = brightness
+                            logger.info(f"Blueair ESP32 LED brightness set to {brightness}%")
+                            return True
+                        elif resp.status == 401:
+                            raise Exception(f"ESP32 authentication failed (401). Check username/password.")
+                        else:
+                            raise Exception(f"ESP32 returned status {resp.status}")
+            except Exception as e:
+                # Try to rediscover if connection failed
+                await _try_rediscover_blueair()
+                raise
+        else:
+            # Cloud API mode
+            purifier = blueair_devices[device_index]
+            await purifier.set_led_brightness(brightness)
+            system_state['blueair_led_brightness'] = brightness
+            logger.info(f"Blueair LED brightness set to {brightness}%")
+            return True
     except Exception as e:
         logger.error(f"Failed to control Blueair LED: {e}")
         raise
@@ -1729,7 +1974,7 @@ async def control_blueair_led(device_index=0, brightness=100):
 
 async def get_blueair_status(device_index=0):
     """Get Blueair device status"""
-    global blueair_devices, blueair_connected
+    global blueair_devices, blueair_connected, blueair_local_mode, blueair_local_ip, blueair_esp32_username, blueair_esp32_password
     
     if not blueair_connected or not blueair_devices:
         return None
@@ -1738,6 +1983,79 @@ async def get_blueair_status(device_index=0):
         return None
     
     try:
+        # Local ESP32 mode
+        if blueair_local_mode and blueair_local_ip:
+            import aiohttp
+            from aiohttp import BasicAuth
+            url = f"http://{blueair_local_ip}/api/status"
+            auth = None
+            if blueair_esp32_username and blueair_esp32_password:
+                auth = BasicAuth(blueair_esp32_username, blueair_esp32_password)
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            logger.debug(f"ESP32 API response (full): {json.dumps(data, indent=2)}")  # Debug log to see ALL data we're getting
+                            
+                            # Build status data with all available fields from ESP32
+                            status_data = {
+                                'device_index': device_index,
+                                'fan_speed': data.get('fan_speed', system_state.get('blueair_fan_speed', 0)),
+                                'led_brightness': data.get('led_brightness', system_state.get('blueair_led_brightness', 100)),
+                                'device_name': 'Blueair ESP32',
+                                'ip_address': blueair_local_ip,
+                            }
+                            
+                            # Include any additional fields the ESP32 might provide
+                            # (matching the cloud API structure from openhab-blueair repository)
+                            optional_fields = [
+                                'mode', 'filter_status', 'wifi_status', 'filter_life', 
+                                'filter_usage_days', 'filterlevel', 'uuid', 'mac', 
+                                'firmware', 'model', 'name', 'timezone', 'roomLocation',
+                                'child_lock', 'auto_mode_dependency', 'filterType',
+                                'mcuFirmware', 'wlanDriver', 'lastSyncDate', 'compatibility'
+                            ]
+                            for field in optional_fields:
+                                if field in data:
+                                    status_data[field] = data[field]
+                            
+                            # Also include any other unexpected fields (forward-compatible)
+                            for key, value in data.items():
+                                if key not in status_data and key not in ['fan_speed', 'led_brightness']:
+                                    status_data[key] = value
+                            
+                            # Update system state with actual values
+                            if 'fan_speed' in data:
+                                system_state['blueair_fan_speed'] = data['fan_speed']
+                            if 'led_brightness' in data:
+                                system_state['blueair_led_brightness'] = data['led_brightness']
+                            
+                            additional_fields = [k for k in status_data.keys() if k not in ['device_index', 'fan_speed', 'led_brightness', 'device_name', 'ip_address']]
+                            logger.info(f"Blueair ESP32 status retrieved: fan_speed={status_data['fan_speed']}, led_brightness={status_data['led_brightness']}, additional_fields={additional_fields}")
+                            return status_data
+                        elif resp.status == 401:
+                            logger.warning(f"ESP32 authentication failed (401). Check username/password.")
+                            return None
+                        else:
+                            logger.warning(f"ESP32 returned status {resp.status}")
+                            # Try to rediscover if IP changed
+                            await _try_rediscover_blueair()
+                            return None
+            except Exception as e:
+                logger.warning(f"Failed to get ESP32 status: {e}")
+                # Try to rediscover if connection failed
+                await _try_rediscover_blueair()
+                # Return cached state if available
+                return {
+                    'device_index': device_index,
+                    'fan_speed': system_state.get('blueair_fan_speed', 0),
+                    'led_brightness': system_state.get('blueair_led_brightness', 100),
+                    'device_name': 'Blueair ESP32',
+                    'ip_address': blueair_local_ip,
+                }
+        
+        # Cloud API mode
         purifier = blueair_devices[device_index]
         
         # Try to get actual device data from the API
@@ -1956,9 +2274,11 @@ async def handle_get_blueair_credentials(request):
         # Check environment variables
         env_username = os.getenv('BLUEAIR_USERNAME')
         env_password = os.getenv('BLUEAIR_PASSWORD')
+        env_mac = os.getenv('BLUEAIR_MAC_ADDRESS')
+        env_ip = os.getenv('BLUEAIR_LOCAL_IP')
         
         # Check config file
-        config_username, config_password = load_blueair_config()
+        config_username, config_password, config_mac, config_ip, config_esp32_user, config_esp32_pass = load_blueair_config()
         
         has_credentials = bool(
             (env_username and env_password) or 
@@ -1969,6 +2289,9 @@ async def handle_get_blueair_credentials(request):
             'has_credentials': has_credentials,
             'source': 'environment' if (env_username and env_password) else ('config' if (config_username and config_password) else None),
             'username': env_username or config_username or None,
+            'mac_address': env_mac or config_mac or None,
+            'local_ip': env_ip or config_ip or None,
+            'esp32_username': config_esp32_user or 'bunnyrita@gmail.com',
             'connected': blueair_connected,
             'devices_count': len(blueair_devices),
         })
@@ -1978,20 +2301,64 @@ async def handle_get_blueair_credentials(request):
 
 
 async def handle_blueair_credentials(request):
-    """POST /api/blueair/credentials - Set Blueair credentials"""
+    """POST /api/blueair/credentials - Set Blueair credentials or local device config"""
     try:
         data = await request.json()
+        
+        # Check if this is a local ESP32 configuration
+        local_ip = data.get('local_ip')
+        mac_address = data.get('mac_address')
+        
+        if local_ip or mac_address:
+            # Local ESP32 mode - save MAC address and/or IP
+            global blueair_local_ip, blueair_mac_address, blueair_esp32_username, blueair_esp32_password
+            
+            # Get ESP32 credentials from request or use defaults
+            esp32_username = data.get('esp32_username', 'bunnyrita@gmail.com')
+            esp32_password = data.get('esp32_password', '12345678')
+            
+            if save_blueair_config(mac_address=mac_address, local_ip=local_ip, esp32_username=esp32_username, esp32_password=esp32_password):
+                # Update global variables
+                if mac_address:
+                    blueair_mac_address = mac_address.upper().replace('-', ':')
+                if local_ip:
+                    blueair_local_ip = local_ip
+                blueair_esp32_username = esp32_username
+                blueair_esp32_password = esp32_password
+                blueair_esp32_username = esp32_username
+                blueair_esp32_password = esp32_password
+                
+                # Reinitialize to use new settings
+                result = await init_blueair()
+                if result:
+                    return web.json_response({
+                        'success': True,
+                        'message': 'Blueair local device configured',
+                        'ip_address': blueair_local_ip,
+                        'mac_address': blueair_mac_address,
+                    })
+                else:
+                    return web.json_response({
+                        'success': False,
+                        'message': 'Configuration saved but device not reachable. Check IP/MAC address.',
+                    }, status=400)
+            else:
+                return web.json_response({
+                    'error': 'Failed to save configuration'
+                }, status=500)
+        
+        # Cloud API mode (original behavior)
         username = data.get('username')
         password = data.get('password')
         
         if not username or not password:
             return web.json_response(
-                {'error': 'username and password required'}, 
+                {'error': 'username and password required for cloud API, or local_ip/mac_address for ESP32'}, 
                 status=400
             )
         
         # Save credentials to config file
-        if save_blueair_config(username, password):
+        if save_blueair_config(username=username, password=password):
             # Reinitialize Blueair connection with new credentials
             result = await init_blueair()
             if result:
@@ -2713,6 +3080,200 @@ async def handle_bridge_info(request):
 
 
 # ============================================================================
+# Settings Management Handlers - Remote Configuration via Tailscale
+# ============================================================================
+
+SETTINGS_FILE = None  # Will be set in main()
+
+def get_settings_file_path():
+    """Get the path to the settings storage file"""
+    data_dir = get_data_directory()
+    return os.path.join(data_dir, 'user_settings.json')
+
+def load_settings():
+    """Load settings from file"""
+    settings_file = get_settings_file_path()
+    try:
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        logger.error(f"Error loading settings: {e}")
+        return {}
+
+def save_settings(settings):
+    """Save settings to file"""
+    settings_file = get_settings_file_path()
+    try:
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+        
+        # Atomic write with backup
+        backup_file = settings_file + '.backup'
+        if os.path.exists(settings_file):
+            shutil.copy2(settings_file, backup_file)
+        
+        # Write new settings
+        with open(settings_file, 'w') as f:
+            json.dump(settings, f, indent=2)
+        
+        logger.info(f"Settings saved to {settings_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving settings: {e}")
+        return False
+
+async def handle_get_settings(request):
+    """GET /api/settings - Get all user settings"""
+    try:
+        settings = load_settings()
+        return web.json_response({
+            'success': True,
+            'settings': settings
+        })
+    except Exception as e:
+        logger.error(f"Error getting settings: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+async def handle_get_setting(request):
+    """GET /api/settings/{key} - Get a specific setting"""
+    try:
+        key = request.match_info.get('key')
+        if not key:
+            return web.json_response({
+                'success': False,
+                'error': 'Setting key is required'
+            }, status=400)
+        
+        settings = load_settings()
+        value = settings.get(key)
+        
+        return web.json_response({
+            'success': True,
+            'key': key,
+            'value': value
+        })
+    except Exception as e:
+        logger.error(f"Error getting setting: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+async def handle_set_setting(request):
+    """POST /api/settings/{key} - Set a specific setting"""
+    try:
+        key = request.match_info.get('key')
+        if not key:
+            return web.json_response({
+                'success': False,
+                'error': 'Setting key is required'
+            }, status=400)
+        
+        data = await request.json()
+        value = data.get('value')
+        
+        if value is None:
+            return web.json_response({
+                'success': False,
+                'error': 'Value is required'
+            }, status=400)
+        
+        settings = load_settings()
+        settings[key] = value
+        
+        if save_settings(settings):
+            return web.json_response({
+                'success': True,
+                'key': key,
+                'value': value
+            })
+        else:
+            return web.json_response({
+                'success': False,
+                'error': 'Failed to save settings'
+            }, status=500)
+    except Exception as e:
+        logger.error(f"Error setting setting: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+async def handle_set_settings_batch(request):
+    """POST /api/settings - Set multiple settings at once"""
+    try:
+        data = await request.json()
+        settings_update = data.get('settings', {})
+        
+        if not settings_update:
+            return web.json_response({
+                'success': False,
+                'error': 'Settings object is required'
+            }, status=400)
+        
+        settings = load_settings()
+        settings.update(settings_update)
+        
+        if save_settings(settings):
+            return web.json_response({
+                'success': True,
+                'settings': settings
+            })
+        else:
+            return web.json_response({
+                'success': False,
+                'error': 'Failed to save settings'
+            }, status=500)
+    except Exception as e:
+        logger.error(f"Error setting settings: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+async def handle_delete_setting(request):
+    """DELETE /api/settings/{key} - Delete a specific setting"""
+    try:
+        key = request.match_info.get('key')
+        if not key:
+            return web.json_response({
+                'success': False,
+                'error': 'Setting key is required'
+            }, status=400)
+        
+        settings = load_settings()
+        if key in settings:
+            del settings[key]
+            if save_settings(settings):
+                return web.json_response({
+                    'success': True,
+                    'key': key,
+                    'message': 'Setting deleted'
+                })
+            else:
+                return web.json_response({
+                    'success': False,
+                    'error': 'Failed to save settings'
+                }, status=500)
+        else:
+            return web.json_response({
+                'success': False,
+                'error': 'Setting not found'
+            }, status=404)
+    except Exception as e:
+        logger.error(f"Error deleting setting: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ============================================================================
 # TTS (Text-to-Speech) Handlers - Optional Feature
 # ============================================================================
 
@@ -2904,6 +3465,13 @@ async def init_app():
     app.router.add_get('/api/tts/health', handle_tts_health)
     app.router.add_post('/api/tts/synthesize', handle_tts_synthesize)
     app.router.add_get('/api/tts/voices', handle_tts_voices)
+    
+    # Settings management endpoints (remote configuration via Tailscale)
+    app.router.add_get('/api/settings', handle_get_settings)
+    app.router.add_get('/api/settings/{key}', handle_get_setting)
+    app.router.add_post('/api/settings', handle_set_settings_batch)
+    app.router.add_post('/api/settings/{key}', handle_set_setting)
+    app.router.add_delete('/api/settings/{key}', handle_delete_setting)
     
     # Enable CORS for all routes
     for route in list(app.router.routes()):

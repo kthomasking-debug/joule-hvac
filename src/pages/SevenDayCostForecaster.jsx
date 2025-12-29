@@ -432,6 +432,9 @@ const SevenDayCostForecaster = () => {
     }
   }, []);
 
+  // State to track thermostat settings updates (for re-rendering display)
+  const [settingsUpdateTrigger, setSettingsUpdateTrigger] = useState(0);
+
   // Listen for thermostat settings updates
   useEffect(() => {
     const handleSettingsUpdate = (e) => {
@@ -440,13 +443,21 @@ const SevenDayCostForecaster = () => {
         if (e.detail?.comfortSettings?.sleep?.heatSetPoint !== undefined) {
           setNighttimeTemp(thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65);
         }
+        // Trigger re-render to update home/away display
+        setSettingsUpdateTrigger(prev => prev + 1);
       } catch {
         // ignore
       }
     };
     window.addEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+    // Also listen for storage events (cross-tab updates)
+    const handleStorageChange = () => {
+      setSettingsUpdateTrigger(prev => prev + 1);
+    };
+    window.addEventListener("storage", handleStorageChange);
     return () => {
       window.removeEventListener("thermostatSettingsUpdated", handleSettingsUpdate);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
@@ -503,7 +514,8 @@ const SevenDayCostForecaster = () => {
       
       if (isNightPeriod) {
         // Use nighttime temperature (sleep setpoint)
-        return thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || nighttimeTemp || 65;
+        // Prioritize nighttimeTemp state (from slider) over stored thermostat settings for simulation
+        return nighttimeTemp || thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65;
       } else {
         // Use daytime temperature
         return indoorTemp;
@@ -1367,6 +1379,7 @@ const SevenDayCostForecaster = () => {
     getPerformanceAtTemp,
     utilityCost,
     indoorTemp,
+    nighttimeTemp,
     localRates,
     daytimeTime,
     nighttimeTime,
@@ -2103,6 +2116,131 @@ const SevenDayCostForecaster = () => {
               </p>
             </div>
             </div>
+          </div>
+        </div>
+
+        {/* Weekly Forecast - Daily Breakdown Table */}
+        {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
+          <div className="mt-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <BarChart2 className="w-5 h-5 text-blue-500" />
+                  Weekly Forecast
+                </h3>
+              </div>
+              <DailyBreakdownTable
+                summary={weeklyMetrics.summary}
+                indoorTemp={indoorTemp}
+                viewMode={breakdownView === "withAux" ? "withAux" : "noAux"}
+                awayModeDays={awayModeDays}
+                onToggleAwayMode={(dayDateString) => {
+                  setAwayModeDays(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(dayDateString)) {
+                      newSet.delete(dayDateString);
+                    } else {
+                      newSet.add(dayDateString);
+                    }
+                    return newSet;
+                  });
+                }}
+                unitSystem={unitSystem}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Comfort Settings (Home/Away/Sleep) */}
+        <div className="mt-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Thermometer className="w-5 h-5 text-blue-500" />
+                Comfort Settings
+              </h3>
+              <Link
+                to="/settings#comfort-settings"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Settings className="w-4 h-4" />
+                Configure in Settings
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Home className="w-4 h-4 text-green-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Home Mode</span>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {(() => {
+                    try {
+                      const thermostatSettings = loadThermostatSettings();
+                      const homeHeat = thermostatSettings?.comfortSettings?.home?.heatSetPoint;
+                      const homeCool = thermostatSettings?.comfortSettings?.home?.coolSetPoint;
+                      if (energyMode === "heating") {
+                        return `Heating: ${homeHeat ? formatTemperatureFromF(homeHeat, unitSystem, { decimals: 0 }) : "Not set"}`;
+                      } else {
+                        return `Cooling: ${homeCool ? formatTemperatureFromF(homeCool, unitSystem, { decimals: 0 }) : "Not set"}`;
+                      }
+                    } catch {
+                      return "Not configured";
+                    }
+                  })()}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Daytime/active periods</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Moon className="w-4 h-4 text-blue-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Sleep Mode</span>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {(() => {
+                    try {
+                      const thermostatSettings = loadThermostatSettings();
+                      const sleepHeat = thermostatSettings?.comfortSettings?.sleep?.heatSetPoint;
+                      const sleepCool = thermostatSettings?.comfortSettings?.sleep?.coolSetPoint;
+                      if (energyMode === "heating") {
+                        return `Heating: ${sleepHeat ? formatTemperatureFromF(sleepHeat, unitSystem, { decimals: 0 }) : "66°F (default)"}`;
+                      } else {
+                        return `Cooling: ${sleepCool ? formatTemperatureFromF(sleepCool, unitSystem, { decimals: 0 }) : "72°F (default)"}`;
+                      }
+                    } catch {
+                      return energyMode === "heating" ? "66°F (default)" : "72°F (default)";
+                    }
+                  })()}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Nighttime/sleep periods</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-orange-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Away Mode</span>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {(() => {
+                    try {
+                      const thermostatSettings = loadThermostatSettings();
+                      const awayHeat = thermostatSettings?.comfortSettings?.away?.heatSetPoint;
+                      const awayCool = thermostatSettings?.comfortSettings?.away?.coolSetPoint;
+                      if (energyMode === "heating") {
+                        return `Heating: ${awayHeat ? formatTemperatureFromF(awayHeat, unitSystem, { decimals: 0 }) : "62°F (default)"}`;
+                      } else {
+                        return `Cooling: ${awayCool ? formatTemperatureFromF(awayCool, unitSystem, { decimals: 0 }) : "85°F (default)"}`;
+                      }
+                    } catch {
+                      return energyMode === "heating" ? "62°F (default)" : "85°F (default)";
+                    }
+                  })()}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Used when days are marked "Away"</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
+              <strong>Home</strong> = Daytime/active periods • <strong>Sleep</strong> = Nighttime periods (used for the schedule above) • <strong>Away</strong> = Used when days are marked as "Away" in the weekly forecast. Click the button above to change these settings.
+            </p>
           </div>
         </div>
       </div>

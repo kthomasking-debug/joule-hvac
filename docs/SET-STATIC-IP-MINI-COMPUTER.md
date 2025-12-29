@@ -241,7 +241,7 @@ curl http://192.168.0.100:8080/health
 - Try `192.168.0.200` or `192.168.0.50`
 - Avoid common IPs like `.1` (router), `.100` (if in use)
 
-### Can't Access Router Admin Page
+### Can't Access Router Settings Page
 
 **If you set static IP and can't access router:**
 - Your router IP might be different

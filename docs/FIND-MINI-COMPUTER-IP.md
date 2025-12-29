@@ -1,6 +1,6 @@
 # How to Find Your Mini Computer's IP Address
 
-## Method 1: Check Router Admin Page (Easiest)
+## Method 1: Check Router Settings Page (Easiest)
 
 1. **Log into your router:**
    - Open browser: `http://192.168.0.1` (or `http://192.168.1.1`)
@@ -82,6 +82,6 @@ sudo journalctl -u prostat-bridge | grep -i "listening\|http"
 
 **Can't access router:**
 - Router address is usually `192.168.0.1` or `192.168.1.1`
-- Check router label for admin address
+- Check router label for settings address
 - Or ask your internet provider
 

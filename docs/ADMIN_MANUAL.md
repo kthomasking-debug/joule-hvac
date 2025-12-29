@@ -1,8 +1,8 @@
-# Joule HVAC Admin Manual
+# Joule HVAC Support Manual
 
-**For Support Staff and Administrators**
+**For Support Staff**
 
-This manual covers remote support, troubleshooting, and administration of Joule HVAC bridges deployed at customer locations.
+This manual covers remote support, troubleshooting, and management of Joule HVAC bridges deployed at customer locations.
 
 ---
 
@@ -12,7 +12,7 @@ This manual covers remote support, troubleshooting, and administration of Joule 
 2. [Remote Support Architecture](#remote-support-architecture)
 3. [Accessing Customer Bridges](#accessing-customer-bridges)
 4. [Support Ticket Workflow](#support-ticket-workflow)
-5. [Bridge Admin Interface](#bridge-admin-interface)
+5. [Bridge Diagnostics Interface](#bridge-diagnostics-interface)
 6. [Remote Actions](#remote-actions)
 7. [Troubleshooting Guide](#troubleshooting-guide)
 8. [Tailscale Setup for Customers](#tailscale-setup-for-customers)
@@ -27,7 +27,7 @@ Joule HVAC bridges run on mini PCs at customer locations. Support staff can acce
 
 - **Tailscale VPN** (recommended) - Direct remote access
 - **Support Tickets** - Customer-submitted diagnostic reports
-- **Bridge Admin Interface** - Web-based remote administration
+- **Bridge Diagnostics Interface** - Web-based remote management
 
 ---
 
@@ -43,7 +43,7 @@ Joule HVAC bridges run on mini PCs at customer locations. Support staff can acce
 │   │  Customer    │         │  Mini PC Bridge                  │     │
 │   │  opens       │         │                                  │     │
 │   │  Bridge      │  local  │  Local IP: 192.168.0.106:8080   │     │
-│   │  Admin       │ ──────► │  Tailscale: 100.102.98.23:8080 │     │
+│   │  Diagnostics │ ──────► │  Tailscale: 100.102.98.23:8080 │     │
 │   └──────────────┘  WiFi   └──────────────────────────────────┘     │
 │         │                                                            │
 │         │ 1. Customer views diagnostics                             │
@@ -70,7 +70,7 @@ Joule HVAC bridges run on mini PCs at customer locations. Support staff can acce
 │   ┌──────────────┐                                                  │
 │   │  You open    │  Paste: http://100.102.98.23:8080               │
 │   │  Bridge      │  into Bridge URL field                          │
-│   │  Admin       │                                                  │
+│   │  Support     │                                                  │
 │   └──────────────┘                                                  │
 │         │                                                            │
 │         │ Tailscale VPN (if customer has it installed)             │
@@ -114,7 +114,7 @@ Joule HVAC bridges run on mini PCs at customer locations. Support staff can acce
 
 **Steps:**
 
-1. **Open Bridge Admin** (`/tools/bridge-support`)
+1. **Open Bridge Diagnostics** (`/tools/bridge-support`)
 2. **Paste Tailscale IP** into Bridge URL field:
    ```
    http://100.102.98.23:8080
@@ -228,9 +228,9 @@ Disk: 202.9GB free (6% used)
 
 ---
 
-## Bridge Admin Interface
+## Bridge Diagnostics Interface
 
-### Accessing Bridge Admin
+### Accessing Bridge Diagnostics
 
 **URL:** `/tools/bridge-support`
 
@@ -312,7 +312,7 @@ When Tailscale is active, you'll see:
 - Version mismatch detected
 
 **Steps:**
-1. Open Bridge Admin
+1. Open Bridge Diagnostics
 2. Click "OTA Update" button
 3. Wait 30-60 seconds
 4. Click "Refresh" to verify update
@@ -407,7 +407,7 @@ After:  Current Version: def456 (latest)
 2. **URL Alternatives**
    - Try mDNS: `http://joule-bridge.local:8080`
    - Try common IPs: `192.168.0.106`, `192.168.1.100`
-   - Check router admin panel for actual IP
+   - Check router settings panel for actual IP
 
 3. **Service Restart**
    - If customer has SSH access, guide them:
@@ -527,7 +527,7 @@ Once installed, support can access your bridge remotely!
 **Option 2: You Add Customer**
 - Customer shares their Tailscale IP
 - You add their device to your network
-- Requires Tailscale admin access
+- Requires Tailscale dashboard access
 
 **Option 3: Shared Network**
 - Create a shared Tailscale network
@@ -545,13 +545,13 @@ Once installed, support can access your bridge remotely!
 **What Happens When Key Expires:**
 - Device loses connection to Tailscale network
 - Remote access via Tailscale IP stops working
-- Bridge Admin can't connect via Tailscale URL
-- Device appears offline in Tailscale admin console
+- Bridge Diagnostics can't connect via Tailscale URL
+- Device appears offline in Tailscale dashboard
 
 ### Detecting Expired Keys
 
 **Signs of Expired Key:**
-1. **Bridge Admin Page:**
+1. **Bridge Diagnostics Page:**
    - Tailscale IP section shows "not available"
    - Remote URL is missing
    - Status shows Tailscale as "not running" or "offline"
@@ -559,7 +559,7 @@ Once installed, support can access your bridge remotely!
 2. **Customer Reports:**
    - "Can't access bridge remotely anymore"
    - "Tailscale stopped working"
-   - "Bridge Admin shows Tailscale disconnected"
+   - "Bridge Diagnostics shows Tailscale disconnected"
 
 3. **Diagnostic Check:**
    - Ask customer to run: `tailscale status`
@@ -621,11 +621,11 @@ After customer completes authentication:
 2. **Get the IP** (should be 100.x.x.x format)
 
 3. **Test connection:**
-   - Paste IP into Bridge Admin URL field: `http://100.x.x.x:8080`
+   - Paste IP into Bridge Diagnostics URL field: `http://100.x.x.x:8080`
    - Click "Save & Check"
    - Verify connection succeeds
 
-4. **Confirm in Bridge Admin:**
+4. **Confirm in Bridge Diagnostics:**
    - Check "Remote Support Access" section
    - Should show Tailscale IP and "REMOTE ACCESS AVAILABLE"
 
@@ -639,7 +639,7 @@ After customer completes authentication:
    - Proactively reach out before keys expire
 
 2. **Use Extended Expiry (if available):**
-   - In Tailscale admin console, you can extend key expiry
+   - In Tailscale dashboard, you can extend key expiry
    - Go to: https://login.tailscale.com/admin/machines
    - Find customer's device
    - Extend expiry if needed
@@ -652,7 +652,7 @@ After customer completes authentication:
 **For Production Deployments:**
 
 1. **Use Auth Keys with Extended Expiry:**
-   - Create reusable auth keys in Tailscale admin
+   - Create reusable auth keys in Tailscale dashboard
    - Set longer expiry (up to 1 year) or no expiry
    - Use during initial setup: `sudo tailscale up --authkey=tskey-auth-xxxxx`
 
@@ -676,9 +676,9 @@ tailscale ip -4
 ```
 
 **Support staff can verify:**
-- Check Bridge Admin page for Tailscale IP
+- Check Bridge Diagnostics page for Tailscale IP
 - Test connection using Tailscale URL
-- Verify in Tailscale admin console
+- Verify in Tailscale dashboard
 
 ---
 
@@ -724,7 +724,7 @@ tailscale ip -4
 **Cause:** Bridge started multiple times
 
 **Solution:**
-1. Use "Kill Duplicates" button in Bridge Admin
+1. Use "Kill Duplicates" button in Bridge Diagnostics
 2. Or manually:
    ```bash
    sudo pkill -f "python3.*server.py"
@@ -830,7 +830,7 @@ You Receive Email
      │
      ├──► Has Tailscale IP?
      │    ├──► YES: Remote Access
-     │    │    └──► Fix via Bridge Admin
+     │    │    └──► Fix via Bridge Diagnostics
      │    │
      │    └──► NO: Email Support
      │         └──► Guide Customer

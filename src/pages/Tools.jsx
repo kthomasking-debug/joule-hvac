@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -90,11 +90,19 @@ export default function Tools() {
     },
     {
       path: "/tools/bridge-support",
-      name: "Bridge Admin",
-      label: "Bridge Admin",
+      name: "Bridge Diagnostics",
+      label: "Bridge Diagnostics",
       icon: Server,
-      description: "Remote bridge administration and troubleshooting. View diagnostics, logs, system info, and perform remote actions like OTA updates and restarts.",
+      description: "Self-service diagnostics and troubleshooting. Check status, view logs, system info, and perform basic maintenance tasks.",
       color: "orange",
+    },
+    {
+      path: "/tools/offline-launcher",
+      name: "Offline Launcher",
+      label: "Offline Launcher",
+      icon: Chrome,
+      description: "Launch the app in Chrome for offline access. Cache the app while online, then use it even when your internet connection is down.",
+      color: "blue",
     },
   ];
 

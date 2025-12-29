@@ -50,7 +50,7 @@ Joule Bridge
 MAC Address: AA:BB:CC:DD:EE:FF
 IP Address: 192.168.0.200 (if static)
 or
-Find IP in router admin page using MAC address above
+Find IP in router settings page using MAC address above
 
 Setup: Connect Ethernet cable to router, plug in power, wait 2 minutes.
 ```
@@ -76,7 +76,7 @@ Setup: Connect Ethernet cable to router, plug in power, wait 2 minutes.
 ## Optional: Create QR Code
 
 Generate QR code that links to:
-- Router admin page (if you know common router IPs)
+- Router settings page (if you know common router IPs)
 - Or a simple web page with instructions
 - Or the web app's bridge settings page
 
@@ -102,7 +102,7 @@ Generate QR code that links to:
 
 ✅ **Simpler troubleshooting:**
 - If it's plugged in, it's connected
-- Easy to verify in router admin
+- Easy to verify in router settings
 
 ✅ **Works everywhere:**
 - Every router has Ethernet ports

@@ -131,7 +131,7 @@ Use a service like DuckDNS or No-IP to get a hostname that always points to your
 
 ### How to Find New IP After Restart:
 
-1. **Check router admin page:**
+1. **Check router settings page:**
    - Log into router
    - Look at "Connected Devices"
    - Find your mini computer (look for hostname or MAC address)
@@ -166,7 +166,7 @@ After a power outage and restart:
    curl http://192.168.0.100:8080/health
    ```
 3. **If IP changed, find new IP:**
-   - Check router admin page
+   - Check router settings page
    - Or scan network for port 8080
 4. **Update web app** with new IP (if changed)
 

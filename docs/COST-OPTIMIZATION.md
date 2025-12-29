@@ -52,7 +52,7 @@ Ways to reduce the cost of your bridge package while maintaining quality.
 2. Enable SSH on SD card
 3. User just plugs in power
 4. Automatically connects to WiFi
-5. User finds IP in router admin page
+5. User finds IP in router settings page
 
 **Pros:**
 - ✅ Cheapest option

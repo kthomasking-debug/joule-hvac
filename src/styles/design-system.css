@@ -79,7 +79,7 @@ html.dark {
 
 .glass-card {
   background: var(--bg-layer-1);
-  border: 1px solid var(--border-color);
+  border: 1px solid transparent;
   border-radius: var(--radius-md); /* 12px consistent */
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
@@ -87,7 +87,7 @@ html.dark {
 
 html.dark .glass-card {
   background: var(--bg-layer-1);
-  border-color: var(--border-color);
+  border-color: transparent;
   box-shadow: var(--shadow-sm);
 }
 
