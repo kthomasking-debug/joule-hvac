@@ -383,7 +383,7 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/analysis/forecast-debug");
+    navigate("/analysis/weekly-forecast");
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
@@ -506,7 +506,7 @@ export default function Onboarding() {
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
-            onClick={() => navigate("/analysis/forecast-debug")}
+            onClick={() => navigate("/analysis/weekly-forecast")}
             className="btn btn-primary px-8 py-3 text-lg"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />

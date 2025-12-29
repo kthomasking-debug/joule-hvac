@@ -240,13 +240,13 @@ const FeatureTour = () => {
     }
   };
 
-  // Only show tour on home/dashboard page (not on mission-control or other pages)
+  // Only show tour on home/dashboard page (not on home-health or other pages)
   if (location.pathname !== "/" && location.pathname !== "/home") {
     return null;
   }
   
-  // Don't attempt tour on mission-control or other simplified pages that don't have tour targets
-  if (location.pathname === "/mission-control") {
+  // Don't attempt tour on home-health or other simplified pages that don't have tour targets
+  if (location.pathname === "/home-health") {
     return null;
   }
 

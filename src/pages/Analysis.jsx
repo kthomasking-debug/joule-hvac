@@ -79,46 +79,42 @@ const Analysis = () => {
   return (
     <div className="min-h-screen bg-[#0C0F14]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        {/* Page Header - Hidden for Energy Flow */}
-        {activeTab !== 'energy-flow' && (
-          <header className="mb-6">
-            <h1 className="text-2xl font-semibold text-white mb-1">Simulator</h1>
-            <p className="text-sm text-[#A7B0BA] italic">
-              Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
-            </p>
-          </header>
-        )}
+        {/* Page Header - Always visible */}
+        <header className="mb-6">
+          <h1 className="text-2xl font-semibold text-white mb-1">Simulator</h1>
+          <p className="text-sm text-[#A7B0BA] italic">
+            Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
+          </p>
+        </header>
 
-        {/* Tab Navigation - Hidden for Energy Flow */}
-        {activeTab !== 'energy-flow' && (
-          <div className="mb-6">
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
-                      activeTab === tab.id
-                        ? 'bg-[#1E4CFF] text-white'
-                        : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Tab Description */}
-            {tabDescriptions[activeTab] && (
-              <p className="mt-3 text-sm text-[#A7B0BA]">
-                {tabDescriptions[activeTab]}
-              </p>
-            )}
+        {/* Tab Navigation - Always visible */}
+        <div className="mb-6">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
+                    activeTab === tab.id
+                      ? 'bg-[#1E4CFF] text-white'
+                      : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
+          {/* Tab Description */}
+          {tabDescriptions[activeTab] && (
+            <p className="mt-3 text-sm text-[#A7B0BA]">
+              {tabDescriptions[activeTab]}
+            </p>
+          )}
+        </div>
 
         {/* Active Tab Content */}
         <div className="animate-fade-in-up">

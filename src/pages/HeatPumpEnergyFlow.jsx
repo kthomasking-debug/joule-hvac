@@ -212,10 +212,20 @@ const DataSourcesDropdown = ({ chartName, dataSources }) => {
 const HeatPumpEnergyFlow = () => {
   // --- Context and State ---
   const outletContext = useOutletContext() || {};
-  const { userSettings, setUserSetting } = outletContext;
+  const { userSettings: ctxUserSettings, setUserSetting } = outletContext;
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // Get heat loss factor from multiple sources: outlet context, then latest analysis results
+  // Merge outlet context userSettings with localStorage (like SevenDayCostForecaster does)
+  const userSettings = useMemo(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("userSettings") || "{}");
+      return { ...stored, ...ctxUserSettings };
+    } catch {
+      return ctxUserSettings || {};
+    }
+  }, [ctxUserSettings]);
+  
+  // Get heat loss factor from multiple sources: outlet context, userSettings, then latest analysis results
   const contextHeatLossFactor = outletContext?.heatLossFactor;
   const latestAnalysisHeatLossFactor = useMemo(() => {
     try {
@@ -236,13 +246,35 @@ const HeatPumpEnergyFlow = () => {
     }
   }, []);
   
-  // Use outlet context first, then fall back to latest analysis
-  const effectiveHeatLossFactor = contextHeatLossFactor || latestAnalysisHeatLossFactor;
+  // Check userSettings for analyzer heat loss (persisted from analyzer uploads)
+  // Also check localStorage directly as fallback (like other pages)
+  const useAnalyzerHeatLoss = Boolean(userSettings?.useAnalyzerHeatLoss);
+  const analyzerHeatLossFromSettings = useMemo(() => {
+    // Check userSettings first
+    if (useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss) {
+      const value = Number(userSettings.analyzerHeatLoss);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    // Fallback: check localStorage directly
+    try {
+      const stored = JSON.parse(localStorage.getItem("userSettings") || "{}");
+      if (stored.useAnalyzerHeatLoss && stored.analyzerHeatLoss) {
+        const value = Number(stored.analyzerHeatLoss);
+        if (Number.isFinite(value) && value > 0) return value;
+      }
+    } catch {}
+    return null;
+  }, [useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss]);
+  
+  // Use outlet context first, then userSettings, then fall back to latest analysis
+  // Priority: contextHeatLossFactor > analyzerHeatLossFromSettings > latestAnalysisHeatLossFactor
+  const effectiveHeatLossFactor = contextHeatLossFactor || analyzerHeatLossFromSettings || latestAnalysisHeatLossFactor;
   const contextBalancePoint = outletContext?.balancePoint;
   
   // Default to using analyzer data if available
   const [useAnalyzerData, setUseAnalyzerData] = useState(() => {
-    // Check if analyzer data is available in context or localStorage
+    // Check if analyzer data is available in context, userSettings, or localStorage
+    // effectiveHeatLossFactor is computed above, so it's available here
     return Boolean(effectiveHeatLossFactor);
   });
   const primarySystem =
@@ -1102,7 +1134,7 @@ const HeatPumpEnergyFlow = () => {
               <div className="flex items-center justify-center gap-3 mb-2">
                 <Flame className="text-orange-600" size={32} />
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
-                  Gas Furnace Performance & Coverage
+                  Performance
                 </h1>
               </div>
               <p className="text-gray-600 dark:text-gray-400">
@@ -1115,7 +1147,7 @@ const HeatPumpEnergyFlow = () => {
               <div className="flex items-center justify-center gap-3 mb-2">
                 <Zap className="text-blue-600" size={32} />
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
-                  Heat Pump Performance & Cold-Weather Limits
+                  Performance
                 </h1>
               </div>
               <p className="text-gray-600 dark:text-gray-400">

@@ -15,6 +15,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
+import EcobeePairingOnboarding from "../components/EcobeePairingOnboarding";
 import useForecast from "../hooks/useForecast";
 import * as heatUtils from "../lib/heatUtils";
 import { getCached } from "../utils/cachedStorage";
@@ -35,12 +36,12 @@ import {
 import { getStateElectricityRate } from "../data/stateRates";
 
 /**
- * ForecastDebug - Simplified 7-day cost forecast using Ecobee target temp directly
+ * WeeklyForecast - Simplified 7-day cost forecast using Ecobee target temp directly
  * 
  * This page calculates costs using the actual target temperature from the Ecobee
  * thermostat via HomeKit (Joule Bridge), without any scheduling complexity.
  */
-const ForecastDebug = () => {
+const WeeklyForecast = () => {
   // Get outlet context for user settings
   const outletContext = useOutletContext() || {};
   const { userSettings = {} } = outletContext;
@@ -49,6 +50,7 @@ const ForecastDebug = () => {
   const { unitSystem } = useUnitSystem();
   const nerdMode = userSettings?.nerdMode || false;
   const effectiveUnitSystem = nerdMode ? UNIT_SYSTEMS.INTL : unitSystem;
+  const [showPairingOnboarding, setShowPairingOnboarding] = useState(false);
   
   // Helper function to format energy values
   const formatEnergy = useMemo(() => {
@@ -91,13 +93,13 @@ const ForecastDebug = () => {
   // State for tabs and UI improvements
   const [activeTab, setActiveTab] = useState("forecast");
   const [dismissedInfoBanner, setDismissedInfoBanner] = useState(() => {
-    return localStorage.getItem('forecastDebug_dismissedBanner') === 'true';
+    return localStorage.getItem('weeklyForecast_dismissedBanner') === 'true';
   });
   const [showFormula, setShowFormula] = useState(false);
   
   const handleDismissBanner = () => {
     setDismissedInfoBanner(true);
-    localStorage.setItem('forecastDebug_dismissedBanner', 'true');
+    localStorage.setItem('weeklyForecast_dismissedBanner', 'true');
   };
   
   useEffect(() => {
@@ -320,9 +322,9 @@ const ForecastDebug = () => {
       
       // DIAGNOSTIC: Log heatLossFactor for first day (Monday) to debug indexing issue
       if (dayIndex === 0 && import.meta.env.DEV) {
-        console.log(`[ForecastDebug] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, avgTemp=${avgTemp.toFixed(1)}`);
+        console.log(`[WeeklyForecast] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, avgTemp=${avgTemp.toFixed(1)}`);
         if (day.hours.length !== 24) {
-          console.warn(`[ForecastDebug] ⚠️ Day 0 has ${day.hours.length} hours instead of 24! This could cause incorrect BTU calculations.`);
+          console.warn(`[WeeklyForecast] ⚠️ Day 0 has ${day.hours.length} hours instead of 24! This could cause incorrect BTU calculations.`);
         }
       }
       
@@ -413,14 +415,14 @@ const ForecastDebug = () => {
       const loadMismatch = Math.abs(deliveredTotalBtu - totalDailyBtuLoad);
       const loadMismatchPercent = (loadMismatch / totalDailyBtuLoad) * 100;
       if (loadMismatch > 100 || loadMismatchPercent > 0.1) { // Allow 100 BTU or 0.1% rounding tolerance
-        console.warn(`[ForecastDebug] Daily heat balance mismatch for ${key} (${day.dayName}): delivered=${deliveredTotalBtu.toFixed(0)} BTU, load=${totalDailyBtuLoad.toFixed(0)} BTU, diff=${loadMismatch.toFixed(0)} (${loadMismatchPercent.toFixed(2)}%)`);
+        console.warn(`[WeeklyForecast] Daily heat balance mismatch for ${key} (${day.dayName}): delivered=${deliveredTotalBtu.toFixed(0)} BTU, load=${totalDailyBtuLoad.toFixed(0)} BTU, diff=${loadMismatch.toFixed(0)} (${loadMismatchPercent.toFixed(2)}%)`);
       }
       
       // DIAGNOSTIC: Log first day (Monday) details for debugging
       if (dayIndex === 0 && import.meta.env.DEV) {
         const totalHours = day.hours.reduce((sum, h) => sum + (h.dtHours ?? 1.0), 0);
-        console.log(`[ForecastDebug] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, totalHours=${totalHours.toFixed(1)}, avgDeltaT=${avgDeltaT.toFixed(1)}`);
-        console.log(`[ForecastDebug] Day 0 BTU totals: load=${(totalDailyBtuLoad/1000).toFixed(0)}k, HP=${(totalHpDeliveredBtu/1000).toFixed(0)}k, Aux=${(totalAuxDeliveredBtu/1000).toFixed(0)}k, delivered=${(deliveredTotalBtu/1000).toFixed(0)}k, mismatch=${loadMismatch.toFixed(0)}`);
+        console.log(`[WeeklyForecast] Day 0 (${day.dayName}, ${key}): heatLossFactor=${heatLossFactor}, hours=${day.hours.length}, totalHours=${totalHours.toFixed(1)}, avgDeltaT=${avgDeltaT.toFixed(1)}`);
+        console.log(`[WeeklyForecast] Day 0 BTU totals: load=${(totalDailyBtuLoad/1000).toFixed(0)}k, HP=${(totalHpDeliveredBtu/1000).toFixed(0)}k, Aux=${(totalAuxDeliveredBtu/1000).toFixed(0)}k, delivered=${(deliveredTotalBtu/1000).toFixed(0)}k, mismatch=${loadMismatch.toFixed(0)}`);
       }
       
       // DIAGNOSTIC: Calculate implied average COP for sanity check
@@ -431,9 +433,9 @@ const ForecastDebug = () => {
       
       // Debug print for implied COP (especially for cold days)
       if (impliedAvgCop !== null && avgTemp >= 30 && avgTemp <= 35) {
-        console.log(`[ForecastDebug] ${key} (${avgTemp.toFixed(1)}°F avg): Implied Avg COP = ${impliedAvgCop.toFixed(2)}, HP Delivered = ${(totalHpDeliveredBtu/1000).toFixed(0)}k BTU, HP kWh = ${totalHeatPumpKwh.toFixed(1)}`);
+        console.log(`[WeeklyForecast] ${key} (${avgTemp.toFixed(1)}°F avg): Implied Avg COP = ${impliedAvgCop.toFixed(2)}, HP Delivered = ${(totalHpDeliveredBtu/1000).toFixed(0)}k BTU, HP kWh = ${totalHeatPumpKwh.toFixed(1)}`);
         if (impliedAvgCop > 4.5) {
-          console.warn(`[ForecastDebug] ⚠️ High implied COP (${impliedAvgCop.toFixed(2)}) at ${avgTemp.toFixed(1)}°F - COP curve may be too optimistic`);
+          console.warn(`[WeeklyForecast] ⚠️ High implied COP (${impliedAvgCop.toFixed(2)}) at ${avgTemp.toFixed(1)}°F - COP curve may be too optimistic`);
         }
       }
       
@@ -509,7 +511,7 @@ const ForecastDebug = () => {
         <header className="mb-6">
           <h1 className="text-3xl font-bold text-white flex items-center gap-2">
             <Calendar className="w-7 h-7 text-yellow-400" />
-            Weekly Cost Forecast
+            Weekly Forecast
           </h1>
           <p className="text-base text-gray-300 mt-2 max-w-3xl">
             See your heating and cooling costs for the next 7 days based on the weather forecast and your current Ecobee thermostat setting.
@@ -569,29 +571,21 @@ const ForecastDebug = () => {
                   ? `Polling every 5 seconds • Last update: ${new Date().toLocaleTimeString()}`
                   : bridgeAvailableButDeviceOffline
                   ? (
-                    <div className="space-y-1">
-                      <p>Device is paired but not reachable. The bridge will automatically reconnect when the device comes back online.</p>
-                      <p className="text-xs text-yellow-400 mt-1">
-                        <strong>Why this happens:</strong> After server restart, pairing data may not load correctly due to:
+                    <div className="mt-2 space-y-2">
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                          Device is offline. The bridge will automatically try to reconnect within 30 seconds.
+                        </p>
+                        <button
+                          onClick={() => setShowPairingOnboarding(true)}
+                          className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                        >
+                          Re-pair Device
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                        Using default settings for forecast until device reconnects.
                       </p>
-                      <ul className="text-xs text-yellow-400 mt-1 ml-4 list-disc space-y-0.5">
-                        <li>Pairing file corruption or incomplete save</li>
-                        <li>Device IP address changed (DHCP lease renewal)</li>
-                        <li>aiohomekit library unable to reconstruct pairing object from saved data</li>
-                        <li>Network not ready when server starts (device unreachable)</li>
-                        <li>Pairing data format mismatch after library update</li>
-                      </ul>
-                      <p className="text-xs text-yellow-400 mt-1">
-                        If auto-reconnect doesn't work within 30 seconds, you may need to re-pair:
-                      </p>
-                      <ol className="text-xs text-yellow-400 mt-1 ml-4 list-decimal space-y-0.5">
-                        <li>Go to Settings → Joule Bridge Settings</li>
-                        <li>Click "Unpair" if a device is shown</li>
-                        <li>Click "Discover" to find your Ecobee</li>
-                        <li>Enter the 8-digit pairing code from your Ecobee screen</li>
-                        <li>Click "Pair" and wait up to 45 seconds</li>
-                      </ol>
-                      <p className="text-xs text-gray-500 mt-1">Using default settings for forecast until device reconnects.</p>
                     </div>
                   )
                   : jouleBridge.bridgeAvailable
@@ -933,8 +927,16 @@ const ForecastDebug = () => {
           </div>
         )}
       </div>
+
+      {/* Pairing Onboarding Modal */}
+      {showPairingOnboarding && (
+        <EcobeePairingOnboarding
+          onClose={() => setShowPairingOnboarding(false)}
+          onComplete={() => setShowPairingOnboarding(false)}
+        />
+      )}
     </div>
   );
 };
 
-export default ForecastDebug;
+export default WeeklyForecast;

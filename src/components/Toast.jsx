@@ -12,11 +12,13 @@ export const Toast = ({ message, type = 'success', onClose, duration = 3000 }) =
   const icons = {
     success: <CheckCircle2 size={18} className="text-green-600 dark:text-green-400" />,
     info: <Info size={18} className="text-blue-600 dark:text-blue-400" />,
+    error: <X size={18} className="text-red-600 dark:text-red-400" />,
   };
 
   const bgColors = {
     success: 'bg-green-50 dark:bg-green-900 dark:bg-opacity-30 border-green-200 dark:border-green-700',
     info: 'bg-blue-50 dark:bg-blue-900 dark:bg-opacity-30 border-blue-200 dark:border-blue-700',
+    error: 'bg-red-50 dark:bg-red-900 dark:bg-opacity-30 border-red-200 dark:border-red-700',
   };
 
   return (

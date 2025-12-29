@@ -230,29 +230,56 @@ export default function EnergyPlusLoadCalc() {
       let useSimplified = false;
       try {
         const backendUrl = getBackendUrl();
-      const response = await fetch(`${backendUrl}/api/energyplus/calculate`, {
+        const response = await fetch(`${backendUrl}/api/energyplus/calculate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(params),
         });
 
         if (response.ok) {
-          const data = await response.json();
-          setResults(data);
-          setLoading(false);
-          return;
+          try {
+            const data = await response.json();
+            // Validate that we got the expected data structure
+            // Accept any response that has heatingLoadBtuHr or is an error response
+            if (data && typeof data === 'object') {
+              if (data.heatingLoadBtuHr !== undefined || data.coolingLoadBtuHr !== undefined || data.error) {
+                setResults(data);
+                setLoading(false);
+                return;
+              } else {
+                // Unexpected response format - log and use simplified
+                console.warn("Unexpected response format from EnergyPlus API:", data);
+                useSimplified = true;
+              }
+            } else {
+              console.warn("Invalid response from EnergyPlus API (not an object):", data);
+              useSimplified = true;
+            }
+          } catch (jsonErr) {
+            // JSON parsing error - log and use simplified
+            console.error("Error parsing EnergyPlus response:", jsonErr);
+            useSimplified = true;
+          }
         } else {
-          // API exists but returned error - use simplified
+          // API exists but returned error - try to get error message
+          try {
+            const errorData = await response.json();
+            console.warn("EnergyPlus API error:", errorData);
+          } catch (e) {
+            // Ignore JSON parse errors for error responses
+          }
           useSimplified = true;
         }
       } catch (fetchErr) {
         // Connection error - use simplified fallback
-        if (fetchErr.message.includes("Failed to fetch") || 
+        if (fetchErr.message && (fetchErr.message.includes("Failed to fetch") || 
             fetchErr.message.includes("ERR_CONNECTION_REFUSED") ||
-            fetchErr.message.includes("NetworkError")) {
+            fetchErr.message.includes("NetworkError"))) {
           useSimplified = true;
         } else {
-          throw fetchErr;
+          // Unexpected error - log it
+          console.error("Unexpected error calling EnergyPlus API:", fetchErr);
+          useSimplified = true;
         }
       }
 
@@ -386,7 +413,7 @@ export default function EnergyPlusLoadCalc() {
       {serviceStatus && (
         <div
           className={`mb-6 p-4 rounded-lg border ${
-            serviceStatus.energyplus_available
+            serviceStatus.status === "ok"
               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
               : serviceStatus.status === "error"
               ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
@@ -394,7 +421,7 @@ export default function EnergyPlusLoadCalc() {
           }`}
         >
           <div className="flex items-center gap-2">
-            {serviceStatus.energyplus_available ? (
+            {serviceStatus.status === "ok" ? (
               <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
             ) : (
               <AlertCircle className={`w-5 h-5 ${
@@ -405,19 +432,23 @@ export default function EnergyPlusLoadCalc() {
             )}
             <div className="flex-1">
               <p className="font-semibold text-gray-900 dark:text-white">
-                {serviceStatus.energyplus_available
-                  ? "EnergyPlus Available"
+                {serviceStatus.status === "ok"
+                  ? serviceStatus.energyplus_available
+                    ? "EnergyPlus Available"
+                    : "Service Available (Simplified Calculations)"
                   : serviceStatus.status === "error"
                   ? "Service Not Available"
                   : "Using Simplified Calculation"}
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {serviceStatus.energyplus_available
-                  ? "Full EnergyPlus simulation engine is running"
+                {serviceStatus.status === "ok"
+                  ? serviceStatus.energyplus_available
+                    ? "Full EnergyPlus simulation engine is running"
+                    : "Service is running and ready. Using simplified Manual J-style calculations (full EnergyPlus Python API not installed)."
                   : serviceStatus.error || "EnergyPlus not available - using Manual J-style simplified calculations"}
               </p>
             </div>
-            {!serviceStatus.energyplus_available && (
+            {serviceStatus.status !== "ok" && (
               <button
                 onClick={handleStartService}
                 disabled={startingService}

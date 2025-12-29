@@ -35,6 +35,7 @@ import DemoModeBanner from "../components/DemoModeBanner";
 import SystemHealthAlerts from "../components/SystemHealthAlerts";
 import { useDemoMode } from "../hooks/useDemoMode";
 import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
+import { QuickActionsBar, OneClickOptimizer, SavingsTracker, SystemHealthCard, WasteDetector } from "../components/optimization";
 import AutoSettingsMathEquations from "../components/AutoSettingsMathEquations";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
 import {
@@ -121,7 +122,7 @@ const HomeDashboard = () => {
   const outletContext = useOutletContext();
   const outlet = useMemo(() => outletContext || EMPTY_OUTLET, [outletContext]);
   // Support both new userSettings shape and legacy direct setters
-  const { userSettings: ctxUserSettings } = outlet;
+  const { userSettings: ctxUserSettings, setUserSetting } = outlet;
   const userSettings = React.useMemo(() => {
     return (
       ctxUserSettings ||
@@ -750,7 +751,7 @@ const HomeDashboard = () => {
               </p>
             </div>
             <Link
-              to="/mission-control"
+              to="/home-health"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2"
             >
               Simple View
@@ -758,6 +759,44 @@ const HomeDashboard = () => {
             </Link>
           </div>
         </header>
+
+        {/* Quick Actions & Optimization */}
+        <div className="mb-6 space-y-4">
+          <QuickActionsBar
+            hasWeatherAlert={false}
+            currentTemp={targetTemp || 70}
+            optimalTemp={(targetTemp || 70) - 1}
+            auxHeatRunning={systemStatus.includes("AUX")}
+            onOptimize={(temp) => {
+              if (outlet?.setUserSetting) {
+                outlet.setUserSetting("winterThermostatDay", temp);
+              } else if (setUserSetting) {
+                setUserSetting("winterThermostatDay", temp);
+              }
+            }}
+            compact
+          />
+          
+          <OneClickOptimizer
+            currentDayTemp={targetTemp || userSettings?.winterThermostatDay || 70}
+            currentNightTemp={userSettings?.winterThermostatDay || 68}
+            mode={systemStatus.includes("HEAT") ? "heating" : systemStatus.includes("COOL") ? "cooling" : "heating"}
+            weatherForecast={[]}
+            electricRate={userSettings?.electricRate || 0.12}
+            heatLossFactor={userSettings?.analyzerHeatLoss || userSettings?.estimatedHeatLoss || 200}
+            hspf2={userSettings?.hspf2 || 9}
+            onApplySchedule={(schedule) => {
+              if (outlet?.setUserSetting) {
+                outlet.setUserSetting("winterThermostatDay", schedule.dayTemp);
+                outlet.setUserSetting("winterThermostatNight", schedule.nightTemp);
+              } else if (setUserSetting) {
+                setUserSetting("winterThermostatDay", schedule.dayTemp);
+                setUserSetting("winterThermostatNight", schedule.nightTemp);
+              }
+            }}
+            compact
+          />
+        </div>
 
         {/* Debug Panel - Prominent display when demo mode is disabled */}
         {localStorage.getItem("demoModeDisabled") === "true" && (
@@ -879,6 +918,36 @@ const HomeDashboard = () => {
             }}
           />
         </div>
+
+        {/* Optimization Features */}
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SavingsTracker compact />
+          <SystemHealthCard
+            heatLossFactor={latestAnalysis?.heatLossFactor || userSettings?.estimatedHeatLoss || 200}
+            squareFeet={userSettings?.squareFeet || 1000}
+            auxHeatHours={0}
+            totalHeatHours={100}
+            cyclesPerHour={3}
+            lastMaintenanceDate={userSettings?.lastMaintenanceDate}
+            filterLastChanged={userSettings?.filterLastChanged}
+            systemAge={userSettings?.systemAge || 0}
+            hspf2={userSettings?.hspf2 || 9}
+            seer2={userSettings?.seer2 || 16}
+            compact
+          />
+        </div>
+
+        {/* Waste Detector - HomeKit-aware efficiency check */}
+        {jouleBridge.connected && (
+          <div className="mb-6">
+            <WasteDetector
+              outdoorTemp={outdoorTemp}
+              electricRate={userSettings?.electricRate || userSettings?.utilityCost || 0.12}
+              heatLossFactor={latestAnalysis?.heatLossFactor || userSettings?.estimatedHeatLoss || 200}
+              compact
+            />
+          </div>
+        )}
 
         {/* ================================================
             TOP SECTION: Verdict + Explanation + Ask Joule

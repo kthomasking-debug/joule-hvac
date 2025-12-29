@@ -37,7 +37,7 @@ const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
 // Stable empty object for outlet context fallback
 const EMPTY_OUTLET = {};
 
-const MissionControlSimple = () => {
+const HomeHealth = () => {
   const [showNerdMode, setShowNerdMode] = useState(false);
   const [showAskJoule, setShowAskJoule] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -1250,5 +1250,5 @@ const MissionControlSimple = () => {
   );
 };
 
-export default MissionControlSimple;
+export default HomeHealth;
 

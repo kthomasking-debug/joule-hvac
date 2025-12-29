@@ -125,7 +125,9 @@ Use a service like DuckDNS or No-IP to get a hostname that always points to your
 1. **Web app tries to connect** to old IP (`192.168.0.100`)
 2. **Connection fails** - bridge not found
 3. **User sees:** "Bridge Status: Not Available"
-4. **Solution:** User needs to update bridge URL in Settings
+4. **Solution:** User needs to update bridge URL in Settings → Joule Bridge Settings
+
+**Note:** The app requires an explicit bridge URL configuration. It will never default to localhost, so users must update the URL if the bridge IP changes.
 
 ### How to Find New IP After Restart:
 

@@ -22,6 +22,7 @@ import {
 } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
 import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
+import ThermostatScheduleClock from "../components/ThermostatScheduleClock";
 import {
   loadThermostatSettings,
 } from "../lib/thermostatSettings";
@@ -361,10 +362,11 @@ const MonthlyBudgetPlanner = () => {
     try {
       const thermostatSettings = loadThermostatSettings();
       return thermostatSettings?.comfortSettings?.home?.heatSetPoint || 
+             userSettings?.winterThermostatDay || 
              userSettings?.winterThermostat || 
              70;
     } catch {
-      return userSettings?.winterThermostat || 70;
+      return userSettings?.winterThermostatDay || userSettings?.winterThermostat || 70;
     }
   });
 
@@ -1218,6 +1220,8 @@ const MonthlyBudgetPlanner = () => {
     nighttimeTime,
     summerThermostat,
     summerThermostatNight,
+    userSettings?.winterThermostatDay,
+    userSettings?.winterThermostatNight,
     utilityCost,
     gasCost,
     primarySystem,
@@ -1536,31 +1540,31 @@ const MonthlyBudgetPlanner = () => {
 
   return (
     <div className="page-gradient-overlay min-h-screen">
-      <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8 bg-slate-800/40 dark:bg-slate-800/20 rounded-2xl">
+      <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-2 lg:py-2 bg-slate-800/40 dark:bg-slate-800/20 rounded-2xl">
         <DashboardLink />
 
         {/* Page Header - Hero Level */}
-        <div className="mb-16 animate-fade-in-up pt-6 pb-8">
+        <div className="mb-2 animate-fade-in-up pt-1 pb-1">
           {/* Description at the top */}
-          <p className="text-muted text-base leading-relaxed mb-4 italic">
+          <p className="text-muted text-xs leading-relaxed mb-1 italic">
             Plan your monthly heating and cooling budget — and see how small thermostat changes affect your bill.
           </p>
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-2 mb-1">
             <div className="icon-container icon-container-gradient">
-              <Calendar className="w-6 h-6" />
+              <Calendar className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <h1 className="heading-primary text-3xl md:text-4xl font-bold mb-2">
-                Monthly Budget Planner
+              <h1 className="heading-primary text-xl md:text-2xl font-bold mb-1">
+                Budget
               </h1>
             </div>
           </div>
           {/* Subtle divider under header */}
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-300/30 dark:via-gray-600/30 to-transparent mt-6"></div>
+          <div className="h-px bg-gradient-to-r from-transparent via-gray-300/30 dark:via-gray-600/30 to-transparent mt-1"></div>
         </div>
 
       {/* Mode Toggle */}
-      <div className="flex justify-center mb-6">
+      <div className="flex justify-center mb-3">
         <div className="inline-flex rounded-lg glass-card p-1">
           <button
             onClick={() => setMode("budget")}
@@ -1585,10 +1589,684 @@ const MonthlyBudgetPlanner = () => {
         </div>
       </div>
 
+      {/* Quick Answer - Monthly Cost Estimate at Top */}
+      {mode === "budget" && monthlyEstimate && (
+        <div
+          className={`glass-card-gradient glass-card p-3 md:p-4 mb-4 animate-fade-in-up relative overflow-hidden ${
+            energyMode === "cooling"
+              ? "border-cyan-500/40 shadow-lg shadow-cyan-500/10"
+              : "border-green-500/40 shadow-lg shadow-green-500/10"
+          }`}
+        >
+          {/* Subtle glow effect */}
+          <div className={`absolute inset-0 opacity-20 blur-3xl ${
+            energyMode === "cooling" ? "bg-cyan-500" : "bg-green-500"
+          }`}></div>
+          
+          <div className="text-center relative z-10">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              {energyMode === "cooling" ? (
+                <span className="text-4xl">🧊</span>
+              ) : (
+                <span className="text-4xl">🔥</span>
+              )}
+              <p
+                className={`text-sm font-semibold uppercase tracking-wider ${
+                  energyMode === "cooling"
+                    ? "text-cyan-400"
+                    : "text-green-400"
+                }`}
+              >
+                ESTIMATED MONTHLY{" "}
+                {energyMode === "cooling" ? "COOLING" : "HEATING"} COST
+                {energyMode === "heating" && " (typical winter month)"}
+              </p>
+            </div>
+            
+            {/* Prominent dollar amount - Simplified like AnswerCard */}
+            <div className="mb-3">
+              <div className="flex items-baseline gap-3">
+                <span className={`text-5xl md:text-6xl font-black bg-gradient-to-r ${
+                  energyMode === "cooling"
+                    ? "from-cyan-600 to-teal-600"
+                    : "from-green-600 to-emerald-600"
+                } bg-clip-text text-transparent`}>
+                  ${monthlyEstimate.cost.toFixed(2)}
+                </span>
+                <span className="text-lg text-slate-400 font-medium">for this month</span>
+                {locationData && (
+                  <span className="text-sm text-slate-400 ml-auto">
+                    {locationData.city}, {locationData.state} at {Math.round(effectiveIndoorTemp)}°F
+                  </span>
+                )}
+              </div>
+              {monthlyEstimate.fixedCost > 0 && (
+                <p className="text-xs text-slate-400 mt-2">
+                  (Includes ${monthlyEstimate.fixedCost.toFixed(2)} fixed fees)
+                </p>
+              )}
+            </div>
+            {forecastModel === "polarVortex" && dailyForecast && dailyForecast.length > 0 && (
+              <div className="mt-4 p-4 glass-card border-red-500/30 bg-red-900/10 rounded-lg">
+                <p className="text-sm font-semibold text-red-500 mb-2">⚠️ Polar Vortex Scenario</p>
+                <p className="text-xs text-high-contrast">
+                  This estimate is <strong>30-40% higher</strong> than a typical year due to the -5°F temperature anomaly. 
+                  This helps you prepare for worst-case winter conditions.
+                </p>
+              </div>
+            )}
+            {/* Expose method for testing */}
+            <span
+              data-testid="monthly-method"
+              data-method={monthlyEstimate.method}
+              className="sr-only"
+            >
+              {monthlyEstimate.method}
+            </span>
+            <p
+              className={`text-sm md:text-base mb-3 text-high-contrast/80 leading-relaxed`}
+            >
+              Typical{" "}
+              {activeMonths.find((m) => m.value === selectedMonth)?.label} bill
+              for <strong className="text-high-contrast">{Math.round(effectiveIndoorTemp)}°F</strong> (weighted average: {indoorTemp}°F day, {nighttimeTemp}°F night)
+              {energyMode === "heating" && locationData && (() => {
+                const monthlyHDD = getTypicalHDD(selectedMonth);
+                const annualHDD = getAnnualHDD(locationData.city, locationData.state);
+                // Scale to actual location HDD if available
+                const scaledHDD = annualHDD > 0 ? Math.round((monthlyHDD / 4880) * annualHDD) : Math.round(monthlyHDD);
+                return (
+                  <span className="block text-sm mt-1 text-muted" title="Heating Degree Days (HDD) measure how cold a month usually is. More cold days = more heating.">
+                    Cold-weather severity (typical for {activeMonths.find((m) => m.value === selectedMonth)?.label}): {scaledHDD} HDD
+                  </span>
+                );
+              })()}
+              {monthlyEstimate.method === "gasFurnace" && (
+                <span className="block text-sm mt-1">
+                  (Gas Furnace at {Math.round(afue * 100)}% AFUE)
+                </span>
+              )}
+              {monthlyEstimate.method === "cooling" && (
+                <span className="block text-sm mt-1">
+                  (Cooling: {monthlyEstimate.seer2} SEER2,{" "}
+                  {monthlyEstimate.tons} tons)
+                </span>
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-3 text-center text-sm mb-3">
+              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
+                <p className="font-bold text-lg text-high-contrast mb-1">
+                  {monthlyEstimate.method === "gasFurnace"
+                    ? `${Math.round(monthlyEstimate.therms ?? 0)} therms`
+                    : formatEnergyFromKwh(monthlyEstimate.energy ?? 0, unitSystem, { decimals: 0 })}
+                </p>
+                <p className="text-xs text-muted">
+                  Typical Monthly Energy
+                </p>
+              </div>
+              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
+                <p className="font-bold text-lg text-high-contrast mb-1">
+                  ${(monthlyEstimate.cost / monthlyEstimate.days).toFixed(2)}
+                </p>
+                <p className="text-xs text-muted">
+                  Average Daily Cost
+                </p>
+              </div>
+            </div>
+            
+            {/* Bill Breakdown Strip */}
+            <div className="mt-2 pt-2 border-t border-gray-200/30 dark:border-gray-700/30">
+              <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted">Heating:</span>
+                  <span className="font-semibold text-high-contrast">
+                    {energyMode === "heating" 
+                      ? `$${monthlyEstimate.cost.toFixed(2)}`
+                      : "$0.00"}
+                  </span>
+                </div>
+                <span className="text-muted">•</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted">Cooling:</span>
+                  <span className="font-semibold text-high-contrast">
+                    {energyMode === "cooling" 
+                      ? `$${monthlyEstimate.cost.toFixed(2)}`
+                      : "$0.00"}
+                  </span>
+                </div>
+                <span className="text-muted">•</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted">Fan/other:</span>
+                  <span className="font-semibold text-high-contrast">$0.00</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted text-center mt-3">
+                Assumes: {indoorTemp}°F day / {nighttimeTemp}°F night, 30-year typical weather.
+              </p>
+            </div>
+            
+            {monthlyEstimate.excludedAuxEnergy > 0 && (
+              <div className="mt-4 glass-card p-glass-sm border-yellow-500/30 text-sm text-high-contrast">
+                <p>
+                  <strong>Note:</strong> This estimate <em>excludes</em>{" "}
+                  electric auxiliary heat (
+                  {formatEnergyFromKwh(monthlyEstimate.excludedAuxEnergy, unitSystem, { decimals: 0 })}) because
+                  you have turned off 'Count electric auxiliary heat'.
+                </p>
+              </div>
+            )}
+            {typeof monthlyEstimate.unmetHours === "number" &&
+              monthlyEstimate.unmetHours > 0 &&
+              energyMode === "cooling" && (
+                <div className="mt-6 glass-card p-glass border-orange-500/30 text-sm text-high-contrast">
+                  <p>
+                    <strong>Notice:</strong> Estimated{" "}
+                    {monthlyEstimate.unmetHours} unmet hours this month. Your
+                    system may struggle to maintain {Math.round(effectiveIndoorTemp)}°F.
+                  </p>
+                </div>
+              )}
+          </div>
+        </div>
+      )}
+
+      {/* Thermostat Settings Panel - Enhanced CTA */}
+      {mode === "budget" && (
+        <div className="glass-card-gradient glass-card p-5 mb-4 animate-fade-in-up border-2 border-orange-500/40 bg-orange-50/10 dark:bg-orange-950/10 rounded-xl shadow-lg">
+          <div className="text-center mb-3">
+            <h2 className="text-lg font-bold text-high-contrast mb-1 flex items-center justify-center gap-2">
+              <span className="text-2xl">⬇️</span>
+              <span>Want to lower this bill?</span>
+            </h2>
+            <p className="text-muted text-base italic">
+              Small, realistic thermostat changes can reduce costs — without sacrificing comfort.
+            </p>
+          </div>
+
+          {/* Compact Thermostat Summary - Always visible */}
+          {energyMode === "heating" && (
+            <div className="glass-card p-3 mb-2 border-blue-500/30 bg-white/5 dark:bg-white/5 rounded-lg">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4 text-high-contrast flex-1">
+                  <Thermometer className="w-6 h-6 text-blue-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-base font-semibold">
+                      Daytime: <span className="text-blue-400">{indoorTemp}°F</span> · Nighttime: <span className="text-blue-400">{nighttimeTemp}°F</span>
+                    </p>
+                    <p className="text-sm text-muted mt-1">
+                      {daytimeTime} - {nighttimeTime}
+                    </p>
+                    {potentialSavings && potentialSavings.dollars > 0.5 && (
+                      <p className="text-sm text-green-500 dark:text-green-400 font-medium mt-2">
+                        💰 If you switch to our recommended schedule, this month would cost about <strong>${potentialSavings.dollars.toFixed(2)}</strong> less.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowThermostatSchedule(!showThermostatSchedule)}
+                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-bold hover:from-orange-400 hover:to-orange-500 transition-all text-sm flex items-center gap-2 shadow-xl hover:shadow-2xl transform hover:scale-105 ring-2 ring-orange-400/60 whitespace-nowrap"
+                >
+                  {showThermostatSchedule ? (
+                    <>
+                      <ChevronUp className="w-4 h-4" />
+                      Hide Schedule
+                    </>
+                  ) : (
+                    <>
+                      <Settings className="w-4 h-4" />
+                      Edit schedule & update cost
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Temperature Sliders for What-If Analysis */}
+          <div className="animate-fade-in mb-4">
+            <div className="glass-card-gradient glass-card p-3 mb-2 animate-fade-in-up">
+              <div className="text-center mb-2">
+                <h3 className="text-lg font-bold mb-1">
+                  🌡️ Thermostat Settings
+                </h3>
+                <p className="text-muted text-xs">
+                  Adjust temperatures to see how they affect your monthly costs
+                </p>
+              </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Winter Settings */}
+                  {energyMode === "heating" && (
+                    <div className="glass-card p-2 border-blue-500/30">
+                      <h3 className="text-xs font-bold text-high-contrast mb-2 flex items-center gap-2">
+                        <Thermometer size={18} className="text-blue-500" />
+                        Winter Heating (Dec-Feb)
+                      </h3>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-semibold text-high-contrast mb-1">
+                            Daytime Setting (6am-10pm)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="60"
+                              max="78"
+                              value={userSettings?.winterThermostatDay ?? indoorTemp ?? 70}
+                              onChange={(e) => {
+                                const temp = Number(e.target.value);
+                                setIndoorTemp(temp);
+                                setThermostatModel("custom");
+                                if (setUserSetting) {
+                                  setUserSetting("winterThermostatDay", temp);
+                                }
+                              }}
+                              className="flex-grow"
+                            />
+                            <span className="font-bold text-xl text-blue-500 w-14 text-right">
+                              {userSettings?.winterThermostatDay ?? indoorTemp ?? 70}°F
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-high-contrast mb-1">
+                            Nighttime Setting (10pm-6am)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="60"
+                              max="78"
+                              value={userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}
+                              onChange={(e) => {
+                                const temp = Number(e.target.value);
+                                setNighttimeTemp(temp);
+                                setThermostatModel("custom");
+                                if (setUserSetting) {
+                                  setUserSetting("winterThermostatNight", temp);
+                                }
+                              }}
+                              className="flex-grow"
+                            />
+                            <span className="font-bold text-xl text-blue-500 w-14 text-right">
+                              {userSettings?.winterThermostatNight ?? nighttimeTemp ?? 68}°F
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summer Settings */}
+                  {energyMode === "cooling" && (
+                    <div className="glass-card p-2 border-cyan-500/30">
+                      <h3 className="text-xs font-bold text-high-contrast mb-2 flex items-center gap-2">
+                        <Thermometer size={18} className="text-cyan-500" />
+                        Summer Cooling (Jun-Aug)
+                      </h3>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-semibold text-high-contrast mb-1">
+                            Daytime Setting (6am-10pm)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="68"
+                              max="80"
+                              value={summerThermostat || 75}
+                              onChange={(e) => {
+                                const temp = Number(e.target.value);
+                                setThermostatModel("custom");
+                                if (setUserSetting) {
+                                  setUserSetting("summerThermostat", temp);
+                                }
+                              }}
+                              className="flex-grow"
+                            />
+                            <span className="font-bold text-xl text-cyan-500 w-14 text-right">
+                              {summerThermostat || 75}°F
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-high-contrast mb-1">
+                            Nighttime Setting (10pm-6am)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="68"
+                              max="82"
+                              value={summerThermostatNight || summerThermostat || 72}
+                              onChange={(e) => {
+                                const temp = Number(e.target.value);
+                                setThermostatModel("custom");
+                                if (setUserSetting) {
+                                  setUserSetting("summerThermostatNight", temp);
+                                }
+                              }}
+                              className="flex-grow"
+                            />
+                            <span className="font-bold text-xl text-cyan-500 w-14 text-right">
+                              {summerThermostatNight || summerThermostat || 72}°F
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Schedule Time Selectors */}
+                <div className="mt-4 pt-4 border-t border-slate-700/50">
+                  <div className="text-center mb-3">
+                    <h4 className="text-sm font-semibold text-high-contrast mb-2">
+                      Schedule Times
+                    </h4>
+                    <p className="text-xs text-muted mb-3">
+                      Set when daytime and nighttime temperatures start
+                    </p>
+                  </div>
+                  <ThermostatScheduleClock
+                    daytimeStart={daytimeTime || "06:00"}
+                    setbackStart={nighttimeTime || "22:00"}
+                    onDaytimeStartChange={(time) => {
+                      setDaytimeTime(time);
+                      if (setUserSetting) {
+                        // Store in user settings if needed
+                        const timeToHours = (timeStr) => {
+                          const [hours, minutes] = timeStr.split(":").map(Number);
+                          return hours + minutes / 60;
+                        };
+                        setUserSetting("daytimeStart", timeToHours(time));
+                      }
+                    }}
+                    onSetbackStartChange={(time) => {
+                      setNighttimeTime(time);
+                      if (setUserSetting) {
+                        const timeToHours = (timeStr) => {
+                          const [hours, minutes] = timeStr.split(":").map(Number);
+                          return hours + minutes / 60;
+                        };
+                        setUserSetting("nighttimeStart", timeToHours(time));
+                      }
+                    }}
+                    compact={true}
+                  />
+                </div>
+              </div>
+            </div>
+
+          {/* Aux Heat Toggle - Show for heat pumps */}
+          {primarySystem === "heatPump" && energyMode === "heating" && (
+            <div className="glass-card p-2 border-amber-500/30">
+              <h3 className="text-xs font-bold mb-2 flex items-center gap-2">
+                <Thermometer size={18} className="text-amber-500" />
+                Auxiliary Heat Settings
+              </h3>
+              <div className="space-y-3">
+                <label className="inline-flex items-center gap-2 text-sm text-high-contrast">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={!!useElectricAuxHeat}
+                    onChange={(e) =>
+                      setUseElectricAuxHeat(!!e.target.checked)
+                    }
+                    aria-label="Include electric auxiliary resistance heat in monthly energy and cost estimates"
+                    title="When enabled, electric auxiliary resistance backup heat will be counted toward monthly electricity and cost estimates"
+                  />
+                  <span className="font-medium">
+                    Count electric auxiliary heat in estimates
+                  </span>
+                </label>
+                {!useElectricAuxHeat && (
+                  <div className="mt-3 p-3 glass-card border-amber-500/30 text-xs">
+                    <p className="text-high-contrast">
+                      <strong>⚠️ Aux heat disabled:</strong> Minimum
+                      achievable indoor temp is approximately{" "}
+                      <strong>
+                        {(() => {
+                          // Estimate minimum indoor temp based on heat pump capacity vs building heat loss
+                          const tonsMap = {
+                            18: 1.5,
+                            24: 2.0,
+                            30: 2.5,
+                            36: 3.0,
+                            42: 3.5,
+                            48: 4.0,
+                            60: 5.0,
+                          };
+                          const tons = tonsMap[capacity] || 3.0;
+                          const designHeatLoss = heatUtils.calculateHeatLoss({
+                            squareFeet,
+                            insulationLevel,
+                            homeShape,
+                            ceilingHeight,
+                          });
+                          const heatLossPerDegF = designHeatLoss / 70;
+
+                          // At 5°F outdoor, heat pump provides ~40% capacity (typical cold climate HP)
+                          const outdoorTemp = 5;
+                          const heatPumpCapacityAt5F = tons * 12000 * 0.4; // BTU/hr
+
+                          // Find indoor temp where heat loss equals heat pump output
+                          const minIndoorTemp =
+                            outdoorTemp +
+                            heatPumpCapacityAt5F / heatLossPerDegF;
+
+                          return Math.round(
+                            Math.min(indoorTemp, Math.max(40, minIndoorTemp))
+                          );
+                        })()}
+                        °F
+                      </strong>{" "}
+                      at design conditions (5°F outdoor). Below this, the heat
+                      pump cannot maintain your setpoint without supplemental
+                      heat.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Settings Section - Moved to bottom so cost stays visible */}
+      <div className="mt-6 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Settings className="w-4 h-4 text-blue-500" />
+          <h2 className="text-sm font-bold text-high-contrast">⚙️ Settings</h2>
+        </div>
+        <p className="text-xs text-muted mb-3 italic">These are the assumptions behind your estimate. You can adjust them to better match your home and how you like to live.</p>
+        
+        {/* Group inputs in 2x2 grid on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+          {/* Location Display - Budget Mode */}
+          {mode === "budget" && (
+            <div className="md:col-span-2">
+              <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Location</h3>
+              {locationData ? (
+                <div className="glass-card p-2 animate-fade-in-up">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
+                    <MapPin className="text-blue-500" size={18} />
+                    <span>Your Location</span>
+                  </label>
+              <div className="flex items-center gap-2 text-high-contrast">
+                <span className="font-semibold">
+                  {locationData.city}, {locationData.state}
+                </span>
+                <span className="text-sm text-muted">
+                  ({locationData?.latitude?.toFixed(2) ?? "N/A"}°,{" "}
+                  {locationData?.longitude?.toFixed(2) ?? "N/A"}°)
+                </span>
+              </div>
+              {typeof monthlyEstimate?.electricityRate === "number" && (
+                <div className="text-xs text-muted mt-2">
+                  <div className="font-medium">
+                    Electricity rate: $
+                    {monthlyEstimate.electricityRate.toFixed(3)}/kWh
+                  </div>
+                  {electricityRateSourceA && (
+                    <div className="text-xs opacity-80 mt-0.5">
+                      {electricityRateSourceA}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="glass-card p-3 animate-fade-in-up border-yellow-500/30">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
+                <MapPin className="text-yellow-500" size={18} />
+                <span>Location</span>
+              </label>
+              <div className="flex items-center gap-2 text-high-contrast">
+                <AlertTriangle size={18} className="text-yellow-500" />
+                <span>
+                  Please set your location in the{" "}
+                  <Link
+                    to="/cost-forecaster"
+                    className="font-semibold underline hover:opacity-80"
+                  >
+                    7-Day Forecaster
+                  </Link>{" "}
+                  first to use this tool.
+                </span>
+              </div>
+            </div>
+          )}
+            </div>
+        )}
+        
+        {/* Month Selector */}
+        <div>
+          <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Month Selection</h3>
+          <div className="glass-card p-2 animate-fade-in-up">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
+              <Calendar className="text-blue-500" size={18} />
+              <span>Select Month</span>
+            </label>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className={selectClasses}
+          >
+            {activeMonths.map((month) => (
+              <option key={month.value} value={month.value}>
+                {month.label}
+              </option>
+            ))}
+          </select>
+          </div>
+        </div>
+
+        {/* Forecast Model Selector - Winter Severity Feature */}
+        {energyMode === "heating" && (
+          <div>
+            <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Weather Model</h3>
+            <div className="glass-card p-2 animate-fade-in-up border-blue-500/30">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
+                <Cloud className="text-blue-500" size={18} />
+                <span>Weather data: Typical year (30-year average)</span>
+              <span className="ml-2 relative group">
+                <Info 
+                  size={14} 
+                  className="inline text-blue-500 cursor-help" 
+                  title="TMY3 (Typical Meteorological Year 3) is a standardized weather dataset representing typical conditions based on 30 years of historical data. This provides a reliable baseline for energy cost estimates."
+                />
+              </span>
+            </label>
+            <select
+              value={forecastModel}
+              onChange={(e) => setForecastModel(e.target.value)}
+              className={selectClasses}
+            >
+              <option value="typical">Typical year (30-year average)</option>
+              <option value="current">Current Forecast (NOAA/NWS) - Live Data</option>
+              <option value="polarVortex">Polar Vortex (Worst Case) - -5°F Anomaly</option>
+            </select>
+            {forecastModel === "polarVortex" && (
+              <div className="mt-3 p-3 glass-card border-red-500/30 bg-red-900/10">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-high-contrast">
+                    <p className="font-semibold mb-1">❄️ Polar Vortex Scenario Active</p>
+                    <p className="text-muted">
+                      This forecast applies a <strong>-5°F temperature offset</strong> to all outdoor temperatures, 
+                      simulating a severe winter pattern. Your estimated costs will be <strong>30-40% higher</strong> 
+                      than typical years. This helps you prepare for worst-case scenarios.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {forecastModel === "current" && dailyForecast && dailyForecast.some(d => d.source === "forecast") && (
+              <div className="mt-3 p-2 glass-card border-blue-500/30 bg-blue-900/10 text-xs text-high-contrast">
+                <p>✓ Using live 10-day forecast + historical averages for remaining days</p>
+              </div>
+            )}
+            </div>
+          </div>
+        )}
+
+        {/* Fixed Utility Charges Input */}
+        <div>
+          <h3 className="text-xs font-bold text-high-contrast mb-1 uppercase tracking-wide text-blue-400">Utility Fees</h3>
+          <div className="glass-card p-2 animate-fade-in-up border-gray-500/30">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-2">
+              <DollarSign className="text-blue-500" size={18} />
+              <span>Fixed Monthly Charges</span>
+            </label>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs text-muted mb-1">Fixed Electric Fee ($/mo)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={fixedElectricCost}
+                    onChange={(e) => setUserSetting("fixedElectricCost", parseFloat(e.target.value) || 0)}
+                    className={`${inputClasses} pl-7`}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              
+              {primarySystem === "gasFurnace" && (
+                <div>
+                  <label className="block text-xs text-muted mb-1">Fixed Gas Fee ($/mo)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={fixedGasCost}
+                      onChange={(e) => setUserSetting("fixedGasCost", parseFloat(e.target.value) || 0)}
+                      className={`${inputClasses} pl-7`}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] text-muted mt-2">
+              Prefilled using typical fixed charges for your state. Adjust to match your bill.
+            </p>
+          </div>
+        </div>
+        </div>
+      </div>
+
       {/* Location Status - Comparison Mode */}
       {mode === "comparison" && (
         // Two-city comparison mode
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-3">
           {/* Location A */}
           <div className="glass-card p-glass animate-fade-in-up border-blue-500/30">
             <div className="text-xs font-semibold text-blue-500 mb-1">
@@ -1737,893 +2415,9 @@ const MonthlyBudgetPlanner = () => {
         </div>
       )}
 
-      {/* Inputs Section - Grouped Layout */}
-      <div className="mb-12">
-        <div className="flex items-center gap-2 mb-6">
-          <Settings className="w-5 h-5 text-blue-500" />
-          <h2 className="text-lg font-bold text-high-contrast">⚙️ Settings</h2>
-          <p className="text-xs text-muted mb-4 italic">These are the assumptions behind your estimate. You can adjust them to better match your home and how you like to live.</p>
-        </div>
-        
-        {/* Group inputs in 2x2 grid on desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Location Display - Budget Mode */}
-          {mode === "budget" && (
-            <div className="md:col-span-2">
-              <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">Location</h3>
-              {locationData ? (
-                <div className="glass-card p-5 animate-fade-in-up">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-                    <MapPin className="text-blue-500" size={18} />
-                    <span>Your Location</span>
-                  </label>
-              <div className="flex items-center gap-2 text-high-contrast">
-                <span className="font-semibold">
-                  {locationData.city}, {locationData.state}
-                </span>
-                <span className="text-sm text-muted">
-                  ({locationData?.latitude?.toFixed(2) ?? "N/A"}°,{" "}
-                  {locationData?.longitude?.toFixed(2) ?? "N/A"}°)
-                </span>
-              </div>
-              {typeof monthlyEstimate?.electricityRate === "number" && (
-                <div className="text-xs text-muted mt-2">
-                  <div className="font-medium">
-                    Electricity rate: $
-                    {monthlyEstimate.electricityRate.toFixed(3)}/kWh
-                  </div>
-                  {electricityRateSourceA && (
-                    <div className="text-xs opacity-80 mt-0.5">
-                      {electricityRateSourceA}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="glass-card p-5 animate-fade-in-up border-yellow-500/30">
-              <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-                <MapPin className="text-yellow-500" size={18} />
-                <span>Location</span>
-              </label>
-              <div className="flex items-center gap-2 text-high-contrast">
-                <AlertTriangle size={18} className="text-yellow-500" />
-                <span>
-                  Please set your location in the{" "}
-                  <Link
-                    to="/cost-forecaster"
-                    className="font-semibold underline hover:opacity-80"
-                  >
-                    7-Day Forecaster
-                  </Link>{" "}
-                  first to use this tool.
-                </span>
-              </div>
-            </div>
-          )}
-            </div>
-        )}
-        
-        {/* Month Selector */}
-        <div>
-          <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">Month Selection</h3>
-          <div className="glass-card p-5 animate-fade-in-up">
-            <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-              <Calendar className="text-blue-500" size={18} />
-              <span>Select Month</span>
-            </label>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className={selectClasses}
-          >
-            {activeMonths.map((month) => (
-              <option key={month.value} value={month.value}>
-                {month.label}
-              </option>
-            ))}
-          </select>
-          </div>
-        </div>
 
-        {/* Utility Fixed Charges */}
-        <div>
-          <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">
-            Utility Fixed Charges
-          </h3>
-          <div className="glass-card p-5 animate-fade-in-up border-gray-500/30">
-            <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-              <DollarSign className="text-blue-500" size={18} />
-              <span>Base Monthly Fees</span>
-            </label>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted block mb-1">Fixed Electric Fee ($/mo)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={fixedElectricCost}
-                    onChange={(e) => setUserSetting("fixedElectricCost", Number(e.target.value))}
-                    className={`${inputClasses} pl-6`}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              {primarySystem === "gasFurnace" && (
-                <div>
-                  <label className="text-xs text-muted block mb-1">Fixed Gas Fee ($/mo)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={fixedGasCost}
-                      onChange={(e) => setUserSetting("fixedGasCost", Number(e.target.value))}
-                      className={`${inputClasses} pl-6`}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <p className="text-[10px] text-muted mt-2">
-              Charges you pay regardless of usage (e.g., meter connection fees).
-            </p>
-          </div>
-        </div>
-
-        {/* Forecast Model Selector - Winter Severity Feature */}
-        {energyMode === "heating" && (
-          <div>
-            <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">Weather Model</h3>
-            <div className="glass-card p-5 animate-fade-in-up border-blue-500/30">
-              <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-                <Cloud className="text-blue-500" size={18} />
-                <span>Weather data: Typical year (30-year average)</span>
-              <span className="ml-2 relative group">
-                <Info 
-                  size={14} 
-                  className="inline text-blue-500 cursor-help" 
-                  title="TMY3 (Typical Meteorological Year 3) is a standardized weather dataset representing typical conditions based on 30 years of historical data. This provides a reliable baseline for energy cost estimates."
-                />
-              </span>
-            </label>
-            <select
-              value={forecastModel}
-              onChange={(e) => setForecastModel(e.target.value)}
-              className={selectClasses}
-            >
-              <option value="typical">Typical year (30-year average)</option>
-              <option value="current">Current Forecast (NOAA/NWS) - Live Data</option>
-              <option value="polarVortex">Polar Vortex (Worst Case) - -5°F Anomaly</option>
-            </select>
-            {forecastModel === "polarVortex" && (
-              <div className="mt-3 p-3 glass-card border-red-500/30 bg-red-900/10">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-high-contrast">
-                    <p className="font-semibold mb-1">❄️ Polar Vortex Scenario Active</p>
-                    <p className="text-muted">
-                      This forecast applies a <strong>-5°F temperature offset</strong> to all outdoor temperatures, 
-                      simulating a severe winter pattern. Your estimated costs will be <strong>30-40% higher</strong> 
-                      than typical years. This helps you prepare for worst-case scenarios.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {forecastModel === "current" && dailyForecast && dailyForecast.some(d => d.source === "forecast") && (
-              <div className="mt-3 p-2 glass-card border-blue-500/30 bg-blue-900/10 text-xs text-high-contrast">
-                <p>✓ Using live 10-day forecast + historical averages for remaining days</p>
-              </div>
-            )}
-            </div>
-          </div>
-        )}
-
-        {/* Fixed Utility Charges Input */}
-        <div>
-          <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">Utility Fees</h3>
-          <div className="glass-card p-5 animate-fade-in-up border-gray-500/30">
-            <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-              <DollarSign className="text-blue-500" size={18} />
-              <span>Fixed Monthly Charges</span>
-            </label>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs text-muted mb-1">Fixed Electric Fee ($/mo)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={fixedElectricCost}
-                    onChange={(e) => setUserSetting("fixedElectricCost", parseFloat(e.target.value) || 0)}
-                    className={`${inputClasses} pl-7`}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              
-              {primarySystem === "gasFurnace" && (
-                <div>
-                  <label className="block text-xs text-muted mb-1">Fixed Gas Fee ($/mo)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={fixedGasCost}
-                      onChange={(e) => setUserSetting("fixedGasCost", parseFloat(e.target.value) || 0)}
-                      className={`${inputClasses} pl-7`}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <p className="text-[10px] text-muted mt-2">
-              Prefilled using typical fixed charges for your state. Adjust to match your bill.
-            </p>
-          </div>
-        </div>
-
-        {/* Thermostat Model Selector */}
-        {energyMode === "heating" && (
-          <div>
-            <h3 className="text-sm font-bold text-high-contrast mb-3 uppercase tracking-wide text-blue-400">Thermostat Schedule</h3>
-            <div className="glass-card p-5 animate-fade-in-up border-blue-500/30">
-              <label className="flex items-center gap-2 text-sm font-semibold text-high-contrast mb-3">
-                <Thermometer className="text-blue-500" size={18} />
-                <span>Modeled thermostat settings</span>
-              </label>
-              <p className="text-xs text-muted mb-3 italic">
-                Used for budget planning only
-              </p>
-              <p className="text-xs text-muted mb-3">
-                These settings are for <strong>what-if modeling</strong>. Changing them here does <strong>not</strong> change your actual thermostat.
-              </p>
-            <select
-              value={thermostatModel}
-              onChange={(e) => {
-                const model = e.target.value;
-                setThermostatModel(model);
-                if (model === "flat70") {
-                  setIndoorTemp(70);
-                  setNighttimeTemp(70);
-                } else if (model === "flat68") {
-                  setIndoorTemp(68);
-                  setNighttimeTemp(68);
-                } else if (model === "current") {
-                  // Reset to current settings from thermostatSettings
-                  try {
-                    const thermostatSettings = loadThermostatSettings();
-                    const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
-                      (e) => e.comfortSetting === "home"
-                    );
-                    const sleepEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
-                      (e) => e.comfortSetting === "sleep"
-                    );
-                    if (homeEntry?.heatSetPoint !== undefined) setIndoorTemp(homeEntry.heatSetPoint);
-                    if (sleepEntry?.heatSetPoint !== undefined) setNighttimeTemp(sleepEntry.heatSetPoint);
-                  } catch {
-                    // Keep current values
-                  }
-                }
-              }}
-              className={selectClasses}
-            >
-              <option value="current">My current settings</option>
-              <option value="flat70">Flat 70°F all day</option>
-              <option value="flat68">Flat 68°F all day</option>
-              <option value="custom">Custom schedule (edit below)</option>
-            </select>
-            </div>
-          </div>
-        )}
-        </div>
-      </div>
-
-      {/* Main Result Card - Hero-level cost display */}
-      {mode === "budget" && monthlyEstimate && (
-        <div
-          className={`glass-card-gradient glass-card p-8 md:p-10 mb-12 animate-fade-in-up relative overflow-hidden ${
-            energyMode === "cooling"
-              ? "border-cyan-500/40 shadow-lg shadow-cyan-500/10"
-              : "border-green-500/40 shadow-lg shadow-green-500/10"
-          }`}
-        >
-          {/* Subtle glow effect */}
-          <div className={`absolute inset-0 opacity-20 blur-3xl ${
-            energyMode === "cooling" ? "bg-cyan-500" : "bg-green-500"
-          }`}></div>
-          
-          <div className="text-center relative z-10">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              {energyMode === "cooling" ? (
-                <span className="text-4xl">🧊</span>
-              ) : (
-                <span className="text-4xl">🔥</span>
-              )}
-              <p
-                className={`text-sm font-semibold uppercase tracking-wider ${
-                  energyMode === "cooling"
-                    ? "text-cyan-400"
-                    : "text-green-400"
-                }`}
-              >
-                ESTIMATED MONTHLY{" "}
-                {energyMode === "cooling" ? "COOLING" : "HEATING"} COST
-                {energyMode === "heating" && " (typical winter month)"}
-              </p>
-            </div>
-            
-            {/* Prominent dollar amount */}
-            <div className="mb-6">
-              <div
-                className={`text-7xl md:text-8xl lg:text-9xl font-black mb-2 ${
-                  energyMode === "cooling"
-                    ? "text-cyan-300"
-                    : "text-green-300"
-                } drop-shadow-lg`}
-              >
-                ${monthlyEstimate.cost.toFixed(2)}
-              </div>
-              <p className="text-xs text-muted mb-2">
-                Based on long-term weather averages and the modeled settings above.
-              </p>
-              {monthlyEstimate.fixedCost > 0 && (
-                <p className="text-xs text-muted mb-2">
-                  (Includes ${monthlyEstimate.fixedCost.toFixed(2)} fixed fees)
-                </p>
-              )}
-              {/* Divider under cost */}
-              <div className={`h-px w-24 mx-auto ${
-                energyMode === "cooling"
-                  ? "bg-cyan-500/50"
-                  : "bg-green-500/50"
-              }`}></div>
-            </div>
-            {forecastModel === "polarVortex" && dailyForecast && dailyForecast.length > 0 && (
-              <div className="mt-4 p-4 glass-card border-red-500/30 bg-red-900/10 rounded-lg">
-                <p className="text-sm font-semibold text-red-500 mb-2">⚠️ Polar Vortex Scenario</p>
-                <p className="text-xs text-high-contrast">
-                  This estimate is <strong>30-40% higher</strong> than a typical year due to the -5°F temperature anomaly. 
-                  This helps you prepare for worst-case winter conditions.
-                </p>
-              </div>
-            )}
-            {/* Expose method for testing */}
-            <span
-              data-testid="monthly-method"
-              data-method={monthlyEstimate.method}
-              className="sr-only"
-            >
-              {monthlyEstimate.method}
-            </span>
-            <p
-              className={`text-base md:text-lg mb-6 text-high-contrast/80 leading-relaxed`}
-            >
-              Typical{" "}
-              {activeMonths.find((m) => m.value === selectedMonth)?.label} bill
-              for <strong className="text-high-contrast">{Math.round(effectiveIndoorTemp)}°F</strong> (weighted average: {indoorTemp}°F day, {nighttimeTemp}°F night)
-              {energyMode === "heating" && locationData && (() => {
-                const monthlyHDD = getTypicalHDD(selectedMonth);
-                const annualHDD = getAnnualHDD(locationData.city, locationData.state);
-                // Scale to actual location HDD if available
-                const scaledHDD = annualHDD > 0 ? Math.round((monthlyHDD / 4880) * annualHDD) : Math.round(monthlyHDD);
-                return (
-                  <span className="block text-sm mt-1 text-muted" title="Heating Degree Days (HDD) measure how cold a month usually is. More cold days = more heating.">
-                    Cold-weather severity (typical for {activeMonths.find((m) => m.value === selectedMonth)?.label}): {scaledHDD} HDD
-                  </span>
-                );
-              })()}
-              {monthlyEstimate.method === "gasFurnace" && (
-                <span className="block text-sm mt-1">
-                  (Gas Furnace at {Math.round(afue * 100)}% AFUE)
-                </span>
-              )}
-              {monthlyEstimate.method === "cooling" && (
-                <span className="block text-sm mt-1">
-                  (Cooling: {monthlyEstimate.seer2} SEER2,{" "}
-                  {monthlyEstimate.tons} tons)
-                </span>
-              )}
-            </p>
-            <div className="grid grid-cols-2 gap-4 text-center text-sm mb-6">
-              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
-                <p className="font-bold text-lg text-high-contrast mb-1">
-                  {monthlyEstimate.method === "gasFurnace"
-                    ? `${Math.round(monthlyEstimate.therms ?? 0)} therms`
-                    : formatEnergyFromKwh(monthlyEstimate.energy ?? 0, unitSystem, { decimals: 0 })}
-                </p>
-                <p className="text-xs text-muted">
-                  Typical Monthly Energy
-                </p>
-              </div>
-              <div className="glass-card p-4 bg-white/5 dark:bg-white/5 rounded-lg border border-gray-200/20 dark:border-gray-700/20">
-                <p className="font-bold text-lg text-high-contrast mb-1">
-                  ${(monthlyEstimate.cost / monthlyEstimate.days).toFixed(2)}
-                </p>
-                <p className="text-xs text-muted">
-                  Average Daily Cost
-                </p>
-              </div>
-            </div>
-            
-            {/* Bill Breakdown Strip */}
-            <div className="mt-8 pt-6 border-t border-gray-200/30 dark:border-gray-700/30">
-              <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Heating:</span>
-                  <span className="font-semibold text-high-contrast">
-                    {energyMode === "heating" 
-                      ? `$${monthlyEstimate.cost.toFixed(2)}`
-                      : "$0.00"}
-                  </span>
-                </div>
-                <span className="text-muted">•</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Cooling:</span>
-                  <span className="font-semibold text-high-contrast">
-                    {energyMode === "cooling" 
-                      ? `$${monthlyEstimate.cost.toFixed(2)}`
-                      : "$0.00"}
-                  </span>
-                </div>
-                <span className="text-muted">•</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted">Fan/other:</span>
-                  <span className="font-semibold text-high-contrast">$0.00</span>
-                </div>
-              </div>
-              <p className="text-xs text-muted text-center mt-3">
-                Assumes: {indoorTemp}°F day / {nighttimeTemp}°F night, 30-year typical weather.
-              </p>
-            </div>
-            
-            {/* Cost Insight Block - Explains the "why" behind the cost */}
-            {(() => {
-              // Generate contextual insight about the cost
-              const monthName = activeMonths.find((m) => m.value === selectedMonth)?.label || "this month";
-              const stateName = locationData?.state || "";
-              const cityName = locationData?.city || "";
-              
-              // Get HDD/CDD for context
-              const monthlyHDD = energyMode === "heating" ? getTypicalHDD(selectedMonth) : 0;
-              const monthlyCDD = energyMode === "cooling" ? getTypicalCDD(selectedMonth) : 0;
-              
-              // Calculate savings from nighttime setback (compared to constant 70°F for heating, 75°F for cooling)
-              let savingsPercent = 0;
-              let savingsExplanation = "";
-              
-              if (energyMode === "heating") {
-                // Compare weighted average temp to constant 70°F
-                const constantTemp = 70;
-                const weightedAvg = effectiveIndoorTemp;
-                const tempDiff = constantTemp - weightedAvg;
-                
-                // Rough estimate: each degree lower saves ~3-5% in heating costs
-                // More accurate: proportional to temperature difference
-                if (tempDiff > 0) {
-                  // Savings roughly proportional to (tempDiff / constantTemp) * 0.8 (accounting for base load)
-                  savingsPercent = Math.round((tempDiff / constantTemp) * 0.8 * 100);
-                  savingsExplanation = `Lowering your thermostat at night helps a little, but in cold climates the biggest cost driver is outdoor temperature — not small schedule tweaks.`;
-                } else if (tempDiff < 0) {
-                  savingsExplanation = `Your higher setpoint increases costs, but in cold climates the biggest cost driver is outdoor temperature — not small schedule tweaks.`;
-                } else {
-                  savingsExplanation = "Your constant temperature setting provides steady comfort.";
-                }
-              } else {
-                // Cooling: compare to constant 75°F baseline
-                const constantTemp = 75;
-                const weightedAvg = effectiveIndoorTemp;
-                const tempDiff = weightedAvg - constantTemp;
-                
-                if (tempDiff > 0) {
-                  // Higher temp = savings
-                  savingsPercent = Math.round((tempDiff / constantTemp) * 0.7 * 100);
-                  savingsExplanation = `Your higher setpoint saves approximately ${savingsPercent}% compared to a constant 75°F.`;
-                } else if (tempDiff < 0) {
-                  savingsExplanation = `Your lower setpoint increases costs by approximately ${Math.round(Math.abs(tempDiff) / constantTemp * 0.7 * 100)}% compared to 75°F.`;
-                } else {
-                  savingsExplanation = "Your constant temperature setting provides steady comfort.";
-                }
-              }
-              
-              // Determine seasonal context
-              let seasonalContext = "";
-              if (energyMode === "heating") {
-                if ([12, 1, 2].includes(selectedMonth)) {
-                  seasonalContext = "historically a high-heating month";
-                } else if ([10, 11].includes(selectedMonth)) {
-                  seasonalContext = "a moderate-heating month";
-                } else if ([3, 4].includes(selectedMonth)) {
-                  seasonalContext = "a low-heating transition month";
-                } else {
-                  seasonalContext = "typically a low-heating month";
-                }
-              } else {
-                if ([6, 7, 8].includes(selectedMonth)) {
-                  seasonalContext = "historically a high-cooling month";
-                } else if ([5, 9].includes(selectedMonth)) {
-                  seasonalContext = "a moderate-cooling month";
-                } else {
-                  seasonalContext = "typically a low-cooling month";
-                }
-              }
-              
-              // Determine cost drivers
-              let costDrivers = "";
-              if (energyMode === "heating") {
-                if (monthlyHDD > 1000) {
-                  costDrivers = "Your bills are driven mostly by cold outdoor temperatures and extended heat pump runtime.";
-                } else if (monthlyHDD > 500) {
-                  costDrivers = "Your bills are driven by moderate heating demand and heat pump runtime.";
-                } else {
-                  costDrivers = "Your bills are relatively low due to mild weather, with minimal heating needed.";
-                }
-              } else {
-                if (monthlyCDD > 300) {
-                  costDrivers = "Your bills are driven mostly by hot outdoor temperatures and extended cooling runtime.";
-                } else if (monthlyCDD > 150) {
-                  costDrivers = "Your bills are driven by moderate cooling demand and AC runtime.";
-                } else {
-                  costDrivers = "Your bills are relatively low due to mild weather, with minimal cooling needed.";
-                }
-              }
-              
-              // Build the insight message
-              const locationContext = cityName && stateName ? `in ${cityName}, ${stateName}` : stateName ? `in ${stateName}` : "";
-              const insightMessage = locationContext 
-                ? `${monthName} is ${seasonalContext} ${locationContext}. ${costDrivers} ${savingsExplanation}`
-                : `${monthName} is ${seasonalContext}. ${costDrivers} ${savingsExplanation}`;
-              
-              return (
-                <div className="mt-8 pt-8 border-t border-gray-200/30 dark:border-gray-700/30">
-                  <div className="glass-card p-6 border-blue-500/30 bg-blue-50/30 dark:bg-blue-950/20 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <Calculator className="w-5 h-5 text-blue-500" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-high-contrast mb-2 flex items-center gap-2">
-                          <span className="text-lg">💡</span>
-                          <span>Why this cost?</span>
-                        </p>
-                        <p className="text-sm text-high-contrast/80 leading-relaxed">
-                          {insightMessage}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            
-            {/* CO2 Footprint */}
-            <div className="mt-4 glass-card p-glass-sm text-center">
-              <p className="text-xs text-muted mb-1">
-                Estimated CO2 Footprint
-              </p>
-              <p className="font-semibold text-high-contrast">
-                {(() => {
-                  const co2Lbs =
-                    monthlyEstimate.method === "gasFurnace"
-                      ? calculateGasCO2(monthlyEstimate.therms ?? 0).lbs
-                      : calculateElectricityCO2(
-                          monthlyEstimate.energy ?? 0,
-                          locationData?.state
-                        ).lbs;
-                  const equivalent = getBestEquivalent(co2Lbs);
-                  let co2Display = "N/A";
-                  if (Number.isFinite(co2Lbs)) {
-                    co2Display = co2Lbs >= 1 ? formatCO2(co2Lbs) : "< 1 lb";
-                  }
-                  return (
-                    <>
-                      {co2Display}
-                      {co2Lbs > 10 && (
-                        <span className="block text-[11px] text-muted mt-1 font-normal">
-                          ≈ {equivalent.text}
-                        </span>
-                      )}
-                    </>
-                  );
-                })()}
-              </p>
-            </div>
-            {monthlyEstimate.excludedAuxEnergy > 0 && (
-              <div className="mt-4 glass-card p-glass-sm border-yellow-500/30 text-sm text-high-contrast">
-                <p>
-                  <strong>Note:</strong> This estimate <em>excludes</em>{" "}
-                  electric auxiliary heat (
-                  {formatEnergyFromKwh(monthlyEstimate.excludedAuxEnergy, unitSystem, { decimals: 0 })}) because
-                  you have turned off 'Count electric auxiliary heat'.
-                </p>
-              </div>
-            )}
-            {typeof monthlyEstimate.energy === "number" &&
-              monthlyEstimate.energy < 300 &&
-              [1, 2, 12].includes(selectedMonth) &&
-              energyMode === "heating" && (
-                <div className="mt-6 glass-card p-glass border-yellow-500/30 text-sm text-high-contrast">
-                  <p>
-                    <strong>Heads up:</strong> This looks unusually low for a{" "}
-                    {activeMonths.find((m) => m.value === selectedMonth)?.label}{" "}
-                    heating month. Double‑check your home inputs and electricity
-                    rate.
-                  </p>
-                </div>
-              )}
-            {typeof monthlyEstimate.unmetHours === "number" &&
-              monthlyEstimate.unmetHours > 0 &&
-              energyMode === "cooling" && (
-                <div className="mt-6 glass-card p-glass border-orange-500/30 text-sm text-high-contrast">
-                  <p>
-                    <strong>Notice:</strong> Estimated{" "}
-                    {monthlyEstimate.unmetHours} unmet hours this month. Your
-                    system may struggle to maintain {Math.round(effectiveIndoorTemp)}°F.
-                  </p>
-                </div>
-              )}
-          </div>
-        </div>
-      )}
-
-      {/* Thermostat Settings Panel - Enhanced CTA */}
-      {mode === "budget" && (
-        <div className="glass-card-gradient glass-card p-8 mb-12 animate-fade-in-up border-2 border-orange-500/40 bg-orange-50/10 dark:bg-orange-950/10 rounded-xl shadow-lg">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-high-contrast mb-2 flex items-center justify-center gap-2">
-              <span className="text-2xl">⬇️</span>
-              <span>Want to lower this bill?</span>
-            </h2>
-            <p className="text-muted text-base italic">
-              Small, realistic thermostat changes can reduce costs — without sacrificing comfort.
-            </p>
-          </div>
-
-          {/* Compact Thermostat Summary - Always visible */}
-          {energyMode === "heating" && (
-            <div className="glass-card p-6 mb-6 border-blue-500/30 bg-white/5 dark:bg-white/5 rounded-lg">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 text-high-contrast flex-1">
-                  <Thermometer className="w-6 h-6 text-blue-500 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-base font-semibold">
-                      Daytime: <span className="text-blue-400">{indoorTemp}°F</span> · Nighttime: <span className="text-blue-400">{nighttimeTemp}°F</span>
-                    </p>
-                    <p className="text-sm text-muted mt-1">
-                      {daytimeTime} - {nighttimeTime}
-                    </p>
-                    {potentialSavings && potentialSavings.dollars > 0.5 && (
-                      <p className="text-sm text-green-500 dark:text-green-400 font-medium mt-2">
-                        💰 If you switch to our recommended schedule, this month would cost about <strong>${potentialSavings.dollars.toFixed(2)}</strong> less.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowThermostatSchedule(!showThermostatSchedule)}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-bold hover:from-orange-400 hover:to-orange-500 transition-all text-sm flex items-center gap-2 shadow-xl hover:shadow-2xl transform hover:scale-105 ring-2 ring-orange-400/60 whitespace-nowrap"
-                >
-                  {showThermostatSchedule ? (
-                    <>
-                      <ChevronUp className="w-4 h-4" />
-                      Hide Schedule
-                    </>
-                  ) : (
-                    <>
-                      <Settings className="w-4 h-4" />
-                      Edit schedule & update cost
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Expanded Thermostat Schedule Card - Collapsible */}
-          {energyMode === "heating" && showThermostatSchedule && (
-            <div className="animate-fade-in">
-              <ThermostatScheduleCard
-                indoorTemp={indoorTemp}
-                daytimeTime={daytimeTime}
-                nighttimeTime={nighttimeTime}
-                nighttimeTemp={nighttimeTemp}
-                onDaytimeTimeChange={(time) => {
-                  setDaytimeTime(time);
-                  setThermostatModel("custom");
-                }}
-                onNighttimeTimeChange={(time) => {
-                  setNighttimeTime(time);
-                  setThermostatModel("custom");
-                }}
-                onNighttimeTempChange={(temp) => {
-                  setNighttimeTemp(temp);
-                  setThermostatModel("custom");
-                }}
-                onIndoorTempChange={(temp) => {
-                  setIndoorTemp(temp);
-                  setThermostatModel("custom");
-                }}
-                setUserSetting={setUserSetting}
-              />
-              
-              {/* ASHRAE Standards Button */}
-              <div className="mt-4 flex flex-col items-center gap-3">
-                <button
-                  onClick={() => {
-                    // ASHRAE Standard 55 recommendations (50% RH):
-                    // Winter heating: 68.5-74.5°F (use 70°F as middle) for day, 68°F for night
-                    setIndoorTemp(70); // ASHRAE Standard 55: 70°F for winter (middle of 68.5-74.5°F range)
-                    setNighttimeTemp(68); // ASHRAE Standard 55: 68°F for sleep/unoccupied in winter
-                    setThermostatModel("custom");
-                    if (setUserSetting) {
-                      setUserSetting("winterThermostat", 70);
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                  title="Apply ASHRAE Standard 55 thermal comfort recommendations"
-                >
-                  <CheckCircle2 size={16} />
-                  Apply ASHRAE Standard 55
-                </button>
-                <a
-                  href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                  title="Learn more about ASHRAE standards"
-                >
-                  Learn more
-                </a>
-                <p className="text-xs text-center text-gray-500 dark:text-gray-400 max-w-2xl">
-                  ASHRAE Standard 55 provides thermal comfort recommendations: 70°F day / 68°F night (winter) for occupied spaces at 50% relative humidity.
-                </p>
-              </div>
-            </div>
-          )}
-          
-          {/* Cooling mode - Compact summary */}
-          {energyMode === "cooling" && (
-            <div className="glass-card p-glass mb-4 border-cyan-500/30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 text-high-contrast">
-                  <Thermometer className="w-5 h-5 text-cyan-500" />
-                  <div>
-                    <p className="text-sm font-semibold">
-                      Daytime: <span className="text-cyan-500">{summerThermostat || 75}°F</span> · Nighttime: <span className="text-cyan-500">{summerThermostatNight || 72}°F</span>
-                    </p>
-                    <p className="text-xs text-muted mt-0.5">
-                      Cooling schedule
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Cooling mode - show summer ASHRAE button */}
-          {energyMode === "cooling" && (
-            <div className="mt-4 flex flex-col items-center gap-3">
-              <button
-                onClick={() => {
-                  // ASHRAE Standard 55 recommendations (50% RH):
-                  // Summer cooling: 73-79°F (use 76°F as middle) for day, 78°F for night
-                  if (setUserSetting) {
-                    setUserSetting("summerThermostat", 76); // ASHRAE Standard 55: 76°F for summer (middle of 73-79°F range)
-                    setUserSetting("summerThermostatNight", 78); // ASHRAE Standard 55: 78°F for sleep/unoccupied in summer
-                  }
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 dark:from-blue-700 dark:to-indigo-700 dark:hover:from-blue-600 dark:hover:to-indigo-600 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                title="Apply ASHRAE Standard 55 thermal comfort recommendations"
-              >
-                <CheckCircle2 size={16} />
-                Apply ASHRAE Standard 55
-              </button>
-              <a
-                href="https://www.ashrae.org/technical-resources/standards-and-guidelines"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                title="Learn more about ASHRAE standards"
-              >
-                Learn more
-              </a>
-              <p className="text-xs text-center text-gray-500 dark:text-gray-400 max-w-2xl">
-                ASHRAE Standard 55 provides thermal comfort recommendations: 76°F day / 78°F night (summer) for occupied spaces at 50% relative humidity.
-              </p>
-            </div>
-          )}
-
-          {/* Aux Heat Toggle - Show for heat pumps */}
-          {primarySystem === "heatPump" && energyMode === "heating" && (
-            <div className="glass-card p-glass border-amber-500/30">
-              <h3 className="heading-tertiary mb-4 flex items-center gap-2">
-                <Thermometer size={18} className="text-amber-500" />
-                Auxiliary Heat Settings
-              </h3>
-              <div className="space-y-3">
-                <label className="inline-flex items-center gap-2 text-sm text-high-contrast">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={!!useElectricAuxHeat}
-                    onChange={(e) =>
-                      setUseElectricAuxHeat(!!e.target.checked)
-                    }
-                    aria-label="Include electric auxiliary resistance heat in monthly energy and cost estimates"
-                    title="When enabled, electric auxiliary resistance backup heat will be counted toward monthly electricity and cost estimates"
-                  />
-                  <span className="font-medium">
-                    Count electric auxiliary heat in estimates
-                  </span>
-                </label>
-                {!useElectricAuxHeat && (
-                  <div className="mt-3 p-3 glass-card border-amber-500/30 text-xs">
-                    <p className="text-high-contrast">
-                      <strong>⚠️ Aux heat disabled:</strong> Minimum
-                      achievable indoor temp is approximately{" "}
-                      <strong>
-                        {(() => {
-                          // Estimate minimum indoor temp based on heat pump capacity vs building heat loss
-                          const tonsMap = {
-                            18: 1.5,
-                            24: 2.0,
-                            30: 2.5,
-                            36: 3.0,
-                            42: 3.5,
-                            48: 4.0,
-                            60: 5.0,
-                          };
-                          const tons = tonsMap[capacity] || 3.0;
-                          const designHeatLoss = heatUtils.calculateHeatLoss({
-                            squareFeet,
-                            insulationLevel,
-                            homeShape,
-                            ceilingHeight,
-                          });
-                          const heatLossPerDegF = designHeatLoss / 70;
-
-                          // At 5°F outdoor, heat pump provides ~40% capacity (typical cold climate HP)
-                          const outdoorTemp = 5;
-                          const heatPumpCapacityAt5F = tons * 12000 * 0.4; // BTU/hr
-
-                          // Find indoor temp where heat loss equals heat pump output
-                          const minIndoorTemp =
-                            outdoorTemp +
-                            heatPumpCapacityAt5F / heatLossPerDegF;
-
-                          return Math.round(
-                            Math.min(indoorTemp, Math.max(40, minIndoorTemp))
-                          );
-                        })()}
-                        °F
-                      </strong>{" "}
-                      at design conditions (5°F outdoor). Below this, the heat
-                      pump cannot maintain your setpoint without supplemental
-                      heat.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Daily Forecast Breakdown - Collapsible, moved below Annual Budget Planner */}
-      {mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && monthlyEstimate && (
+      {/* Daily Forecast Breakdown - Removed for simplified design */}
+      {false && mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && monthlyEstimate && (
         <div className="mt-12 pt-8 border-t-2 border-gray-300/30 dark:border-gray-700/30">
           <div className="glass-card p-6 mb-6 animate-fade-in-up border-gray-500/30">
             {/* Collapsible Header */}
@@ -2658,7 +2452,7 @@ const MonthlyBudgetPlanner = () => {
           </div>
           
           {showDailyForecast && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-8 border border-gray-200 dark:border-gray-700 animate-fade-in">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-4 mb-4 border border-gray-200 dark:border-gray-700 animate-fade-in">
               <div className="mb-4">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {activeMonths.find((m) => m.value === selectedMonth)?.label} {new Date().getFullYear()} - 
@@ -2690,7 +2484,7 @@ const MonthlyBudgetPlanner = () => {
           </div>
           
           {forecastLoading && (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <div className="text-center py-4 text-gray-500 dark:text-gray-400">
               Loading daily forecast...
             </div>
           )}
@@ -2875,9 +2669,10 @@ const MonthlyBudgetPlanner = () => {
       )}
 
       {/* Annual Budget Planner - Enhanced Section */}
-      {mode === "budget" && locationData && (
+      {/* Year-Ahead Budget Planning - Removed for simplified design */}
+      {false && mode === "budget" && locationData && (
         <div className="mt-16 pt-10 border-t-2 border-gray-300/30 dark:border-gray-700/30">
-          <div className="glass-card p-8 mb-8 animate-fade-in-up border-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10 rounded-xl">
+          <div className="glass-card p-5 mb-4 animate-fade-in-up border-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10 rounded-xl">
             {/* Collapsible Header */}
             <button
               onClick={() => setShowAnnualPlanner(!showAnnualPlanner)}
@@ -2905,7 +2700,7 @@ const MonthlyBudgetPlanner = () => {
 
             {/* Collapsible Content */}
             {showAnnualPlanner && (
-              <div className="px-6 pb-6 space-y-6 animate-fade-in border-t border-indigo-200/50 dark:border-indigo-800/50 pt-6">
+              <div className="px-4 pb-4 space-y-3 animate-fade-in border-t border-indigo-200/50 dark:border-indigo-800/50 pt-3">
               
               {/* Winter Heating Plan Subsection */}
               <div>
@@ -3541,7 +3336,7 @@ const MonthlyBudgetPlanner = () => {
                           <Calculator className="w-5 h-5" />
                           Show me the math
                         </summary>
-                        <div className="mt-4 space-y-6 text-sm">
+                        <div className="mt-3 space-y-3 text-sm">
                           {/* Input Parameters */}
                           {(() => {
                             // Calculate temperature values for display
@@ -3755,7 +3550,7 @@ const MonthlyBudgetPlanner = () => {
 
       {/* Thermostat Settings for City Comparison */}
       {mode === "comparison" && locationData && locationDataB && (
-        <div className="glass-card-gradient glass-card p-glass-lg mb-8 animate-fade-in-up">
+        <div className="glass-card-gradient glass-card p-glass-lg mb-4 animate-fade-in-up">
           <div className="text-center mb-6">
             <h2 className="heading-secondary mb-2">
               🌡️ Thermostat Settings
@@ -3772,7 +3567,7 @@ const MonthlyBudgetPlanner = () => {
                 <Thermometer size={18} className="text-blue-500" />
                 Winter Heating (Dec-Feb)
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div>
                   <label className="block text-sm font-semibold text-high-contrast mb-2">
                     Daytime Setting (6am-10pm)
@@ -3782,17 +3577,17 @@ const MonthlyBudgetPlanner = () => {
                       type="range"
                       min="60"
                       max="78"
-                      value={userSettings?.winterThermostatDay ?? 70}
+                      value={userSettings?.winterThermostat ?? 70}
                       onChange={(e) =>
                         setUserSetting?.(
-                          "winterThermostatDay",
+                          "winterThermostat",
                           Number(e.target.value)
                         )
                       }
                       className="flex-grow"
                     />
                     <span className="font-bold text-xl text-blue-500 w-14 text-right">
-                      {userSettings?.winterThermostatDay ?? 70}°F
+                      {userSettings?.winterThermostat ?? 70}°F
                     </span>
                   </div>
                 </div>
@@ -3828,7 +3623,7 @@ const MonthlyBudgetPlanner = () => {
                 <Thermometer size={18} className="text-cyan-500" />
                 Summer Cooling (Jun-Aug)
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div>
                   <label className="block text-sm font-semibold text-high-contrast mb-2">
                     Daytime Setting (6am-10pm)
@@ -3890,7 +3685,7 @@ const MonthlyBudgetPlanner = () => {
 
       {/* Annual Budget Comparison */}
       {mode === "comparison" && locationData && locationDataB && (
-        <div className="glass-card-gradient glass-card p-glass-lg mb-8 animate-fade-in-up">
+        <div className="glass-card-gradient glass-card p-glass-lg mb-4 animate-fade-in-up">
           <div className="text-center mb-6">
             <h2 className="heading-secondary mb-2">
               📅 Annual Budget Comparison
@@ -4150,7 +3945,7 @@ const MonthlyBudgetPlanner = () => {
         monthlyEstimateB &&
         locationData &&
         locationDataB && (
-          <div className="glass-card-gradient glass-card p-glass-lg mb-8 animate-fade-in-up">
+          <div className="glass-card-gradient glass-card p-glass-lg mb-4 animate-fade-in-up">
             <div className="text-center mb-6">
               <p className="text-sm font-semibold text-high-contrast mb-2">
                 CITY COMPARISON:{" "}
@@ -4167,7 +3962,7 @@ const MonthlyBudgetPlanner = () => {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-glass mb-3">
               {/* Location A */}
               <div className="glass-card p-glass border-blue-500/30">
                 <div className="text-xs font-semibold text-blue-500 mb-2">
@@ -4343,40 +4138,10 @@ const MonthlyBudgetPlanner = () => {
                 {monthlyEstimateB.cost > monthlyEstimate.cost
                   ? `💸 Moving to ${locationDataB.city} would cost $${(
                       monthlyEstimateB.cost - monthlyEstimate.cost
-                    ).toFixed(2)} MORE per month`
+                    ).toFixed(2)} more for ${activeMonths.find((m) => m.value === selectedMonth)?.label || "this month"}`
                   : `💰 Moving to ${locationDataB.city} would SAVE $${(
                       monthlyEstimate.cost - monthlyEstimateB.cost
-                    ).toFixed(2)} per month`}
-              </p>
-              <p
-                className={`text-sm mt-2 font-semibold ${
-                  monthlyEstimateB.cost > monthlyEstimate.cost
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-green-600 dark:text-green-400"
-                }`}
-              >
-                {(() => {
-                  const monthlyDiff = Math.abs(
-                    monthlyEstimate.cost - monthlyEstimateB.cost
-                  );
-                  const annualDiff = monthlyDiff * 12;
-                  return monthlyEstimateB.cost > monthlyEstimate.cost
-                    ? `That's $${annualDiff.toFixed(2)} more per year`
-                    : `That's $${annualDiff.toFixed(2)} in annual savings`;
-                })()}
-              </p>
-              <p className="text-xs mt-2 text-gray-700 dark:text-gray-300">
-                {monthlyEstimateB.cost > monthlyEstimate.cost
-                  ? `That's ${(
-                      ((monthlyEstimateB.cost - monthlyEstimate.cost) /
-                        monthlyEstimate.cost) *
-                      100
-                    ).toFixed(0)}% higher`
-                  : `That's ${(
-                      ((monthlyEstimate.cost - monthlyEstimateB.cost) /
-                        monthlyEstimate.cost) *
-                      100
-                    ).toFixed(0)}% lower`}
+                    ).toFixed(2)} for ${activeMonths.find((m) => m.value === selectedMonth)?.label || "this month"}`}
               </p>
             </div>
             {typeof thermostatEquivalency === "number" && (
@@ -4394,7 +4159,7 @@ const MonthlyBudgetPlanner = () => {
 
       {/* Loading State */}
       {loading && (
-        <div className="text-center py-8">
+        <div className="text-center py-4">
           <Cloud
             className="animate-spin mx-auto mb-2 text-blue-500"
             size={32}
@@ -4412,10 +4177,11 @@ const MonthlyBudgetPlanner = () => {
         </div>
       )}
 
-      {/* Footer Section - Enhanced */}
+      {/* Footer Section - Removed for simplified design */}
+      {false && (
       <div className="mt-16 pt-10 border-t-2 border-gray-300/30 dark:border-gray-700/30">
         {/* Disclaimer */}
-        <div className="glass-card p-6 mb-8 border-orange-500/40 bg-orange-50/20 dark:bg-orange-950/20 rounded-lg animate-fade-in-up">
+        <div className="glass-card p-4 mb-4 border-orange-500/40 bg-orange-50/20 dark:bg-orange-950/20 rounded-lg animate-fade-in-up">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" />
             <div>
@@ -4430,7 +4196,7 @@ const MonthlyBudgetPlanner = () => {
         </div>
 
         {/* How This Works - Enhanced */}
-        <div className="glass-card p-8 mb-8 animate-fade-in-up border-blue-500/30 bg-blue-50/10 dark:bg-blue-950/10 rounded-lg">
+        <div className="glass-card p-5 mb-4 animate-fade-in-up border-blue-500/30 bg-blue-50/10 dark:bg-blue-950/10 rounded-lg">
           <div className="flex items-center gap-3 mb-4">
             <Info className="w-6 h-6 text-blue-500" />
             <h3 className="text-xl font-bold text-high-contrast">
@@ -4457,8 +4223,10 @@ const MonthlyBudgetPlanner = () => {
           </ul>
         </div>
       </div>
+      )}
 
-      {/* Compare Upgrade Button */}
+      {/* Compare Upgrade Button - Removed for simplified design */}
+      {false && (
       <div className="flex justify-center mt-8">
         <Link
           to="/cost-comparison"
@@ -4467,6 +4235,7 @@ const MonthlyBudgetPlanner = () => {
           Compare Upgrade →
         </Link>
       </div>
+      )}
 
       {/* Live Math Calculations Pulldown */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
@@ -4488,7 +4257,7 @@ const MonthlyBudgetPlanner = () => {
         </button>
 
         {showCalculations && (
-          <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+          <div className="px-4 pb-4 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
             {/* Building Characteristics */}
             <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
               <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Characteristics</h4>

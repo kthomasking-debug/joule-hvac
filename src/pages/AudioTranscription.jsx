@@ -1,5 +1,6 @@
-import React, { useState, useRef } from "react";
-import { Upload, FileAudio, Loader2, Copy, Check, AlertCircle, Info } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Upload, FileAudio, Loader2, Copy, Check, AlertCircle, Info, Trash2, X, List, Play, Download } from "lucide-react";
+import { saveAudioFile, getAllAudioFiles, deleteAudioFile, getAudioFile } from "../lib/audioDatabase";
 
 /**
  * Audio Transcription Page
@@ -23,9 +24,67 @@ export default function AudioTranscription() {
     }
     return "";
   });
+  const [savedFiles, setSavedFiles] = useState([]);
+  const [showSavedFiles, setShowSavedFiles] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleFileSelect = (e) => {
+  // Load saved files on mount
+  useEffect(() => {
+    loadSavedFiles();
+  }, []);
+
+  const loadSavedFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const files = await getAllAudioFiles();
+      setSavedFiles(files);
+    } catch (error) {
+      console.error("Failed to load saved files:", error);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleLoadSavedFile = async (fileId) => {
+    try {
+      const savedFile = await getAudioFile(fileId);
+      if (savedFile && savedFile.blob) {
+        // Create a File object from the blob
+        const file = new File([savedFile.blob], savedFile.filename, { type: savedFile.type });
+        setFile(file);
+        setTranscript("");
+        setError("");
+        setShowSavedFiles(false);
+      }
+    } catch (error) {
+      console.error("Failed to load saved file:", error);
+      setError("Failed to load saved file");
+    }
+  };
+
+  const handleDeleteSavedFile = async (fileId) => {
+    if (!confirm("Are you sure you want to delete this file?")) return;
+    
+    try {
+      await deleteAudioFile(fileId);
+      await loadSavedFiles(); // Reload the list
+    } catch (error) {
+      console.error("Failed to delete file:", error);
+      setError("Failed to delete file");
+    }
+  };
+
+  const handleDownloadSavedFile = (fileUrl, filename) => {
+    const link = document.createElement("a");
+    link.href = fileUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileSelect = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
@@ -41,6 +100,15 @@ export default function AudioTranscription() {
     setFile(selectedFile);
     setError("");
     setTranscript("");
+
+    // Save file to IndexedDB
+    try {
+      await saveAudioFile(selectedFile);
+      await loadSavedFiles(); // Refresh the list
+    } catch (error) {
+      console.warn("Failed to save file to IndexedDB:", error);
+      // Don't show error to user - saving is optional
+    }
   };
 
   const handleProviderChange = (e) => {
@@ -222,6 +290,13 @@ export default function AudioTranscription() {
     }
   };
 
+  const handleClearAll = () => {
+    setFile(null);
+    setTranscript("");
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files?.[0];
@@ -254,6 +329,76 @@ export default function AudioTranscription() {
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             Upload audio files and convert them to text using various providers
           </p>
+
+          {/* Saved Files Section */}
+          <div className="mb-6">
+            <button
+              onClick={() => setShowSavedFiles(!showSavedFiles)}
+              className="inline-flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              <List className="h-4 w-4 mr-2" />
+              {showSavedFiles ? "Hide" : "Show"} Saved Files ({savedFiles.length})
+            </button>
+
+            {showSavedFiles && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md">
+                {loadingFiles ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                    <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading files...</span>
+                  </div>
+                ) : savedFiles.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                    No saved files. Upload a file to save it automatically.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {savedFiles.map((savedFile) => (
+                      <div
+                        key={savedFile.id}
+                        className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          <FileAudio className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {savedFile.filename}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {(savedFile.size / 1024 / 1024).toFixed(2)} MB • {new Date(savedFile.uploadedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <button
+                            onClick={() => handleLoadSavedFile(savedFile.id)}
+                            className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+                            title="Load file"
+                          >
+                            <Play className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDownloadSavedFile(savedFile.url, savedFile.filename)}
+                            className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                            title="Download file"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSavedFile(savedFile.id)}
+                            className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                            title="Delete file"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Provider Selection */}
           <div className="mb-6">
@@ -322,7 +467,14 @@ export default function AudioTranscription() {
             />
             <FileAudio className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" />
             {file ? (
-              <div>
+              <div className="relative">
+                <button
+                  onClick={handleClearAll}
+                  className="absolute top-0 right-0 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                  title="Delete file"
+                >
+                  <X className="h-5 w-5" />
+                </button>
                 <p className="text-gray-700 dark:text-gray-300 font-medium mb-2">
                   {file.name}
                 </p>
@@ -330,14 +482,11 @@ export default function AudioTranscription() {
                   {(file.size / 1024 / 1024).toFixed(2)} MB
                 </p>
                 <button
-                  onClick={() => {
-                    setFile(null);
-                    setTranscript("");
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  className="text-sm text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                  onClick={handleClearAll}
+                  className="inline-flex items-center px-3 py-1.5 text-sm bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                 >
-                  Remove file
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  Delete File
                 </button>
               </div>
             ) : (
@@ -387,22 +536,32 @@ export default function AudioTranscription() {
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Transcript
                 </h2>
-                <button
-                  onClick={handleCopy}
-                  className="inline-flex items-center px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-4 w-4 mr-1" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4 mr-1" />
-                      Copy
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopy}
+                    className="inline-flex items-center px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4 mr-1" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 mr-1" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleClearAll}
+                    className="inline-flex items-center px-3 py-1 text-sm bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                    title="Delete file and transcript"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear All
+                  </button>
+                </div>
               </div>
               <div className="p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md">
                 <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">

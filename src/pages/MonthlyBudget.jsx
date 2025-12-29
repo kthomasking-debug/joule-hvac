@@ -32,7 +32,7 @@ import {
   UNIT_SYSTEMS
 } from "../lib/units";
 
-// Copy generateTypicalYearHourlyTemps from BudgetDebug
+// generateTypicalYearHourlyTemps function for monthly budget calculations
 const SECOND_HARMONIC_WEIGHT = 0.3;
 const computeMaxAbsSkewedCycle = (harmonicWeight) => {
   const SAMPLES = 10000;
@@ -532,7 +532,7 @@ const MonthlyBudget = () => {
         <header className="mb-6">
           <h1 className="text-3xl font-bold text-white flex items-center gap-2">
             <Calendar className="w-7 h-7 text-blue-400" />
-            Monthly Budget: {MONTH_NAMES[currentMonthIndex]} {currentYear}
+            Monthly Forecast
           </h1>
           <p className="text-base text-gray-300 mt-2 max-w-3xl">
             See your daily heating and cooling costs for {MONTH_NAMES[currentMonthIndex]}, including historical data from the start of the month plus a 14-day forecast.

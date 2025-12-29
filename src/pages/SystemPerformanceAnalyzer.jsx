@@ -2138,7 +2138,7 @@ const SystemPerformanceAnalyzer = () => {
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">System Performance Analyzer</h2>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Analyze System</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-3">
             Upload a thermostat CSV to get a simple checkup: how your system's doing, what's normal, and what might be worth fixing.
           </p>

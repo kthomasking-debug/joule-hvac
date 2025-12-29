@@ -35,7 +35,11 @@ export async function isDemoMode() {
 
     // Check for Joule Bridge connection
     try {
-      const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
+      const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || import.meta.env.VITE_JOULE_BRIDGE_URL;
+      if (!bridgeUrl) {
+        // No bridge URL configured, skip check
+        return true;
+      }
       const response = await fetch(`${bridgeUrl}/api/paired`, {
         signal: AbortSignal.timeout(2000), // 2 second timeout
       });
@@ -131,7 +135,11 @@ export async function checkBridgePresence() {
 
   try {
     // Check the configured bridge URL from localStorage
-    const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || "http://localhost:8080";
+    const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || import.meta.env.VITE_JOULE_BRIDGE_URL;
+    if (!bridgeUrl) {
+      // No bridge URL configured, skip check
+      return false;
+    }
     
     const response = await fetch(`${bridgeUrl}/health`, {
       method: "GET",

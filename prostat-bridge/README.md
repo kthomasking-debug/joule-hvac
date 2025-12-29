@@ -96,7 +96,10 @@ curl -X POST http://localhost:8080/api/pair \
 
 **Important:**
 - Use the **exact** pairing code shown on your Ecobee screen
-- Format: `XXX-XX-XXX` (with dashes)
+- Format: `XXX-XX-XXX` (with dashes) - e.g., `810-85-888`
+- **Flexible input:** The bridge accepts both formats:
+  - With dashes: `810-85-888` (recommended)
+  - Without dashes: `81085888` (auto-formatted to `810-85-888`)
 - The pairing process takes up to 45 seconds - be patient
 - Keep the Ecobee screen showing the pairing code during the process
 
@@ -168,9 +171,15 @@ Returns list of HomeKit devices on the network.
 POST /api/pair
 Body: {
   "device_id": "XX:XX:XX:XX:XX:XX",
-  "pairing_code": "123-45-678"
+  "pairing_code": "123-45-678"  // or "12345678" (auto-formatted)
 }
 ```
+
+**Pairing Code Format:**
+- Accepts both formats: `"123-45-678"` or `"12345678"`
+- Automatically validates and formats to `XXX-XX-XXX` format
+- Must be exactly 8 digits
+- Provides detailed error messages if format is incorrect
 
 ### Get Thermostat Status
 
@@ -355,9 +364,13 @@ tail -f /tmp/bridge.log
      6. Use the **NEW** pairing code shown on the Ecobee screen (it may have changed)
 
 3. **Incorrect Pairing Code Format**
-   - The pairing code must be in format: `XXX-XX-XXX` (with dashes)
-   - Example: `640-54-831` (not `64054831`)
+   - The pairing code must be 8 digits in format: `XXX-XX-XXX` (with dashes)
+   - Example: `640-54-831` or `810-85-888`
+   - **Flexible input:** You can enter with or without dashes:
+     - `810-85-888` (recommended)
+     - `81085888` (auto-formatted to `810-85-888`)
    - Enter the exact code shown on your Ecobee screen
+   - The bridge automatically validates and formats the code
 
 4. **Network Connectivity Issues**
    - Ensure Ecobee and Bridge are on the same Wi-Fi network
@@ -374,9 +387,30 @@ tail -f /tmp/bridge.log
 
 **Error Messages Explained:**
 
-- `"Pairing initialization timed out"` - The device didn't respond within 45 seconds. Check pairing mode and network.
+- `"Pairing initialization timed out"` - The device didn't respond within 10 seconds. This means:
+  - Device is not in HomeKit pairing mode (check Ecobee screen)
+  - Device is already paired to Apple Home (must unpair first)
+  - Network connectivity issues between bridge and device
+  - Device is powered off or disconnected from WiFi
+  - **Solution:** Verify pairing mode is active, unpair from Apple Home if needed, check network
+
+- `"Pairing timed out"` - The pairing process took longer than 30 seconds. Usually means:
+  - Incorrect pairing code (double-check all 8 digits)
+  - Device not fully in pairing mode
+  - Network latency issues
+  - **Solution:** Verify code matches Ecobee screen exactly, wait 30 seconds and try again
+
 - `"Device is already paired to another controller"` - Unpair from Apple HomeKit first (see #2 above).
+
 - `"Device not found. Please discover devices first"` - Run discovery first, then use the device_id from the results.
+
+**Enhanced Diagnostics:**
+- The bridge now provides detailed error messages with step-by-step troubleshooting
+- Check bridge logs for comprehensive diagnostic information:
+  ```bash
+  journalctl -u prostat-bridge -f | grep -i "pairing\|error"
+  ```
+- Logs include: pairing code format, device reachability, timing information, and specific error details
 
 ### Pairing Not Persisting After Restart
 
@@ -457,6 +491,50 @@ grep -i "connect\|timeout" /tmp/bridge.log
 
 # Device discovery
 grep -i "discover\|found device" /tmp/bridge.log
+```
+
+### Enhanced Pairing Diagnostics
+
+The bridge now provides comprehensive logging for pairing attempts. When pairing, you'll see detailed information in the logs:
+
+**Pairing Code Validation:**
+```
+Pairing code validation: original='81085888', formatted='810-85-888', digits='81085888'
+```
+
+**Device Information:**
+```
+=== Starting pairing process ===
+Device ID: da:04:e9:07:e2:d5
+Original pairing code: 81085888
+Formatted pairing code: 810-85-888
+Device description available: {...}
+✓ Device is reachable, proceeding with pairing
+```
+
+**Timing Information:**
+```
+Calling device.async_start_pairing(da:04:e9:07:e2:d5)...
+✓ async_start_pairing completed in 2.34 seconds
+Calling finish_pairing with code: 810-85-888...
+✓ Pairing completed successfully in 5.67 seconds
+```
+
+**Error Diagnostics:**
+If pairing fails, logs include:
+- Exact error type and message
+- Timing information (how long each step took)
+- Device reachability status
+- Full traceback for debugging
+- Specific HomeKit protocol errors (if applicable)
+
+**View pairing logs:**
+```bash
+# All pairing-related logs
+journalctl -u prostat-bridge | grep -i "pairing\|pair"
+
+# Recent pairing attempts with timing
+journalctl -u prostat-bridge -n 100 | grep -E "pairing|Pairing|=== Starting"
 ```
 
 ## Technical Details
