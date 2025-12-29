@@ -1857,11 +1857,15 @@ async def init_blueair():
         
         # Try to get devices using available API
         try:
-            blueair_devices = await get_devices(username=username, password=password)
-            blueair_account = None  # Not needed with new API
+            # get_devices returns a tuple: (api, devices_list)
+            blueair_api_instance, devices_list = await get_devices(username=username, password=password)
+            blueair_account = blueair_api_instance  # Store the API instance for control operations
+            blueair_devices = devices_list  # Store the list of Device objects
             blueair_connected = True
             blueair_local_mode = False
             logger.info(f"Blueair connected: {len(blueair_devices)} device(s) found")
+            for i, device in enumerate(blueair_devices):
+                logger.info(f"  Device {i}: {device.name} (UUID: {device.uuid})")
             return True
         except Exception as api_error:
             logger.warning(f"Blueair API error: {api_error}. Blueair features will be disabled.")
@@ -1909,11 +1913,11 @@ async def control_blueair_fan(device_index=0, speed=0):
                     else:
                         raise Exception(f"ESP32 returned status {resp.status}")
         else:
-            # Cloud API mode
-            purifier = blueair_devices[device_index]
-            await purifier.set_fan_speed(speed)
+            # Cloud API mode - Device objects have set_fan_speed(new_speed: str)
+            device = blueair_devices[device_index]
+            await device.set_fan_speed(str(speed))  # API requires string
             system_state['blueair_fan_speed'] = speed
-            logger.info(f"Blueair fan speed set to {speed}")
+            logger.info(f"Blueair fan speed set to {speed} on device {device.name}")
             return True
     except Exception as e:
         logger.error(f"Failed to control Blueair fan: {e}")
@@ -1961,11 +1965,11 @@ async def control_blueair_led(device_index=0, brightness=100):
                 await _try_rediscover_blueair()
                 raise
         else:
-            # Cloud API mode
-            purifier = blueair_devices[device_index]
-            await purifier.set_led_brightness(brightness)
+            # Cloud API mode - Device objects have set_brightness(new_brightness: int)
+            device = blueair_devices[device_index]
+            await device.set_brightness(brightness)
             system_state['blueair_led_brightness'] = brightness
-            logger.info(f"Blueair LED brightness set to {brightness}%")
+            logger.info(f"Blueair LED brightness set to {brightness}% on device {device.name}")
             return True
     except Exception as e:
         logger.error(f"Failed to control Blueair LED: {e}")
@@ -2055,57 +2059,54 @@ async def get_blueair_status(device_index=0):
                     'ip_address': blueair_local_ip,
                 }
         
-        # Cloud API mode
-        purifier = blueair_devices[device_index]
+        # Cloud API mode - blueair_devices is a list of Device objects
+        device = blueair_devices[device_index]
         
-        # Try to get actual device data from the API
+        # Refresh device data from the cloud API
+        try:
+            await device.refresh()
+        except Exception as refresh_error:
+            logger.warning(f"Failed to refresh Blueair device data: {refresh_error}")
+        
+        # Build status from Device object attributes
         status_data = {
             'device_index': device_index,
-            'fan_speed': system_state.get('blueair_fan_speed', 0),
-            'led_brightness': system_state.get('blueair_led_brightness', 100),
+            'fan_speed': device.fan_speed if device.fan_speed is not None and device.fan_speed is not NotImplemented else system_state.get('blueair_fan_speed', 0),
+            'led_brightness': device.brightness if device.brightness is not None and device.brightness is not NotImplemented else system_state.get('blueair_led_brightness', 100),
+            'device_name': device.name,
+            'uuid': device.uuid,
+            'mac': device.mac,
+            'model': device.model,
+            'firmware': device.firmware,
+            'room_location': device.room_location,
         }
         
-        # Try to get additional device information if available
+        # Add sensor data if available
         try:
-            # Check if device has attributes we can read
-            if hasattr(purifier, 'get_status') or hasattr(purifier, 'status'):
-                # Try calling get_status method
-                if hasattr(purifier, 'get_status'):
-                    device_status = await purifier.get_status()
-                    if device_status:
-                        status_data.update(device_status)
-                # Or try accessing status property
-                elif hasattr(purifier, 'status'):
-                    device_status = purifier.status
-                    if device_status:
-                        status_data.update(device_status)
-            
-            # Try to get sensor data (PM2.5, tVOC, etc.)
-            if hasattr(purifier, 'get_sensors') or hasattr(purifier, 'sensors'):
-                if hasattr(purifier, 'get_sensors'):
-                    sensors = await purifier.get_sensors()
-                    if sensors:
-                        status_data['sensors'] = sensors
-                elif hasattr(purifier, 'sensors'):
-                    status_data['sensors'] = purifier.sensors
-            
-            # Try to get device info
-            if hasattr(purifier, 'name'):
-                status_data['device_name'] = purifier.name
-            if hasattr(purifier, 'mac_address'):
-                status_data['mac_address'] = purifier.mac_address
-            if hasattr(purifier, 'model'):
-                status_data['model'] = purifier.model
-            
-            # Try to get current fan speed and LED from device
-            if hasattr(purifier, 'fan_speed'):
-                status_data['fan_speed'] = purifier.fan_speed
-            if hasattr(purifier, 'led_brightness'):
-                status_data['led_brightness'] = purifier.led_brightness
-                
-        except Exception as api_error:
-            # If we can't get additional data, that's okay - use cached state
-            logger.debug(f"Could not get additional Blueair device data: {api_error}")
+            sensors = {}
+            if device.pm25 is not NotImplemented and device.pm25 is not None:
+                sensors['pm25'] = device.pm25
+            if device.pm10 is not NotImplemented and device.pm10 is not None:
+                sensors['pm10'] = device.pm10
+            if device.pm1 is not NotImplemented and device.pm1 is not None:
+                sensors['pm1'] = device.pm1
+            if device.voc is not NotImplemented and device.voc is not None:
+                sensors['voc'] = device.voc
+            if device.co2 is not NotImplemented and device.co2 is not None:
+                sensors['co2'] = device.co2
+            if device.temperature is not NotImplemented and device.temperature is not None:
+                sensors['temperature'] = device.temperature
+            if device.humidity is not NotImplemented and device.humidity is not None:
+                sensors['humidity'] = device.humidity
+            if sensors:
+                status_data['sensors'] = sensors
+        except Exception as sensor_error:
+            # If we can't get sensor data, that's okay
+            logger.debug(f"Could not get Blueair sensor data: {sensor_error}")
+        
+        # Update system state cache
+        system_state['blueair_fan_speed'] = status_data['fan_speed']
+        system_state['blueair_led_brightness'] = status_data['led_brightness']
         
         return status_data
     except Exception as e:
