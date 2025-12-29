@@ -279,10 +279,12 @@ export default function BridgeSupport() {
       lines.push(`Discovered Devices: ${status.diagnostics.discovered_devices?.join(', ') || 'None'}`);
       lines.push(`Stored Pairings: ${status.diagnostics.stored_pairings?.join(', ') || 'None'}`);
       if (status.diagnostics.issues?.length > 0) {
-        lines.push(`Issues: ${status.diagnostics.issues.join('; ')}`);
+        const issueStrings = status.diagnostics.issues.map(i => typeof i === 'string' ? i : i?.message || JSON.stringify(i));
+        lines.push(`Issues: ${issueStrings.join('; ')}`);
       }
       if (status.diagnostics.recommendations?.length > 0) {
-        lines.push(`Recommendations: ${status.diagnostics.recommendations.join('; ')}`);
+        const recStrings = status.diagnostics.recommendations.map(r => typeof r === 'string' ? r : r?.message || JSON.stringify(r));
+        lines.push(`Recommendations: ${recStrings.join('; ')}`);
       }
       lines.push('');
     }
@@ -508,7 +510,7 @@ export default function BridgeSupport() {
                   <p className="text-yellow-400 font-medium mb-2">⚠️ Issues Found:</p>
                   <ul className="list-disc list-inside text-yellow-300 text-xs space-y-1">
                     {status.diagnostics.issues.map((issue, i) => (
-                      <li key={i}>{issue}</li>
+                      <li key={i}>{typeof issue === 'string' ? issue : issue?.message || JSON.stringify(issue)}</li>
                     ))}
                   </ul>
                 </div>
@@ -519,7 +521,7 @@ export default function BridgeSupport() {
                   <p className="text-blue-400 font-medium mb-2">💡 Recommendations:</p>
                   <ul className="list-disc list-inside text-blue-300 text-xs space-y-1">
                     {status.diagnostics.recommendations.map((rec, i) => (
-                      <li key={i}>{rec}</li>
+                      <li key={i}>{typeof rec === 'string' ? rec : rec?.message || JSON.stringify(rec)}</li>
                     ))}
                   </ul>
                 </div>
