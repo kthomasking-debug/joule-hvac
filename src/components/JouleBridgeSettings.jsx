@@ -692,11 +692,7 @@ export default function JouleBridgeSettings() {
               {bridgeAvailable && bridgeInfo && (
                 <span className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   {bridgeInfo.hostname || 'Unknown'}
-                  {bridgeInfo.service_path && (() => {
-                    // Extract username from service path like /home/username/prostat-bridge
-                    const match = bridgeInfo.service_path.match(/\/home\/([^/]+)/);
-                    return match ? ` (${match[1]})` : '';
-                  })()}
+                  {bridgeInfo.username && ` (${bridgeInfo.username})`}
                   {' • '}
                   {bridgeInfo.local_ip || 'Unknown IP'}
                   {bridgeInfo.tailscale_ip && ` • Tailscale: ${bridgeInfo.tailscale_ip}`}

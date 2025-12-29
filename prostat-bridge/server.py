@@ -2629,8 +2629,24 @@ async def handle_bridge_info(request):
         tailscale_ip = get_tailscale_ip()
         tailscale_status = get_tailscale_status()
         
+        # Get username from home directory or environment
+        username = None
+        try:
+            import os
+            from pathlib import Path
+            home_path = Path.home()
+            # Extract username from /home/username path
+            if str(home_path).startswith('/home/'):
+                username = home_path.parts[-1] if len(home_path.parts) > 1 else None
+            # Fallback to environment variable
+            if not username:
+                username = os.getenv('USER') or os.getenv('USERNAME')
+        except Exception:
+            pass
+        
         info = {
             "hostname": socket.gethostname(),
+            "username": username,
             "platform": platform.platform(),
             "python_version": sys.version,
             "local_ip": get_local_ip(),
