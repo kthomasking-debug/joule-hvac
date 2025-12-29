@@ -251,12 +251,13 @@ export default function BridgeSupport() {
       return;
     }
     
-    // Validate pairing code format (should be 8 digits, may have dashes)
-    const cleanCode = pairingCode.replace(/[-\s]/g, '');
-    if (!/^\d{8}$/.test(cleanCode)) {
-      alert('Pairing code must be 8 digits (e.g., 123-45-678 or 12345678)');
+    // Validate pairing code format (must be xxx-xx-xxx)
+    if (!/^\d{3}-\d{2}-\d{3}$/.test(pairingCode)) {
+      alert('Pairing code must be in format xxx-xx-xxx (e.g., 123-45-678)');
       return;
     }
+    // Remove dashes for the API call
+    const cleanCode = pairingCode.replace(/-/g, '');
     
     setPairingStatus({ loading: true, success: false, error: null });
     
@@ -637,15 +638,28 @@ export default function BridgeSupport() {
               {/* Pairing Code Input */}
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  8-Digit Pairing Code
+                  8-Digit Pairing Code (xxx-xx-xxx)
                 </label>
                 <input
                   type="text"
                   value={pairingCode}
-                  onChange={(e) => setPairingCode(e.target.value)}
-                  placeholder="e.g., 123-45-678 or 12345678"
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-lg tracking-wider"
-                  maxLength={11}
+                  onChange={(e) => {
+                    // Auto-format as xxx-xx-xxx
+                    let value = e.target.value.replace(/[^0-9]/g, ''); // Keep only digits
+                    if (value.length > 8) value = value.slice(0, 8);
+                    
+                    // Add dashes at correct positions
+                    if (value.length > 5) {
+                      value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
+                    } else if (value.length > 3) {
+                      value = value.slice(0, 3) + '-' + value.slice(3);
+                    }
+                    
+                    setPairingCode(value);
+                  }}
+                  placeholder="123-45-678"
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-2xl tracking-widest text-center"
+                  maxLength={10}
                 />
                 <p className="text-xs text-slate-400 mt-1">
                   The user can find this code on their Ecobee: Menu → Settings → HomeKit → Start Pairing
