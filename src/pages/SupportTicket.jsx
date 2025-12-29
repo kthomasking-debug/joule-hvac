@@ -10,14 +10,14 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useJouleBridgeContext } from '../contexts/JouleBridgeContext';
+import { useOptionalJouleBridge } from '../contexts/JouleBridgeContext';
 
 /**
  * Support Ticket Submission Page
  * Allows users to submit support tickets with diagnostic information
  */
 export default function SupportTicket() {
-  const jouleBridge = useJouleBridgeContext();
+  const jouleBridge = useOptionalJouleBridge();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
