@@ -54,6 +54,15 @@ export default function BridgeSupport() {
   });
   
   const [copyFeedback, setCopyFeedback] = useState('');
+  
+  // Remote pairing state
+  const [pairingCode, setPairingCode] = useState('');
+  const [selectedDevice, setSelectedDevice] = useState('');
+  const [pairingStatus, setPairingStatus] = useState({ 
+    loading: false, 
+    success: false, 
+    error: null 
+  });
 
   // Fetch helper with timeout
   const fetchWithTimeout = useCallback(async (url, options = {}, timeout = 10000) => {
@@ -232,6 +241,60 @@ export default function BridgeSupport() {
       alert(`❌ Error: ${e.message}`);
     } finally {
       setActions(prev => ({ ...prev, killing: false }));
+    }
+  };
+
+  // Remote pairing - pair a device with the bridge using user-provided code
+  const handleRemotePairing = async () => {
+    if (!selectedDevice || !pairingCode) {
+      alert('Please select a device and enter the pairing code.');
+      return;
+    }
+    
+    // Validate pairing code format (should be 8 digits, may have dashes)
+    const cleanCode = pairingCode.replace(/[-\s]/g, '');
+    if (!/^\d{8}$/.test(cleanCode)) {
+      alert('Pairing code must be 8 digits (e.g., 123-45-678 or 12345678)');
+      return;
+    }
+    
+    setPairingStatus({ loading: true, success: false, error: null });
+    
+    try {
+      const res = await fetchWithTimeout(
+        `${bridgeUrl}/api/pair`,
+        { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: selectedDevice,
+            pairing_code: cleanCode
+          })
+        },
+        60000 // 60 second timeout for pairing
+      );
+      
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        setPairingStatus({ loading: false, success: true, error: null });
+        setPairingCode('');
+        setSelectedDevice('');
+        alert('✅ Pairing successful! The device is now paired with the bridge.');
+        checkStatus(); // Refresh to show new pairing
+      } else {
+        setPairingStatus({ 
+          loading: false, 
+          success: false, 
+          error: data.error || data.detail || 'Pairing failed' 
+        });
+      }
+    } catch (e) {
+      setPairingStatus({ 
+        loading: false, 
+        success: false, 
+        error: e.message || 'Connection error during pairing' 
+      });
     }
   };
 
@@ -535,6 +598,129 @@ export default function BridgeSupport() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Remote Pairing - for support staff to pair on behalf of user */}
+        {status.connected && status.diagnostics?.discovered_devices?.length > 0 && status.diagnostics?.stored_pairings?.length === 0 && (
+          <div className="bg-slate-800/50 rounded-xl p-6 border border-green-700">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Wifi className="w-5 h-5 text-green-400" />
+              🎯 Remote Pairing
+              <span className="text-xs font-normal text-green-400 bg-green-900/50 px-2 py-0.5 rounded">Support Tool</span>
+            </h2>
+            
+            <p className="text-sm text-slate-300 mb-4">
+              Pair the user's Ecobee on their behalf. Have the user read you the 8-digit pairing code from their thermostat.
+            </p>
+            
+            <div className="space-y-4">
+              {/* Device Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Select Device to Pair
+                </label>
+                <select
+                  value={selectedDevice}
+                  onChange={(e) => setSelectedDevice(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                >
+                  <option value="">-- Select a discovered device --</option>
+                  {status.diagnostics.discovered_devices.map((deviceId) => (
+                    <option key={deviceId} value={deviceId}>
+                      {deviceId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Pairing Code Input */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  8-Digit Pairing Code
+                </label>
+                <input
+                  type="text"
+                  value={pairingCode}
+                  onChange={(e) => setPairingCode(e.target.value)}
+                  placeholder="e.g., 123-45-678 or 12345678"
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-lg tracking-wider"
+                  maxLength={11}
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  The user can find this code on their Ecobee: Menu → Settings → HomeKit → Start Pairing
+                </p>
+              </div>
+              
+              {/* Pairing Button */}
+              <button
+                onClick={handleRemotePairing}
+                disabled={pairingStatus.loading || !selectedDevice || !pairingCode}
+                className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {pairingStatus.loading ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Pairing... (this may take up to 60 seconds)
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="w-5 h-5" />
+                    Pair Device Remotely
+                  </>
+                )}
+              </button>
+              
+              {/* Status Messages */}
+              {pairingStatus.success && (
+                <div className="p-3 bg-green-900/50 border border-green-600 rounded-lg">
+                  <p className="text-green-400 font-medium flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    Pairing successful! The device is now connected.
+                  </p>
+                </div>
+              )}
+              
+              {pairingStatus.error && (
+                <div className="p-3 bg-red-900/50 border border-red-600 rounded-lg">
+                  <p className="text-red-400 font-medium flex items-center gap-2">
+                    <XCircle className="w-5 h-5" />
+                    Pairing failed: {pairingStatus.error}
+                  </p>
+                  <p className="text-red-300 text-xs mt-2">
+                    Common issues: Wrong code, code expired (try generating a new one on the Ecobee), or device already paired elsewhere.
+                  </p>
+                </div>
+              )}
+              
+              {/* Instructions */}
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                <p className="text-slate-300 font-medium mb-2">📞 Instructions for the user:</p>
+                <ol className="list-decimal list-inside text-xs text-slate-400 space-y-1">
+                  <li>On your Ecobee, go to <strong>Menu → Settings → HomeKit</strong></li>
+                  <li>If it says "Paired", tap <strong>Unpair</strong> first</li>
+                  <li>Tap <strong>Start Pairing</strong></li>
+                  <li>Read me the 8-digit code on screen</li>
+                  <li>Wait for me to confirm pairing is complete</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Already Paired Message */}
+        {status.connected && status.diagnostics?.stored_pairings?.length > 0 && (
+          <div className="bg-slate-800/50 rounded-xl p-6 border border-green-700">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              Device Already Paired
+            </h2>
+            <p className="text-sm text-slate-300">
+              This bridge already has a paired device. No additional pairing is needed.
+            </p>
+            <p className="text-xs text-slate-400 mt-2">
+              Paired device(s): {status.diagnostics.stored_pairings.join(', ')}
+            </p>
           </div>
         )}
 
