@@ -16,7 +16,8 @@ This manual covers remote support, troubleshooting, and administration of Joule 
 6. [Remote Actions](#remote-actions)
 7. [Troubleshooting Guide](#troubleshooting-guide)
 8. [Tailscale Setup for Customers](#tailscale-setup-for-customers)
-9. [Common Issues and Solutions](#common-issues-and-solutions)
+9. [Tailscale Key Expiry Handling](#tailscale-key-expiry-handling)
+10. [Common Issues and Solutions](#common-issues-and-solutions)
 
 ---
 
