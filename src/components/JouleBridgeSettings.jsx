@@ -66,16 +66,21 @@ export default function JouleBridgeSettings() {
   }, [bridgeUrl]);
 
   const loadBridgeInfo = async () => {
-    if (!bridgeAvailable) {
-      setBridgeInfo(null);
-      return;
-    }
+    // Don't check bridgeAvailable here - we might be calling this after setting it to true
     try {
       const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL || 'http://joule-bridge.local:8080';
-      const response = await fetch(`${urlToCheck}/api/bridge/info`);
+      if (!urlToCheck) {
+        setBridgeInfo(null);
+        return;
+      }
+      const response = await fetch(`${urlToCheck}/api/bridge/info`, {
+        signal: AbortSignal.timeout(5000),
+      });
       if (response.ok) {
         const info = await response.json();
         setBridgeInfo(info);
+      } else {
+        setBridgeInfo(null);
       }
     } catch (error) {
       console.debug('Error loading bridge info:', error);
