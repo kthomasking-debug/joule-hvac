@@ -501,14 +501,45 @@ At Home (Works):              Away from Home (Doesn't Work):
 
 If your bridge IP address keeps changing after power outages, you can set a static IP. See `docs/SET-STATIC-IP-MINI-COMPUTER.md` for detailed instructions.
 
-### Remote Access (VPN)
+### Remote Access (VPN) - Optional
 
-To control your thermostat when away from home, you'll need to set up a VPN. Options include:
-- **Tailscale** (easiest, free)
-- **Cloudflare Tunnel** (secure, no port forwarding)
-- **WireGuard** (self-hosted)
+To control your thermostat when away from home, or to enable remote support access, you can set up Tailscale:
 
-This is optional - most users only need local access.
+**Benefits:**
+- ✅ Free and easy to set up
+- ✅ Enables remote support (support staff can help you remotely)
+- ✅ Access your bridge from anywhere
+- ✅ Secure VPN connection
+
+**Setup Instructions:**
+
+1. **SSH into your bridge:**
+   ```bash
+   ssh user@your-bridge-ip
+   ```
+
+2. **Install Tailscale:**
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sudo sh
+   ```
+
+3. **Authenticate:**
+   ```bash
+   sudo tailscale up
+   ```
+   Visit the URL shown to log in with your email.
+
+4. **Get your Tailscale IP:**
+   ```bash
+   tailscale ip -4
+   ```
+   This will show an IP starting with `100.x.x.x`
+
+5. **Share with support (optional):**
+   - Your Tailscale IP will appear in Bridge Admin → Remote Support Access
+   - Include it in support tickets for faster remote assistance
+
+**Note:** This is completely optional. Most users only need local access. Tailscale is mainly useful if you want remote support or to access your bridge when away from home.
 
 ### Blueair Air Purifier Control
 
@@ -568,7 +599,9 @@ If you have a Blueair air purifier, you can control it through the bridge. See `
 ## Need Help?
 
 - Check the troubleshooting section above
-- Contact support with your router's IP address and the MAC address from the sticker
+- **Submit a support ticket**: Go to Tools → Support Ticket in the app
+- The support ticket automatically includes diagnostic information to help us help you faster
+- If you have Tailscale installed, your remote access IP will be included in the ticket
 - For technical installation help, see `docs/BRIDGE-INSTALLATION-GUIDE.md` (for developers/advanced users)
 
 ---

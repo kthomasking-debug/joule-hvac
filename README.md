@@ -3,6 +3,7 @@
 This workspace contains a React + Vite app and supporting scripts for HVAC/energy tools, including optional hardware integration for development.
 
 - **User Manual**: See `docs/USER_MANUAL.md` for complete end-user setup guide (includes setup, pairing, troubleshooting, and voice commands)
+- **Admin Manual**: See `docs/ADMIN_MANUAL.md` for support staff and administrators (remote support, troubleshooting, Tailscale setup)
 - **Technical Installation**: See `docs/BRIDGE-INSTALLATION-GUIDE.md` for developers/advanced users
 - **Relay Setup & Safety**: See `docs/relay-setup.md`
 
