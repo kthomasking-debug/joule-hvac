@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -79,6 +79,22 @@ export default function Tools() {
       icon: FileText,
       description: "Extract text from images and screenshots using OCR. Perfect for extracting text from PDF images, screenshots, or scanned documents. All processing happens in your browser.",
       color: "purple",
+    },
+    {
+      path: "/tools/support-ticket",
+      name: "Support Ticket",
+      label: "Support Ticket",
+      icon: MessageSquare,
+      description: "Submit a support ticket with diagnostic information. Get help with your Joule HVAC system, bridge connection issues, or any other problems.",
+      color: "blue",
+    },
+    {
+      path: "/tools/bridge-support",
+      name: "Bridge Admin",
+      label: "Bridge Admin",
+      icon: Server,
+      description: "Remote bridge administration and troubleshooting. View diagnostics, logs, system info, and perform remote actions like OTA updates and restarts.",
+      color: "orange",
     },
   ];
 
