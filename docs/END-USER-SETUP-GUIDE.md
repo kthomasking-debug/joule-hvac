@@ -9,6 +9,55 @@
 - ✅ Ethernet cable
 - ✅ This instruction sheet
 
+## How It Works (Simple Explanation)
+
+**The web app runs in YOUR browser, not on the internet!**
+
+Here's what happens when you use the app:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    YOUR HOME NETWORK                        │
+│                                                             │
+│   ┌─────────────┐         Direct Connection        ┌──────┐ │
+│   │   Your      │  ──────────────────────────────▶ │ Mini │ │
+│   │   Phone/    │  (http://joule-bridge.local:8080)│  PC  │ │
+│   │   Computer  │ ◀──────────────────────────────  │Bridge│ │
+│   │   Browser   │         API Responses            └──┬───┘ │
+│   └──────┬──────┘                                      │     │
+│          │                                            │     │
+│          │ Downloads app                              │     │
+│          │ (HTML/JS/CSS files)                        │     │
+│          ▼                                            │     │
+│   ┌──────────┐                                       │     │
+│   │ Netlify  │  ← Static files only                  │     │
+│   │ Website  │     (No API calls here!)              │     │
+│   └──────────┘                                       │     │
+│                                                      │     │
+│                                                      ▼     │
+│                                              ┌──────────┐  │
+│                                              │  Ecobee  │  │
+│                                              │Thermostat│  │
+│                                              └──────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+
+1. **The app runs in YOUR browser** (on your phone, tablet, or computer)
+2. **All communication stays on YOUR network** - nothing goes to the internet
+3. **The mini PC bridge** connects directly to your Ecobee thermostat
+4. **Fast and private** - everything happens locally in your home
+
+**Why This Matters:**
+
+- ✅ **Works offline** - No internet needed after initial download
+- ✅ **Super fast** - Direct connection, no cloud delays
+- ✅ **Private** - Your thermostat data never leaves your home
+- ✅ **Reliable** - No dependency on internet or cloud services
+
+**Important:** The app only works when you're on the same WiFi network as the mini PC. If you're away from home, you won't be able to control your thermostat (unless you set up a VPN, which is optional).
+
 ## Setup (Takes 2 Minutes)
 
 ### Step 1: Plug It In
@@ -21,6 +70,31 @@
 **That's it!** The mini computer is now connected to your network.
 
 ### Step 2: Find Your Bridge
+
+**How Bridge Discovery Works:**
+
+The mini PC automatically tells your network "I'm here!" using a technology called mDNS (like a digital name tag):
+
+```
+┌─────────────────────────────────────────────────────┐
+│              YOUR HOME NETWORK                      │
+│                                                     │
+│  Mini PC Bridge                                     │
+│  ┌──────────────┐                                   │
+│  │ "Hello! I'm  │                                   │
+│  │ joule-bridge │ ──── Broadcasts name ────▶      │
+│  │ .local"      │                                   │
+│  └──────────────┘                                   │
+│                                                     │
+│  Your Phone/Computer                                │
+│  ┌──────────────┐                                   │
+│  │ "Looking for │                                   │
+│  │ joule-bridge │ ◀─── Finds it automatically ──── │
+│  │ .local"      │                                   │
+│  └──────────────┘                                   │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
 
 **Option A: Use Hostname (Easiest - Try This First!)**
 
@@ -69,6 +143,43 @@ The bridge automatically advertises itself on your network. You can access it us
 
 ### Step 4: Pair Your Ecobee
 
+**How Pairing Works:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│              YOUR HOME NETWORK                      │
+│                                                     │
+│  ┌──────────────┐         ┌──────────────┐         │
+│  │   Your       │         │    Mini PC   │         │
+│  │   Browser    │────────▶│    Bridge    │         │
+│  │              │  "Find  │              │         │
+│  │              │  devices"              │         │
+│  └──────────────┘         └──────┬───────┘         │
+│                                   │                 │
+│                                   │ Discovers       │
+│                                   ▼                 │
+│                            ┌──────────────┐         │
+│                            │   Ecobee     │         │
+│                            │ Thermostat   │         │
+│                            │              │         │
+│                            │ Shows pairing│         │
+│                            │ code: 640-54-│         │
+│                            │     831      │         │
+│                            └──────────────┘         │
+│                                                     │
+│  ┌──────────────┐         ┌──────────────┐         │
+│  │   Your       │         │    Mini PC   │         │
+│  │   Browser    │────────▶│    Bridge    │────────▶│
+│  │              │  "Pair  │              │  "Pair  │
+│  │              │  with  │              │  with   │
+│  │              │  code   │              │  code   │
+│  │              │  640-   │              │  640-   │
+│  │              │  54-831"│              │  54-831"│
+│  └──────────────┘         └──────────────┘         │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
 1. **On your Ecobee thermostat:**
    - Menu → Settings → Installation Settings → HomeKit
    - Make sure HomeKit is **enabled**
@@ -87,6 +198,26 @@ The bridge automatically advertises itself on your network. You can access it us
 
 ### "Can't Find Bridge" or "Not Connected"
 
+**Visual Check:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Check these connections:                            │
+│                                                      │
+│  Router ────[Ethernet Cable]───▶ Mini PC            │
+│    │                                    │            │
+│    │                                    │            │
+│    │                                    ▼            │
+│    │                              [Power Plug]       │
+│    │                                    │            │
+│    │                                    ▼            │
+│    │                              [Power Outlet]     │
+│    │                                                 │
+│    └───[WiFi]───▶ Your Phone/Computer               │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
 1. **Check the Ethernet cable** is plugged into router
 2. **Check the power** is plugged in
 3. **Wait 2 more minutes** - it takes time to start
@@ -101,8 +232,105 @@ The bridge automatically advertises itself on your network. You can access it us
 
 ### "Bridge IP Changed After Power Outage"
 
-- This is normal - just find the new IP in your router
+**Why This Happens:**
+
+```
+Before Power Outage:          After Power Outage:
+┌─────────────┐               ┌─────────────┐
+│   Router    │               │   Router    │
+│             │               │             │
+│ Assigns IP: │               │ Assigns IP: │
+│ 192.168.0.106               │ 192.168.0.115  ← Different!
+└─────────────┘               └─────────────┘
+```
+
+- This is normal - your router assigns IP addresses dynamically
+- Just find the new IP in your router (see Step 2, Option B)
+- Or use the hostname `joule-bridge.local:8080` - it always works!
 - Or see the "Set Static IP" guide (optional, advanced)
+
+### "App Works at Home But Not Away"
+
+**Why This Happens:**
+
+```
+At Home (Works):              Away from Home (Doesn't Work):
+┌─────────────────┐          ┌─────────────────┐
+│  Your Phone     │          │  Your Phone     │
+│  (Same WiFi)    │          │  (Different     │
+│       │         │          │   Network)      │
+│       │         │          │       │         │
+│       ▼         │          │       │         │
+│  ┌──────────┐  │          │       │         │
+│  │  Router  │  │          │       │         │
+│  └────┬─────┘  │          │       │         │
+│       │        │          │       │         │
+│       ▼        │          │       │         │
+│  ┌──────────┐  │          │       │         │
+│  │Mini PC   │  │          │       │         │
+│  │Bridge    │  │          │       │         │
+│  └──────────┘  │          │       │         │
+│                 │          │       │         │
+│  ✅ Connected!  │          │       │         │
+│                 │          │       │         │
+│                 │          │       ▼         │
+│                 │          │  ┌──────────┐  │
+│                 │          │  │ Internet │  │
+│                 │          │  └──────────┘  │
+│                 │          │                 │
+│                 │          │  ❌ Can't reach │
+│                 │          │     mini PC     │
+└─────────────────┘          └─────────────────┘
+```
+
+**This is normal!** The bridge is on your private home network. To control it from away, you'd need to set up a VPN (optional, advanced).
+
+## Quick Reference: How Everything Connects
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    YOUR HOME NETWORK                       │
+│                                                            │
+│  ┌──────────────┐                                          │
+│  │   Internet   │                                          │
+│  │   (Netlify)  │                                          │
+│  └──────┬───────┘                                          │
+│         │ Downloads app                                    │
+│         │ (one time)                                       │
+│         ▼                                                  │
+│  ┌──────────────┐                                          │
+│  │   Your       │  ──── Direct connection ────▶          │
+│  │   Phone/     │  (http://joule-bridge.local:8080)       │
+│  │   Computer   │                                          │
+│  │   Browser    │ ◀─── API responses ────                 │
+│  └──────────────┘                                          │
+│         │                                                  │
+│         │ Same WiFi network                                │
+│         ▼                                                  │
+│  ┌──────────────┐                                          │
+│  │   Router     │                                          │
+│  │   (WiFi)     │                                          │
+│  └──────┬───────┘                                          │
+│         │ Ethernet cable                                   │
+│         ▼                                                  │
+│  ┌──────────────┐         ┌──────────────┐               │
+│  │   Mini PC    │────────▶│   Ecobee     │               │
+│  │   Bridge     │ HomeKit │ Thermostat   │               │
+│  │              │ Protocol│              │               │
+│  └──────────────┘         └──────────────┘               │
+│                                                            │
+│  ✅ All communication stays on YOUR network               │
+│  ✅ Fast, private, and works offline                      │
+│                                                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Summary:**
+- The web app runs in **your browser** (not on the internet)
+- All API calls go **directly from your browser to the mini PC** (same network)
+- The mini PC connects to your **Ecobee thermostat** via HomeKit
+- **Nothing goes through the internet** after the initial app download
+- **Works offline** once the app is loaded
 
 ## Need Help?
 
