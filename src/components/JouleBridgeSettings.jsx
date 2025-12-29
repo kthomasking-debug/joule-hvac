@@ -239,6 +239,8 @@ export default function JouleBridgeSettings() {
           setHealthError(null);
           // Check for duplicate processes
           await checkDuplicateProcesses();
+          // Load bridge info (hostname, IP, etc.)
+          await loadBridgeInfo();
         } else {
           setBridgeAvailable(false);
           setHealthError('Bridge did not respond. Make sure it is running and accessible.');
@@ -678,9 +680,17 @@ export default function JouleBridgeSettings() {
             ) : (
               <XCircle className="w-5 h-5 text-red-600" />
             )}
-            <span className="font-medium">
-              Bridge Status: {checkingHealth ? 'Checking...' : bridgeAvailable ? 'Connected' : 'Not Available'}
-            </span>
+            <div className="flex flex-col">
+              <span className="font-medium">
+                Bridge Status: {checkingHealth ? 'Checking...' : bridgeAvailable ? 'Connected' : 'Not Available'}
+              </span>
+              {bridgeAvailable && bridgeInfo && (
+                <span className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                  {bridgeInfo.hostname || 'Unknown'} • {bridgeInfo.local_ip || 'Unknown IP'}
+                  {bridgeInfo.tailscale_ip && ` • Tailscale: ${bridgeInfo.tailscale_ip}`}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
