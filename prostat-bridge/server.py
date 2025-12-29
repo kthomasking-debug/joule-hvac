@@ -2585,6 +2585,7 @@ async def init_app():
 
 async def main():
     """Main entry point"""
+    global async_zeroconf  # Declare at top of function before any use
     logger.info("Starting ProStat Bridge...")
     
     # Initialize HomeKit controller first
@@ -2756,7 +2757,6 @@ async def main():
         
         await runner.cleanup()
         # Cleanup AsyncZeroconf
-        global async_zeroconf
         if async_zeroconf:
             logger.info("Closing AsyncZeroconf...")
             await async_zeroconf.async_close()
