@@ -302,6 +302,10 @@ export default function SupportTicket() {
           <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
             <li className="flex items-start gap-2">
               <span className="text-blue-600 dark:text-blue-400">•</span>
+              <span>Read the <Link to="/docs/USER_MANUAL.md" className="text-blue-600 dark:text-blue-400 underline">User Manual</Link> for setup and troubleshooting</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-600 dark:text-blue-400">•</span>
               <span>Check the <Link to="/tools" className="text-blue-600 dark:text-blue-400 underline">Tools</Link> section for troubleshooting guides</span>
             </li>
             <li className="flex items-start gap-2">

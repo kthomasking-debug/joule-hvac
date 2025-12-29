@@ -13,7 +13,8 @@ import {
   Clock,
   Cpu,
   Copy,
-  ExternalLink
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 
 /**
@@ -685,6 +686,40 @@ export default function BridgeSupport() {
             </pre>
           </div>
         )}
+
+        {/* Documentation Links */}
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Documentation
+          </h2>
+          
+          <div className="space-y-3">
+            <Link
+              to="/docs/USER_MANUAL.md"
+              className="flex items-center gap-3 p-3 bg-slate-700 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              <FileText className="w-5 h-5 text-blue-400" />
+              <div>
+                <p className="font-medium text-white">User Manual</p>
+                <p className="text-xs text-slate-400">Complete setup and usage guide for end users</p>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-400 ml-auto" />
+            </Link>
+            
+            <Link
+              to="/docs/ADMIN_MANUAL.md"
+              className="flex items-center gap-3 p-3 bg-slate-700 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              <FileText className="w-5 h-5 text-purple-400" />
+              <div>
+                <p className="font-medium text-white">Admin Manual</p>
+                <p className="text-xs text-slate-400">Remote support and troubleshooting for support staff</p>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-400 ml-auto" />
+            </Link>
+          </div>
+        </div>
 
         {/* Diagnostic Report */}
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
