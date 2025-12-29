@@ -961,7 +961,8 @@ function AppInner() {
             />
           </>
         )}
-      </main>
+        </main>
+      </div>
 
       {/* Floating Action Button for Ask Joule - hidden when global button is shown or on checkout page */}
       {!shouldShowGlobalAskJoule && location.pathname !== "/" && (
