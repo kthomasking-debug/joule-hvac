@@ -19,6 +19,8 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_VERSION = "10"
+  # Skip Python/pip dependency installation (not needed for frontend build)
+  PIP_REQUIREMENTS_FILE = ""
 
 # Optional: Set custom headers for better security and performance
 [[headers]]

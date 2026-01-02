@@ -1,14 +1,9 @@
-# Ignore Python requirements - this is a Node.js/React app
+# Ignore Python requirements - not needed for frontend build
 requirements.txt
 
-# Ignore other non-essential files
-*.md
-docs/
-.github/
-android/
-scripts/
+# Ignore server-side Python files
 server/
-test-*.js
-*.cjs
-*.mjs
+*.py
 
+# Ignore bridge code (runs separately)
+prostat-bridge/
