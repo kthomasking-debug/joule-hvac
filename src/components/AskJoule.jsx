@@ -1,5 +1,5 @@
 import React from "react";
-import { X } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
 import { useAskJoule } from "./AskJoule/useAskJoule";
 import { AskJouleInput } from "./AskJoule/AskJouleInput";
 import { AskJouleResponse } from "./AskJoule/AskJouleResponse";
@@ -29,6 +29,11 @@ const AskJoule = (props) => {
         isListening={state.isListening}
         isSpeaking={state.isSpeaking}
         stopSpeaking={state.stopSpeaking}
+        onApiKeySaved={(apiKey) => {
+          // Clear error - the next query will automatically use the new API key from localStorage
+          state.setError("");
+          state.setOutputStatus("");
+        }}
       />
 
       {/* Ask Joule Container - Clean Chat Style */}
@@ -79,30 +84,19 @@ const AskJoule = (props) => {
         placeholder={state.placeholder}
         disabled={props.disabled}
         recognitionSupported={state.recognitionSupported}
-        setShowCommandHelp={state.setShowCommandHelp}
         setShowQuestionHelp={state.setShowQuestionHelp}
-        setShowAudit={state.setShowAudit}
-        auditLog={props.auditLog}
-        showPersonalization={state.showPersonalization}
-        setShowPersonalization={state.setShowPersonalization}
         wakeWordEnabled={state.wakeWordEnabled}
         setWakeWordEnabled={state.setWakeWordEnabled}
         wakeWordSupported={state.wakeWordSupported}
         isWakeWordListening={state.isWakeWordListening}
         wakeWordError={state.wakeWordError}
         salesMode={props.salesMode}
-        showCommandHelp={state.showCommandHelp}
         showQuestionHelp={state.showQuestionHelp}
-        showAudit={state.showAudit}
           />
 
           {/* Panels Section */}
           <AskJoulePanels 
-        showPersonalization={state.showPersonalization}
-        showCommandHelp={state.showCommandHelp}
         showQuestionHelp={state.showQuestionHelp}
-        showAudit={state.showAudit}
-        auditLog={props.auditLog}
         onSuggestionClick={(text) => {
           state.setValue(text);
           state.inputRef.current?.focus();
@@ -113,11 +107,25 @@ const AskJoule = (props) => {
         }}
           />
         
-        {/* Warning moved to bottom - small text */}
-        <div className="mt-6 pt-4 border-t border-[#222A35]">
+        {/* Warning and Clear History */}
+        <div className="mt-6 pt-4 border-t border-[#222A35] flex items-center justify-between">
           <p className="text-xs text-[#7C8894]">
             ⚠️ Joule is learning. Verify critical info with a professional.
           </p>
+          {state.commandHistory && state.commandHistory.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm("Clear conversation history?")) {
+                  state.clearHistory();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#A7B0BA] hover:text-[#E8EDF3] hover:bg-[#222A35] rounded-lg transition-colors"
+              title="Clear conversation history"
+            >
+              <Trash2 size={14} />
+              Clear History
+            </button>
+          )}
         </div>
       </div>
     </div>

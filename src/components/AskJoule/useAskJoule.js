@@ -84,9 +84,7 @@ export function useAskJoule({
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showCommandHelp, setShowCommandHelp] = useState(false);
-  const [showQuestionHelp, setShowQuestionHelp] = useState(false);
-  const [showAudit, setShowAudit] = useState(false);
-  const [showPersonalization, setShowPersonalization] = useState(false);
+  const [showQuestionHelp, setShowQuestionHelp] = useState(true); // Show questions by default to help users explore
 
   // Response state
   const [answer, setAnswer] = useState("");
@@ -670,26 +668,52 @@ export function useAskJoule({
       }
 
       if (type === "balancePoint") {
-        // Calculate from user settings
+        // Priority 1: Use balance point from Performance page (most accurate - uses same calculation)
+        let balancePoint = null;
+        let sourceInfo = "";
+        
         try {
-          // calculateBalancePoint always returns a result with defaults, so it should never be null
-          const result = calculateBalancePoint(userSettings || {});
+          // Check for stored balance point from HeatPumpEnergyFlow page
+          const storedBalancePoint = localStorage.getItem("energyFlowBalancePoint");
+          if (storedBalancePoint) {
+            try {
+              const parsed = JSON.parse(storedBalancePoint);
+              if (parsed.balancePoint != null && isFinite(parsed.balancePoint)) {
+                balancePoint = parsed.balancePoint;
+                sourceInfo = " (from System Performance Analyzer)";
+              }
+            } catch (e) {
+              console.warn("Failed to parse stored balance point:", e);
+            }
+          }
+          
+          // Priority 2: Use analyzer balance point from userSettings
+          if (balancePoint === null && userSettings?.analyzerBalancePoint != null && 
+              isFinite(userSettings.analyzerBalancePoint) &&
+              userSettings.analyzerBalancePoint >= 10 && 
+              userSettings.analyzerBalancePoint <= 60) {
+            balancePoint = userSettings.analyzerBalancePoint;
+            sourceInfo = " (calculated from your thermostat data)";
+          }
+          
+          // Priority 3: Calculate from user settings
+          if (balancePoint === null) {
+            const result = calculateBalancePoint(userSettings || {});
+            if (result && result.balancePoint != null && isFinite(result.balancePoint)) {
+              balancePoint = result.balancePoint;
+              sourceInfo = result.source === "analyzer" 
+                ? " (calculated from your thermostat data)" 
+                : " (calculated from your system capacity and building heat loss)";
+            }
+          }
 
-          if (
-            result &&
-            result.balancePoint !== null &&
-            isFinite(result.balancePoint)
-          ) {
-            // Add context about where balance point comes from and how it relates to settings
-            const sourceInfo = result.source === "analyzer" 
-              ? " (calculated from your thermostat data)" 
-              : " (calculated from your system capacity and building heat loss)";
+          if (balancePoint !== null && isFinite(balancePoint)) {
             const compressorLockout = userSettings?.thresholds?.compressorMinOutdoorTemp;
             const auxLockout = userSettings?.thresholds?.auxHeatMaxOutdoorTemp;
             
             // Check if balance point seems unrealistic
             let warningNote = "";
-            if (result.balancePoint < 15) {
+            if (balancePoint < 15) {
               warningNote = ` Note: A balance point below 15°F is unusual. Most systems in your area have balance points of 20-30°F. This suggests your system may be very oversized, or you may need to verify your system capacity and home details in Settings.`;
             }
             
@@ -697,32 +721,26 @@ export function useAskJoule({
             if (compressorLockout || auxLockout) {
               settingsNote = ` Your compressor lockout is set to ${compressorLockout || 'auto'}°F, and aux heat max outdoor temp is ${auxLockout || 'auto'}°F.`;
               // Add note if balance point differs significantly from compressor lockout
-              if (compressorLockout && Math.abs(result.balancePoint - compressorLockout) > 10) {
-                settingsNote += ` Your balance point (${result.balancePoint.toFixed(1)}°F) differs significantly from your compressor lockout setting (${compressorLockout}°F). The compressor lockout should typically be set near your balance point.`;
+              if (compressorLockout && Math.abs(balancePoint - compressorLockout) > 10) {
+                settingsNote += ` Your balance point (${balancePoint.toFixed(1)}°F) differs significantly from your compressor lockout setting (${compressorLockout}°F). The compressor lockout should typically be set near your balance point.`;
               }
             }
             
-            const message = `Your balance point is ${result.balancePoint.toFixed(
+            const message = `Your balance point is ${balancePoint.toFixed(
               1
             )}°F${sourceInfo}. This is the outdoor temperature where your heat pump output equals your building's heat loss.${warningNote}${settingsNote}`;
             setOutput({ message, status: "info" });
-            // Note: setOutput automatically handles TTS, so no need to call speak() again
             return true;
           } else {
             // If balance point is null, it means the calculation couldn't find a crossover
-            // This can happen with extremely oversized or undersized systems
-            const message = `I calculated your balance point, but it's outside the normal range. Your heat loss factor is ${
-              result?.heatLossFactor?.toLocaleString() || "unknown"
-            } BTU/hr per °F. This might indicate your system is very oversized or undersized. Check your system capacity and home details in Settings.`;
+            const message = `I couldn't calculate your balance point. This might indicate your system is very oversized or undersized. Check your system capacity and home details in Settings, or visit the System Performance Analyzer page to see the balance point calculation.`;
             setOutput({ message, status: "info" });
-            // Note: setOutput automatically handles TTS, so no need to call speak() again
             return true;
           }
         } catch (err) {
           console.error("Balance point calculation failed:", err);
           const errorMessage = `Balance point calculation error: ${err.message}. Please check your system settings in Settings.`;
           setOutput({ message: errorMessage, status: "error" });
-          // Note: setOutput automatically handles TTS, so no need to call speak() again
           return true;
         }
       }
@@ -945,25 +963,7 @@ export function useAskJoule({
     // Show response area immediately for command feedback
     setShowGroqPrompt(true);
 
-    // 0. Fun Responses (Highest Priority - Personality/Viral Content)
-    if (parsed.action === "funResponse") {
-      if (import.meta.env.DEV) {
-        console.log("[AskJoule] Handling fun response:", parsed);
-      }
-      setAnswer(parsed.response);
-      setOutputStatus("success");
-      setAgenticResponse({
-        success: true,
-        message: parsed.response,
-        source: "funResponse",
-      });
-      if (speak && speechEnabled && parsed.speakResponse) {
-        speak(parsed.speakResponse);
-      }
-      return true;
-    }
-
-    // 0.5. Offline Intelligence (High Priority - No API Key Needed)
+    // 0. Offline Intelligence (High Priority - No API Key Needed)
     if (parsed.action === "offlineAnswer") {
       if (import.meta.env.DEV) {
         console.log("[AskJoule] Handling offline answer:", parsed);
@@ -1100,37 +1100,6 @@ export function useAskJoule({
       return handleDarkModeCommand(parsed, callbacks).handled;
     }
 
-    // 6.5 Byzantine Mode Easter Egg 🕯️
-    if (parsed.action === "setByzantineMode") {
-      const enabled = parsed.value;
-      localStorage.setItem("byzantineMode", enabled ? "true" : "false");
-      console.log(
-        `[AskJoule] 🕯️ Byzantine Mode ${
-          enabled ? "ENABLED" : "DISABLED"
-        } - localStorage set to: ${localStorage.getItem("byzantineMode")}`
-      );
-      if (enabled) {
-        setError(`🕯️ BYZANTINE MODE ACTIVATED 🕯️
-
-Oh faithful servant of efficiency! The Holy Order of HVAC doth welcome thee.
-Henceforth, all responses shall be delivered in the sacred tradition of Byzantine liturgical chant.
-
-Rejoice, Oh Coil Unfrosted!
-Glory to Thee, Oh Scroll Compressor!
-May thy HSPF be ever high, and thy electric bills be ever low.
-
-(Mode Plagal of the Fourth, with faint 60Hz hum)
-Amen.`);
-        setOutputStatus("success");
-        speak?.("Rejoice, Oh Coil Unfrosted! Byzantine mode is now active.");
-      } else {
-        setError(
-          `Byzantine mode disabled. Joule returns to normal speech patterns.`
-        );
-        setOutputStatus("info");
-      }
-      return true;
-    }
 
     // 7. Advanced Settings (Groq API key, model, voice duration)
     const advRes = handleAdvancedSettingsCommand(parsed, callbacks);
@@ -1503,42 +1472,6 @@ Amen.`);
         });
       }
 
-      // Check if this is a command FIRST - before any other checks
-      // A command is identified by either isCommand === true OR having an action property
-      const isCommand = parsed && (parsed.isCommand === true || parsed.action);
-
-      if (import.meta.env.DEV) {
-        console.log("[AskJoule] Command detection:", {
-          input,
-          isCommand,
-          hasAction: !!parsed?.action,
-          isCommandFlag: parsed?.isCommand,
-          willHandleAsCommand: isCommand,
-        });
-      }
-
-      // If parsed is empty or doesn't have isCommand, it's likely a question
-      if (!parsed || Object.keys(parsed).length === 0) {
-        if (import.meta.env.DEV) {
-          console.warn("[AskJoule] Empty parse result for:", input);
-        }
-        // Fall through to LLM handling
-      } else if (parsed.isCommand === false && !parsed.action) {
-        // Explicitly marked as not a command - this is a question for the LLM
-        if (import.meta.env.DEV) {
-          console.log(
-            "[AskJoule] Query marked as question (not command), sending to LLM"
-          );
-        }
-        // Fall through to LLM handling
-      } else if (isCommand) {
-        // This is a command - handle it
-        if (import.meta.env.DEV) {
-          console.log("[AskJoule] Recognized as command, handling locally");
-        }
-        // Will be handled in the if (parsed.isCommand) block below
-      }
-
       // Check for sales queries (Presales RAG capability)
       if (parsed.isSalesQuery) {
         setIsLoadingGroq(false);
@@ -1559,64 +1492,8 @@ Amen.`);
         return;
       }
 
-      // Check if this is a command - either explicitly marked or has an action (which indicates a command)
-      // Use the isCommand variable we calculated above for consistency
-      // Also double-check: if parsed has an action property, it's definitely a command
-      const definitelyCommand =
-        isCommand || (parsed && parsed.action && !parsed.isSalesQuery);
-
-      if (definitelyCommand) {
-        if (import.meta.env.DEV) {
-          console.log("[AskJoule] Attempting to handle command:", parsed);
-        }
-        const handled = await handleCommand(parsed);
-        if (import.meta.env.DEV) {
-          console.log("[AskJoule] Command handled result:", handled);
-        }
-        if (handled) {
-          // If handled locally, show the response and speak it
-          // Check if we have a response to show (answer or error should be set by command handlers)
-          const hasResponse = answer || error || agenticResponse;
-          if (!hasResponse && import.meta.env.DEV) {
-            console.warn(
-              "[AskJoule] Command handled but no response set. Command:",
-              parsed,
-              "Answer:",
-              answer,
-              "Error:",
-              error,
-              "AgenticResponse:",
-              agenticResponse
-            );
-          }
-          setIsLoadingGroq(false);
-          setLoadingMessage(""); // Clear loading
-          setShowGroqPrompt(true); // Show response area for command confirmations
-          if (onParsed) onParsed(parsed); // Notify parent
-          return;
-        } else if (import.meta.env.DEV) {
-          console.warn(
-            "[AskJoule] Command not handled. Parsed:",
-            parsed,
-            "Action:",
-            parsed?.action
-          );
-        }
-        // Command was parsed but not handled - this shouldn't happen for valid commands
-        // Commands are handled by the parser, not the LLM
-        const errorMsg = `Command not recognized. Please check the command syntax or try a different command.`;
-        setError(errorMsg);
-        setOutputStatus("error");
-        setIsLoadingGroq(false);
-        setLoadingMessage("");
-        setShowGroqPrompt(true); // Show error message
-        if (speak && speechEnabled) {
-          speak("Command not recognized. Please try a different command.");
-        }
-        return;
-      }
-
-      // If we get here, it's not a command - send to LLM
+      // All queries go to LLM - no command handling in Ask Joule
+      // If we get here, send to LLM
       if (import.meta.env.DEV) {
         console.log(
           "[AskJoule] Not a command, sending to LLM. Parsed:",
@@ -1711,7 +1588,7 @@ Amen.`);
           `• For heat pumps, keep setbacks small (1-2°F) to avoid triggering auxiliary heat\n` +
           `• ${recommended}°F is a good balance between comfort and savings\n` +
           `• Larger setbacks (3+°F) can cause your system to use expensive strip heat in the morning\n\n` +
-          `You can adjust this in Settings under Thermostat Behavior.`;
+          `You can adjust this in Settings under Thermostat Preferences.`;
       }
 
       // If we have a fallback answer, use it
@@ -1974,11 +1851,8 @@ Amen.`);
   useEffect(() => {
     if (agenticResponse?.message && speak) {
       // Skip TTS for command responses - they're already spoken in setOutput callback
-      // Commands are identified by source: "command" or source: "funResponse"
-      if (
-        agenticResponse.source === "command" ||
-        agenticResponse.source === "funResponse"
-      ) {
+      // Commands are identified by source: "command"
+      if (agenticResponse.source === "command") {
         return; // Already spoken in setOutput callback, don't speak again
       }
 
@@ -2206,10 +2080,6 @@ Amen.`);
     setShowCommandHelp,
     showQuestionHelp,
     setShowQuestionHelp,
-    showAudit,
-    setShowAudit,
-    showPersonalization,
-    setShowPersonalization,
     answer,
     agenticResponse,
     loadingMessage,
@@ -2221,6 +2091,15 @@ Amen.`);
     submitRef,
     recognitionSupported,
     commandHistory, // Exposed for completeness
+    clearHistory: () => {
+      setCommandHistory([]);
+      setHistoryIndex(-1);
+      try {
+        localStorage.removeItem("askJouleHistory");
+      } catch {
+        // Ignore localStorage errors
+      }
+    },
     placeholder,
 
     // Actions
