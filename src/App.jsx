@@ -40,6 +40,7 @@ import { addToRecentlyViewed } from "./utils/recentlyViewed";
 import FeatureTour from "./components/FeatureTour";
 import { SeasonProvider } from "./features/forecaster/components";
 import { JouleBridgeProvider } from "./contexts/JouleBridgeContext";
+import { indexMarkdownDocs } from "./utils/rag/loadMarkdownDocs";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -69,6 +70,13 @@ function AppInner() {
       markTermsAccepted();
     }
   }, [termsAccepted, isLoaded, markTermsAccepted]);
+  
+  // Index markdown documentation on app load
+  React.useEffect(() => {
+    indexMarkdownDocs().catch(err => {
+      console.warn('[App] Failed to index markdown docs:', err);
+    });
+  }, []);
   
   // Enable swipe navigation on touch devices
   useSwipeNavigation();
@@ -887,24 +895,8 @@ function AppInner() {
         </nav>
 
         {/* Bottom Actions */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-          <button
-            onClick={() => setShowSearch(true)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Search (Ctrl+K)"
-            title="Search (Ctrl+K)"
-          >
-            <Search size={20} className="text-gray-500 dark:text-gray-400" />
-            <span>Search</span>
-          </button>
-          <button
-            onClick={toggleDarkMode}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Toggle dark mode"
-          >
-            {darkMode ? <Sun size={20} className="text-gray-500 dark:text-gray-400" /> : <Moon size={20} className="text-gray-500 dark:text-gray-400" />}
-            <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          {/* Search and Light Mode removed */}
         </div>
       </aside>
 
@@ -919,23 +911,6 @@ function AppInner() {
               className="h-10 w-auto dark:invert transition-all" 
             />
           </NavLink>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setShowSearch(true)}
-              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              aria-label="Search (Ctrl+K)"
-              title="Search (Ctrl+K)"
-            >
-              <Search size={20} className="text-gray-600 dark:text-gray-400" />
-            </button>
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              aria-label="Toggle dark mode"
-            >
-              {darkMode ? <Sun size={20} className="text-gray-600 dark:text-gray-400" /> : <Moon size={20} className="text-gray-600 dark:text-gray-400" />}
-            </button>
-          </div>
         </header>
 
         {/* Main Content */}

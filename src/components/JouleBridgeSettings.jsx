@@ -11,8 +11,10 @@ import {
   autoFixPairing,
   getBlueairCredentials,
   setBlueairCredentials,
+  getHomeKitBridgePairingInfo,
 } from '../lib/jouleBridgeApi';
-import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2, Server, ExternalLink, Info, FileText } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2, ExternalLink, Info, FileText, Eye, EyeOff, Home, Copy, ChevronDown, ChevronUp } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Link } from 'react-router-dom';
 import EcobeePairingOnboarding from './EcobeePairingOnboarding';
 
@@ -51,10 +53,15 @@ export default function JouleBridgeSettings() {
   const [autoFixing, setAutoFixing] = useState(false);
   const [blueairUsername, setBlueairUsername] = useState('');
   const [blueairPassword, setBlueairPassword] = useState('');
+  const [showBlueairPassword, setShowBlueairPassword] = useState(false);
   const [blueairCredentialsStatus, setBlueairCredentialsStatus] = useState(null);
   const [savingBlueair, setSavingBlueair] = useState(false);
   const [showPairingOnboarding, setShowPairingOnboarding] = useState(false);
   const [bridgeInfo, setBridgeInfo] = useState(null);
+  const [homekitBridgeInfo, setHomekitBridgeInfo] = useState(null);
+  const [loadingHomekitInfo, setLoadingHomekitInfo] = useState(false);
+  const [blueairExpanded, setBlueairExpanded] = useState(false);
+  const [homekitExpanded, setHomekitExpanded] = useState(false);
 
   useEffect(() => {
     loadState();
@@ -62,6 +69,7 @@ export default function JouleBridgeSettings() {
     runDiagnostics();
     loadBlueairCredentials();
     loadBridgeInfo();
+    loadHomeKitBridgeInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeUrl]);
 
@@ -98,6 +106,25 @@ export default function JouleBridgeSettings() {
       }
     } catch (error) {
       console.debug('Error loading Blueair credentials:', error);
+    }
+  };
+
+  const loadHomeKitBridgeInfo = async () => {
+    if (!bridgeAvailable) return;
+    setLoadingHomekitInfo(true);
+    try {
+      const info = await getHomeKitBridgePairingInfo();
+      console.log('HomeKit bridge info loaded:', info);
+      setHomekitBridgeInfo(info);
+    } catch (error) {
+      console.error('Error loading HomeKit bridge info:', error);
+      // Set error state so UI can display it
+      setHomekitBridgeInfo({
+        available: false,
+        error: error.message || 'Failed to load pairing information'
+      });
+    } finally {
+      setLoadingHomekitInfo(false);
     }
   };
 
@@ -241,6 +268,8 @@ export default function JouleBridgeSettings() {
         if (response.ok) {
           const available = true;
           setBridgeAvailable(available);
+          // Load HomeKit bridge info after confirming bridge is available
+          loadHomeKitBridgeInfo();
           setHealthError(null);
           // Check for duplicate processes
           await checkDuplicateProcesses();
@@ -466,44 +495,6 @@ export default function JouleBridgeSettings() {
         Joule Bridge provides <strong>local, private access</strong> to basic thermostat controls via HomeKit.
         No cloud, no accounts, no remote access.
       </div>
-      <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
-        <p className="text-xs font-semibold text-blue-900 dark:text-blue-200 mb-2">HomeKit Limitations:</p>
-        <p className="text-xs text-blue-800 dark:text-blue-300 mb-1">Joule can read and change:</p>
-        <ul className="text-xs text-blue-800 dark:text-blue-300 list-disc list-inside ml-2 space-y-0.5 mb-2">
-          <li>Mode (Heat / Cool / Auto / Off)</li>
-          <li>Target temperature</li>
-        </ul>
-        <p className="text-xs text-blue-800 dark:text-blue-300">
-          HomeKit does <strong>not</strong> expose schedules, comfort profiles, or occupancy data.
-        </p>
-      </div>
-      
-      {/* Documentation Links */}
-      <div className="mb-4 space-y-2">
-        <Link
-          to="/docs/USER_MANUAL.md"
-          className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-        >
-          <FileText className="w-4 h-4" />
-          <span className="text-sm font-medium">
-            📘 User Manual - Complete setup and usage guide
-          </span>
-          <ExternalLink className="w-3 h-3" />
-        </Link>
-        <Link
-          to="/hardware"
-          className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-        >
-          <FileText className="w-4 h-4" />
-          <span className="text-sm font-medium">
-            View Setup Documentation & Guides
-          </span>
-          <ExternalLink className="w-3 h-3" />
-        </Link>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-6">
-          Step-by-step instructions for flashing the Bridge and setting it up
-        </p>
-      </div>
       
       {/* Demo Mode Override Toggle */}
       <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 mb-4">
@@ -552,138 +543,6 @@ export default function JouleBridgeSettings() {
         </div>
       </div>
 
-      {/* Info box about auto-start */}
-      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-4">
-        <div className="flex items-start gap-2">
-          <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
-            <div className="font-semibold">📦 On Bridge Hardware:</div>
-            <div>The server auto-starts on boot. No manual start needed! If you need to restart it, use: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">sudo systemctl restart prostat-bridge</code></div>
-            <div className="font-semibold mt-2">💻 Development/Testing:</div>
-            <div>Use the "Start Server" button below to copy the manual start command.</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bridge URL Configuration */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Joule Bridge URL
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={bridgeUrl}
-            onChange={(e) => setBridgeUrl(e.target.value)}
-            placeholder="http://192.168.0.106:8080"
-            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-          />
-          <button
-            onClick={handleSaveUrl}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Save
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Enter your Joule Bridge's IP address or hostname (e.g., http://192.168.1.100:8080)
-        </p>
-        {!bridgeAvailable && !checkingHealth && bridgeUrl.includes('localhost') && (
-          <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-              <div className="text-xs text-amber-800 dark:text-amber-200">
-                <div className="font-semibold mb-1">Using localhost? Bridge might be on another device.</div>
-                <div>If your bridge is running on a mini PC or Raspberry Pi, use its IP address instead (e.g., <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">http://192.168.0.106:8080</code>). Find the IP with: <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">hostname -I</code> on the bridge device.</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Blueair Credentials Configuration */}
-      {bridgeAvailable && (
-        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-            <span>🌬️</span>
-            Blueair Air Purifier Credentials
-          </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Configure your Blueair account credentials to enable air purifier control.
-          </p>
-          
-          {blueairCredentialsStatus && (
-            <div className={`mb-4 p-3 rounded-lg border ${
-              blueairCredentialsStatus.connected
-                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-            }`}>
-              <div className="flex items-center gap-2">
-                {blueairCredentialsStatus.connected ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-                )}
-                <div className="text-sm">
-                  {blueairCredentialsStatus.connected ? (
-                    <span className="text-green-800 dark:text-green-200">
-                      Connected: {blueairCredentialsStatus.devices_count || 0} device(s) found
-                    </span>
-                  ) : (
-                    <span className="text-yellow-800 dark:text-yellow-200">
-                      {blueairCredentialsStatus.has_credentials 
-                        ? 'Credentials saved but not connected. Check username/password.'
-                        : 'No credentials configured'}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Email / Username
-              </label>
-              <input
-                type="text"
-                value={blueairUsername}
-                onChange={(e) => setBlueairUsername(e.target.value)}
-                placeholder="bunnyrita@gmail.com"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                value={blueairPassword}
-                onChange={(e) => setBlueairPassword(e.target.value)}
-                placeholder="Enter Blueair password"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <button
-              onClick={handleSaveBlueairCredentials}
-              disabled={savingBlueair || !blueairUsername || !blueairPassword}
-              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {savingBlueair ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save Credentials & Test Connection'
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Bridge Status */}
       <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <div className="flex items-center justify-between">
@@ -717,55 +576,6 @@ export default function JouleBridgeSettings() {
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
-            </button>
-            {/* Always show Start Server button - for development/testing only */}
-            <button
-              onClick={() => {
-                const command = 'cd prostat-bridge && source venv/bin/activate && python3 server.py';
-                const backgroundCommand = 'cd prostat-bridge && source venv/bin/activate && nohup python3 server.py > /tmp/prostat-bridge.log 2>&1 &';
-                const systemdCommand = 'sudo systemctl start prostat-bridge';
-                const fullInstructions = `How to start the Joule Bridge server:
-
-📦 ON BRIDGE HARDWARE ($129 device):
-   The server auto-starts on boot. No action needed!
-   If it's not running, use: ${systemdCommand}
-
-💻 FOR DEVELOPMENT/TESTING (manual start):
-   Foreground (see logs): ${command}
-   
-   Background (logs to file): ${backgroundCommand}
-   
-   After starting, click "Refresh" above.`;
-                
-                if (navigator.clipboard) {
-                  navigator.clipboard.writeText(command).then(() => {
-                    alert('Start command copied to clipboard!\n\n' + fullInstructions);
-                  }).catch(() => {
-                    // Fallback if clipboard fails
-                    const textarea = document.createElement('textarea');
-                    textarea.value = command;
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    alert('Start command copied to clipboard!\n\n' + fullInstructions);
-                  });
-                } else {
-                  // Fallback for older browsers
-                  const textarea = document.createElement('textarea');
-                  textarea.value = command;
-                  document.body.appendChild(textarea);
-                  textarea.select();
-                  document.execCommand('copy');
-                  document.body.removeChild(textarea);
-                  alert('Start command copied to clipboard!\n\n' + fullInstructions);
-                }
-              }}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
-              title="Copy command to start the bridge server (for development/testing)"
-            >
-              <Server className="w-4 h-4" />
-              Start Server
             </button>
           </div>
         </div>
@@ -1191,6 +1001,271 @@ export default function JouleBridgeSettings() {
               <p>3. Enter the 8-digit pairing code and click "Pair"</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Blueair Credentials Configuration - Collapsible */}
+      {bridgeAvailable && (
+        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
+          <button
+            onClick={() => setBlueairExpanded(!blueairExpanded)}
+            className="w-full flex items-center justify-between mb-2"
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>🌬️</span>
+              Blueair Air Purifier Credentials
+            </h3>
+            {blueairExpanded ? (
+              <ChevronUp className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-500" />
+            )}
+          </button>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Configure your Blueair account credentials to enable air purifier control.
+          </p>
+          
+          {blueairExpanded && (
+            <>
+              {blueairCredentialsStatus && (
+                <div className={`mb-4 p-3 rounded-lg border ${
+                  blueairCredentialsStatus.connected
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {blueairCredentialsStatus.connected ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                    )}
+                    <div className="text-sm">
+                      {blueairCredentialsStatus.connected ? (
+                        <span className="text-green-800 dark:text-green-200">
+                          Connected: {blueairCredentialsStatus.devices_count || 0} device(s) found
+                        </span>
+                      ) : (
+                        <span className="text-yellow-800 dark:text-yellow-200">
+                          {blueairCredentialsStatus.has_credentials 
+                            ? 'Credentials saved but not connected. Check username/password.'
+                            : 'No credentials configured'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Email / Username
+                  </label>
+                  <input
+                    type="text"
+                    value={blueairUsername}
+                    onChange={(e) => setBlueairUsername(e.target.value)}
+                    placeholder="bunnyrita@gmail.com"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showBlueairPassword ? "text" : "password"}
+                      value={blueairPassword}
+                      onChange={(e) => setBlueairPassword(e.target.value)}
+                      placeholder="Enter Blueair password"
+                      className="w-full px-3 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowBlueairPassword(!showBlueairPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-1"
+                      aria-label={showBlueairPassword ? "Hide password" : "Show password"}
+                    >
+                      {showBlueairPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSaveBlueairCredentials}
+                  disabled={savingBlueair || !blueairUsername || !blueairPassword}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {savingBlueair ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Credentials & Test Connection'
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* HomeKit Bridge Pairing Info - Collapsible - Moved below Blueair */}
+      {bridgeAvailable && (
+        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
+          <button
+            onClick={() => setHomekitExpanded(!homekitExpanded)}
+            className="w-full flex items-center justify-between mb-2"
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Home className="w-5 h-5" />
+              HomeKit Bridge Pairing
+            </h3>
+            {homekitExpanded ? (
+              <ChevronUp className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-500" />
+            )}
+          </button>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Pair your Joule Bridge with HomeKit controllers (like Apple Home app) to control devices as HomeKit accessories.
+          </p>
+          
+          {homekitExpanded && (
+            <>
+              {loadingHomekitInfo ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading pairing information...</span>
+                </div>
+              ) : homekitBridgeInfo?.available ? (
+                <div className="space-y-4">
+                  {homekitBridgeInfo.paired ? (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                          Bridge is paired ({homekitBridgeInfo.paired_clients_count} client{homekitBridgeInfo.paired_clients_count !== 1 ? 's' : ''})
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                        <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                          Bridge is not paired yet
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col md:flex-row gap-6 items-start">
+                    {/* QR Code */}
+                    <div className="flex-shrink-0">
+                      <div className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <QRCodeSVG
+                          value={homekitBridgeInfo.qr_data}
+                          size={200}
+                          level="M"
+                          includeMargin={true}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
+                        Scan with HomeKit app
+                      </p>
+                    </div>
+
+                    {/* Pairing Info */}
+                    <div className="flex-1 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Pairing Code
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
+                            <span className="text-2xl font-mono font-bold text-gray-900 dark:text-white tracking-wider">
+                              {homekitBridgeInfo.pincode}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(homekitBridgeInfo.pincode);
+                              alert('Pairing code copied to clipboard!');
+                            }}
+                            className="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                            title="Copy pairing code"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                        <p className="text-xs font-semibold text-blue-900 dark:text-blue-200 mb-2">How to Pair:</p>
+                        <ol className="text-xs text-blue-800 dark:text-blue-300 list-decimal list-inside space-y-1">
+                          <li>Open your HomeKit controller app (e.g., Apple Home app)</li>
+                          <li>Tap the "+" button to add an accessory</li>
+                          <li>Scan the QR code above, or enter the pairing code manually</li>
+                          <li>Follow the on-screen instructions to complete pairing</li>
+                        </ol>
+                      </div>
+
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        <p><strong>Port:</strong> {homekitBridgeInfo.port}</p>
+                        <p><strong>Setup ID:</strong> {homekitBridgeInfo.setup_id}</p>
+                      </div>
+
+                      <button
+                        onClick={loadHomeKitBridgeInfo}
+                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 text-sm"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Refresh Info
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : homekitBridgeInfo && !homekitBridgeInfo.available ? (
+                <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                    <div className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <p className="font-medium">HomeKit bridge is not available</p>
+                      <p className="text-xs mt-1">{homekitBridgeInfo.error || 'Bridge may not be started or HAP-python is not installed'}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={loadHomeKitBridgeInfo}
+                    className="mt-2 px-3 py-1.5 text-xs bg-yellow-200 dark:bg-yellow-800 hover:bg-yellow-300 dark:hover:bg-yellow-700 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Retry
+                  </button>
+                </div>
+              ) : homekitBridgeInfo === null && !loadingHomekitInfo ? (
+                <div className="p-3 bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      <p>Pairing information not loaded. Click to load.</p>
+                    </div>
+                    <button
+                      onClick={loadHomeKitBridgeInfo}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Load Pairing Info
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       )}
       

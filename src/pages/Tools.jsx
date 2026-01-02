@@ -1,108 +1,87 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer } from "lucide-react";
 
 /**
  * Tools Index Page
  * Lists all available tools
  */
 export default function Tools() {
-  const tools = [
+  const sections = [
     {
-      path: "/tools/energyplus",
-      name: "EnergyPlus Load Calc",
-      label: "EnergyPlus Load Calculator",
-      icon: Calculator,
-      description: "ACCA Manual J-compliant load calcs using DOE EnergyPlus. Get your BTUs, tons, and sizing right the first time. No more guessing on SEER, HSPF, or AFUE ratings.",
-      color: "blue",
+      title: "HVAC Calculation & Sizing",
+      description: "Tools for calculating heating and cooling loads",
+      tools: [
+        {
+          path: "/tools/energyplus",
+          name: "EnergyPlus Load Calc",
+          label: "EnergyPlus Load Calculator",
+          icon: Calculator,
+          description: "ACCA Manual J-compliant load calcs using DOE EnergyPlus. Get your BTUs, tons, and sizing right the first time. No more guessing on SEER, HSPF, or AFUE ratings.",
+          color: "blue",
+        },
+        {
+          path: "/tools/ecobee-transition-planner",
+          name: "Ecobee Planner",
+          label: "Ecobee Planner",
+          icon: Thermometer,
+          description: "Visualize Ecobee schedule transitions to avoid immediate restarts. Plan your thermostat schedules to prevent short cycling and optimize comfort.",
+          color: "green",
+        },
+      ],
     },
     {
-      path: "/tools/wiring-diagram",
-      name: "Wiring Diagram Generator",
-      label: "Wiring Diagram Generator",
-      icon: Cable,
-      description: "Generate ASCII wiring diagrams for Ecobee thermostat installs. Handles PEK setups, heat pump configs, conventional systems, and all that jazz. No C-wire? No problem.",
-      color: "green",
+      title: "Cost Comparison",
+      description: "Compare costs between systems and locations",
+      tools: [
+        {
+          path: "/tools/heat-pump-vs-gas-furnace",
+          name: "Heat Pump vs Gas Furnace Cost",
+          label: "Heat Pump vs Gas Furnace Cost",
+          icon: Search,
+          description: "Compare heat pump vs gas furnace costs for your home and climate. See which system saves you more money based on your utility rates and usage patterns.",
+          color: "blue",
+        },
+        {
+          path: "/tools/city-cost-comparison",
+          name: "City Cost Comparison",
+          label: "City Cost Comparison",
+          icon: MapPin,
+          description: "Compare heating and cooling costs between different cities and climates. See how location affects your energy bills.",
+          color: "green",
+        },
+      ],
     },
     {
-      path: "/tools/equipment-settings",
-      name: "Equipment Settings Guide",
-      label: "Equipment Settings Guide",
-      icon: SettingsIcon,
-      description: "Answers to equipment compatibility Qs and config guides. Boiler setups, heat pump settings, aux heat thresholds - all the deets you need to dial it in.",
-      color: "purple",
-    },
-    {
-      path: "/tools/hvac-troubleshooting",
-      name: "HVAC Troubleshooting",
-      label: "HVAC Troubleshooting",
-      icon: Wrench,
-      description: "Step-by-step troubleshooting guides for common HVAC problems. Short cycling, no heat, frozen coils, pressure switch issues - we got you covered.",
-      color: "orange",
-    },
-    {
-      path: "/tools/audio-transcription",
-      name: "Audio Transcription",
-      label: "Audio Transcription",
-      icon: FileAudio,
-      description: "Upload WAV files and convert them to text using OpenAI Whisper API. Perfect for transcribing phone calls, meetings, or voice notes.",
-      color: "purple",
-    },
-    {
-      path: "/tools/ip-lookup",
-      name: "IP Lookup",
-      label: "IP Lookup",
-      icon: Network,
-      description: "Reverse IP address lookup tool. Get location, ISP, timezone, and network information for any IP address.",
-      color: "blue",
-    },
-    {
-      path: "/tools/pdf-to-text",
-      name: "PDF to Text",
-      label: "PDF to Text",
-      icon: FileText,
-      description: "Extract text from PDF files. Works entirely in your browser - no data is sent to any server. Perfect for converting PDFs to text format.",
-      color: "green",
-    },
-    {
-      path: "/tools/image-to-ascii",
-      name: "Image to ASCII Converter",
-      label: "Image to ASCII Converter",
-      icon: Image,
-      description: "Convert images to ASCII art. Perfect for extracting diagrams from manuals and adding them to the RAG database. All processing happens in your browser.",
-      color: "blue",
-    },
-    {
-      path: "/tools/image-to-text",
-      name: "Image to Text (OCR)",
-      label: "Image to Text (OCR)",
-      icon: FileText,
-      description: "Extract text from images and screenshots using OCR. Perfect for extracting text from PDF images, screenshots, or scanned documents. All processing happens in your browser.",
-      color: "purple",
-    },
-    {
-      path: "/tools/support-ticket",
-      name: "Support Ticket",
-      label: "Support Ticket",
-      icon: MessageSquare,
-      description: "Submit a support ticket with diagnostic information. Get help with your Joule HVAC system, bridge connection issues, or any other problems.",
-      color: "blue",
-    },
-    {
-      path: "/tools/bridge-support",
-      name: "Bridge Diagnostics",
-      label: "Bridge Diagnostics",
-      icon: Server,
-      description: "Self-service diagnostics and troubleshooting. Check status, view logs, system info, and perform basic maintenance tasks.",
-      color: "orange",
-    },
-    {
-      path: "/tools/offline-launcher",
-      name: "Offline Launcher",
-      label: "Offline Launcher",
-      icon: Chrome,
-      description: "Launch the app in Chrome for offline access. Cache the app while online, then use it even when your internet connection is down.",
-      color: "blue",
+      title: "Troubleshooting & Support",
+      description: "Diagnostic tools and support resources",
+      comingSoon: true,
+      tools: [
+        {
+          path: "/tools/hvac-troubleshooting",
+          name: "HVAC Troubleshooting",
+          label: "HVAC Troubleshooting",
+          icon: Wrench,
+          description: "Step-by-step troubleshooting guides for common HVAC problems. Short cycling, no heat, frozen coils, pressure switch issues - we got you covered.",
+          color: "orange",
+        },
+        {
+          path: "/tools/support-ticket",
+          name: "Support Ticket",
+          label: "Support Ticket",
+          icon: MessageSquare,
+          description: "Submit a support ticket with diagnostic information. Get help with your Joule HVAC system, bridge connection issues, or any other problems.",
+          color: "blue",
+        },
+        {
+          path: "/tools/bridge-support",
+          name: "Bridge Diagnostics",
+          label: "Bridge Diagnostics",
+          icon: Server,
+          description: "Self-service diagnostics and troubleshooting. Check status, view logs, system info, and perform basic maintenance tasks.",
+          color: "orange",
+        },
+      ],
     },
   ];
 
@@ -124,31 +103,80 @@ export default function Tools() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {tools.map((tool) => {
-          const Icon = tool.icon;
-          return (
-            <Link
-              key={tool.path}
-              to={tool.path}
-              className={`block rounded-lg border p-6 transition-all hover:shadow-lg ${colorClasses[tool.color]}`}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg bg-white dark:bg-gray-800 ${colorClasses[tool.color].split(' ')[0]} border`}>
-                  <Icon className="w-6 h-6" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    {tool.label}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {tool.description}
-                  </p>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+      <div className="space-y-12">
+        {sections.map((section, sectionIndex) => (
+          <div key={sectionIndex}>
+            <div className="mb-4">
+              <h2 className={`text-2xl font-semibold mb-1 ${
+                section.comingSoon 
+                  ? "text-gray-400 dark:text-gray-600" 
+                  : "text-gray-900 dark:text-white"
+              }`}>
+                {section.title}
+              </h2>
+              <p className={`text-sm ${
+                section.comingSoon 
+                  ? "text-gray-400 dark:text-gray-600" 
+                  : "text-gray-600 dark:text-gray-400"
+              }`}>
+                {section.description}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {section.tools.map((tool) => {
+                const Icon = tool.icon;
+                const isComingSoon = section.comingSoon;
+                return (
+                  <Link
+                    key={tool.path}
+                    to={isComingSoon ? "#" : tool.path}
+                    onClick={(e) => {
+                      if (isComingSoon) {
+                        e.preventDefault();
+                      }
+                    }}
+                    className={`block rounded-lg border p-6 transition-all ${
+                      isComingSoon
+                        ? "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50"
+                        : `hover:shadow-lg ${colorClasses[tool.color]}`
+                    }`}
+                    title={isComingSoon ? "Coming Soon" : tool.description}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-lg border ${
+                        isComingSoon
+                          ? "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                          : `bg-white dark:bg-gray-800 ${colorClasses[tool.color].split(' ')[0]}`
+                      }`}>
+                        <Icon className={`w-6 h-6 ${
+                          isComingSoon
+                            ? "text-gray-400 dark:text-gray-600"
+                            : ""
+                        }`} />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className={`text-xl font-semibold mb-2 ${
+                          isComingSoon
+                            ? "text-gray-400 dark:text-gray-600"
+                            : "text-gray-900 dark:text-white"
+                        }`}>
+                          {tool.label}
+                        </h3>
+                        <p className={`text-sm ${
+                          isComingSoon
+                            ? "text-gray-400 dark:text-gray-600"
+                            : "text-gray-600 dark:text-gray-400"
+                        }`}>
+                          {tool.description}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -88,7 +88,7 @@ export default function UpgradeROIAnalyzer() {
         </div>
       )}
 
-      {/* Individual Upgrade Simulator */}
+      {/* Individual Upgrade Forecaster */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="bg-white dark:bg-gray-900 rounded-xl border dark:border-gray-700 p-6 space-y-4">
           <div>

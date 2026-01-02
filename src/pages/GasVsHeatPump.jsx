@@ -79,6 +79,7 @@ const GasVsHeatPump = () => {
   const [gasPriceFetchError, setGasPriceFetchError] = useState(null);
   const [fetchingEnergyCosts, setFetchingEnergyCosts] = useState(false);
   const [energyCostsError, setEnergyCostsError] = useState(null);
+  // Use the same default key as eiaRates.js
   const eiaApiKey = import.meta.env.VITE_EIA_API_KEY || 'pXrJWdC9XCSfDMaXVEQTfuIhKfY8l7V3d0VwYEva';
 
   // --- Building Characteristics - REMOVED (now using context) ---

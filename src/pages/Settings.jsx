@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, Suspense } from "react";
 import {
   Settings,
   ChevronRight,
@@ -29,7 +29,7 @@ import {
   Info,
   AlertCircle,
 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   fetchGroqModels,
   suggestModel,
@@ -40,6 +40,7 @@ import {
 import { fullInputClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
 import { Toast } from "../components/Toast";
+import Breadcrumbs from "../components/Breadcrumbs";
 import { useOutletContext } from "react-router-dom";
 import { resizeToCover } from "../lib/imageProcessing";
 import {
@@ -48,8 +49,8 @@ import {
   deleteCustomHero,
 } from "../lib/userImages";
 import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
-import EcobeeSettings from "../components/EcobeeSettings";
 import JouleBridgeSettings from "../components/JouleBridgeSettings";
+import BridgeUrlConfig from "../components/BridgeUrlConfig";
 import TTSServiceSettings from "../components/TTSServiceSettings";
 import StorageUsageIndicator from "../components/StorageUsageIndicator";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
@@ -780,6 +781,42 @@ const GroqApiKeyInput = () => {
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState(null);
 
+  // Listen for API key updates from Ask Joule or other components
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const newValue = localStorage.getItem("groqApiKey") || "";
+        setValue((prevValue) => {
+          // Only update if value actually changed
+          return newValue !== prevValue ? newValue : prevValue;
+        });
+      } catch {
+        // Ignore errors
+      }
+    };
+
+    const handleApiKeyUpdate = (e) => {
+      const newKey = e.detail?.apiKey || "";
+      if (newKey) {
+        setValue((prevValue) => {
+          // Only update if value actually changed
+          return newKey !== prevValue ? newKey : prevValue;
+        });
+      }
+    };
+
+    // Listen for storage events (from other tabs/windows)
+    window.addEventListener("storage", handleStorageChange);
+    
+    // Listen for custom events (from same tab - Ask Joule)
+    window.addEventListener("groqApiKeyUpdated", handleApiKeyUpdate);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("groqApiKeyUpdated", handleApiKeyUpdate);
+    };
+  }, []); // Empty dependency array - only set up listeners once
+
   // Fetch models from Groq API when API key is available
   useEffect(() => {
     const fetchModels = async () => {
@@ -870,9 +907,19 @@ const GroqApiKeyInput = () => {
     try {
       if (val) {
         localStorage.setItem("groqApiKey", val);
+        // Dispatch custom event for same-tab sync (Ask Joule)
+        window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { 
+          detail: { apiKey: val } 
+        }));
       } else {
         localStorage.removeItem("groqApiKey");
+        // Dispatch custom event when key is cleared
+        window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { 
+          detail: { apiKey: "" } 
+        }));
       }
+      // Also dispatch storage event for cross-tab sync
+      window.dispatchEvent(new Event("storage"));
     } catch {}
   };
 
@@ -2304,23 +2351,38 @@ const SettingsPage = () => {
       console.warn(`setUserSetting not provided for setting: ${key}`, value);
     });
 
-  const [activeSection, setActiveSection] = useState("home-setup");
+  const location = useLocation();
+  const params = useParams();
+  
+  // Check if we're on a specific section route (e.g., /settings/home-setup)
+  const sectionFromRoute = location.pathname.split('/settings/')[1];
+  const isIndexPage = !sectionFromRoute || location.pathname === '/settings';
+
+  const [activeSection, setActiveSection] = useState(sectionFromRoute || "home-setup");
   const [showPlans, setShowPlans] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedSections, setExpandedSections] = useState({
-    "home-setup": true,
-    "system-config": true,
-    "costs-rates": true,
-    "thermostat": true,
-    "bridge-ai": true,
+    "home-setup": sectionFromRoute === "home-setup" || isIndexPage,
+    "system-config": sectionFromRoute === "system-config",
+    "costs-rates": sectionFromRoute === "costs-rates",
+    "thermostat": sectionFromRoute === "thermostat",
+    "bridge-ai": sectionFromRoute === "bridge-ai",
   });
   const sections = [
-    { id: "home-setup", label: "Home Setup", number: "1", icon: Home, description: "Tell Joule about your home so estimates match reality" },
-    { id: "system-config", label: "System Configuration", number: "2", icon: Zap, description: "Describe your HVAC system so Joule can model it accurately" },
-    { id: "costs-rates", label: "Costs & Rates", number: "3", icon: DollarSign, description: "Set utility rates and pricing preferences" },
-    { id: "thermostat", label: "Thermostat Behavior", number: "4", icon: ThermometerSun, description: "Describe your typical thermostat behavior (for estimates only)" },
-    { id: "bridge-ai", label: "Bridge & AI", number: "5", icon: Server, description: "Connect hardware and configure AI features" },
+    { id: "home-setup", label: "Home Setup", number: "1", icon: Home, description: "Tell Joule about your home so estimates match reality", color: "blue" },
+    { id: "system-config", label: "System Configuration", number: "2", icon: Zap, description: "Describe your HVAC system so Joule can model it accurately", color: "purple" },
+    { id: "costs-rates", label: "Costs & Rates", number: "3", icon: DollarSign, description: "Set utility rates and pricing preferences", color: "green" },
+    { id: "thermostat", label: "Thermostat Preferences", number: "4", icon: ThermometerSun, description: "Describe your typical thermostat preferences (for estimates only)", color: "orange" },
+    { id: "bridge-ai", label: "Bridge & AI", number: "5", icon: Server, description: "Connect hardware and configure AI features", color: "cyan" },
   ];
+
+  const sectionColorClasses = {
+    blue: { bg: "bg-blue-500/20", text: "text-blue-400" },
+    purple: { bg: "bg-purple-500/20", text: "text-purple-400" },
+    green: { bg: "bg-green-500/20", text: "text-green-400" },
+    orange: { bg: "bg-orange-500/20", text: "text-orange-400" },
+    cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400" },
+  };
 
   // Handle hash navigation (e.g., /settings#comfort-settings)
   useEffect(() => {
@@ -2361,15 +2423,67 @@ const SettingsPage = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Ensure section is expanded when on its route
+  useEffect(() => {
+    if (sectionFromRoute) {
+      setExpandedSections(prev => ({ ...prev, [sectionFromRoute]: true }));
+    }
+  }, [sectionFromRoute]);
+
+  // If on index page, show the index view (after all hooks)
+  if (isIndexPage) {
+    const SettingsIndex = React.lazy(() => import('./SettingsIndex'));
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#050B10] flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+        <SettingsIndex />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#050B10]">
-      <div className="mx-auto max-w-[1200px] px-6 lg:px-8 py-6">
+      <div className="w-full px-6 lg:px-8 py-6">
+        <Breadcrumbs />
+        
         {/* Page Header */}
-        <header className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-[32px] font-bold text-[#FFFFFF] mb-2">
-              Settings
-            </h1>
+        <header className="mb-8">
+          {sectionFromRoute ? (
+            <div>
+              <Link 
+                to="/settings" 
+                className="inline-flex items-center gap-2 text-sm text-[#A7B0BA] hover:text-white mb-4 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4 rotate-180" />
+                Back to Settings
+              </Link>
+              {(() => {
+                const section = sections.find(s => s.id === sectionFromRoute);
+                if (!section) return null;
+                const Icon = section.icon;
+                const colorClass = sectionColorClasses[section.color] || sectionColorClasses.blue;
+                return (
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl ${colorClass.bg} flex items-center justify-center`}>
+                      <Icon className={`w-6 h-6 ${colorClass.text}`} />
+                    </div>
+                    <div>
+                      <h1 className="text-[32px] font-bold text-[#FFFFFF] mb-1">
+                        {section.number}. {section.label}
+                      </h1>
+                      <p className="text-sm text-[#A7B0BA]">
+                        {section.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-[32px] font-bold text-[#FFFFFF] mb-2">
+                  Settings
+                </h1>
             <p className="text-sm text-[#A7B0BA] mb-1">
               Set up how Joule <strong>models</strong> your home, system, and energy costs.
             </p>
@@ -2379,61 +2493,133 @@ const SettingsPage = () => {
             <p className="text-xs text-[#7C8894] mt-2">
               <strong>Joule estimates and explains — it doesn't override your comfort or control your home.</strong>
             </p>
-          </div>
-          <DashboardLink />
+              </div>
+              <DashboardLink />
+            </div>
+          )}
         </header>
 
-        {/* Search Bar */}
-        <div className="mb-8 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A7B0BA]" />
-          <input
-            type="text"
-            placeholder="Search settings..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-[#0C1118] border border-slate-800 rounded-xl text-[#E8EDF3] placeholder-[#A7B0BA] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#A7B0BA] hover:text-white"
-            >
-              <XCircle className="w-5 h-5" />
-            </button>
-          )}
+        {/* Top Navigation Bar - Hide on specific section pages */}
+        {!sectionFromRoute && (
+        <div className="mb-6 sticky top-0 z-50 bg-[#050B10]/95 backdrop-blur-sm pb-4 pt-2 -mx-6 lg:-mx-8 px-6 lg:px-8 border-b border-slate-800">
+          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+            {/* Horizontal Navigation */}
+            <nav className="flex flex-wrap gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+              {sections.map((section) => {
+                const Icon = section.icon;
+                const isActive = activeSection === section.id;
+                const isExpanded = expandedSections[section.id];
+                const isComingSoon = section.id === "bridge-ai";
+                return (
+                  <Link
+                    key={section.id}
+                    to={isComingSoon ? "#" : `/settings/${section.id}`}
+                    onClick={(e) => {
+                      if (isComingSoon) {
+                        e.preventDefault();
+                        return;
+                      }
+                      // If already on that section, toggle expand/collapse
+                      if (sectionFromRoute === section.id) {
+                        e.preventDefault();
+                        setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }));
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                      isComingSoon
+                        ? "bg-[#0C1118] text-[#7C8894] border border-slate-800 opacity-50 cursor-not-allowed"
+                        : isActive
+                        ? "bg-[#1E4CFF] text-white shadow-lg shadow-blue-500/20"
+                        : "bg-[#0C1118] text-[#A7B0BA] hover:text-white hover:bg-slate-900 border border-slate-800"
+                    }`}
+                    title={isComingSoon ? "Coming Soon" : section.description}
+                  >
+                    <Icon className={`w-4 h-4 ${isComingSoon ? "text-slate-600" : isActive ? "text-white" : "text-slate-400"}`} />
+                    <span className="text-xs font-bold">{section.number}</span>
+                    <span>{section.label}</span>
+                    {!isComingSoon && (isExpanded ? (
+                      <ChevronUp className="w-3 h-3 ml-1" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3 ml-1" />
+                    ))}
+                  </Link>
+                );
+              })}
+            </nav>
+            
+            {/* Search Bar - Compact */}
+            <div className="relative w-full lg:w-64 flex-shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A7B0BA]" />
+              <input
+                type="text"
+                placeholder="Search settings..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-8 py-2 bg-[#0C1118] border border-slate-800 rounded-lg text-sm text-[#E8EDF3] placeholder-[#A7B0BA] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#A7B0BA] hover:text-white"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
+        )}
 
-        {/* Sticky Side Navigation - Right Side */}
-        <div className="hidden lg:block fixed right-4 top-1/2 -translate-y-1/2 z-40">
-          <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-4 shadow-xl">
-            <div className="space-y-2">
+        {/* Sticky Side Navigation - Right Side (Desktop Only) - Hide on section pages */}
+        {!sectionFromRoute && (
+        <div className="hidden xl:block fixed right-4 top-1/2 -translate-y-1/2 z-40">
+          <nav className="bg-[#0C1118] border border-slate-800 rounded-xl p-3 shadow-xl">
+            <div className="space-y-1">
               <div className="px-2 pb-2 mb-2 border-b border-slate-800">
                 <h3 className="text-xs font-semibold text-[#A7B0BA] uppercase tracking-wider">Quick Nav</h3>
               </div>
               {sections.map((section) => {
                 const Icon = section.icon;
+                const isComingSoon = section.id === "bridge-ai";
                 return (
                   <a
                     key={section.id}
-                    href={`#${section.id}`}
+                    href={isComingSoon ? "#" : `#${section.id}`}
                     onClick={(e) => {
+                      if (isComingSoon) {
+                        e.preventDefault();
+                        return;
+                      }
                       e.preventDefault();
                       const element = document.getElementById(section.id);
                       if (element) {
-                        element.scrollIntoView({ behavior: "smooth", block: "start" });
-                        // Expand the section when navigating to it
-                        setExpandedSections(prev => ({ ...prev, [section.id]: true }));
+                        // Calculate offset for sticky nav bar
+                        const stickyNav = document.querySelector('[class*="sticky top-0"]');
+                        const stickyNavHeight = stickyNav ? stickyNav.getBoundingClientRect().height + 20 : 120;
+                        const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+                        const offsetPosition = elementPosition - stickyNavHeight;
+                        
+                        window.scrollTo({
+                          top: Math.max(0, offsetPosition),
+                          behavior: "smooth"
+                        });
+                        
+                        // Expand the section after a short delay to ensure smooth scroll
+                        setTimeout(() => {
+                          setExpandedSections(prev => ({ ...prev, [section.id]: true }));
+                        }, 100);
                       }
                     }}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                      activeSection === section.id
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all ${
+                      isComingSoon
+                        ? "text-[#7C8894] opacity-50 cursor-not-allowed"
+                        : activeSection === section.id
                         ? "bg-[#1E4CFF] text-white shadow-lg shadow-blue-500/20"
                         : "text-[#A7B0BA] hover:text-white hover:bg-slate-900"
                     }`}
-                    title={section.description}
+                    title={isComingSoon ? "Coming Soon" : section.description}
                   >
-                    <Icon className={`w-4 h-4 ${activeSection === section.id ? "text-white" : "text-slate-400"}`} />
-                    <span className="text-xs font-medium w-5">{section.number}</span>
+                    <Icon className={`w-3.5 h-3.5 ${isComingSoon ? "text-slate-600" : activeSection === section.id ? "text-white" : "text-slate-400"}`} />
                     <span className="font-medium">{section.label}</span>
                   </a>
                 );
@@ -2441,8 +2627,10 @@ const SettingsPage = () => {
             </div>
           </nav>
         </div>
+        )}
 
-      {/* Product Tiers - Collapsible */}
+      {/* Product Tiers - Collapsible - Hide on specific section pages */}
+      {!sectionFromRoute && (
       <div className="mb-8 bg-[#0C1118] border border-slate-800 rounded-xl overflow-hidden">
         <button
           onClick={() => setShowPlans((v) => !v)}
@@ -2597,9 +2785,12 @@ const SettingsPage = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Section 1: Home Setup */}
+      {(!sectionFromRoute || sectionFromRoute === "home-setup") && (
       <div id="home-setup" className="mb-12 scroll-mt-24">
+        {!sectionFromRoute && (
         <div className="mb-6 pb-4 border-b-2 border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -2619,9 +2810,9 @@ const SettingsPage = () => {
             </button>
           </div>
         </div>
-        {expandedSections["home-setup"] && (
+        )}
+        {(expandedSections["home-setup"] || sectionFromRoute === "home-setup") && (
           <div className="space-y-6">
-            <ZoneManagementSection setToast={setToast} />
             <BuildingCharacteristics
               settings={userSettings}
               onSettingChange={setUserSetting}
@@ -2630,9 +2821,12 @@ const SettingsPage = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Section 2: System Configuration */}
+      {(!sectionFromRoute || sectionFromRoute === "system-config") && (
       <div id="system-config" className="mb-12 scroll-mt-24">
+        {!sectionFromRoute && (
         <div className="mb-6 pb-4 border-b-2 border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -2653,7 +2847,8 @@ const SettingsPage = () => {
             </button>
           </div>
         </div>
-        {expandedSections["system-config"] && (
+        )}
+        {(expandedSections["system-config"] || sectionFromRoute === "system-config") && (
           <div className="space-y-6">
             <HvacSystemConfig
               settings={userSettings}
@@ -2674,9 +2869,12 @@ const SettingsPage = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Section 3: Costs & Rates */}
+      {(!sectionFromRoute || sectionFromRoute === "costs-rates") && (
       <div id="costs-rates" className="mb-12 scroll-mt-24">
+        {!sectionFromRoute && (
         <div className="mb-6 pb-4 border-b-2 border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -2696,7 +2894,8 @@ const SettingsPage = () => {
             </button>
           </div>
         </div>
-        {expandedSections["costs-rates"] && (
+        )}
+        {(expandedSections["costs-rates"] || sectionFromRoute === "costs-rates") && (
           <CostSettings
             settings={userSettings}
             onSettingChange={setUserSetting}
@@ -2705,9 +2904,12 @@ const SettingsPage = () => {
           />
         )}
       </div>
+      )}
 
       {/* Section 4: Thermostat Behavior */}
+      {(!sectionFromRoute || sectionFromRoute === "thermostat") && (
       <div id="thermostat" className="mb-12 scroll-mt-24">
+        {!sectionFromRoute && (
         <div className="mb-6 pb-4 border-b-2 border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -2715,8 +2917,8 @@ const SettingsPage = () => {
                 <ThermometerSun className="w-6 h-6 text-orange-400" />
               </div>
               <div>
-                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">4. Thermostat Behavior</h2>
-                <p className="text-sm text-[#A7B0BA]">Describe your typical thermostat behavior (for estimates only)</p>
+                <h2 className="text-[28px] font-bold text-[#E8EDF3] mb-1">4. Thermostat Preferences</h2>
+                <p className="text-sm text-[#A7B0BA]">Describe your typical thermostat preferences (for estimates only)</p>
               </div>
             </div>
             <button
@@ -2727,7 +2929,8 @@ const SettingsPage = () => {
             </button>
           </div>
         </div>
-        {expandedSections["thermostat"] && (
+        )}
+        {(expandedSections["thermostat"] || sectionFromRoute === "thermostat") && (
         <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6">
           {/* Important Disclaimer */}
           <div className="mb-6 p-4 bg-amber-950/30 border border-amber-800/50 rounded-lg">
@@ -2807,9 +3010,12 @@ const SettingsPage = () => {
         </div>
         )}
       </div>
+      )}
 
       {/* Section 5: Bridge & AI */}
-      <div id="bridge-ai" className="mb-12 scroll-mt-24">
+      {(!sectionFromRoute || sectionFromRoute === "bridge-ai") && (
+      <div id="bridge-ai" className="mb-12 scroll-mt-28">
+        {!sectionFromRoute && (
         <div className="mb-6 pb-4 border-b-2 border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -2829,13 +3035,11 @@ const SettingsPage = () => {
             </button>
           </div>
         </div>
-        {expandedSections["bridge-ai"] && (
+        )}
+        {(expandedSections["bridge-ai"] || sectionFromRoute === "bridge-ai") && (
           <div className="space-y-6">
             <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
               <JouleBridgeSettings />
-            </Section>
-            <Section title="Ecobee Cloud API (Fallback)" icon={<ThermometerSun size={20} />}>
-              <EcobeeSettings />
             </Section>
             <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
               <ProCodeInput />
@@ -2843,8 +3047,9 @@ const SettingsPage = () => {
           </div>
         )}
       </div>
+      )}
 
-      {/* Advanced Settings Section */}
+      {/* Advanced Settings Section - Always show */}
       <div className="bg-[#0C1118] border border-slate-800 rounded-xl" data-advanced-settings>
         <button
           onClick={() => setAdvancedSettingsExpanded(!advancedSettingsExpanded)}
@@ -2868,9 +3073,15 @@ const SettingsPage = () => {
 
         {advancedSettingsExpanded && (
           <div className="p-6 border-t border-slate-800 space-y-6">
+            <Section title="Joule Bridge URL" icon={<Server size={20} />}>
+              <BridgeUrlConfig />
+            </Section>
+
             <Section title="Groq AI Integration" icon={<Zap size={20} />}>
               <GroqApiKeyInput />
             </Section>
+
+            <ZoneManagementSection setToast={setToast} />
 
             <Section title="Voice Settings" icon={<Mic size={20} />}>
               <div className="space-y-4">

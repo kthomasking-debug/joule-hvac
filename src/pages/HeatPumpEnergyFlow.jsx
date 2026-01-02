@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Printer,
+  HelpCircle,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
@@ -1128,6 +1129,176 @@ const HeatPumpEnergyFlow = () => {
             <DashboardLink />
           </div>
 
+          {/* System Balance Point - Top Section - Always show when calculated */}
+          {balancePoint !== null && isFinite(balancePoint) && (
+            <div className="mb-8">
+              <div className="mb-6">
+                <div className="flex items-start justify-between gap-6 mb-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mb-2 uppercase tracking-wide">
+                      System Balance Point
+                    </div>
+                    <div className="text-7xl md:text-8xl font-black text-indigo-600 dark:text-indigo-400 mb-3">
+                      {balancePoint.toFixed(1)}°F
+                    </div>
+                    <div className="inline-block bg-white/80 dark:bg-gray-800/80 rounded-lg px-6 py-3 shadow-md">
+                      <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+                        {balancePoint <= designOutdoorTemp 
+                          ? "Coverage temperature is below the design temperature"
+                          : "Below this temperature, system output is less than building heat loss"
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Performance Score */}
+                  {(() => {
+                    // Calculate heat loss percentile
+                    const calculatePercentile = (heatLossFactor) => {
+                      if (!heatLossFactor || !Number.isFinite(heatLossFactor)) return 50;
+                      if (heatLossFactor < 300) return 98;
+                      if (heatLossFactor < 400) return 95;
+                      if (heatLossFactor < 500) return 90;
+                      if (heatLossFactor < 550) return 80;
+                      if (heatLossFactor < 600) return 70;
+                      if (heatLossFactor < 650) return 60;
+                      if (heatLossFactor < 700) return 50;
+                      if (heatLossFactor < 800) return 35;
+                      if (heatLossFactor < 900) return 25;
+                      if (heatLossFactor < 1100) return 15;
+                      if (heatLossFactor < 1300) return 10;
+                      if (heatLossFactor < 1800) return 5;
+                      return 2;
+                    };
+                    
+                    const percentile = effectiveHeatLossFactor ? calculatePercentile(effectiveHeatLossFactor) : 50;
+                    
+                    // Calculate performance score (0-100)
+                    let score = 50; // Base score
+                    
+                    // Balance point contribution (lower is better, max 30 points)
+                    if (balancePoint < 20) score += 30;
+                    else if (balancePoint < 25) score += 25;
+                    else if (balancePoint < 30) score += 15;
+                    else if (balancePoint < 35) score += 5;
+                    else score -= 10; // Penalty for high balance point
+                    
+                    // Heat loss percentile contribution (higher is better, max 20 points)
+                    if (percentile >= 90) score += 20;
+                    else if (percentile >= 80) score += 15;
+                    else if (percentile >= 70) score += 10;
+                    else if (percentile >= 50) score += 5;
+                    else if (percentile >= 30) score -= 5;
+                    else score -= 15; // Penalty for low percentile
+                    
+                    // Clamp to 0-100
+                    const performanceScore = Math.max(0, Math.min(100, Math.round(score)));
+                    
+                    // Get score label and color
+                    const getScoreInfo = (score) => {
+                      if (score >= 85) return { label: 'Excellent', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', borderColor: 'border-green-300 dark:border-green-700' };
+                      if (score >= 70) return { label: 'Good', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', borderColor: 'border-blue-300 dark:border-blue-700' };
+                      if (score >= 55) return { label: 'Fair', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', borderColor: 'border-yellow-300 dark:border-yellow-700' };
+                      return { label: 'Needs Improvement', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30', borderColor: 'border-orange-300 dark:border-orange-700' };
+                    };
+                    const scoreInfo = getScoreInfo(performanceScore);
+                    
+                    // Calculate point contributions for display
+                    const balancePointPoints = balancePoint < 20 ? 30 : balancePoint < 25 ? 25 : balancePoint < 30 ? 15 : balancePoint < 35 ? 5 : -10;
+                    const efficiencyPoints = percentile >= 90 ? 20 : percentile >= 80 ? 15 : percentile >= 70 ? 10 : percentile >= 50 ? 5 : percentile >= 30 ? -5 : -15;
+                    
+                    return (
+                      <div className={`${scoreInfo.bgColor} rounded-xl shadow-lg p-6 border-2 ${scoreInfo.borderColor} min-w-[200px]`}>
+                        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
+                          Performance Score
+                        </div>
+                        <div className="flex items-baseline gap-2 mb-2">
+                          <div className={`text-5xl font-bold ${scoreInfo.color}`}>
+                            {performanceScore}
+                          </div>
+                          <div className={`text-xl font-semibold ${scoreInfo.color} opacity-70`}>
+                            / 100
+                          </div>
+                        </div>
+                        <div className={`text-lg font-semibold ${scoreInfo.color}`}>
+                          {scoreInfo.label}
+                        </div>
+                        {effectiveHeatLossFactor && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
+                            Top {percentile}% efficiency
+                          </div>
+                        )}
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1 list-none">
+                            <HelpCircle size={14} />
+                            <span>How calculated</span>
+                          </summary>
+                          <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-300 space-y-2">
+                            <p className="font-semibold">Score Calculation (0-100):</p>
+                            <ul className="list-disc list-inside space-y-1 ml-2">
+                              <li>Base score: 50 points</li>
+                              <li>Balance point contribution (max 30 points):
+                                <ul className="list-disc list-inside ml-4 mt-1">
+                                  <li>&lt; 20°F: +30 points</li>
+                                  <li>&lt; 25°F: +25 points</li>
+                                  <li>&lt; 30°F: +15 points</li>
+                                  <li>&lt; 35°F: +5 points</li>
+                                  <li>≥ 35°F: -10 points</li>
+                                </ul>
+                              </li>
+                              <li>Efficiency percentile contribution (max 20 points):
+                                <ul className="list-disc list-inside ml-4 mt-1">
+                                  <li>≥ 90th percentile: +20 points</li>
+                                  <li>≥ 80th percentile: +15 points</li>
+                                  <li>≥ 70th percentile: +10 points</li>
+                                  <li>≥ 50th percentile: +5 points</li>
+                                  <li>&lt; 30th percentile: -15 points</li>
+                                </ul>
+                              </li>
+                            </ul>
+                            <p className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
+                              <strong>Your breakdown:</strong><br />
+                              Balance Point: {balancePoint.toFixed(1)}°F ({balancePointPoints > 0 ? '+' : ''}{balancePointPoints} points)<br />
+                              Efficiency: Top {percentile}% ({efficiencyPoints > 0 ? '+' : ''}{efficiencyPoints} points)
+                            </p>
+                          </div>
+                        </details>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-2xl mx-auto shadow-lg border dark:border-gray-700">
+                <p className="text-xl text-gray-700 dark:text-gray-300 leading-relaxed">
+                  <strong className="text-indigo-700 dark:text-indigo-400">
+                    What this means:
+                  </strong>{" "}
+                  {balancePoint <= designOutdoorTemp ? (
+                    <>
+                      The coverage temperature is below the design temperature. At {designOutdoorTemp}°F, the system shortfall is approximately{" "}
+                      <strong className="text-orange-600 dark:text-orange-400">
+                        {summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign)
+                          ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k"
+                          : "0"}
+                        BTU/hr
+                      </strong>.
+                    </>
+                  ) : (
+                    <>
+                      Below {balancePoint.toFixed(1)}°F, the system alone cannot meet your {indoorTemp}°F target. At the design temperature of {designOutdoorTemp}°F (the coldest expected outdoor temperature for your area), the shortfall is approximately{" "}
+                      <strong className="text-orange-600 dark:text-orange-400">
+                        {summaryStats.shortfallAtDesign > 0 && Number.isFinite(summaryStats.shortfallAtDesign)
+                          ? (summaryStats.shortfallAtDesign / 1000).toFixed(1) + "k"
+                          : "0"}
+                        BTU/hr
+                      </strong>.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
         <div className="text-center mb-8">
           {primarySystem === "gasFurnace" ? (
             <>
@@ -1313,7 +1484,7 @@ const HeatPumpEnergyFlow = () => {
                 )}
                 {homeShape >= 1.2 && homeShape < 1.3 && hasLoft && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Loft reduces heat loss per square foot (~35% of sqft has ~50% less exterior exposure). This lowers your heat loss estimate.
+                    Reduces heat loss (~35% of sqft has less exterior exposure).
                   </p>
                 )}
               </div>
@@ -1397,8 +1568,7 @@ const HeatPumpEnergyFlow = () => {
                       className={fullInputClasses}
                     />
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                      Find this on your system's nameplate or Energy Guide
-                      label. Typical range: 6.0–13.0
+                      On nameplate or Energy Guide. Range: 6.0–13.0
                     </p>
                   </div>
                 </>
@@ -1434,7 +1604,7 @@ const HeatPumpEnergyFlow = () => {
                   Design Outdoor Temp
                 </label>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                  This is a <strong>planning reference temperature</strong> (not the balance point). It represents the coldest expected outdoor temperature for your climate zone (99% design temperature). It's used to show what happens during extreme cold, but doesn't affect the balance point calculation. The balance point ({balancePoint !== null && Number.isFinite(balancePoint) ? balancePoint.toFixed(1) + "°F" : "calculated separately"}) is where your heat pump output equals building heat loss.
+                  Coldest expected temp for your climate (99% design). Used for extreme cold planning. Balance point ({balancePoint !== null && Number.isFinite(balancePoint) ? balancePoint.toFixed(1) + "°F" : "calculated separately"}) is where heat pump output equals heat loss.
                 </p>
                 {(() => {
                   const climateBands = [
@@ -1513,17 +1683,7 @@ const HeatPumpEnergyFlow = () => {
                   80–98%.
                 </p>
               </div>
-            ) : (
-              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong>Where to find HSPF2:</strong> Check your system's
-                  nameplate (usually on the outdoor unit), the Energy Guide
-                  label from when you bought it, or your installer's paperwork.
-                  You can also search online using your system's model number.
-                  HSPF2 is the newer standard that replaced HSPF.
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
 

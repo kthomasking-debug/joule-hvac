@@ -383,7 +383,7 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/analysis/weekly-forecast");
+    navigate("/home");
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step
@@ -454,32 +454,6 @@ export default function Onboarding() {
           setUserSetting("capacity", capacityKBTU);
           setUserSetting("coolingCapacity", capacityKBTU);
         }
-      }
-      
-      // Initialize zones based on number of thermostats
-      try {
-        const existingZones = JSON.parse(localStorage.getItem("zones") || "[]");
-        if (existingZones.length === 0 || existingZones.length !== numberOfThermostats) {
-          // Create zones array
-          const zones = [];
-          for (let i = 0; i < numberOfThermostats; i++) {
-            zones.push({
-              id: `zone${i + 1}`,
-              name: numberOfThermostats === 1 ? "Main Zone" : i === 0 ? "Downstairs" : i === 1 ? "Upstairs" : `Zone ${i + 1}`,
-              squareFeet: numberOfThermostats === 1 ? squareFeet : Math.round(squareFeet / numberOfThermostats),
-              insulationLevel: insulationLevel,
-              homeShape: homeShape,
-              ceilingHeight: ceilingHeight,
-              primarySystem: primarySystem,
-              capacity: primarySystem === "heatPump" ? Math.round(heatPumpTons * 12) : null,
-              hasCSV: false,
-            });
-          }
-          localStorage.setItem("zones", JSON.stringify(zones));
-          localStorage.setItem("activeZoneId", zones[0].id); // Default to first zone
-        }
-      } catch (err) {
-        console.warn("Failed to initialize zones:", err);
       }
       
       setBuildingError(null); // Clear any errors

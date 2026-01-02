@@ -12,8 +12,42 @@ Local-only thermostat control using HomeKit Accessory Protocol (HAP) over IP.
 ## Hardware Requirements
 
 - Raspberry Pi Zero 2 W (recommended) or any Raspberry Pi
+- **⚠️ CRITICAL: 2.4 GHz WiFi connection required** (see WiFi Requirements below)
 - Ethernet or WiFi connection
 - Ecobee thermostat with HomeKit support
+
+## ⚠️ WiFi Requirements - CRITICAL
+
+**The bridge MUST be connected to a 2.4 GHz WiFi network for proper operation.**
+
+### Why 2.4 GHz is Required
+
+- **Ecobee HomeKit**: Ecobee thermostats only support HomeKit pairing over 2.4 GHz WiFi
+- **Blueair Devices**: Blueair air purifiers require 2.4 GHz WiFi for local network communication
+- **Device Discovery**: HomeKit device discovery (mDNS) works reliably only on 2.4 GHz
+
+### How to Ensure 2.4 GHz Connection
+
+**If your router has separate SSIDs:**
+- Connect the bridge to the **2.4 GHz SSID** (e.g., `YourNetwork-2.4GHz`)
+- Do NOT connect to the 5 GHz SSID
+
+**If your router uses a single SSID for both bands:**
+- Most routers will auto-select 2.4 GHz for IoT devices
+- Verify connection: `iwconfig | grep Frequency` should show 2.4 GHz (e.g., `Frequency:2.437 GHz`)
+- If connected to 5 GHz, manually force 2.4 GHz in router settings or split the bands
+
+**Verification:**
+```bash
+# Check WiFi frequency/band
+iwconfig 2>/dev/null | grep -i frequency
+# Should show: Frequency:2.4XX GHz (not 5.XXX GHz)
+```
+
+**⚠️ Failure to use 2.4 GHz will result in:**
+- Ecobee pairing failures
+- Device discovery not working
+- Connection timeouts and errors
 
 ## Installation
 

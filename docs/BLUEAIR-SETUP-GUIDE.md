@@ -17,9 +17,24 @@ Blueair 211i Max → WiFi → Blueair Cloud → Bridge (via API) → Your App
 
 ## Prerequisites
 
-1. ✅ **Blueair 211i Max connected to WiFi** (already done!)
-2. ✅ **Blueair device registered in Blueair app** (on your phone)
-3. ✅ **Blueair account credentials** (email/password used in Blueair app)
+1. ✅ **Blueair 211i Max connected to 2.4 GHz WiFi** (⚠️ CRITICAL - see below)
+2. ✅ **Bridge connected to 2.4 GHz WiFi** (⚠️ CRITICAL - see below)
+3. ✅ **Blueair device registered in Blueair app** (on your phone)
+4. ✅ **Blueair account credentials** (email/password used in Blueair app)
+
+### ⚠️ CRITICAL: 2.4 GHz WiFi Required
+
+**Both the Blueair device AND the bridge MUST be on 2.4 GHz WiFi.**
+
+**Why:**
+- Blueair devices only support 2.4 GHz WiFi (not 5 GHz)
+- The bridge needs 2.4 GHz for local device discovery and communication
+- HomeKit devices (like Ecobee) also require 2.4 GHz
+
+**How to Verify:**
+- Check your router settings to ensure both devices are on 2.4 GHz band
+- If your router has separate SSIDs, connect both to the 2.4 GHz SSID
+- **⚠️ Using 5 GHz will cause connection failures**
 
 ## Step 1: Verify Blueair App Setup
 

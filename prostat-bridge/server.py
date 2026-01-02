@@ -73,6 +73,28 @@ blueair_last_discovery = None  # Timestamp of last discovery attempt
 blueair_esp32_username = None  # ESP32 API username
 blueair_esp32_password = None  # ESP32 API password
 
+# TP-Link control
+tplink_devices = []  # List of discovered TP-Link devices: [{'ip': '192.168.0.100', 'alias': 'Smart Plug', 'device_id': '...', ...}]
+tplink_kasa_available = False
+try:
+    from kasa import SmartDevice, Discover
+    tplink_kasa_available = True
+except ImportError:
+    tplink_kasa_available = False
+    logger.debug("python-kasa not available - TP-Link features disabled")
+
+# HomeKit Bridge (for exposing devices as accessories)
+homekit_bridge_driver = None
+homekit_bridge_enabled = True  # Set to False to disable HomeKit bridge
+
+# Import HomeKit bridge components (optional - only if HAP-python is installed)
+try:
+    from homekit_bridge import create_bridge
+    HAP_PYTHON_AVAILABLE = True
+except ImportError:
+    HAP_PYTHON_AVAILABLE = False
+    logger.warning("HAP-python not available - HomeKit bridge features disabled")
+
 # Config file path for Blueair credentials
 CONFIG_DIR = Path(__file__).parent / 'data'
 BLUEAIR_CONFIG_FILE = CONFIG_DIR / 'blueair_config.json'
@@ -303,6 +325,21 @@ async def discover_devices():
     # Clear cache to force fresh discovery
     discovered_devices.clear()
     
+    # Get bridge MAC address to filter it out from discovery
+    bridge_mac = None
+    if homekit_bridge_driver and hasattr(homekit_bridge_driver, 'state'):
+        try:
+            mac = homekit_bridge_driver.state.mac
+            if isinstance(mac, bytes):
+                bridge_mac = mac.decode('utf-8')
+            else:
+                bridge_mac = str(mac)
+            # Normalize MAC address format (remove colons, convert to uppercase)
+            bridge_mac_normalized = bridge_mac.replace(':', '').upper()
+            logger.debug(f"Bridge MAC address: {bridge_mac} (normalized: {bridge_mac_normalized})")
+        except Exception as e:
+            logger.debug(f"Could not get bridge MAC address: {e}")
+    
     logger.info("Scanning for HomeKit devices...")
     devices = controller.async_discover()
     
@@ -332,6 +369,21 @@ async def discover_devices():
             name = getattr(description, 'name', 'Unknown')
             model = getattr(description, 'md', 'Unknown')
             category = getattr(description, 'ci', 'Unknown')
+        
+        # Filter out the bridge itself (by MAC address or name pattern)
+        # Normalize device_id for comparison (remove colons, convert to uppercase)
+        device_id_normalized = device_id.replace(':', '').upper() if device_id else ''
+        
+        if bridge_mac:
+            bridge_mac_normalized = bridge_mac.replace(':', '').upper()
+            if device_id_normalized == bridge_mac_normalized:
+                logger.debug(f"Filtering out bridge itself (MAC match): {name} ({device_id})")
+                continue
+        
+        # Also filter by name pattern "Joule Bridge" to catch any variations
+        if name and 'Joule Bridge' in name:
+            logger.debug(f"Filtering out bridge itself (name match): {name} ({device_id})")
+            continue
         
         # For devices with the same name (like multiple Ecobee accessories),
         # keep only the first one to avoid confusion
@@ -1868,7 +1920,12 @@ async def init_blueair():
                 logger.info(f"  Device {i}: {device.name} (UUID: {device.uuid})")
             return True
         except Exception as api_error:
-            logger.warning(f"Blueair API error: {api_error}. Blueair features will be disabled.")
+            error_msg = str(api_error)
+            logger.warning(f"Blueair API error: {error_msg}. Blueair features will be disabled.")
+            # Log more details for debugging
+            if "invalid password" in error_msg.lower() or "login" in error_msg.lower():
+                logger.warning(f"Authentication failed. Please verify username and password are correct.")
+                logger.debug(f"Username: {username}, Password length: {len(password) if password else 0}")
             blueair_connected = False
             return False
     except Exception as e:
@@ -2369,9 +2426,17 @@ async def handle_blueair_credentials(request):
                     'devices_count': len(blueair_devices),
                 })
             else:
+                # Get more specific error message from logs
+                error_details = "Check username/password."
+                if "invalid password" in str(api_error).lower():
+                    error_details = "Invalid password. Please verify your Blueair account password is correct."
+                elif "login" in str(api_error).lower():
+                    error_details = "Login failed. Please verify your Blueair account credentials."
+                
                 return web.json_response({
                     'success': False,
-                    'error': 'Credentials saved but failed to connect. Check username/password.',
+                    'error': f'Credentials saved but failed to connect. {error_details}',
+                    'error_type': 'authentication_failed',
                 }, status=400)
         else:
             return web.json_response({
@@ -2379,6 +2444,170 @@ async def handle_blueair_credentials(request):
             }, status=500)
     except Exception as e:
         logger.error(f"Set Blueair credentials error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+# ============================================================================
+# TP-Link Control Functions
+# ============================================================================
+
+async def discover_tplink_devices():
+    """Discover TP-Link Kasa devices on the local network"""
+    global tplink_devices
+    
+    if not tplink_kasa_available:
+        logger.warning("python-kasa not available - cannot discover TP-Link devices")
+        return []
+    
+    try:
+        from kasa import Discover
+        
+        logger.info("Discovering TP-Link Kasa devices on local network...")
+        devices = await Discover.discover()
+        
+        discovered = []
+        for ip, device in devices.items():
+            try:
+                await device.update()  # Get device info
+                device_info = {
+                    'ip': ip,
+                    'alias': device.alias,
+                    'device_id': device.device_id,
+                    'model': device.model,
+                    'mac': device.mac,
+                    'is_on': device.is_on if hasattr(device, 'is_on') else None,
+                    'display_name': device.alias,  # Use alias as display name
+                }
+                discovered.append(device_info)
+                logger.info(f"Found TP-Link device: {device.alias} ({ip}) - {device.model}")
+            except Exception as e:
+                logger.warning(f"Error getting info for TP-Link device at {ip}: {e}")
+        
+        tplink_devices = discovered
+        return discovered
+    except Exception as e:
+        logger.error(f"Error discovering TP-Link devices: {e}")
+        return []
+
+
+async def get_tplink_status(device_id):
+    """Get status of a TP-Link device by device_id or IP"""
+    if not tplink_kasa_available:
+        return None
+    
+    try:
+        from kasa import SmartDevice
+        
+        # Find device by device_id or IP
+        device = None
+        for dev_info in tplink_devices:
+            if dev_info.get('device_id') == device_id or dev_info.get('ip') == device_id:
+                device = SmartDevice(dev_info['ip'])
+                break
+        
+        if not device:
+            # Try direct connection if device_id looks like an IP
+            if device_id and '.' in device_id:
+                device = SmartDevice(device_id)
+            else:
+                logger.warning(f"TP-Link device not found: {device_id}")
+                return None
+        
+        await device.update()
+        
+        return {
+            'device_id': device.device_id,
+            'alias': device.alias,
+            'ip': device.host,
+            'is_on': device.is_on if hasattr(device, 'is_on') else None,
+            'model': device.model,
+            'mac': device.mac,
+        }
+    except Exception as e:
+        logger.error(f"Error getting TP-Link device status: {e}")
+        return None
+
+
+async def set_tplink_switch(device_id, on):
+    """Set TP-Link switch/plug on/off state"""
+    if not tplink_kasa_available:
+        return False
+    
+    try:
+        from kasa import SmartDevice
+        
+        # Find device by device_id or IP
+        device = None
+        for dev_info in tplink_devices:
+            if dev_info.get('device_id') == device_id or dev_info.get('ip') == device_id:
+                device = SmartDevice(dev_info['ip'])
+                break
+        
+        if not device:
+            # Try direct connection if device_id looks like an IP
+            if device_id and '.' in device_id:
+                device = SmartDevice(device_id)
+            else:
+                logger.warning(f"TP-Link device not found: {device_id}")
+                return False
+        
+        await device.update()
+        await device.turn_on() if on else await device.turn_off()
+        
+        logger.info(f"Set TP-Link device {device.alias} ({device.host}) to {'ON' if on else 'OFF'}")
+        return True
+    except Exception as e:
+        logger.error(f"Error setting TP-Link device state: {e}")
+        return False
+
+
+async def handle_tplink_discover(request):
+    """GET /api/tplink/discover - Discover TP-Link devices"""
+    try:
+        devices = await discover_tplink_devices()
+        return web.json_response({
+            'devices': devices,
+            'count': len(devices)
+        })
+    except Exception as e:
+        logger.error(f"TP-Link discovery error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_tplink_status(request):
+    """GET /api/tplink/status - Get TP-Link device status"""
+    try:
+        device_id = request.query.get('device_id')
+        if not device_id:
+            return web.json_response({'error': 'device_id required'}, status=400)
+        
+        status = await get_tplink_status(device_id)
+        if status:
+            return web.json_response(status)
+        else:
+            return web.json_response({'error': 'Device not found or unreachable'}, status=404)
+    except Exception as e:
+        logger.error(f"TP-Link status error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_tplink_switch(request):
+    """POST /api/tplink/switch - Control TP-Link switch/plug"""
+    try:
+        data = await request.json()
+        device_id = data.get('device_id')
+        on = data.get('on', False)
+        
+        if not device_id:
+            return web.json_response({'error': 'device_id required'}, status=400)
+        
+        success = await set_tplink_switch(device_id, on)
+        if success:
+            return web.json_response({'success': True, 'on': on})
+        else:
+            return web.json_response({'error': 'Failed to set device state'}, status=500)
+    except Exception as e:
+        logger.error(f"TP-Link switch error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
 
@@ -2836,6 +3065,264 @@ async def handle_restart_bridge(request):
         }, status=500)
 
 
+async def handle_wifi_status(request):
+    """GET /api/wifi/status - Get current WiFi connection status"""
+    try:
+        import subprocess
+        
+        # Get current WiFi connection info
+        wifi_info = {
+            'connected': False,
+            'ssid': None,
+            'frequency': None,
+            'frequency_ghz': None,
+            'ip_address': None,
+            'interface': None,
+            'is_2_4ghz': None
+        }
+        
+        # Try to get WiFi info using iwconfig
+        try:
+            result = subprocess.run(
+                ['iwconfig'], 
+                capture_output=True, 
+                text=True, 
+                timeout=2
+            )
+            for line in result.stdout.split('\n'):
+                if 'wlan' in line.lower() or 'wifi' in line.lower():
+                    # Extract SSID
+                    if 'ESSID:' in line:
+                        ssid = line.split('ESSID:')[1].split()[0].strip('"')
+                        wifi_info['ssid'] = ssid
+                        wifi_info['connected'] = True
+                        wifi_info['interface'] = line.split()[0]
+                    # Extract frequency
+                    if 'Frequency:' in line:
+                        freq_str = line.split('Frequency:')[1].split()[0]
+                        try:
+                            freq_ghz = float(freq_str)
+                            wifi_info['frequency'] = freq_str
+                            wifi_info['frequency_ghz'] = freq_ghz
+                            wifi_info['is_2_4ghz'] = 2.4 <= freq_ghz < 3.0
+                        except:
+                            pass
+        except Exception as e:
+            logger.debug(f"iwconfig failed: {e}")
+        
+        # Try NetworkManager as fallback
+        if not wifi_info['connected']:
+            try:
+                result = subprocess.run(
+                    ['nmcli', '-t', '-f', 'ACTIVE,SSID,FREQ,DEVICE', 'device', 'wifi'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                for line in result.stdout.split('\n'):
+                    if line.startswith('yes:'):
+                        parts = line.split(':')
+                        if len(parts) >= 4:
+                            wifi_info['connected'] = True
+                            wifi_info['ssid'] = parts[1] if parts[1] else None
+                            wifi_info['interface'] = parts[3] if parts[3] else None
+                            if parts[2]:
+                                try:
+                                    freq_ghz = float(parts[2]) / 1000.0  # MHz to GHz
+                                    wifi_info['frequency_ghz'] = freq_ghz
+                                    wifi_info['is_2_4ghz'] = 2.4 <= freq_ghz < 3.0
+                                except:
+                                    pass
+            except Exception as e:
+                logger.debug(f"nmcli failed: {e}")
+        
+        # Get IP address
+        if wifi_info['interface']:
+            try:
+                result = subprocess.run(
+                    ['ip', 'addr', 'show', wifi_info['interface']],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                for line in result.stdout.split('\n'):
+                    if 'inet ' in line and not '127.0.0.1' in line:
+                        wifi_info['ip_address'] = line.split()[1].split('/')[0]
+                        break
+            except:
+                pass
+        
+        return web.json_response(wifi_info)
+    except Exception as e:
+        logger.error(f"Error getting WiFi status: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_wifi_scan(request):
+    """GET /api/wifi/scan - Scan for available WiFi networks"""
+    try:
+        import subprocess
+        
+        networks = []
+        
+        # Try NetworkManager first (most reliable)
+        try:
+            result = subprocess.run(
+                ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY,FREQ', 'device', 'wifi', 'list'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            for line in result.stdout.strip().split('\n'):
+                if not line or line.startswith('--'):
+                    continue
+                parts = line.split(':')
+                if len(parts) >= 4:
+                    ssid = parts[0]
+                    signal = parts[1]
+                    security = parts[2]
+                    freq_mhz = parts[3] if len(parts) > 3 else ''
+                    
+                    # Skip empty SSIDs
+                    if not ssid or ssid == '--':
+                        continue
+                    
+                    # Calculate frequency in GHz and determine band
+                    freq_ghz = None
+                    is_2_4ghz = None
+                    if freq_mhz:
+                        try:
+                            freq_ghz = float(freq_mhz) / 1000.0
+                            is_2_4ghz = 2.4 <= freq_ghz < 3.0
+                        except:
+                            pass
+                    
+                    networks.append({
+                        'ssid': ssid,
+                        'signal': int(signal) if signal.isdigit() else 0,
+                        'security': security if security else 'open',
+                        'frequency_ghz': freq_ghz,
+                        'is_2_4ghz': is_2_4ghz,
+                        'band': '2.4 GHz' if is_2_4ghz else '5 GHz' if freq_ghz else 'Unknown'
+                    })
+        except Exception as e:
+            logger.debug(f"nmcli scan failed: {e}")
+        
+        # Sort by signal strength (strongest first)
+        networks.sort(key=lambda x: x['signal'], reverse=True)
+        
+        return web.json_response({
+            'networks': networks,
+            'count': len(networks)
+        })
+    except Exception as e:
+        logger.error(f"Error scanning WiFi: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_wifi_connect(request):
+    """POST /api/wifi/connect - Connect to a WiFi network"""
+    try:
+        import subprocess
+        data = await request.json()
+        
+        ssid = data.get('ssid')
+        password = data.get('password', '')
+        
+        if not ssid:
+            return web.json_response({'error': 'SSID required'}, status=400)
+        
+        # Use NetworkManager to connect
+        try:
+            if password:
+                # Connect with password
+                result = subprocess.run(
+                    ['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            else:
+                # Connect to open network
+                result = subprocess.run(
+                    ['nmcli', 'device', 'wifi', 'connect', ssid],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            
+            if result.returncode == 0:
+                # Wait a moment for connection to establish
+                await asyncio.sleep(2)
+                return web.json_response({
+                    'success': True,
+                    'message': f'Connected to {ssid}',
+                    'ssid': ssid
+                })
+            else:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                return web.json_response({
+                    'success': False,
+                    'error': error_msg or 'Connection failed'
+                }, status=400)
+        except subprocess.TimeoutExpired:
+            return web.json_response({'error': 'Connection timeout'}, status=500)
+        except Exception as e:
+            logger.error(f"WiFi connection error: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    except Exception as e:
+        logger.error(f"Error connecting to WiFi: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def handle_wifi_disconnect(request):
+    """POST /api/wifi/disconnect - Disconnect from current WiFi network"""
+    try:
+        import subprocess
+        
+        # Find WiFi interface
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'DEVICE', 'device', 'status'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        wifi_device = None
+        for line in result.stdout.split('\n'):
+            if 'wlan' in line.lower() or 'wifi' in line.lower():
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    wifi_device = parts[0]
+                    break
+        
+        if not wifi_device:
+            return web.json_response({'error': 'No WiFi device found'}, status=400)
+        
+        # Disconnect
+        result = subprocess.run(
+            ['nmcli', 'device', 'disconnect', wifi_device],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode == 0:
+            return web.json_response({
+                'success': True,
+                'message': 'Disconnected from WiFi'
+            })
+        else:
+            return web.json_response({
+                'success': False,
+                'error': result.stderr.strip() or 'Disconnect failed'
+            }, status=400)
+    except Exception as e:
+        logger.error(f"Error disconnecting WiFi: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 async def handle_kill_duplicate_bridges(request):
     """POST /api/bridge/kill-duplicates - Kill all duplicate bridge processes"""
     import subprocess
@@ -3077,6 +3564,92 @@ async def handle_bridge_info(request):
         return web.json_response({
             "success": False,
             "error": str(e)
+        }, status=500)
+
+
+async def handle_service_status(request):
+    """GET /api/bridge/service-status - Check systemd service status"""
+    try:
+        import subprocess
+        
+        service_name = "prostat-bridge"
+        status_info = {
+            "service_name": service_name,
+            "installed": False,
+            "enabled": False,
+            "active": False,
+            "running": False,
+            "failed": False,
+            "status_text": None,
+            "error": None,
+        }
+        
+        # Check if service file exists
+        service_file = f"/etc/systemd/system/{service_name}.service"
+        if os.path.exists(service_file):
+            status_info["installed"] = True
+        else:
+            status_info["error"] = f"Service file not found at {service_file}"
+            return web.json_response(status_info)
+        
+        # Check if service is enabled
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-enabled", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            status_info["enabled"] = result.returncode == 0 and result.stdout.strip() == "enabled"
+        except Exception as e:
+            logger.warning(f"Error checking if service is enabled: {e}")
+        
+        # Check if service is active/running
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            status_info["active"] = result.returncode == 0
+            status_info["running"] = result.stdout.strip() == "active"
+        except Exception as e:
+            logger.warning(f"Error checking if service is active: {e}")
+        
+        # Check if service failed
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-failed", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            status_info["failed"] = result.returncode == 0 and result.stdout.strip() == "failed"
+        except Exception as e:
+            logger.warning(f"Error checking if service failed: {e}")
+        
+        # Get detailed status
+        try:
+            result = subprocess.run(
+                ["systemctl", "status", service_name, "--no-pager", "-l"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 or result.stdout:
+                # Extract key info from status output
+                lines = result.stdout.split('\n')
+                status_info["status_text"] = '\n'.join(lines[:20])  # First 20 lines
+        except Exception as e:
+            logger.warning(f"Error getting service status: {e}")
+        
+        return web.json_response(status_info)
+    except Exception as e:
+        logger.error(f"Error checking service status: {e}")
+        return web.json_response({
+            "error": str(e),
+            "service_name": "prostat-bridge"
         }, status=500)
 
 
@@ -3398,6 +3971,157 @@ async def handle_tts_voices(request):
     except Exception as e:
         logger.error(f"Error getting voices: {e}")
         return web.json_response({"voices": []})
+async def handle_homekit_bridge_pairing_info(request):
+    """GET /api/homekit-bridge/pairing-info - Get HomeKit bridge pairing code and info"""
+    global homekit_bridge_driver
+    
+    if not HAP_PYTHON_AVAILABLE:
+        return web.json_response({
+            'available': False,
+            'error': 'HAP-python not installed'
+        }, status=503)
+    
+    if not homekit_bridge_driver:
+        return web.json_response({
+            'available': False,
+            'error': 'HomeKit bridge not started'
+        }, status=503)
+    
+    try:
+        # Get setup code from driver state
+        pincode = homekit_bridge_driver.state.pincode
+        if isinstance(pincode, bytes):
+            pincode = pincode.decode('utf-8')
+        
+        # Format as XXX-XX-XXX
+        pincode_formatted = pincode if '-' in pincode else f"{pincode[:3]}-{pincode[3:5]}-{pincode[5:]}"
+        
+        # Get setup ID for QR code
+        setup_id = homekit_bridge_driver.state.setup_id.decode('utf-8') if isinstance(homekit_bridge_driver.state.setup_id, bytes) else homekit_bridge_driver.state.setup_id
+        
+        # Get MAC address for QR code
+        mac = homekit_bridge_driver.state.mac.decode('utf-8') if isinstance(homekit_bridge_driver.state.mac, bytes) else homekit_bridge_driver.state.mac
+        
+        # Generate QR code data (HomeKit format)
+        # Format: X-HM://[setup_id][mac]
+        qr_data = f"X-HM://{setup_id}{mac.replace(':', '')}"
+        
+        # Check if already paired
+        is_paired = len(homekit_bridge_driver.state.paired_clients) > 0
+        
+        return web.json_response({
+            'available': True,
+            'pincode': pincode_formatted,
+            'setup_id': setup_id,
+            'mac': mac,
+            'qr_data': qr_data,
+            'paired': is_paired,
+            'paired_clients_count': len(homekit_bridge_driver.state.paired_clients),
+            'port': 51826
+        })
+    except Exception as e:
+        logger.error(f"Error getting HomeKit bridge pairing info: {e}", exc_info=True)
+        return web.json_response({
+            'available': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def start_homekit_bridge():
+    """Start the HomeKit bridge server (exposes devices as accessories)"""
+    global homekit_bridge_driver
+    
+    if not HAP_PYTHON_AVAILABLE:
+        logger.warning("Cannot start HomeKit bridge: HAP-python not available")
+        return
+    
+    try:
+        # Get device_id from pairings (direct access, no HTTP call needed)
+        device_id = None
+        if pairings:
+            # Get first paired device
+            device_id = list(pairings.keys())[0]
+            logger.info(f"Found paired device for HomeKit bridge: {device_id}")
+        else:
+            logger.warning("No paired device found - HomeKit bridge will start without accessories")
+            logger.info("Pair a device first, then restart the bridge to enable HomeKit accessories")
+        
+        # Get persist file path
+        import os
+        data_dir = get_data_directory()
+        persist_file = os.path.join(data_dir, 'homekit-bridge.state')
+        
+        # Check if Blueair is available
+        blueair_available = False
+        try:
+            blueair_status = await get_blueair_status(0)
+            blueair_available = blueair_status is not None
+            if blueair_available:
+                logger.info("Blueair is available, will add Air Purifier accessory")
+        except Exception as e:
+            logger.debug(f"Could not check Blueair status: {e}")
+        
+        # Discover TP-Link devices
+        tplink_devices_list = []
+        if tplink_kasa_available:
+            try:
+                discovered = await discover_tplink_devices()
+                if discovered:
+                    tplink_devices_list = discovered
+                    logger.info(f"Found {len(discovered)} TP-Link device(s), will add to bridge")
+            except Exception as e:
+                logger.debug(f"Could not discover TP-Link devices: {e}")
+        
+        # Create bridge
+        driver, bridge = create_bridge(
+            device_id=device_id,
+            port=51826,
+            persist_file=persist_file,
+            blueair_available=blueair_available,
+            tplink_devices=tplink_devices_list
+        )
+        
+        homekit_bridge_driver = driver
+        
+        # Start driver in background thread (it's blocking)
+        import threading
+        def run_driver():
+            try:
+                driver.start()
+            except Exception as e:
+                logger.error(f"HomeKit bridge driver error: {e}")
+        
+        bridge_thread = threading.Thread(target=run_driver, daemon=True)
+        bridge_thread.start()
+        
+        logger.info("=" * 60)
+        logger.info("HomeKit Bridge Server Started")
+        logger.info("=" * 60)
+        logger.info(f"Bridge name: {bridge.display_name}")
+        logger.info(f"Port: 51826")
+        logger.info(f"Pairing file: {persist_file}")
+        accessories_list = []
+        if device_id:
+            logger.info(f"Device ID: {device_id}")
+            logger.info("Thermostat accessory available")
+            accessories_list.append("Thermostat")
+        if blueair_available:
+            logger.info("Air Purifier accessory available")
+            accessories_list.append("Air Purifier")
+        if not accessories_list:
+            logger.info("No accessories (pair a device or configure Blueair first)")
+        else:
+            logger.info(f"Accessories: {', '.join(accessories_list)}")
+        logger.info("")
+        logger.info("To pair with Apple Home app:")
+        logger.info("1. Open Apple Home app")
+        logger.info("2. Tap '+' → Add Accessory")
+        logger.info("3. Scan QR code or enter PIN (check logs for PIN)")
+        logger.info("=" * 60)
+        
+    except Exception as e:
+        logger.error(f"Failed to start HomeKit bridge: {e}", exc_info=True)
+        logger.warning("Continuing without HomeKit bridge...")
 
 
 async def init_app():
@@ -3442,8 +4166,16 @@ async def init_app():
     app.router.add_post('/api/blueair/led', handle_blueair_led)
     app.router.add_post('/api/blueair/dust-kicker', handle_dust_kicker)
     
+    # TP-Link endpoints
+    app.router.add_get('/api/tplink/discover', handle_tplink_discover)
+    app.router.add_get('/api/tplink/status', handle_tplink_status)
+    app.router.add_post('/api/tplink/switch', handle_tplink_switch)
+    
     # Health check
     app.router.add_get('/health', lambda r: web.json_response({'status': 'ok'}))
+    
+    # HomeKit Bridge pairing info
+    app.router.add_get('/api/homekit-bridge/pairing-info', handle_homekit_bridge_pairing_info)
     
     # OTA Update endpoints
     app.router.add_get('/api/ota/version', handle_ota_version)
@@ -3456,6 +4188,7 @@ async def init_app():
     app.router.add_post('/api/bridge/restart', handle_restart_bridge)
     app.router.add_get('/api/bridge/logs', handle_bridge_logs)
     app.router.add_get('/api/bridge/info', handle_bridge_info)
+    app.router.add_get('/api/bridge/service-status', handle_service_status)
     
     # EnergyPlus endpoints
     app.router.add_get('/api/energyplus/status', handle_energyplus_status)
@@ -3473,6 +4206,12 @@ async def init_app():
     app.router.add_post('/api/settings', handle_set_settings_batch)
     app.router.add_post('/api/settings/{key}', handle_set_setting)
     app.router.add_delete('/api/settings/{key}', handle_delete_setting)
+    
+    # WiFi configuration endpoints
+    app.router.add_get('/api/wifi/status', handle_wifi_status)
+    app.router.add_get('/api/wifi/scan', handle_wifi_scan)
+    app.router.add_post('/api/wifi/connect', handle_wifi_connect)
+    app.router.add_post('/api/wifi/disconnect', handle_wifi_disconnect)
     
     # Enable CORS for all routes
     for route in list(app.router.routes()):
@@ -3571,6 +4310,13 @@ async def main():
     # Initialize Blueair (optional - service works without it)
     await init_blueair()
     
+    # Start HomeKit Bridge (for exposing devices as accessories)
+    if homekit_bridge_enabled and HAP_PYTHON_AVAILABLE:
+        await start_homekit_bridge()
+    elif homekit_bridge_enabled and not HAP_PYTHON_AVAILABLE:
+        logger.warning("HomeKit bridge is enabled but HAP-python is not installed")
+        logger.warning("Install with: pip install HAP-python")
+    
     # Create and run web server
     app = await init_app()
     
@@ -3612,31 +4358,85 @@ async def main():
             local_ip = get_local_ip()
             if local_ip:
                 service_type = "_http._tcp.local."
-                service_name = "joule-bridge._http._tcp.local."
+                hostname = socket.gethostname().split('.')[0]  # Get just hostname, not FQDN
                 port = 8080
                 
-                # Create service info
+                # Try preferred name first: joule-bridge.local
+                preferred_name = "joule-bridge._http._tcp.local."
+                from zeroconf._exceptions import NonUniqueNameException
+                
+                # Register hostname via Avahi if available (for hostname resolution)
+                # This makes joule-bridge.local resolve to the IP
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ['avahi-set-host-name', 'joule-bridge'],
+                        capture_output=True,
+                        timeout=5,
+                        check=False
+                    )
+                    if result.returncode == 0:
+                        logger.info("Registered hostname 'joule-bridge' via Avahi")
+                    else:
+                        logger.debug(f"Avahi hostname registration returned: {result.returncode}")
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    logger.debug("avahi-set-host-name not available, hostname registration skipped")
+                except Exception as e:
+                    logger.debug(f"Hostname registration attempt failed: {e}")
+                
+                # Create service info with preferred name
+                # Use "joule-bridge.local." as server name for hostname resolution
                 info = ServiceInfo(
                     service_type,
-                    service_name,
+                    preferred_name,
                     addresses=[socket.inet_aton(local_ip)],
                     port=port,
                     properties={
                         b'path': b'/',
                         b'name': b'Joule Bridge'
                     },
-                    server=f"joule-bridge.local."
+                    server="joule-bridge.local."
                 )
                 
-                # Register the service
-                await async_zeroconf.async_register_service(info)
-                mdns_service = info
-                logger.info(f"Registered mDNS service: {service_name} at http://{local_ip}:{port}")
-                logger.info(f"Bridge discoverable as: http://joule-bridge.local:{port}")
+                try:
+                    # Try to register with preferred name, allowing automatic name change if conflict
+                    await async_zeroconf.async_register_service(info, allow_name_change=True)
+                    mdns_service = info
+                    actual_name = info.name
+                    logger.info(f"Registered mDNS service: {actual_name} at http://{local_ip}:{port}")
+                    
+                    # Extract the hostname part for user-friendly display
+                    if actual_name.startswith("joule-bridge"):
+                        display_name = actual_name.replace("._http._tcp.local.", "")
+                        logger.info(f"Bridge discoverable as: http://{display_name}:{port}")
+                    else:
+                        logger.info(f"Bridge accessible at: http://{hostname}.local:{port} or http://{local_ip}:{port}")
+                except NonUniqueNameException as e:
+                    # If preferred name conflicts, try hostname-based unique name
+                    logger.warning(f"Preferred name '{preferred_name}' is already in use, using hostname-based name")
+                    fallback_name = f"joule-bridge-{hostname}._http._tcp.local."
+                    info = ServiceInfo(
+                        service_type,
+                        fallback_name,
+                        addresses=[socket.inet_aton(local_ip)],
+                        port=port,
+                        properties={
+                            b'path': b'/',
+                            b'name': b'Joule Bridge'
+                        },
+                        server="joule-bridge.local."
+                    )
+                    await async_zeroconf.async_register_service(info, allow_name_change=True)
+                    mdns_service = info
+                    logger.info(f"Registered mDNS service with fallback name: {info.name} at http://{local_ip}:{port}")
+                    logger.info(f"Bridge accessible at: http://{hostname}.local:{port} or http://{local_ip}:{port}")
             else:
                 logger.warning("Could not determine local IP address for mDNS advertisement")
         except Exception as e:
             logger.warning(f"Failed to register mDNS service: {e}")
+            logger.warning(f"mDNS registration error details: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.debug(f"mDNS registration traceback: {traceback.format_exc()}")
             logger.info("Bridge will still work, but must be accessed by IP address")
     
     # Keep running

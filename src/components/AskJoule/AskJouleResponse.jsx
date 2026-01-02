@@ -36,11 +36,14 @@ export const AskJouleResponse = React.memo(({
   transcript,
   isListening,
   isSpeaking,
-  stopSpeaking
+  stopSpeaking,
+  onApiKeySaved
 }) => {
   const [feedback, setFeedback] = useState(null); // 'up', 'down', or null
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [savingApiKey, setSavingApiKey] = useState(false);
 
   // Memoize stop handler to prevent re-creation on every render
   const handleStopSpeaking = React.useCallback((e) => {
@@ -67,6 +70,41 @@ export const AskJouleResponse = React.memo(({
     // TODO: Send to analytics/backend
     setShowFeedbackForm(false);
     setFeedbackText("");
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) return;
+    
+    setSavingApiKey(true);
+    try {
+      // Save to localStorage
+      const trimmedKey = apiKey.trim();
+      localStorage.setItem("groqApiKey", trimmedKey);
+      
+      // Dispatch storage event to notify other components (like Settings)
+      // This ensures Settings page updates when key is saved in Ask Joule
+      window.dispatchEvent(new Event("storage"));
+      
+      // Also dispatch a custom event for immediate sync (storage event only fires in other tabs)
+      window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { 
+        detail: { apiKey: trimmedKey } 
+      }));
+      
+      // Notify parent component
+      if (onApiKeySaved) {
+        onApiKeySaved(trimmedKey);
+      }
+      
+      // Clear the input
+      setApiKey("");
+      
+      // Show success message briefly
+      console.log("[AskJoule] API key saved successfully");
+    } catch (err) {
+      console.error("[AskJoule] Failed to save API key:", err);
+    } finally {
+      setSavingApiKey(false);
+    }
   };
   // Debug logging
   React.useEffect(() => {
@@ -144,6 +182,50 @@ export const AskJouleResponse = React.memo(({
               <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
                 <strong>Why use Groq?</strong> It's free, fast, and runs entirely in your browser. Your API key never leaves your device - all requests go directly from your browser to Groq's servers.
               </p>
+            </div>
+          ) : error && error.includes("API key not configured") ? (
+            <div className="space-y-3">
+              <div className="whitespace-pre-wrap text-sm mb-3">{error}</div>
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                  Enter your Groq API Key
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="gsk_..."
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && apiKey.trim()) {
+                        handleSaveApiKey();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveApiKey}
+                    disabled={!apiKey.trim() || savingApiKey}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition-colors"
+                  >
+                    {savingApiKey ? "Saving..." : "Save"}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://console.groq.com/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-xs transition-colors"
+                  >
+                    <Zap size={14} />
+                    Get Free API Key →
+                  </a>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    No credit card required
+                  </p>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="whitespace-pre-wrap">{error}</div>

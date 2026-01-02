@@ -1,65 +1,55 @@
 # Obsolete/Outdated Guides
 
-This document lists guides that may be obsolete, superseded, or duplicated.
+This document lists guides that have been removed or are obsolete.
 
-## Bridge Setup Guides (DUPLICATES)
+## ✅ DELETED FILES (Removed)
 
-### ⚠️ OBSOLETE: `docs/PROSTAT-BRIDGE-SETUP.md`
-- **Status:** Obsolete (superseded)
-- **Reason:** Old name "ProStat Bridge", replaced by "Joule Bridge"
-- **Last Updated:** Dec 11, 2024
-- **Replaced By:** `docs/BRIDGE-INSTALLATION-GUIDE.md` (Dec 23, 2024)
-- **Action:** Consider removing or archiving
+### `docs/END-USER-SETUP-GUIDE.md`
+- **Status:** ✅ DELETED
+- **Reason:** Consolidated into `USER_MANUAL.md`
+- **Deleted:** Dec 30, 2024
 
-### ⚠️ OBSOLETE: `docs/JOULE-BRIDGE-SETUP.md`
-- **Status:** Obsolete (superseded)
-- **Reason:** Older version, less comprehensive than new guide
-- **Last Updated:** Dec 11, 2024
-- **Replaced By:** `docs/BRIDGE-INSTALLATION-GUIDE.md` (Dec 23, 2024)
-- **Action:** Consider removing or archiving
+### `docs/ECOBEE-PAIRING-GUIDE.md`
+- **Status:** ✅ DELETED
+- **Reason:** Consolidated into `USER_MANUAL.md`
+- **Deleted:** Dec 30, 2024
 
-### ✅ CURRENT: `docs/BRIDGE-INSTALLATION-GUIDE.md`
-- **Status:** Current and comprehensive
-- **Last Updated:** Dec 23, 2024
-- **Use This One:** Most up-to-date installation guide
+### `public/docs/SHOPPING-LIST-CHECK.md`
+- **Status:** ✅ DELETED
+- **Reason:** Early version, superseded by `SHOPPING-LIST-FINAL.md`
+- **Deleted:** Dec 30, 2024
 
-## Shopping List Guides (MULTIPLE VERSIONS)
+### `public/docs/SHOPPING-LIST-UPDATED.md`
+- **Status:** ✅ DELETED
+- **Reason:** Intermediate version, superseded by `SHOPPING-LIST-FINAL.md`
+- **Deleted:** Dec 30, 2024
+- **Note:** Code references updated to point to `SHOPPING-LIST-FINAL.md`
 
-### ⚠️ OBSOLETE: `docs/SHOPPING-LIST-CHECK.md`
-- **Status:** Likely obsolete
-- **Reason:** Appears to be an early version
-- **Action:** Check if superseded by FINAL version
+## Files That Never Existed (Already Removed)
 
-### ⚠️ OBSOLETE: `docs/SHOPPING-LIST-UPDATED.md`
-- **Status:** Likely obsolete
-- **Reason:** Intermediate version
-- **Action:** Check if superseded by FINAL version
+These files were listed as potentially obsolete but don't exist in the repository:
+- `docs/PROSTAT-BRIDGE-SETUP.md` - Already removed
+- `docs/JOULE-BRIDGE-SETUP.md` - Already removed
+- All test/implementation summary files listed below - Already removed
 
-### ✅ CURRENT: `docs/SHOPPING-LIST-FINAL.md`
-- **Status:** Likely current
-- **Action:** Verify this is the latest version
+## Test/Implementation Summaries (ALREADY REMOVED)
 
-## Test/Implementation Summaries (POTENTIALLY OBSOLETE)
-
-These are historical records of implementations and may be obsolete:
-
-- `AGENT_ARCHITECTURE.md` - Implementation summary
-- `AGENT_REFACTOR_SUMMARY.md` - Refactoring summary
-- `AGENTIC_IMPLEMENTATION_SUMMARY.md` - Implementation summary
-- `AGENTIC_TESTING.md` - Test results
-- `GROQ_INTEGRATION_TEST_REPORT.md` - Test report
-- `GROQ_TEST_RESULTS_FINAL.md` - Test results
-- `OPTIMIZATION_TEST_RESULTS.md` - Test results
-- `PERFORMANCE_SUMMARY.md` - Performance summary
-- `PLAYWRIGHT_TESTS_SUMMARY.md` - Test summary
-- `TEST_REPORT.md` - Test report
-- `REFACTORING_SUMMARY.md` - Refactoring summary
-- `SPEECH_AND_GROQ_FIXES.md` - Fix summary
-- `TEMPERATURE_SYSTEM_SUMMARY.md` - System summary
-- `THRESHOLD_SCHEDULE_IMPLEMENTATION.md` - Implementation summary
-- `UX_COPY_DRAFT.md` - Draft document
-
-**Action:** These are historical records. Consider moving to `archive/` or `docs/history/` if no longer needed.
+These historical records were already deleted:
+- `AGENT_ARCHITECTURE.md`
+- `AGENT_REFACTOR_SUMMARY.md`
+- `AGENTIC_IMPLEMENTATION_SUMMARY.md`
+- `AGENTIC_TESTING.md`
+- `GROQ_INTEGRATION_TEST_REPORT.md`
+- `GROQ_TEST_RESULTS_FINAL.md`
+- `OPTIMIZATION_TEST_RESULTS.md`
+- `PERFORMANCE_SUMMARY.md`
+- `PLAYWRIGHT_TESTS_SUMMARY.md`
+- `TEST_REPORT.md`
+- `REFACTORING_SUMMARY.md`
+- `SPEECH_AND_GROQ_FIXES.md`
+- `TEMPERATURE_SYSTEM_SUMMARY.md`
+- `THRESHOLD_SCHEDULE_IMPLEMENTATION.md`
+- `UX_COPY_DRAFT.md`
 
 ## Deployment Guides (CHECK FOR DUPLICATES)
 
@@ -101,7 +91,7 @@ These are historical records of implementations and may be obsolete:
 ## Current/Active Guides (Keep These)
 
 - ✅ `docs/BRIDGE-INSTALLATION-GUIDE.md` - Current bridge setup
-- ✅ `docs/ECOBEE-PAIRING-GUIDE.md` - Current pairing guide
+- ✅ `docs/USER_MANUAL.md` - Complete user manual (includes pairing guide)
 - ✅ `docs/USB-TRANSFER-FILES.md` - Current USB transfer guide
 - ✅ `prostat-bridge/README.md` - Current bridge documentation
 - ✅ `README.md` - Main project README

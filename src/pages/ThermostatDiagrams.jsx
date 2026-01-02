@@ -59,7 +59,7 @@ const ThermostatDiagrams = () => {
               📖 Build Guide
             </button>
             <button
-              onClick={() => handleDocClick('SHOPPING-LIST-UPDATED.md')}
+              onClick={() => handleDocClick('SHOPPING-LIST-FINAL.md')}
               className="px-3 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-medium transition flex items-center gap-2"
             >
               🛒 Shopping List

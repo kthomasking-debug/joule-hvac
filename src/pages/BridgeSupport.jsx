@@ -18,9 +18,15 @@ import {
   FileText,
   Volume2,
   Zap,
-  Settings
+  Settings,
+  Eye,
+  EyeOff,
+  Wind
 } from 'lucide-react';
 import TTSServiceSettings from '../components/TTSServiceSettings';
+import { getBlueairCredentials, setBlueairCredentials } from '../lib/jouleBridgeApi';
+import AskJoule from '../components/AskJoule';
+import { indexMarkdownDocs } from '../utils/rag/loadMarkdownDocs';
 
 // Voice Persona Selector Component (extracted from Settings.jsx)
 const VoicePersonaSelector = () => {
@@ -150,6 +156,7 @@ export default function BridgeSupport() {
     processes: null,
     logs: [],
     systemInfo: null,
+    serviceStatus: null,
   });
   
   const [actions, setActions] = useState({
@@ -168,6 +175,30 @@ export default function BridgeSupport() {
     success: false, 
     error: null 
   });
+  
+  // WiFi configuration state
+  const [wifiStatus, setWifiStatus] = useState(null);
+  const [wifiNetworks, setWifiNetworks] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [selectedNetwork, setSelectedNetwork] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [wifiError, setWifiError] = useState(null);
+  const [wifiSuccess, setWifiSuccess] = useState(null);
+  
+  // Blueair credentials state
+  const [blueairUsername, setBlueairUsername] = useState('');
+  const [blueairPassword, setBlueairPassword] = useState('');
+  const [showBlueairPassword, setShowBlueairPassword] = useState(false);
+  const [blueairCredentialsStatus, setBlueairCredentialsStatus] = useState(null);
+  const [savingBlueair, setSavingBlueair] = useState(false);
+  
+  // Index markdown docs on mount
+  useEffect(() => {
+    indexMarkdownDocs().catch(err => {
+      console.warn('[BridgeSupport] Failed to index markdown docs:', err);
+    });
+  }, []);
 
   // Voice settings state
   const [useBrowserTTS, setUseBrowserTTS] = useState(() => {
@@ -278,10 +309,137 @@ export default function BridgeSupport() {
       } catch (e) {
         console.debug('Logs fetch failed:', e);
       }
+      
+      try {
+        // WiFi status
+        const wifiRes = await fetchWithTimeout(`${bridgeUrl}/api/wifi/status`);
+        if (wifiRes.ok) {
+          const wifiData = await wifiRes.json();
+          setWifiStatus(wifiData);
+        }
+      } catch (e) {
+        console.debug('WiFi status failed:', e);
+      }
+      
+      try {
+        // Blueair credentials status
+        const blueairRes = await getBlueairCredentials();
+        setBlueairCredentialsStatus(blueairRes);
+        if (blueairRes.username) {
+          setBlueairUsername(blueairRes.username);
+        }
+      } catch (e) {
+        console.debug('Blueair credentials check failed:', e);
+      }
+      
+      try {
+        // Systemd service status
+        const serviceRes = await fetchWithTimeout(`${bridgeUrl}/api/bridge/service-status`);
+        if (serviceRes.ok) {
+          results.serviceStatus = await serviceRes.json();
+        }
+      } catch (e) {
+        console.debug('Service status check failed:', e);
+      }
     }
     
     setStatus(prev => ({ ...prev, ...results, checking: false }));
   }, [bridgeUrl, fetchWithTimeout]);
+  
+  // Scan for WiFi networks
+  const scanWiFi = async () => {
+    if (!status.connected) return;
+    setScanning(true);
+    setWifiError(null);
+    try {
+      const res = await fetchWithTimeout(`${bridgeUrl}/api/wifi/scan`, {}, 15000);
+      const data = await res.json();
+      if (data.networks) {
+        setWifiNetworks(data.networks);
+      } else {
+        setWifiError(data.error || 'Failed to scan networks');
+      }
+    } catch (e) {
+      setWifiError(e.message || 'Failed to scan WiFi networks');
+    } finally {
+      setScanning(false);
+    }
+  };
+  
+  // Connect to WiFi network
+  const connectWiFi = async () => {
+    if (!status.connected || !selectedNetwork) return;
+    setConnecting(true);
+    setWifiError(null);
+    setWifiSuccess(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${bridgeUrl}/api/wifi/connect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ssid: selectedNetwork,
+            password: wifiPassword
+          })
+        },
+        35000
+      );
+      const data = await res.json();
+      if (data.success) {
+        setWifiSuccess(data.message || `Connected to ${selectedNetwork}`);
+        setWifiPassword('');
+        // Refresh WiFi status after connection
+        setTimeout(() => {
+          loadStatus();
+        }, 2000);
+      } else {
+        setWifiError(data.error || 'Connection failed');
+      }
+    } catch (e) {
+      setWifiError(e.message || 'Failed to connect to WiFi');
+    } finally {
+      setConnecting(false);
+    }
+  };
+  
+  // Save Blueair credentials
+  const handleSaveBlueairCredentials = async () => {
+    if (!status.connected || !blueairUsername || !blueairPassword) return;
+    setSavingBlueair(true);
+    try {
+      const result = await setBlueairCredentials(blueairUsername, blueairPassword);
+      if (result.success) {
+        setBlueairCredentialsStatus({
+          ...blueairCredentialsStatus,
+          connected: true,
+          devices_count: result.devices_count || 0,
+          has_credentials: true
+        });
+        setBlueairPassword(''); // Clear password field
+        // Refresh status
+        setTimeout(() => {
+          loadStatus();
+        }, 1000);
+      } else {
+        setBlueairCredentialsStatus({
+          ...blueairCredentialsStatus,
+          connected: false,
+          has_credentials: true,
+          error: result.error || 'Connection failed'
+        });
+      }
+    } catch (error) {
+      setBlueairCredentialsStatus({
+        ...blueairCredentialsStatus,
+        connected: false,
+        has_credentials: true,
+        error: error.message || 'Failed to save credentials'
+      });
+    } finally {
+      setSavingBlueair(false);
+    }
+  };
 
   // Trigger OTA update
   const triggerUpdate = async () => {
@@ -523,7 +681,7 @@ export default function BridgeSupport() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -591,6 +749,74 @@ export default function BridgeSupport() {
           
           {status.error && (
             <p className="text-red-300 text-sm mb-4">{status.error}</p>
+          )}
+          
+          {/* Service Status Diagnostics */}
+          {status.serviceStatus && (
+            <div className="mb-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Systemd Service Status
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <p className="text-slate-400">Installed</p>
+                  <p className={status.serviceStatus.installed ? 'text-green-400' : 'text-red-400'}>
+                    {status.serviceStatus.installed ? '✅ Yes' : '❌ No'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Enabled</p>
+                  <p className={status.serviceStatus.enabled ? 'text-green-400' : 'text-yellow-400'}>
+                    {status.serviceStatus.enabled ? '✅ Yes' : '⚠️ No'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Running</p>
+                  <p className={status.serviceStatus.running ? 'text-green-400' : 'text-red-400'}>
+                    {status.serviceStatus.running ? '✅ Yes' : '❌ No'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Failed</p>
+                  <p className={status.serviceStatus.failed ? 'text-red-400' : 'text-green-400'}>
+                    {status.serviceStatus.failed ? '❌ Yes' : '✅ No'}
+                  </p>
+                </div>
+              </div>
+              
+              {!status.serviceStatus.running && (
+                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+                  <p className="text-yellow-300 text-sm font-semibold mb-2">⚠️ Service Not Running</p>
+                  <p className="text-yellow-200 text-xs mb-3">
+                    The bridge service should auto-start on boot. If it's not running, try these steps:
+                  </p>
+                  <ol className="text-yellow-200 text-xs space-y-1 list-decimal list-inside">
+                    {!status.serviceStatus.installed && (
+                      <li>Service not installed. Run: <code className="bg-slate-700 px-1 rounded">cd ~/prostat-bridge && ./install-service.sh</code></li>
+                    )}
+                    {status.serviceStatus.installed && !status.serviceStatus.enabled && (
+                      <li>Service not enabled. Run: <code className="bg-slate-700 px-1 rounded">sudo systemctl enable prostat-bridge</code></li>
+                    )}
+                    {status.serviceStatus.enabled && !status.serviceStatus.running && (
+                      <li>Start the service: <code className="bg-slate-700 px-1 rounded">sudo systemctl start prostat-bridge</code></li>
+                    )}
+                    {status.serviceStatus.failed && (
+                      <li>Service failed. Check logs: <code className="bg-slate-700 px-1 rounded">sudo journalctl -u prostat-bridge -n 50</code></li>
+                    )}
+                    <li>Check service status: <code className="bg-slate-700 px-1 rounded">sudo systemctl status prostat-bridge</code></li>
+                  </ol>
+                  {status.serviceStatus.status_text && (
+                    <details className="mt-3">
+                      <summary className="text-yellow-300 text-xs cursor-pointer">View service status output</summary>
+                      <pre className="mt-2 text-xs bg-slate-900 p-2 rounded overflow-auto max-h-40 text-slate-300">
+                        {status.serviceStatus.status_text}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           
           {status.connected && status.version && (
@@ -947,6 +1173,318 @@ export default function BridgeSupport() {
           </div>
         )}
 
+        {/* WiFi Configuration */}
+        {status.connected && (
+          <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Wifi className="w-5 h-5" />
+              WiFi Configuration
+              <span className="text-xs font-normal text-blue-400 bg-blue-900/50 px-2 py-0.5 rounded">Remote Setup</span>
+            </h2>
+            
+            {/* Current WiFi Status */}
+            {wifiStatus && (
+              <div className="mb-6 p-4 bg-slate-900 rounded-lg border border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-300">Current Connection</span>
+                  {wifiStatus.connected ? (
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      wifiStatus.is_2_4ghz 
+                        ? 'bg-green-900/50 text-green-400 border border-green-700' 
+                        : 'bg-yellow-900/50 text-yellow-400 border border-yellow-700'
+                    }`}>
+                      {wifiStatus.is_2_4ghz ? '✅ 2.4 GHz' : '⚠️ 5 GHz'}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 rounded text-xs font-medium bg-red-900/50 text-red-400 border border-red-700">
+                      Not Connected
+                    </span>
+                  )}
+                </div>
+                {wifiStatus.connected ? (
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Network:</span>
+                      <span className="font-mono text-slate-200">{wifiStatus.ssid || 'Unknown'}</span>
+                    </div>
+                    {wifiStatus.frequency_ghz && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Frequency:</span>
+                        <span className="font-mono text-slate-200">{wifiStatus.frequency_ghz.toFixed(2)} GHz</span>
+                      </div>
+                    )}
+                    {wifiStatus.ip_address && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">IP Address:</span>
+                        <span className="font-mono text-slate-200">{wifiStatus.ip_address}</span>
+                      </div>
+                    )}
+                    {!wifiStatus.is_2_4ghz && wifiStatus.frequency_ghz && (
+                      <div className="mt-2 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-xs text-yellow-300">
+                        ⚠️ Warning: Connected to 5 GHz. Ecobee and Blueair require 2.4 GHz WiFi. Please connect to a 2.4 GHz network.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400">No WiFi connection detected</p>
+                )}
+              </div>
+            )}
+            
+            {/* Scan and Connect */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={scanWiFi}
+                  disabled={scanning}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
+                  {scanning ? 'Scanning...' : 'Scan for Networks'}
+                </button>
+                {wifiNetworks.length > 0 && (
+                  <span className="text-sm text-slate-400">
+                    Found {wifiNetworks.length} network{wifiNetworks.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              
+              {/* Network List */}
+              {wifiNetworks.length > 0 && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {wifiNetworks.map((network, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedNetwork === network.ssid
+                          ? 'bg-blue-900/30 border-blue-600'
+                          : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                      }`}
+                      onClick={() => {
+                        setSelectedNetwork(network.ssid);
+                        setWifiError(null);
+                        setWifiSuccess(null);
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-white">{network.ssid}</span>
+                            {network.is_2_4ghz !== null && (
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                network.is_2_4ghz
+                                  ? 'bg-green-900/50 text-green-400 border border-green-700'
+                                  : 'bg-yellow-900/50 text-yellow-400 border border-yellow-700'
+                              }`}>
+                                {network.is_2_4ghz ? '2.4 GHz' : '5 GHz'}
+                              </span>
+                            )}
+                            {network.security && network.security !== 'open' && (
+                              <span className="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-300">
+                                🔒 {network.security}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex-1 bg-slate-700 rounded-full h-2">
+                              <div
+                                className="bg-green-500 h-2 rounded-full"
+                                style={{ width: `${network.signal}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-slate-400">{network.signal}%</span>
+                          </div>
+                        </div>
+                        {selectedNetwork === network.ssid && (
+                          <CheckCircle className="w-5 h-5 text-blue-400 ml-2" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Password Input */}
+              {selectedNetwork && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-300">
+                    Password for "{selectedNetwork}"
+                  </label>
+                  <input
+                    type="password"
+                    value={wifiPassword}
+                    onChange={(e) => setWifiPassword(e.target.value)}
+                    placeholder={wifiNetworks.find(n => n.ssid === selectedNetwork)?.security === 'open' ? 'Open network (no password)' : 'Enter WiFi password'}
+                    disabled={wifiNetworks.find(n => n.ssid === selectedNetwork)?.security === 'open'}
+                    className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  />
+                  <button
+                    onClick={connectWiFi}
+                    disabled={connecting || !selectedNetwork}
+                    className="w-full px-4 py-3 bg-green-600 hover:bg-green-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {connecting ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        Connecting... (this may take 30 seconds)
+                      </>
+                    ) : (
+                      <>
+                        <Wifi className="w-5 h-5" />
+                        Connect to {selectedNetwork}
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+              
+              {/* Status Messages */}
+              {wifiSuccess && (
+                <div className="p-3 bg-green-900/50 border border-green-600 rounded-lg">
+                  <p className="text-green-400 font-medium flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    {wifiSuccess}
+                  </p>
+                </div>
+              )}
+              
+              {wifiError && (
+                <div className="p-3 bg-red-900/50 border border-red-600 rounded-lg">
+                  <p className="text-red-400 font-medium flex items-center gap-2">
+                    <XCircle className="w-5 h-5" />
+                    {wifiError}
+                  </p>
+                </div>
+              )}
+              
+              {/* Important Notice */}
+              <div className="p-4 bg-yellow-900/20 rounded-lg border border-yellow-700">
+                <p className="text-yellow-300 text-sm font-medium mb-2">⚠️ Important: 2.4 GHz Required</p>
+                <p className="text-yellow-200 text-xs">
+                  Ecobee and Blueair devices require 2.4 GHz WiFi. If your router has separate networks, 
+                  connect to the <strong>2.4 GHz network</strong> (e.g., "YourNetwork-2.4GHz"). 
+                  Networks marked with "5 GHz" will not work with these devices.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Blueair Credentials Configuration */}
+        {status.connected && (
+          <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Wind className="w-5 h-5" />
+              Blueair Air Purifier Credentials
+              <span className="text-xs font-normal text-blue-400 bg-blue-900/50 px-2 py-0.5 rounded">Remote Setup</span>
+            </h2>
+            <p className="text-sm text-slate-400 mb-4">
+              Configure your Blueair account credentials to enable air purifier control. These are the same credentials you use in the Blueair mobile app.
+            </p>
+            
+            {/* Connection Status */}
+            {blueairCredentialsStatus && (
+              <div className={`mb-4 p-3 rounded-lg border ${
+                blueairCredentialsStatus.connected
+                  ? 'bg-green-900/30 border-green-600'
+                  : 'bg-yellow-900/30 border-yellow-600'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {blueairCredentialsStatus.connected ? (
+                    <CheckCircle className="w-5 h-5 text-green-400" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                  )}
+                  <div className="text-sm">
+                    {blueairCredentialsStatus.connected ? (
+                      <span className="text-green-300">
+                        ✅ Connected: {blueairCredentialsStatus.devices_count || 0} device(s) found
+                      </span>
+                    ) : (
+                      <span className="text-yellow-300">
+                        {blueairCredentialsStatus.has_credentials 
+                          ? '⚠️ Credentials saved but not connected. Check username/password.'
+                          : 'No credentials configured'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {blueairCredentialsStatus.error && (
+                  <p className="text-xs text-red-300 mt-2 ml-7">
+                    Error: {blueairCredentialsStatus.error}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Email / Username
+                </label>
+                <input
+                  type="text"
+                  value={blueairUsername}
+                  onChange={(e) => setBlueairUsername(e.target.value)}
+                  placeholder="bunnyrita@gmail.com"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-slate-700 text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showBlueairPassword ? "text" : "password"}
+                    value={blueairPassword}
+                    onChange={(e) => setBlueairPassword(e.target.value)}
+                    placeholder="Enter Blueair password"
+                    className="w-full px-3 py-2 pr-10 rounded-lg border border-slate-600 bg-slate-700 text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowBlueairPassword(!showBlueairPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
+                    aria-label={showBlueairPassword ? "Hide password" : "Show password"}
+                  >
+                    {showBlueairPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={handleSaveBlueairCredentials}
+                disabled={savingBlueair || !blueairUsername || !blueairPassword}
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {savingBlueair ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Saving & Testing Connection...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Save Credentials & Test Connection
+                  </>
+                )}
+              </button>
+              
+              {/* Help Text */}
+              <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">
+                  <strong className="text-slate-300">Note:</strong> These are the same credentials you use to log into the Blueair mobile app. 
+                  If you're having trouble connecting, verify the credentials work in the Blueair app first.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* System Info */}
         {status.connected && status.systemInfo && (
           <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
@@ -1070,6 +1608,29 @@ export default function BridgeSupport() {
           </div>
         )}
 
+        {/* Ask Joule - RAG Prompt */}
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Zap className="w-5 h-5" />
+            Ask Joule - Documentation Search
+          </h2>
+          <p className="text-sm text-slate-400 mb-4">
+            Ask questions about bridge setup, troubleshooting, or any documentation. Joule will search through all indexed markdown files to find answers.
+          </p>
+          <div className="bg-slate-900/50 rounded-lg p-4">
+            <AskJoule
+              hasLocation={false}
+              userSettings={{}}
+              userLocation={null}
+              onParsed={() => {}}
+              onNavigate={() => {}}
+              onSettingChange={() => {}}
+              auditLog={[]}
+              onUndo={() => {}}
+            />
+          </div>
+        </div>
+
         {/* Documentation Links */}
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1139,7 +1700,22 @@ export default function BridgeSupport() {
           
           <div className="space-y-4 text-sm">
             <div className="p-4 bg-slate-900 rounded-lg">
-              <p className="font-medium text-white mb-2">1. Check Physical Connection</p>
+              <p className="font-medium text-white mb-2">1. Check Service Status (Most Common Issue)</p>
+              <p className="text-slate-400 mb-2 text-xs">
+                The bridge should auto-start on boot. If it didn't, the service may not be installed, enabled, or may have failed to start.
+              </p>
+              <ul className="list-disc list-inside text-slate-400 space-y-1">
+                <li>If you can connect to the bridge, check the "Systemd Service Status" section above</li>
+                <li>If you can't connect, SSH into the mini PC and check: <code className="bg-slate-700 px-1 rounded">sudo systemctl status prostat-bridge</code></li>
+                <li>If service is not installed: <code className="bg-slate-700 px-1 rounded">cd ~/prostat-bridge && ./install-service.sh</code></li>
+                <li>If service is not enabled: <code className="bg-slate-700 px-1 rounded">sudo systemctl enable prostat-bridge</code></li>
+                <li>If service failed: <code className="bg-slate-700 px-1 rounded">sudo journalctl -u prostat-bridge -n 50</code> to see errors</li>
+                <li>To start manually: <code className="bg-slate-700 px-1 rounded">sudo systemctl start prostat-bridge</code></li>
+              </ul>
+            </div>
+            
+            <div className="p-4 bg-slate-900 rounded-lg">
+              <p className="font-medium text-white mb-2">2. Check Physical Connection</p>
               <ul className="list-disc list-inside text-slate-400 space-y-1">
                 <li>Ensure the mini PC is powered on (check lights)</li>
                 <li>Verify Ethernet cable is connected to router</li>
@@ -1148,22 +1724,12 @@ export default function BridgeSupport() {
             </div>
             
             <div className="p-4 bg-slate-900 rounded-lg">
-              <p className="font-medium text-white mb-2">2. Try Alternative URLs</p>
+              <p className="font-medium text-white mb-2">3. Try Alternative URLs</p>
               <ul className="list-disc list-inside text-slate-400 space-y-1">
                 <li><code className="bg-slate-700 px-1 rounded">http://joule-bridge.local:8080</code> (mDNS)</li>
                 <li><code className="bg-slate-700 px-1 rounded">http://192.168.0.106:8080</code> (common IP)</li>
                 <li><code className="bg-slate-700 px-1 rounded">http://192.168.1.100:8080</code> (alt subnet)</li>
                 <li>Check router's connected devices for "Joule Bridge"</li>
-              </ul>
-            </div>
-            
-            <div className="p-4 bg-slate-900 rounded-lg">
-              <p className="font-medium text-white mb-2">3. If Nothing Works</p>
-              <ul className="list-disc list-inside text-slate-400 space-y-1">
-                <li>The service may have crashed and needs manual restart</li>
-                <li>User may need to connect a monitor/keyboard to the mini PC</li>
-                <li>Or SSH in: <code className="bg-slate-700 px-1 rounded">ssh user@IP</code></li>
-                <li>Then run: <code className="bg-slate-700 px-1 rounded">sudo systemctl restart prostat-bridge</code></li>
               </ul>
             </div>
           </div>

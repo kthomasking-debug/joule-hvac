@@ -409,6 +409,13 @@ export async function autoFixPairing() {
 }
 
 /**
+ * Get HomeKit bridge pairing information (PIN, QR code, status)
+ */
+export async function getHomeKitBridgePairingInfo() {
+  return bridgeRequest("/api/homekit-bridge/pairing-info");
+}
+
+/**
  * Get the primary paired device ID from server (single source of truth)
  * Uses /api/primary endpoint which validates the device is actually reachable
  */

@@ -16,21 +16,48 @@ export default function Breadcrumbs() {
     { path: '/home', label: 'Home', icon: Home },
   ];
 
+  // Check if we're on a city-comparison sub-route
+  const isCityComparisonSubRoute = location.pathname.includes('/city-comparison/') && 
+                                   location.pathname !== '/analysis/city-comparison';
+  
   // Build path incrementally
   let currentPath = '';
   pathSegments.forEach((segment, index) => {
     currentPath += `/${segment}`;
     
+    // If we're on a city-comparison sub-route, only show the parent "City Comparison" breadcrumb
+    if (isCityComparisonSubRoute && currentPath === '/analysis/city-comparison') {
+      const route = routes.find(r => r.path === currentPath);
+      if (route && route.label && route.label !== 'Home') {
+        breadcrumbs.push({
+          path: '/analysis/city-comparison',
+          label: route.label,
+          icon: route.icon,
+        });
+      }
+      // Stop processing further segments for sub-routes
+      return;
+    }
+    
+    // Skip sub-route segments (heat-pump, gas-electric) when on city-comparison sub-route
+    if (isCityComparisonSubRoute && (segment === 'heat-pump' || segment === 'gas-electric')) {
+      return;
+    }
+    
     // Find route for this path
     const route = routes.find(r => r.path === currentPath);
-    if (route && route.label && route.label !== 'Home') {
+    // Skip Energy Flow and Analyzer breadcrumbs (not related to budget)
+    const skipRoutePaths = ['/analysis/energy-flow', '/analysis/analyzer'];
+    const skipRouteNames = ['Performance', 'Analyze System'];
+    if (route && route.label && route.label !== 'Home' && !skipRoutePaths.includes(currentPath) && !skipRouteNames.includes(route.name)) {
       breadcrumbs.push({
         path: currentPath,
         label: route.label,
         icon: route.icon,
       });
-    } else if (!route && index > 0) {
+    } else if (!route && index > 0 && !isCityComparisonSubRoute && segment !== 'energy-flow' && segment !== 'analyzer') {
       // If no route found, use the segment as label (capitalized)
+      // But skip this for city-comparison sub-routes
       breadcrumbs.push({
         path: currentPath,
         label: segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '),

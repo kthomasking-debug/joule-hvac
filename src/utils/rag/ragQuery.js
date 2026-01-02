@@ -1,6 +1,11 @@
 /**
  * RAG Query Utility – Now With Better Manners and Smarter Standards Detection
  * Used by Ask Joule to pull real HVAC knowledge instead of hallucinating
+ * 
+ * UNIFIED RAG SEARCH: Combines all knowledge sources into a single search
+ * - HVAC Knowledge Base (Manual J/S/D, ASHRAE standards, equipment specs)
+ * - User Knowledge (uploaded PDFs, markdown docs)
+ * - Sales FAQ (presales questions, compatibility, pricing)
  */
 
 import {
@@ -10,9 +15,97 @@ import {
 import { addUserKnowledge } from "./userKnowledge.js";
 
 /**
- * Main RAG lookup – returns clean, LLM-ready context
+ * Unified RAG search - combines all knowledge sources into a single search
+ * 
+ * This function searches across all available RAG engines:
+ * 1. HVAC Knowledge Base (Manual J/S/D, ASHRAE standards, equipment specs, troubleshooting)
+ * 2. User Knowledge (uploaded PDFs, markdown docs, custom content)
+ * 3. Sales FAQ (presales questions, compatibility, pricing, shipping)
+ * 
+ * All results are normalized to a 0-100 relevance score and ranked together.
+ * 
+ * @param {string} query - Search query
+ * @param {Object} options - Search options
+ * @param {boolean} options.includeSalesFAQ - Include sales FAQ in search (default: true)
+ * @param {boolean} options.includeUserKnowledge - Include user knowledge (default: true)
+ * @returns {Promise<Array>} Combined and ranked search results with normalized scores
  */
-export async function queryHVACKnowledge(query) {
+export async function queryUnifiedRAG(query, options = {}) {
+  const { includeSalesFAQ = true, includeUserKnowledge = true } = options;
+  
+  if (!query?.trim()) {
+    return [];
+  }
+
+  const trimmedQuery = query.trim();
+  const allResults = [];
+
+  // 1. Search main HVAC knowledge base (includes user knowledge if enabled)
+  try {
+    const hvacResults = await searchKnowledgeBase(trimmedQuery, includeUserKnowledge);
+    hvacResults.forEach(result => {
+      allResults.push({
+        ...result,
+        sourceType: result.section === 'userKnowledge' ? 'userKnowledge' : 'hvacKnowledge',
+        // Normalize relevance scores (HVAC knowledge base uses 0-10 scale)
+        normalizedScore: (result.relevanceScore || 0) * 10,
+      });
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("[RAG] HVAC knowledge search failed:", error);
+    }
+  }
+
+  // 2. Search Sales FAQ if enabled
+  if (includeSalesFAQ) {
+    try {
+      const { searchSalesFAQ } = await import("./salesFAQ.js");
+      const salesResult = searchSalesFAQ(trimmedQuery);
+      
+      if (salesResult) {
+        // Calculate relevance score for sales FAQ (0-100 scale)
+        const lowerQuery = trimmedQuery.toLowerCase();
+        let score = 0;
+        salesResult.keywords.forEach(kw => {
+          if (lowerQuery.includes(kw)) score += 10;
+        });
+        if (lowerQuery.includes(salesResult.question.toLowerCase().slice(0, 30))) {
+          score += 30; // Strong question match
+        }
+        
+        allResults.push({
+          section: "salesFAQ",
+          topic: salesResult.category || "sales",
+          title: salesResult.question,
+          source: "Sales FAQ",
+          summary: salesResult.answer,
+          keyConcepts: [salesResult.answer],
+          relevanceScore: Math.min(score, 100),
+          normalizedScore: Math.min(score, 100),
+          sourceType: "salesFAQ",
+          isSalesFAQ: true,
+        });
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error("[RAG] Sales FAQ search failed:", error);
+      }
+    }
+  }
+
+  // 3. Sort all results by normalized score (highest first)
+  allResults.sort((a, b) => (b.normalizedScore || 0) - (a.normalizedScore || 0));
+
+  // 4. Return top results (limit to prevent token bloat)
+  return allResults.slice(0, 10);
+}
+
+/**
+ * Main RAG lookup – returns clean, LLM-ready context
+ * Now uses unified RAG search that combines all knowledge sources
+ */
+export async function queryHVACKnowledge(query, options = {}) {
   if (!query?.trim()) {
     return {
       success: false,
@@ -21,7 +114,8 @@ export async function queryHVACKnowledge(query) {
   }
 
   try {
-    const results = await searchKnowledgeBase(query.trim());
+    // Use unified RAG search
+    const results = await queryUnifiedRAG(query.trim(), options);
 
     if (results.length === 0) {
       return {
@@ -38,7 +132,8 @@ export async function queryHVACKnowledge(query) {
       content,
       sources: results.map((r) => ({
         title: r.title,
-        score: r.relevanceScore,
+        score: r.normalizedScore || r.relevanceScore,
+        sourceType: r.sourceType,
       })), // helpful for debugging / future UI
     };
   } catch (error) {

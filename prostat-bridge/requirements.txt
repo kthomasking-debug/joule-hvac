@@ -3,6 +3,8 @@ aiohttp>=3.9.0
 aiohttp-cors>=0.7.0
 pyserial>=3.5
 blueair-api>=1.0.0
+HAP-python>=5.0.0
+python-kasa>=0.5.0
 
 # Asthma Shield BMS (included in main requirements)
 

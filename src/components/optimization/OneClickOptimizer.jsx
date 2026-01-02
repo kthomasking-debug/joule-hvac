@@ -8,10 +8,13 @@ import { getImmediateOptimization, checkForWaste, getTimeBasedSuggestion } from 
 import { setTemperature, getPrimaryDeviceId } from "../../lib/jouleBridgeApi";
 import { useJouleBridgeContext } from "../../contexts/JouleBridgeContext";
 import { Toast } from "../Toast";
+import { loadThermostatSettings, saveThermostatSettings } from "../../lib/thermostatSettings";
 
 export default function OneClickOptimizer({
   currentDayTemp = 70,
   currentNightTemp = 68,
+  currentCoolDayTemp = null, // Cooling setpoints (optional)
+  currentCoolNightTemp = null,
   mode = "heating",
   weatherForecast = [],
   electricRate = 0.12,
@@ -58,6 +61,9 @@ export default function OneClickOptimizer({
     return null;
   }, [jouleBridge.connected, jouleBridge.targetTemperature, jouleBridge.temperature, jouleBridge.mode, mode, weatherForecast, electricRate, heatLossFactor, hspf2]);
 
+  // Check if both heating and cooling setpoints are provided (auto mode)
+  const hasBothModes = currentCoolDayTemp !== null && currentCoolNightTemp !== null;
+  
   // Use full schedule optimization if we have schedule data
   const scheduleOptimization = useMemo(() => {
     if (hasScheduleData) {
@@ -74,6 +80,23 @@ export default function OneClickOptimizer({
     }
     return null;
   }, [hasScheduleData, currentDayTemp, currentNightTemp, mode, weatherForecast, electricRate, heatLossFactor, hspf2]);
+
+  // If both modes are configured, also check cooling optimization
+  const coolingOptimization = useMemo(() => {
+    if (hasBothModes && currentCoolDayTemp !== null && currentCoolNightTemp !== null) {
+      return calculateOptimalSchedule({
+        currentDayTemp: currentCoolDayTemp,
+        currentNightTemp: currentCoolNightTemp,
+        mode: "cooling",
+        weatherForecast,
+        electricRate,
+        heatLossFactor,
+        hspf2,
+        userComfortLevel: "balanced",
+      });
+    }
+    return null;
+  }, [hasBothModes, currentCoolDayTemp, currentCoolNightTemp, weatherForecast, electricRate, heatLossFactor, hspf2]);
 
   // Choose which optimization to use
   const optimization = useMemo(() => {
@@ -102,6 +125,49 @@ export default function OneClickOptimizer({
       };
     }
     
+    // If both modes are configured, combine heating and cooling optimizations
+    if (hasBothModes && scheduleOptimization && coolingOptimization) {
+      // Combine savings from both modes
+      const combinedSavings = {
+        tempDiff: Math.max(
+          parseFloat(scheduleOptimization.savings.tempDiff || 0),
+          parseFloat(coolingOptimization.savings.tempDiff || 0)
+        ).toFixed(1),
+        percent: (
+          parseFloat(scheduleOptimization.savings.percent || 0) +
+          parseFloat(coolingOptimization.savings.percent || 0)
+        ).toFixed(1),
+        monthlyDollars: (
+          parseFloat(scheduleOptimization.savings.monthlyDollars || 0) +
+          parseFloat(coolingOptimization.savings.monthlyDollars || 0)
+        ).toFixed(2),
+        annualDollars: (
+          parseFloat(scheduleOptimization.savings.annualDollars || 0) +
+          parseFloat(coolingOptimization.savings.annualDollars || 0)
+        ).toFixed(2),
+      };
+      
+      // Show opportunity if EITHER mode has savings or can be optimized
+      // This ensures we show optimization even if one mode is optimal but the other isn't
+      const hasOpportunity = scheduleOptimization.hasSavingsOpportunity || 
+                             coolingOptimization.hasSavingsOpportunity ||
+                             scheduleOptimization.weatherAdjustment ||
+                             coolingOptimization.weatherAdjustment ||
+                             scheduleOptimization.canOptimize ||
+                             coolingOptimization.canOptimize;
+      
+      const canOptimize = scheduleOptimization.canOptimize || coolingOptimization.canOptimize;
+      
+      return {
+        ...scheduleOptimization,
+        coolingOptimization, // Include cooling optimization for reference
+        savings: combinedSavings,
+        hasSavingsOpportunity: hasOpportunity,
+        canOptimize: canOptimize,
+        isDualMode: true,
+      };
+    }
+    
     // Fall back to schedule optimization
     if (scheduleOptimization) {
       return scheduleOptimization;
@@ -118,7 +184,7 @@ export default function OneClickOptimizer({
       hspf2,
       userComfortLevel: "balanced",
     });
-  }, [homeKitOptimization, scheduleOptimization, jouleBridge.targetTemperature, currentDayTemp, currentNightTemp, mode, weatherForecast, electricRate, heatLossFactor, hspf2]);
+  }, [homeKitOptimization, scheduleOptimization, coolingOptimization, hasBothModes, jouleBridge.targetTemperature, currentDayTemp, currentNightTemp, mode, weatherForecast, electricRate, heatLossFactor, hspf2]);
 
   const handleOptimize = async () => {
     setIsOptimizing(true);
@@ -135,23 +201,66 @@ export default function OneClickOptimizer({
       const attempt = trackOptimizationAttempt(optimization);
       setOptimizationId(attempt.id);
       
+      // Get optimal values
+      const optimalDay = optimization.optimalSchedule.dayTemp;
+      const optimalNight = optimization.optimalSchedule.nightTemp;
+      
       // Update local settings
       // Apply optimization - use single temp if HomeKit-only, otherwise use schedule
       if (optimization.isHomeKitOnly) {
         // HomeKit can only set one temperature at a time
-        const optimalTemp = optimization.optimalSchedule.dayTemp;
         if (onApplySchedule) {
           onApplySchedule({
-            dayTemp: optimalTemp,
-            nightTemp: optimalTemp, // Same for HomeKit
+            dayTemp: optimalDay,
+            nightTemp: optimalDay, // Same for HomeKit
           });
         }
       } else if (onApplySchedule) {
+        // Always call onApplySchedule even if values are the same, to ensure UI updates
+        // Call the callback to update the parent component's state
         onApplySchedule({
-          dayTemp: optimization.optimalSchedule.dayTemp,
-          nightTemp: optimization.optimalSchedule.nightTemp,
+          dayTemp: optimalDay,
+          nightTemp: optimalNight,
         });
+        
+        // Also update thermostat settings if this is a dual-mode optimization
+        if (optimization.isDualMode && optimization.coolingOptimization) {
+          try {
+            const thermostatSettings = loadThermostatSettings();
+            if (thermostatSettings) {
+              // Update heating setpoints
+              if (!thermostatSettings.comfortSettings) {
+                thermostatSettings.comfortSettings = {};
+              }
+              if (!thermostatSettings.comfortSettings.home) {
+                thermostatSettings.comfortSettings.home = {};
+              }
+              if (!thermostatSettings.comfortSettings.sleep) {
+                thermostatSettings.comfortSettings.sleep = {};
+              }
+              
+              thermostatSettings.comfortSettings.home.heatSetPoint = optimalDay;
+              thermostatSettings.comfortSettings.sleep.heatSetPoint = optimalNight;
+              
+              // Update cooling setpoints
+              thermostatSettings.comfortSettings.home.coolSetPoint = optimization.coolingOptimization.optimalSchedule.dayTemp;
+              thermostatSettings.comfortSettings.sleep.coolSetPoint = optimization.coolingOptimization.optimalSchedule.nightTemp;
+              
+              saveThermostatSettings(thermostatSettings);
+              
+              // Dispatch event to notify other components
+              window.dispatchEvent(new CustomEvent("thermostatSettingsUpdated", {
+                detail: { comfortSettings: thermostatSettings.comfortSettings }
+              }));
+            }
+          } catch (e) {
+            console.warn("Failed to update thermostat settings:", e);
+          }
+        }
       }
+      
+      // Always mark as applied and show feedback, even if values didn't change
+      markOptimizationApplied(attempt.id);
       
       // Try to update Ecobee directly if bridge is available
       if (jouleBridge.bridgeAvailable && jouleBridge.connected) {
@@ -201,9 +310,11 @@ export default function OneClickOptimizer({
       } else {
         // No bridge - just update local settings
         markOptimizationApplied(attempt.id);
+        const dayTemp = optimization.optimalSchedule.dayTemp;
+        const nightTemp = optimization.optimalSchedule.nightTemp;
         setToast({
-          type: "info",
-          message: `Settings updated. Connect to Ecobee to apply automatically.`,
+          type: "success",
+          message: `Optimization applied! Settings updated to ${dayTemp}°F day / ${nightTemp}°F night.`,
         });
       }
       
@@ -241,7 +352,17 @@ export default function OneClickOptimizer({
     }
   };
 
-  if (!optimization.hasSavingsOpportunity && !optimization.weatherAdjustment) {
+  // Show "Already Optimized" only if there's no savings opportunity AND no optimization possible
+  // (i.e., both day and night temps are within 0.5°F of optimal)
+  // For dual-mode, check both heating and cooling optimizations
+  const shouldShowOptimized = !optimization.hasSavingsOpportunity && 
+                              !optimization.weatherAdjustment && 
+                              !optimization.canOptimize &&
+                              (!optimization.coolingOptimization || 
+                               (!optimization.coolingOptimization.hasSavingsOpportunity && 
+                                !optimization.coolingOptimization.canOptimize));
+  
+  if (shouldShowOptimized) {
     return (
       <div className={`rounded-2xl p-4 bg-green-900/20 border border-green-700/50 ${compact ? "" : "mb-4"}`}>
         <div className="flex items-center gap-3">
@@ -283,15 +404,20 @@ export default function OneClickOptimizer({
               </button>
             )}
             <button
-              onClick={handleOptimize}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleOptimize();
+              }}
               disabled={isOptimizing || optimized}
               className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 flex items-center gap-2 ${
                 optimized
-                  ? "bg-green-500/20 text-green-400 border border-green-500/50"
+                  ? "bg-green-500/20 text-green-400 border border-green-500/50 cursor-not-allowed"
                   : isOptimizing
-                  ? "bg-purple-500/30 text-purple-300 animate-pulse"
-                  : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
-              }`}
+                  ? "bg-purple-500/30 text-purple-300 animate-pulse cursor-wait"
+                  : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105 cursor-pointer"
+              } ${(isOptimizing || optimized) ? "opacity-50" : ""}`}
+              type="button"
             >
               {optimized ? (
                 <>

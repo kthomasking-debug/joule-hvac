@@ -1902,14 +1902,20 @@ export function formatKnowledgeForLLM(results) {
     // Add section label for structure (e.g., "[ACCA Manual J / heatLoss]")
     const sectionLabel = result.section && result.topic 
       ? `[${result.section} / ${result.topic}]`
+      : result.sourceType === "salesFAQ"
+      ? `[Sales FAQ]`
       : `[${result.source}]`;
     
     formatted += `${sectionLabel} ${result.title}\n`;
     
+    // For sales FAQ, use the answer directly
+    if (result.isSalesFAQ && result.summary) {
+      formatted += `${result.summary}\n\n`;
+    }
     // For user knowledge, use the snippet directly instead of summary
-    if (result.section === "userKnowledge" && result.snippet) {
+    else if (result.section === "userKnowledge" && result.snippet) {
       formatted += `${result.snippet}\n\n`;
-    } else {
+    } else if (result.summary) {
       formatted += `Summary: ${result.summary}\n\n`;
     }
 

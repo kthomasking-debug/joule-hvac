@@ -32,9 +32,7 @@
 // Lazy load RAG data - only fetch when actually needed
 // This prevents loading massive knowledge bases on startup
 let salesFAQModule = null;
-let funResponsesModule = null;
 let salesFAQLoading = null;
-let funResponsesLoading = null;
 
 async function loadSalesFAQ() {
   if (salesFAQModule) return salesFAQModule;
@@ -58,22 +56,10 @@ async function loadSalesFAQ() {
   return salesFAQLoading;
 }
 
-async function loadFunResponses() {
-  if (funResponsesModule) return funResponsesModule;
-  if (funResponsesLoading) return funResponsesLoading;
-  funResponsesLoading = import("./rag/funResponses.js").then((module) => {
-    funResponsesModule = module;
-    funResponsesLoading = null;
-    return module;
-  });
-  return funResponsesLoading;
-}
-
 // Preload RAG data in background after a delay (non-blocking)
 if (typeof window !== "undefined") {
   setTimeout(() => {
     loadSalesFAQ().catch(() => {});
-    loadFunResponses().catch(() => {});
   }, 2000); // Load 2 seconds after app starts
 }
 
@@ -825,26 +811,6 @@ function parseCommandLocal(query, context = {}) {
     )
   ) {
     return { action: "help" };
-  }
-
-  // Byzantine Mode Easter Egg 🕯️
-  if (
-    /(?:enable|activate|turn\s+on)\s+(?:byzantine|liturgical|orthodox|chant)\s*mode/i.test(
-      q
-    )
-  ) {
-    return { action: "setByzantineMode", value: true };
-  }
-  if (
-    /(?:disable|deactivate|turn\s+off)\s+(?:byzantine|liturgical|orthodox|chant)\s*mode/i.test(
-      q
-    )
-  ) {
-    return { action: "setByzantineMode", value: false };
-  }
-  if (/rejoice,?\s*o(?:h)?\s+coil\s+unfrosted/i.test(q)) {
-    // Secret activation phrase! (case-insensitive)
-    return { action: "setByzantineMode", value: true };
   }
 
   // Query advanced settings
@@ -4226,6 +4192,9 @@ function parseCommandLocal(query, context = {}) {
   if (
     /(?:run|do|give|show)\s+(?:a\s+)?(?:comprehensive|complete|full)\s+(?:analysis|report|assessment|review)/i.test(
       q
+    ) ||
+    /^(?:comprehensive|complete|full)\s+(?:analysis|report|assessment|review)$/i.test(
+      q.trim()
     )
   ) {
     return { action: "fullAnalysis" };
@@ -4463,52 +4432,6 @@ function parseCommandLocal(query, context = {}) {
   if (/what'?s?\s+normal\s+(?:for|in)\s+([A-Za-z\s,]+)/i.test(q)) {
     const match = q.match(/what'?s?\s+normal\s+(?:for|in)\s+([A-Za-z\s,]+)/i);
     return { action: "normalForCity", cityName: match[1].trim() };
-  }
-
-  // === FUN RESPONSES - Check LAST (after all commands) ===
-  // Only check fun responses if no command was found
-  // This prevents fun response fallbacks from intercepting valid commands or technical questions
-  {
-    // Lazy load fun responses - if not loaded yet, skip (will be available on next query)
-    if (funResponsesModule) {
-      const funResponse = funResponsesModule.checkFunResponse(q);
-      if (funResponse) {
-        // Check if it looks like a command - if so, don't return fun response
-        const looksLikeCommand =
-          /^(set|change|make|turn|switch|activate|enable|disable|open|show|go|navigate|run|calculate|check|analyze|optimize|start|stop|toggle)/i.test(
-            q
-          );
-
-        // Check if it's a technical HVAC question (should go to LLM, not joke fallback)
-        const looksLikeTechnicalQuestion =
-          /\b(filter|coil|efficiency|energy|kwh|hspf|seer|heat pump|thermostat|aux|auxiliary|balance point|defrost|refrigerant|btu|capacity|performance|consumption|usage|cost|bill|savings|waste|wasting|optimize|optimization|maintenance|dirty|clogged|frozen|icing|lockout|setback|setpoint|temperature|temp|heating|cooling|hvac|system|equipment)\b/i.test(
-            q
-          );
-
-        // Only return fun response if:
-        // 1. It's an actual match (not a fallback), OR
-        // 2. It's a fallback but doesn't look like a command AND doesn't look like a technical question
-        if (funResponse.key !== "fallback") {
-          // Actual fun response match - return it
-          if (!looksLikeCommand) {
-            return funResponse;
-          }
-          // Command-like but matched a fun response - let LLM handle it
-          return null;
-        } else {
-          // Fallback fun response - only use for casual questions, not technical ones
-          if (looksLikeCommand || looksLikeTechnicalQuestion) {
-            // This is a command or technical question - send to LLM instead
-            return null;
-          }
-          // Casual question with no match - use fallback joke
-          return funResponse;
-        }
-      }
-    } else {
-      // Load in background for next time
-      loadFunResponses().catch(() => {});
-    }
   }
 
   return null;

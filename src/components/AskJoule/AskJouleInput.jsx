@@ -1,12 +1,12 @@
 import React from "react";
 import { Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 
-// Static placeholder examples - commands that work without Groq API key
+// Static placeholder examples - questions that work with Groq API key
 const PLACEHOLDER_SUGGESTIONS = [
-  "Set temperature to 72",
-  "Set to heat mode",
-  "Go to analysis page",
-  "Show commands",
+  "What's my balance point?",
+  "Why is my bill so high?",
+  "How can I save money?",
+  "What's my heat loss factor?",
 ];
 
 // Sales placeholder examples for customer service context
@@ -33,21 +33,14 @@ export const AskJouleInput = React.memo(({
   placeholder,
   disabled,
   recognitionSupported,
-  setShowCommandHelp,
   setShowQuestionHelp,
-  setShowAudit,
-  auditLog,
-  showPersonalization,
-  setShowPersonalization,
   wakeWordEnabled,
   setWakeWordEnabled,
   wakeWordSupported,
   isWakeWordListening,
   wakeWordError,
   salesMode = false,
-  showCommandHelp = false,
-  showQuestionHelp = false,
-  showAudit = false
+  showQuestionHelp = false
 }) => {
   // Static placeholder text - use sales placeholders if in sales mode
   const displayPlaceholder = salesMode ? SALES_PLACEHOLDER_SUGGESTIONS[0] : PLACEHOLDER_SUGGESTIONS[0];
@@ -59,30 +52,6 @@ export const AskJouleInput = React.memo(({
         <button
           type="button"
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            showCommandHelp
-              ? "border-blue-500 text-blue-600 dark:text-blue-400" 
-              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-          }`}
-          onClick={() => {
-            // Toggle command help panel
-            setShowCommandHelp((s) => !s);
-            // Close question help if open
-            if (showQuestionHelp) {
-              setShowQuestionHelp(false);
-            }
-            // Close audit if open
-            if (showAudit) {
-              setShowAudit(false);
-            }
-          }}
-          title="Show sample commands"
-        >
-          Commands
-        </button>
-
-        <button
-          type="button"
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
             showQuestionHelp
               ? "border-blue-500 text-blue-600 dark:text-blue-400" 
               : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
@@ -90,40 +59,10 @@ export const AskJouleInput = React.memo(({
           onClick={() => {
             // Toggle question help panel
             setShowQuestionHelp((s) => !s);
-            // Close command help if open
-            if (showCommandHelp) {
-              setShowCommandHelp(false);
-            }
-            // Close audit if open
-            if (showAudit) {
-              setShowAudit(false);
-            }
           }}
           title="Click to show suggested questions"
         >
           Questions
-        </button>
-
-        <button
-          type="button"
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            showAudit
-              ? "border-blue-500 text-blue-600 dark:text-blue-400" 
-              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-          }`}
-          onClick={() => {
-            setShowAudit((s) => !s);
-            // Close other panels if open
-            if (showCommandHelp) {
-              setShowCommandHelp(false);
-            }
-            if (showQuestionHelp) {
-              setShowQuestionHelp(false);
-            }
-          }}
-          title="View command history"
-        >
-          History{auditLog && auditLog.length > 0 ? ` (${auditLog.length})` : ""}
         </button>
       </div>
 
@@ -237,47 +176,36 @@ export const AskJouleInput = React.memo(({
         }
       </p>
 
-      {/* Settings Toggle */}
-      {!isListening && !speechEnabled && (
+      {/* Wake Word Toggle - DEMO MODE ONLY */}
+      {!isListening && !speechEnabled && wakeWordSupported && recognitionSupported && (
         <div className="mt-2 space-y-2">
-          <button
-            onClick={() => setShowPersonalization((s) => !s)}
-            className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          >
-            <span>{showPersonalization ? "▼" : "▶"}</span>
-            <span>Settings</span>
-          </button>
-          
-          {/* Wake Word Toggle - DEMO MODE ONLY */}
-          {wakeWordSupported && recognitionSupported && (
-            <div className="space-y-1">
-              <label className="flex items-center gap-2 cursor-pointer text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={wakeWordEnabled}
-                  onChange={(e) => setWakeWordEnabled(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="flex items-center gap-1">
-                  <span>Wake Word: "Hey Pico"</span>
-                  <span className="text-orange-500 text-[10px] font-semibold">(DEMO)</span>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 cursor-pointer text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={wakeWordEnabled}
+                onChange={(e) => setWakeWordEnabled(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="flex items-center gap-1">
+                <span>Wake Word: "Hey Pico"</span>
+                <span className="text-orange-500 text-[10px] font-semibold">(DEMO)</span>
+              </span>
+              {isWakeWordListening && (
+                <span className="text-green-600 dark:text-green-400 animate-pulse ml-2">
+                  ● Listening
                 </span>
-                {isWakeWordListening && (
-                  <span className="text-green-600 dark:text-green-400 animate-pulse ml-2">
-                    ● Listening
-                  </span>
-                )}
-              </label>
-              <div className="text-[10px] text-orange-600 dark:text-orange-400 ml-6 italic">
-                ⚠️ Browser demo only - requires active screen. Production will use Raspberry Pi.
-              </div>
-              {wakeWordError && (
-                <div className="text-red-500 text-[10px] ml-6" title={wakeWordError}>
-                  ⚠ {wakeWordError}
-                </div>
               )}
+            </label>
+            <div className="text-[10px] text-orange-600 dark:text-orange-400 ml-6 italic">
+              ⚠️ Browser demo only - requires active screen. Production will use Raspberry Pi.
             </div>
-          )}
+            {wakeWordError && (
+              <div className="text-red-500 text-[10px] ml-6" title={wakeWordError}>
+                ⚠ {wakeWordError}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -81,6 +81,20 @@ Here's what happens when you use the app:
 
 ## Quick Setup (2 Minutes)
 
+### ⚠️ CRITICAL REQUIREMENT: 2.4 GHz WiFi
+
+**The mini computer MUST be connected to a 2.4 GHz WiFi network.**
+
+**Why This Matters:**
+- **Ecobee thermostats** only work with HomeKit over 2.4 GHz WiFi
+- **Blueair devices** require 2.4 GHz WiFi
+- **Device discovery** only works reliably on 2.4 GHz
+
+**How to Ensure 2.4 GHz:**
+- If your router has separate networks, connect to the **2.4 GHz network** (e.g., `YourNetwork-2.4GHz`)
+- If your router uses one name for both bands, it should auto-select 2.4 GHz for IoT devices
+- **⚠️ Using 5 GHz WiFi will cause connection failures and pairing issues**
+
 ### Step 1: Plug It In
 
 1. **Plug the Ethernet cable** into your WiFi router (any open port)
@@ -89,6 +103,8 @@ Here's what happens when you use the app:
 4. **Wait 2 minutes** for it to start up
 
 **That's it!** The mini computer is now connected to your network.
+
+**Note:** If using WiFi instead of Ethernet, ensure you connect to the **2.4 GHz network**.
 
 ### Step 2: Find Your Bridge
 

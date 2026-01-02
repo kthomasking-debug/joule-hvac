@@ -14,6 +14,11 @@ import {
 import { useBlueair } from '../hooks/useBlueair';
 import { useJouleBridgeContext } from '../contexts/JouleBridgeContext';
 import { Link } from 'react-router-dom';
+import { 
+  getBlueairCredentials, 
+  setBlueairCredentials, 
+  setBlueairLocalConfig 
+} from '../lib/jouleBridgeApi';
 
 /**
  * Blueair Air Purifier Control Page
@@ -28,7 +33,7 @@ export default function BlueairControl() {
   
   // Configuration form state
   const [showConfigForm, setShowConfigForm] = useState(false);
-  const [configType, setConfigType] = useState('local'); // 'local' or 'cloud'
+  const [configType, setConfigType] = useState('cloud'); // 'local' or 'cloud'
   const [macAddress, setMacAddress] = useState('');
   const [localIp, setLocalIp] = useState('');
   const [cloudUsername, setCloudUsername] = useState('');
@@ -122,21 +127,24 @@ export default function BlueairControl() {
         try {
           const config = await getBlueairCredentials();
           if (config) {
-            if (config.mac_address) {
-              setMacAddress(config.mac_address);
-              setConfigType('local');
-            }
-            if (config.local_ip) {
-              setLocalIp(config.local_ip);
-              setConfigType('local');
-            }
+            // Determine config type based on what's available
+            // Prefer cloud API if username exists, otherwise use local if MAC/IP exists
             if (config.username) {
               setCloudUsername(config.username);
               setConfigType('cloud');
+            } else if (config.mac_address || config.local_ip) {
+              if (config.mac_address) {
+                setMacAddress(config.mac_address);
+              }
+              if (config.local_ip) {
+                setLocalIp(config.local_ip);
+              }
+              setConfigType('local');
             }
+            // If no config exists, default to 'cloud' (already set in useState)
           }
         } catch (err) {
-          // Ignore errors - form will start empty
+          // Ignore errors - form will start empty with default 'cloud' type
         }
       };
       loadConfig();

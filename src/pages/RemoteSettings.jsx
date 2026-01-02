@@ -11,7 +11,6 @@ import {
   Server
 } from 'lucide-react';
 import { getAllSettings, DEFAULT_SETTINGS, setSetting } from '../lib/unifiedSettingsManager';
-import { jouleBridgeApi } from '../lib/jouleBridgeApi';
 
 /**
  * Remote Settings Configuration Page

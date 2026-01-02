@@ -82,7 +82,7 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: <Navigate to="/onboarding" replace />,
+          element: <Navigate to="/home" replace />,
         },
         // Redirect old tool paths to new /tools/ paths for backward compatibility
         {

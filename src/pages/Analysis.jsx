@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link, useOutletContext } from 'react-router-dom';
 import { 
   Calendar, 
   TrendingUp, 
@@ -12,9 +12,9 @@ import {
 // Lazy load components to isolate any import issues
 const SevenDayCostForecaster = lazy(() => import('./SevenDayCostForecaster'));
 const MonthlyBudgetPlanner = lazy(() => import('./MonthlyBudgetPlanner'));
-const GasVsHeatPump = lazy(() => import('./GasVsHeatPump'));
 const SystemPerformanceAnalyzer = lazy(() => import('./SystemPerformanceAnalyzer'));
 const HeatPumpEnergyFlow = lazy(() => import('./HeatPumpEnergyFlow'));
+const CityComparisonLanding = lazy(() => import('./CityComparisonLanding'));
 
 const Analysis = () => {
   const navigate = useNavigate();
@@ -30,12 +30,6 @@ const Analysis = () => {
     }
     if (location.pathname.includes('/analysis/annual')) {
       return 'annual';
-    }
-    if (location.pathname.includes('/analysis/city-comparison')) {
-      return 'city-comparison';
-    }
-    if (location.pathname.includes('/analysis/compare')) {
-      return 'compare';
     }
     if (location.pathname.includes('/analysis/analyzer')) {
       return 'analyzer';
@@ -58,8 +52,32 @@ const Analysis = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, navigate]);
 
-  // City Comparison wrapper component
-  const CityComparison = () => <MonthlyBudgetPlanner initialMode="comparison" />;
+  // City Cost Comparison wrapper components
+  const CityComparison = () => {
+    // Check if we're on a sub-route (support both old /analysis and new /tools paths)
+    if (location.pathname === '/analysis/city-comparison' || location.pathname === '/tools/city-cost-comparison') {
+      return <CityComparisonLanding />;
+    }
+    if (location.pathname.includes('/analysis/city-comparison/heat-pump') || location.pathname.includes('/tools/city-cost-comparison/heat-pump')) {
+      return <MonthlyBudgetPlanner initialMode="comparison" />;
+    }
+    if (location.pathname.includes('/analysis/city-comparison/gas-electric') || location.pathname.includes('/tools/city-cost-comparison/gas-electric')) {
+      const outletContext = useOutletContext() || {};
+      const { setUserSetting } = outletContext;
+      
+      // Force gas furnace for heating, electric for cooling
+      React.useEffect(() => {
+        if (setUserSetting) {
+          setUserSetting("primarySystem", "gasFurnace");
+        }
+      }, [setUserSetting]);
+      
+      return <MonthlyBudgetPlanner initialMode="comparison" />;
+    }
+    // Default to landing page
+    return <CityComparisonLanding />;
+  };
+  
   // Annual Forecast wrapper component
   const AnnualForecast = () => <MonthlyBudgetPlanner initialMode="annual" />;
 
@@ -67,10 +85,6 @@ const Analysis = () => {
     { id: 'forecast', label: 'Weekly Forecast', icon: Calendar, component: SevenDayCostForecaster },
     { id: 'budget', label: 'Monthly Forecast', icon: TrendingUp, component: MonthlyBudgetPlanner },
     { id: 'annual', label: 'Annual Forecast', icon: TrendingUp, component: AnnualForecast },
-    { id: 'city-comparison', label: 'City Comparison', icon: MapPin, component: CityComparison },
-    { id: 'energy-flow', label: 'Energy Flow', icon: Activity, component: HeatPumpEnergyFlow },
-    { id: 'compare', label: 'Compare', icon: Search, component: GasVsHeatPump },
-    { id: 'analyzer', label: 'Analyzer', icon: BarChart2, component: SystemPerformanceAnalyzer },
   ];
 
   const activeTabData = tabs.find(t => t.id === activeTab);
@@ -86,34 +100,30 @@ const Analysis = () => {
     forecast: "See what you'll spend this week based on your schedule and weather.",
     budget: "Plan your monthly energy budget and explore how different strategies affect your costs.",
     annual: "View your annual heating and cooling cost breakdown by month.",
-    'city-comparison': "Compare heating costs between different cities and climates.",
-    'energy-flow': "Visualize heat pump performance and see when backup heat is needed.",
-    compare: "Compare heat pump vs gas furnace costs for your home and climate.",
-    analyzer: "Upload your thermostat data to see how your system is performing — and where it might need attention.",
   };
 
   return (
     <div className="min-h-screen bg-[#0C0F14]">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         {/* Page Header - Always visible */}
-        <header className="mb-6">
+        <header className="mb-3">
           <div className="flex items-center justify-between mb-1">
-            <h1 className="text-2xl font-semibold text-white">Simulator</h1>
+            <h1 className="text-xl font-semibold text-white">Forecaster</h1>
             <Link
               to="/analysis/annual"
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
             >
-              <TrendingUp className="w-4 h-4" />
+              <TrendingUp className="w-3 h-3" />
               Annual Forecast
             </Link>
           </div>
-          <p className="text-sm text-[#A7B0BA] italic">
+          <p className="text-xs text-[#A7B0BA] italic">
             Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
           </p>
         </header>
 
         {/* Tab Navigation - Always visible */}
-        <div className="mb-6">
+        <div className="mb-3">
           <div className="flex gap-2 overflow-x-auto pb-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -135,7 +145,7 @@ const Analysis = () => {
           </div>
           {/* Tab Description */}
           {tabDescriptions[activeTab] && (
-            <p className="mt-3 text-sm text-[#A7B0BA]">
+            <p className="mt-1.5 text-xs text-[#A7B0BA]">
               {tabDescriptions[activeTab]}
             </p>
           )}

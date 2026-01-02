@@ -2,6 +2,38 @@
 
 This guide covers connecting your mini computer to WiFi when you don't have a keyboard/screen.
 
+## ⚠️ CRITICAL: 2.4 GHz WiFi Required
+
+**The mini computer MUST connect to a 2.4 GHz WiFi network.**
+
+### Why 2.4 GHz is Required
+
+- **Ecobee HomeKit**: Ecobee thermostats only support HomeKit pairing over 2.4 GHz WiFi
+- **Blueair Devices**: Blueair air purifiers require 2.4 GHz WiFi
+- **Device Discovery**: HomeKit device discovery (mDNS) works reliably only on 2.4 GHz
+
+**⚠️ Using 5 GHz WiFi will cause:**
+- Ecobee pairing failures
+- Device discovery not working
+- Connection timeouts and errors
+
+### How to Ensure 2.4 GHz Connection
+
+**If your router has separate SSIDs:**
+- Connect to the **2.4 GHz SSID** (e.g., `YourNetwork-2.4GHz`)
+- Do NOT connect to the 5 GHz SSID
+
+**If your router uses a single SSID:**
+- Most routers will auto-select 2.4 GHz for IoT devices
+- Verify after connecting (see verification below)
+
+**Verification:**
+```bash
+# Check WiFi frequency/band
+iwconfig 2>/dev/null | grep -i frequency
+# Should show: Frequency:2.4XX GHz (NOT 5.XXX GHz)
+```
+
 ## Method 1: Pre-Configure WiFi (Before First Boot) - Raspberry Pi
 
 If you're using a Raspberry Pi and haven't booted it yet, you can pre-configure WiFi:

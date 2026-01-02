@@ -2135,7 +2135,7 @@ const SystemPerformanceAnalyzer = () => {
 
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
+    <div className="w-full mx-auto px-4 py-6 pb-20">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Analyze System</h2>
@@ -2798,8 +2798,73 @@ const SystemPerformanceAnalyzer = () => {
               return `Your heat pump is running efficiently for a ${buildingDesc}, with ${stripUsage}. You're in the ${efficiencyDesc} for systems like yours.`;
             };
             
+            // Calculate performance score (0-100)
+            const calculatePerformanceScore = () => {
+              let score = 50; // Base score
+              
+              // Balance point contribution (lower is better, max 30 points)
+              if (result.balancePoint != null && isFinite(result.balancePoint)) {
+                if (result.balancePoint < 20) score += 30;
+                else if (result.balancePoint < 25) score += 25;
+                else if (result.balancePoint < 30) score += 15;
+                else if (result.balancePoint < 35) score += 5;
+                else score -= 10; // Penalty for high balance point
+              }
+              
+              // Heat loss percentile contribution (higher is better, max 20 points)
+              if (percentile >= 90) score += 20;
+              else if (percentile >= 80) score += 15;
+              else if (percentile >= 70) score += 10;
+              else if (percentile >= 50) score += 5;
+              else if (percentile >= 30) score -= 5;
+              else score -= 15; // Penalty for low percentile
+              
+              // Clamp to 0-100
+              return Math.max(0, Math.min(100, Math.round(score)));
+            };
+            const performanceScore = calculatePerformanceScore();
+            
+            // Get score label and color
+            const getScoreLabel = (score) => {
+              if (score >= 85) return { label: 'Excellent', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', borderColor: 'border-green-300 dark:border-green-700' };
+              if (score >= 70) return { label: 'Good', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', borderColor: 'border-blue-300 dark:border-blue-700' };
+              if (score >= 55) return { label: 'Fair', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', borderColor: 'border-yellow-300 dark:border-yellow-700' };
+              return { label: 'Needs Improvement', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30', borderColor: 'border-orange-300 dark:border-orange-700' };
+            };
+            const scoreInfo = getScoreLabel(performanceScore);
+            
             return (
               <>
+                {/* Performance Score Card - Top */}
+                <div className={`bg-gradient-to-br ${scoreInfo.bgColor} rounded-xl shadow-lg p-6 mb-6 border-2 ${scoreInfo.borderColor}`}>
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Performance Score</div>
+                      <div className="flex items-baseline gap-3">
+                        <div className={`text-5xl font-bold ${scoreInfo.color}`}>
+                          {performanceScore}
+                        </div>
+                        <div className={`text-xl font-semibold ${scoreInfo.color}`}>
+                          / 100
+                        </div>
+                      </div>
+                      <div className={`text-lg font-medium mt-2 ${scoreInfo.color}`}>
+                        {scoreInfo.label}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {result.balancePoint != null && isFinite(result.balancePoint) && (
+                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                          Balance Point: <span className="font-semibold text-gray-900 dark:text-white">{result.balancePoint.toFixed(1)}°F</span>
+                        </div>
+                      )}
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Efficiency: <span className="font-semibold text-gray-900 dark:text-white">Top {percentile}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
                 {/* CIVILIAN MODE: 4 Simple Blocks */}
                 
                 {/* Block 1: Headline Verdict */}

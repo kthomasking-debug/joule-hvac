@@ -14,6 +14,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true, // Fail if port is busy instead of trying next port
     host: true, // Listen on all addresses
+    allowedHosts: [
+      "centrally-augmented-doreatha.ngrok-free.dev",
+      "localhost",
+      "127.0.0.1"
+    ],
   },
   resolve: {
     alias: {

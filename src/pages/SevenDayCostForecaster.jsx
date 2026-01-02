@@ -79,6 +79,7 @@ import { detectWeatherAnomalies } from "../utils/weatherAnomalyDetector";
 import { WeatherAlerts } from "../components/optimization";
 import DailyBreakdownTable from "./heatpump/DailyBreakdownTable";
 import ThermostatScheduleClock from "../components/ThermostatScheduleClock";
+import OneClickOptimizer from "../components/optimization/OneClickOptimizer";
 import {
   fetchLiveElectricityRate,
   fetchLiveGasRate,
@@ -332,10 +333,27 @@ const SevenDayCostForecaster = () => {
   }, [userSettings, localUserSettings]);
 
   const efficiency = Number(userSettings?.efficiency) || 15;
-  const indoorTemp =
-    Number(userSettings?.indoorTemp ?? userSettings?.winterThermostat) ||
-    Number(userSettings?.winterThermostat) ||
-    70;
+  
+  // Get energyMode early so it can be used for temperature selection
+  const energyMode = userSettings?.energyMode || "heating";
+  
+  // Get temperatures based on energyMode - use heating or cooling setpoints as appropriate
+  const indoorTemp = (() => {
+    try {
+      const thermostatSettings = loadThermostatSettings();
+      if (energyMode === "cooling") {
+        return thermostatSettings?.comfortSettings?.home?.coolSetPoint || 
+               userSettings?.summerThermostat || 74;
+      } else {
+        return Number(userSettings?.indoorTemp ?? userSettings?.winterThermostat) ||
+               thermostatSettings?.comfortSettings?.home?.heatSetPoint ||
+               Number(userSettings?.winterThermostat) ||
+               70;
+      }
+    } catch {
+      return energyMode === "cooling" ? 74 : 70;
+    }
+  })();
 
   // State for dual-period thermostat schedule times
   // Daytime clock = when daytime period BEGINS (e.g., 6:00 AM - wake up/active)
@@ -379,13 +397,17 @@ const SevenDayCostForecaster = () => {
   });
 
 
-  // State for nighttime temperature
+  // State for nighttime temperature - use cooling or heating setpoint based on energyMode
   const [nighttimeTemp, setNighttimeTemp] = useState(() => {
     try {
       const thermostatSettings = loadThermostatSettings();
-      return thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65;
+      if (energyMode === "cooling") {
+        return thermostatSettings?.comfortSettings?.sleep?.coolSetPoint || 78;
+      } else {
+        return thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65;
+      }
     } catch {
-      return 65;
+      return energyMode === "cooling" ? 78 : 65;
     }
   });
 
@@ -425,12 +447,18 @@ const SevenDayCostForecaster = () => {
       );
       if (homeEntry?.time) setDaytimeTime(homeEntry.time);
       if (sleepEntry?.time) setNighttimeTime(sleepEntry.time);
-      const sleepTemp = thermostatSettings?.comfortSettings?.sleep?.heatSetPoint;
-      if (sleepTemp !== undefined) setNighttimeTemp(sleepTemp);
+      // Update nighttime temp based on energyMode
+      if (energyMode === "cooling") {
+        const sleepTemp = thermostatSettings?.comfortSettings?.sleep?.coolSetPoint;
+        if (sleepTemp !== undefined) setNighttimeTemp(sleepTemp);
+      } else {
+        const sleepTemp = thermostatSettings?.comfortSettings?.sleep?.heatSetPoint;
+        if (sleepTemp !== undefined) setNighttimeTemp(sleepTemp);
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [energyMode]);
 
   // State to track thermostat settings updates (for re-rendering display)
   const [settingsUpdateTrigger, setSettingsUpdateTrigger] = useState(0);
@@ -440,8 +468,14 @@ const SevenDayCostForecaster = () => {
     const handleSettingsUpdate = (e) => {
       try {
         const thermostatSettings = loadThermostatSettings();
-        if (e.detail?.comfortSettings?.sleep?.heatSetPoint !== undefined) {
-          setNighttimeTemp(thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65);
+        if (energyMode === "cooling") {
+          if (e.detail?.comfortSettings?.sleep?.coolSetPoint !== undefined) {
+            setNighttimeTemp(thermostatSettings?.comfortSettings?.sleep?.coolSetPoint || 78);
+          }
+        } else {
+          if (e.detail?.comfortSettings?.sleep?.heatSetPoint !== undefined) {
+            setNighttimeTemp(thermostatSettings?.comfortSettings?.sleep?.heatSetPoint || 65);
+          }
         }
         // Trigger re-render to update home/away display
         setSettingsUpdateTrigger(prev => prev + 1);
@@ -467,8 +501,7 @@ const SevenDayCostForecaster = () => {
     return hours * 60 + minutes;
   }, []);
 
-  // Get energyMode early so it can be used in getIndoorTempForHour
-  const energyMode = userSettings?.energyMode || "heating";
+  // energyMode is already defined above
 
   // Get schedule-aware indoor temperature for a given hour
   // Uses dual-period logic: daytime starts at daytimeTime, nighttime starts at nighttimeTime
@@ -1871,86 +1904,89 @@ const SevenDayCostForecaster = () => {
     }, [seasonMode, autoDetectedMode, energyMode, setEnergyMode]);
 
     return (
-      <div>
-        {/* Enhanced Weather Alerts */}
-        {forecastData && forecastData.length > 0 && (
-          <div className="mb-3">
-            <WeatherAlerts
-              forecast={forecastData}
-              mode={energyMode}
-              electricRate={utilityCost}
-              heatLossFactor={heatLossFactor || outlet.heatLossFactor || 200}
-              compact
-            />
-          </div>
-        )}
+      <div className="space-y-2">
+        {/* Top Row: Weather Alerts and Quick Answer Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {/* Enhanced Weather Alerts */}
+          {forecastData && forecastData.length > 0 && (
+            <div>
+              <WeatherAlerts
+                forecast={forecastData}
+                mode={energyMode}
+                electricRate={utilityCost}
+                heatLossFactor={heatLossFactor || outlet.heatLossFactor || 200}
+                compact
+              />
+            </div>
+          )}
 
-        {/* Quick Answer Section - Moved to top for immediate visibility */}
-        {showAnswerCard && (
-          <div className="mb-3">
-            <AnswerCard
-              loading={forecastLoading}
-              location={foundLocationName}
-              temp={indoorTemp}
-              weeklyCost={(() => {
-                try {
-                  if (primarySystem === "gasFurnace") {
-                    return weeklyGasMetrics?.totalCost ?? 0;
-                  }
-                  if (energyMode === "cooling") {
+          {/* Quick Answer Section */}
+          {showAnswerCard && (
+            <div>
+              <AnswerCard
+                loading={forecastLoading}
+                location={foundLocationName}
+                temp={indoorTemp}
+                weeklyCost={(() => {
+                  try {
+                    if (primarySystem === "gasFurnace") {
+                      return weeklyGasMetrics?.totalCost ?? 0;
+                    }
+                    if (energyMode === "cooling") {
+                      return weeklyMetrics?.totalCost ?? 0;
+                    }
+                    // heating (with/without aux)
+                    if (breakdownView === "withAux") {
+                      return (
+                        weeklyMetrics?.totalCostWithAux ??
+                        weeklyMetrics?.totalCost ??
+                        0
+                      );
+                    }
                     return weeklyMetrics?.totalCost ?? 0;
+                  } catch {
+                    return 0;
                   }
-                  // heating (with/without aux)
-                  if (breakdownView === "withAux") {
-                    return (
-                      weeklyMetrics?.totalCostWithAux ??
-                      weeklyMetrics?.totalCost ??
-                      0
-                    );
-                  }
-                  return weeklyMetrics?.totalCost ?? 0;
-                } catch {
-                  return 0;
-                }
-              })()}
-              energyMode={energyMode}
-              primarySystem={primarySystem}
-              roiSavings={roiData?.annualSavings ?? 0}
-            />
-          </div>
-        )}
+                })()}
+                energyMode={energyMode}
+                primarySystem={primarySystem}
+                roiSavings={roiData?.annualSavings ?? 0}
+              />
+            </div>
+          )}
+        </div>
 
         {/* Modeled Schedule Section */}
-        <div className="mb-0" id="schedule">
-          <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-2xl p-5 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
+        <div id="schedule">
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
             {/* Subtle animated background */}
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
             <div className="relative z-10">
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-sm font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                   Modeled Schedule (What-If)
                 </h2>
-                <p className="text-sm text-slate-400 flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-[10px] text-slate-400 flex items-center gap-1 px-1 py-0.5 bg-slate-800/50 rounded border border-slate-700/50">
                   <span>🔒</span>
                   <span>Safe to experiment</span>
                 </p>
               </div>
-              <p className="text-sm text-slate-300">
-                This is a <strong className="text-blue-400">hypothetical schedule</strong> used only for modeling.
+              <p className="text-[10px] text-slate-400 hidden sm:block">
+                <strong className="text-blue-400">Hypothetical</strong> schedule
               </p>
             </div>
             
             {/* Simple Temperature and Time Controls - Grid Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
               {/* Daytime Temperature */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-xl blur-xl group-hover:blur-2xl transition-all duration-300" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-yellow-500/20 rounded-xl p-4 hover:border-yellow-500/40 transition-all duration-300">
-                  <label className="flex items-center gap-2 text-base font-semibold text-slate-200 mb-3">
-                    <Sun className="w-5 h-5 text-yellow-400" />
-                    <span>Daytime Temperature</span>
-                    <span className="ml-auto text-xl font-bold bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">{indoorTemp}°F</span>
+                <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-lg blur-xl group-hover:blur-2xl transition-all duration-300" />
+                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-2 hover:border-yellow-500/40 transition-all duration-300">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1.5">
+                    <Sun className="w-3.5 h-3.5 text-yellow-400" />
+                    <span>Daytime</span>
+                    <span className="ml-auto text-base font-bold bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">{indoorTemp}°F</span>
                   </label>
                   <input
                     type="range"
@@ -1962,12 +1998,12 @@ const SevenDayCostForecaster = () => {
                       setIndoorTemp(value);
                       setUserSetting("indoorTemp", value);
                     }}
-                    className="w-full h-3 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400 transition-all"
+                    className="w-full h-1.5 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400 transition-all"
                     style={{
                       background: `linear-gradient(to right, #fbbf24 0%, #fbbf24 ${((indoorTemp - 50) / 35) * 100}%, #374151 ${((indoorTemp - 50) / 35) * 100}%, #374151 100%)`
                     }}
                   />
-                  <div className="flex justify-between text-xs text-slate-400 mt-2">
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
                     <span>50°F</span>
                     <span>85°F</span>
                   </div>
@@ -1977,9 +2013,9 @@ const SevenDayCostForecaster = () => {
               {/* Schedule Clock - Combined Daytime and Setback Times */}
               <div className="md:col-span-2 relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-yellow-500/10 to-orange-500/10 rounded-xl blur-xl group-hover:blur-2xl transition-all duration-300" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6 hover:border-slate-600/50 transition-all duration-300">
-                  <label className="flex items-center gap-2 text-base font-semibold text-slate-200 mb-4">
-                    <Clock className="w-5 h-5 text-slate-400" />
+                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 hover:border-slate-600/50 transition-all duration-300">
+                  <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-200 mb-2">
+                    <Clock className="w-4 h-4 text-slate-400" />
                     <span>Schedule Times</span>
                   </label>
                   <ThermostatScheduleClock
@@ -2003,19 +2039,19 @@ const SevenDayCostForecaster = () => {
                         console.error("Parent: Error updating nighttimeTime:", error);
                       }
                     }}
-                    compact={false}
+                    compact={true}
                   />
                 </div>
               </div>
 
               {/* Nighttime Temperature */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-xl blur-xl group-hover:blur-2xl transition-all duration-300" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-xl p-4 hover:border-blue-500/40 transition-all duration-300">
-                  <label className="flex items-center gap-2 text-base font-semibold text-slate-200 mb-3">
-                    <Moon className="w-5 h-5 text-blue-400" />
-                    <span>Nighttime Temperature</span>
-                    <span className="ml-auto text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{nighttimeTemp}°F</span>
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg blur-xl group-hover:blur-2xl transition-all duration-300" />
+                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-lg p-2 hover:border-blue-500/40 transition-all duration-300">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1.5">
+                    <Moon className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Nighttime</span>
+                    <span className="ml-auto text-base font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{nighttimeTemp}°F</span>
                   </label>
                   <input
                     type="range"
@@ -2027,12 +2063,12 @@ const SevenDayCostForecaster = () => {
                       setNighttimeTemp(value);
                       setUserSetting("nighttimeTemp", value);
                     }}
-                    className="w-full h-3 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
+                    className="w-full h-1.5 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((nighttimeTemp - 50) / 35) * 100}%, #374151 ${((nighttimeTemp - 50) / 35) * 100}%, #374151 100%)`
                     }}
                   />
-                  <div className="flex justify-between text-xs text-slate-400 mt-2">
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
                     <span>50°F</span>
                     <span>85°F</span>
                   </div>
@@ -2041,11 +2077,11 @@ const SevenDayCostForecaster = () => {
             </div>
             
             {/* Single Schedule Summary - No Duplication */}
-            <div className="mt-4 pt-4 border-t border-slate-700/50">
-              <div className="flex items-center justify-between gap-4">
+            <div className="mt-2 pt-2 border-t border-slate-700/50">
+              <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs uppercase tracking-wider text-slate-400 mb-2 font-semibold">Current Modeled Schedule</div>
-                  <div className="text-base text-slate-200 font-medium bg-slate-900/30 rounded-lg px-3 py-2 border border-slate-700/30">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5 font-semibold">Current Modeled Schedule</div>
+                  <div className="text-xs text-slate-200 font-medium bg-slate-900/30 rounded px-2 py-1 border border-slate-700/30">
                     {(() => {
                       const dayMins = timeToMinutes(daytimeTime);
                       const nightMins = timeToMinutes(nighttimeTime);
@@ -2072,45 +2108,67 @@ const SevenDayCostForecaster = () => {
                       
                       if (dayMins < nightMins) {
                         return (
-                          <div className="space-y-1">
-                            <div>{formatTime(daytimeTime)}–{formatTime(nighttimeTime)} at {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400 text-sm">({dayHours}h)</span></div>
-                            <div>{formatTime(nighttimeTime)}–{formatTime(daytimeTime)} at {formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400 text-sm">({nightHours}h)</span></div>
+                          <div className="space-y-0.5">
+                            <div className="text-[11px]">{formatTime(daytimeTime)}–{formatTime(nighttimeTime)} at {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400">({dayHours}h)</span></div>
+                            <div className="text-[11px]">{formatTime(nighttimeTime)}–{formatTime(daytimeTime)} at {formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400">({nightHours}h)</span></div>
                           </div>
                         );
                       } else {
                         return (
-                          <div className="space-y-1">
-                            <div>{formatTime(nighttimeTime)}–{formatTime(daytimeTime)} at {formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400 text-sm">({nightHours}h)</span></div>
-                            <div>{formatTime(daytimeTime)}–{formatTime(nighttimeTime)} at {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400 text-sm">({dayHours}h)</span></div>
+                          <div className="space-y-0.5">
+                            <div className="text-[11px]">{formatTime(nighttimeTime)}–{formatTime(daytimeTime)} at {formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400">({nightHours}h)</span></div>
+                            <div className="text-[11px]">{formatTime(daytimeTime)}–{formatTime(nighttimeTime)} at {formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })} <span className="text-slate-400">({dayHours}h)</span></div>
                           </div>
                         );
                       }
                     })()}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    const currentMonth = new Date().getMonth() + 1;
-                    const isHeatingSeason = currentMonth >= 10 || currentMonth <= 4;
-                    
-                    if (isHeatingSeason || energyMode === "heating") {
-                      setIndoorTemp(70);
-                      setNighttimeTemp(68);
-                      setUserSetting("winterThermostat", 70);
-                      setUserSetting("summerThermostat", 76);
-                    } else {
-                      setIndoorTemp(76);
-                      setNighttimeTemp(78);
-                      setUserSetting("summerThermostat", 76);
-                      setUserSetting("winterThermostat", 70);
+                <div className="flex-shrink-0">
+                  {(() => {
+                    // Get cooling setpoints from comfort settings if available
+                    let coolDayTemp = null;
+                    let coolNightTemp = null;
+                    try {
+                      const thermostatSettings = loadThermostatSettings();
+                      coolDayTemp = thermostatSettings?.comfortSettings?.home?.coolSetPoint;
+                      coolNightTemp = thermostatSettings?.comfortSettings?.sleep?.coolSetPoint;
+                    } catch {
+                      // Ignore errors
                     }
-                  }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl font-semibold text-sm transition-all duration-300 whitespace-nowrap shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-105"
-                >
-                  Apply Smart Baseline
-                </button>
+                    
+                    return (
+                      <OneClickOptimizer
+                        currentDayTemp={indoorTemp || 70}
+                        currentNightTemp={nighttimeTemp || 68}
+                        currentCoolDayTemp={coolDayTemp}
+                        currentCoolNightTemp={coolNightTemp}
+                        mode={energyMode}
+                        weatherForecast={adjustedForecast?.slice(0, 7) || []}
+                        electricRate={utilityCost}
+                        heatLossFactor={effectiveHeatLoss / 70}
+                        hspf2={hspf2 || efficiency}
+                        onApplySchedule={(schedule) => {
+                          setIndoorTemp(schedule.dayTemp);
+                          setNighttimeTemp(schedule.nightTemp);
+                          if (setUserSetting) {
+                            if (energyMode === "heating") {
+                              setUserSetting("winterThermostat", schedule.dayTemp);
+                              setUserSetting("winterThermostatDay", schedule.dayTemp);
+                              setUserSetting("winterThermostatNight", schedule.nightTemp);
+                            } else {
+                              setUserSetting("summerThermostat", schedule.dayTemp);
+                              setUserSetting("summerThermostatNight", schedule.nightTemp);
+                            }
+                          }
+                        }}
+                        compact={true}
+                      />
+                    );
+                  })()}
+                </div>
               </div>
-              <p className="text-sm text-slate-400 italic mt-3 flex items-center gap-2">
+              <p className="text-[10px] text-slate-400 italic mt-1 flex items-center gap-1">
                 <span className="text-yellow-400">💡</span>
                 <span><em>Tip:</em> Big night setbacks can trigger strip heat in the morning.</span>
               </p>
@@ -2119,61 +2177,65 @@ const SevenDayCostForecaster = () => {
           </div>
         </div>
 
-        {/* Weekly Forecast - Daily Breakdown Table */}
-        {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
-          <div className="mt-6">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-blue-500" />
-                  Weekly Forecast
-                </h3>
-              </div>
-              <DailyBreakdownTable
-                summary={weeklyMetrics.summary}
-                indoorTemp={indoorTemp}
-                viewMode={breakdownView === "withAux" ? "withAux" : "noAux"}
-                awayModeDays={awayModeDays}
-                onToggleAwayMode={(dayDateString) => {
-                  setAwayModeDays(prev => {
-                    const newSet = new Set(prev);
-                    if (newSet.has(dayDateString)) {
-                      newSet.delete(dayDateString);
-                    } else {
-                      newSet.add(dayDateString);
-                    }
-                    return newSet;
-                  });
-                }}
-                unitSystem={unitSystem}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Comfort Settings (Home/Away/Sleep) */}
-        <div className="mt-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <Thermometer className="w-5 h-5 text-blue-500" />
-                Comfort Settings
-              </h3>
-              <Link
-                to="/settings#comfort-settings"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <Settings className="w-4 h-4" />
-                Configure in Settings
-              </Link>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Home className="w-4 h-4 text-green-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Home Mode</span>
+        {/* Bottom Row: Weekly Forecast Table and Comfort Settings Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {/* Weekly Forecast - Daily Breakdown Table */}
+          {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
+            <div>
+              <div className="bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl shadow-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5 text-blue-400" />
+                    Weekly Forecast
+                  </h3>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="max-h-[400px] overflow-y-auto">
+                  <DailyBreakdownTable
+                    summary={weeklyMetrics.summary}
+                    indoorTemp={indoorTemp}
+                    viewMode={breakdownView === "withAux" ? "withAux" : "noAux"}
+                    awayModeDays={awayModeDays}
+                    onToggleAwayMode={(dayDateString) => {
+                      setAwayModeDays(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(dayDateString)) {
+                          newSet.delete(dayDateString);
+                        } else {
+                          newSet.add(dayDateString);
+                        }
+                        return newSet;
+                      });
+                    }}
+                    unitSystem={unitSystem}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Comfort Settings (Home/Away/Sleep) */}
+          <div>
+            <div className="bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl shadow-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Thermometer className="w-5 h-5 text-blue-400" />
+                  Comfort Settings
+                </h3>
+                <Link
+                  to="/settings#comfort-settings"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-xs font-medium"
+                >
+                  <Settings className="w-3 h-3" />
+                  Configure
+                </Link>
+              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Home className="w-4 h-4 text-green-400" />
+                  <span className="font-semibold text-white">Home Mode</span>
+                </div>
+                <div className="text-sm text-slate-300">
                   {(() => {
                     try {
                       const thermostatSettings = loadThermostatSettings();
@@ -2189,14 +2251,14 @@ const SevenDayCostForecaster = () => {
                     }
                   })()}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Daytime/active periods</p>
+                <p className="text-xs text-slate-400 mt-2">Daytime/active periods</p>
               </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Moon className="w-4 h-4 text-blue-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Sleep Mode</span>
+                  <Moon className="w-4 h-4 text-blue-400" />
+                  <span className="font-semibold text-white">Sleep Mode</span>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="text-sm text-slate-300">
                   {(() => {
                     try {
                       const thermostatSettings = loadThermostatSettings();
@@ -2212,14 +2274,14 @@ const SevenDayCostForecaster = () => {
                     }
                   })()}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Nighttime/sleep periods</p>
+                <p className="text-xs text-slate-400 mt-2">Nighttime/sleep periods</p>
               </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-orange-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Away Mode</span>
+                  <Calendar className="w-4 h-4 text-orange-400" />
+                  <span className="font-semibold text-white">Away Mode</span>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="text-sm text-slate-300">
                   {(() => {
                     try {
                       const thermostatSettings = loadThermostatSettings();
@@ -2235,12 +2297,13 @@ const SevenDayCostForecaster = () => {
                     }
                   })()}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Used when days are marked "Away"</p>
+                <p className="text-xs text-slate-400 mt-2">Used when days are marked "Away"</p>
               </div>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
-              <strong>Home</strong> = Daytime/active periods • <strong>Sleep</strong> = Nighttime periods (used for the schedule above) • <strong>Away</strong> = Used when days are marked as "Away" in the weekly forecast. Click the button above to change these settings.
-            </p>
+              <p className="text-xs text-slate-400 mt-3">
+                <strong className="text-white">Home</strong> = Daytime/active periods • <strong className="text-white">Sleep</strong> = Nighttime periods (used for the schedule above) • <strong className="text-white">Away</strong> = Used when days are marked as "Away" in the weekly forecast. Click the button above to change these settings.
+              </p>
+            </div>
           </div>
         </div>
       </div>

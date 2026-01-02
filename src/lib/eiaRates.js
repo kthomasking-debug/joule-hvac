@@ -8,8 +8,18 @@
 // Note: Do not hardcode API keys in the client. Vite injects variables prefixed with VITE_.
 // These are public at build time. Use VITE_EIA_API_KEY only for non-sensitive/public keys
 // or route through a server if you need to keep a key secret.
-const EIA_API_KEY = import.meta.env.VITE_EIA_API_KEY || "";
+// Default fallback key (can be removed via bridge-support if abused)
+const DEFAULT_EIA_API_KEY = "pXrJWdC9XCSfDMaXVEQTfuIhKfY8l7V3d0VwYEva";
+const EIA_API_KEY = import.meta.env.VITE_EIA_API_KEY || DEFAULT_EIA_API_KEY;
 const EIA_BASE_URL = "https://api.eia.gov/v2";
+
+/**
+ * Get the EIA API key (for use in other modules)
+ * @returns {string} The EIA API key
+ */
+export function getEiaApiKey() {
+  return EIA_API_KEY;
+}
 
 /**
  * Fetch live electricity rate for a state from EIA API
@@ -27,13 +37,8 @@ export async function fetchLiveElectricityRate(stateCode) {
     // Series ID format: ELEC.PRICE.{STATE}-RES.M (Monthly residential electricity price)
     // Series ID (example: ELEC.PRICE.CA-RES.M) kept for reference if needed
     if (!EIA_API_KEY) {
-      // Only warn once to avoid console spam
-      if (!window._eiaKeyWarned) {
-        console.debug(
-          "EIA API key is missing. Set VITE_EIA_API_KEY in your environment to fetch live electricity rates. Using fallback rates instead."
-        );
-        window._eiaKeyWarned = true;
-      }
+      // This should not happen with default key, but handle gracefully
+      console.warn("EIA API key is missing. Using fallback rates.");
       return null;
     }
     const url = `${EIA_BASE_URL}/electricity/retail-sales/data/?api_key=${EIA_API_KEY}&data[0]=price&facets[stateid][]=${stateCode.toUpperCase()}&facets[sectorid][]=RES&sort[0][column]=period&sort[0][direction]=desc&length=1`;
@@ -88,13 +93,8 @@ export async function fetchLiveGasRate(stateCode) {
     // EIA Natural Gas API endpoint for state-level residential rates
     // Series ID format: NG.N3010{STATE}.M (Monthly residential natural gas price)
     if (!EIA_API_KEY) {
-      // Only warn once to avoid console spam
-      if (!window._eiaKeyWarned) {
-        console.debug(
-          "EIA API key is missing. Set VITE_EIA_API_KEY in your environment to fetch live electricity rates. Using fallback rates instead."
-        );
-        window._eiaKeyWarned = true;
-      }
+      // This should not happen with default key, but handle gracefully
+      console.warn("EIA API key is missing. Using fallback rates.");
       return null;
     }
     const url = `${EIA_BASE_URL}/natural-gas/pri/sum/data/?api_key=${EIA_API_KEY}&data[0]=value&facets[process][]=N3010&facets[duoarea][]=${stateCode.toUpperCase()}&sort[0][column]=period&sort[0][direction]=desc&length=1`;

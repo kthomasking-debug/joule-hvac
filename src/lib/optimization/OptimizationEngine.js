@@ -74,13 +74,34 @@ export function calculateOptimalSchedule(options = {}) {
     Math.min(bounds.max, bounds.ideal + adj.nightOffset)
   );
 
+  // Validate current temperatures make sense for the mode
+  // For heating: night should be <= day (or very close). For cooling: night should be >= day (or very close)
+  const isHeating = mode === "heating";
+  const tempRangeIssue = isHeating 
+    ? currentNightTemp > currentDayTemp + 2  // Heating: night shouldn't be much higher than day
+    : currentNightTemp < currentDayTemp - 2; // Cooling: night shouldn't be much lower than day
+  
+  // If temperatures are clearly wrong for the mode, always show optimization opportunity
+  const hasInvalidSettings = tempRangeIssue || 
+    (isHeating && (currentDayTemp < 60 || currentDayTemp > 80 || currentNightTemp < 60 || currentNightTemp > 80)) ||
+    (!isHeating && (currentDayTemp < 65 || currentDayTemp > 85 || currentNightTemp < 65 || currentNightTemp > 85));
+
   // Calculate savings
   const currentAvgTemp = (currentDayTemp * 16 + currentNightTemp * 8) / 24;
   const optimalAvgTemp = (optimalDayTemp * 16 + optimalNightTemp * 8) / 24;
   const tempDiff = currentAvgTemp - optimalAvgTemp;
 
+  // Determine if current settings are wasteful
+  // For heating: wasteful if current > optimal (tempDiff > 0)
+  // For cooling: wasteful if current < optimal (tempDiff < 0)
+  const isWasteful = isHeating 
+    ? tempDiff > 0  // Heating: too warm = wasteful
+    : tempDiff < 0; // Cooling: too cold = wasteful
+  
   // Rough savings estimate: each degree saves ~3% on heating/cooling
-  const savingsPercent = Math.max(0, tempDiff * 0.03);
+  // Use absolute value for savings calculation, but only if wasteful
+  const absTempDiff = Math.abs(tempDiff);
+  const savingsPercent = isWasteful ? absTempDiff * 0.03 : 0;
   
   // Calculate monthly cost at current schedule
   const avgDeltaT = mode === "heating" ? 30 : 15; // Rough delta T assumption
@@ -124,25 +145,36 @@ export function calculateOptimalSchedule(options = {}) {
 
   // Generate reasoning for the optimization
   const reasoning = {
-    primary: tempDiff > 2 
+    primary: absTempDiff > 2 && isWasteful
       ? "Your current schedule uses significantly more energy than necessary for comfort"
-      : tempDiff > 0.5
+      : absTempDiff > 0.5 && isWasteful
       ? "Your current schedule can be optimized for better efficiency"
       : "Your schedule is already well-optimized",
     factors: [],
-    comfortImpact: Math.abs(tempDiff) < 1 
+    comfortImpact: absTempDiff < 1 
       ? "Minimal - you'll barely notice the difference"
-      : Math.abs(tempDiff) < 2
+      : absTempDiff < 2
       ? "Slight - most people find this comfortable"
       : "Moderate - you may notice the change initially",
   };
 
   // Add specific factors
-  if (currentDayTemp > optimalDayTemp + 0.5) {
-    reasoning.factors.push(`Daytime temperature (${currentDayTemp}°F) is above ASHRAE 55 recommended range`);
-  }
-  if (currentNightTemp > optimalNightTemp + 0.5) {
-    reasoning.factors.push(`Nighttime temperature (${currentNightTemp}°F) can be lowered for better efficiency`);
+  if (isHeating) {
+    // Heating mode: wasteful if too warm
+    if (currentDayTemp > optimalDayTemp + 0.5) {
+      reasoning.factors.push(`Daytime temperature (${currentDayTemp}°F) is above ASHRAE 55 recommended range`);
+    }
+    if (currentNightTemp > optimalNightTemp + 0.5) {
+      reasoning.factors.push(`Nighttime temperature (${currentNightTemp}°F) can be lowered for better efficiency`);
+    }
+  } else {
+    // Cooling mode: wasteful if too cold
+    if (currentDayTemp < optimalDayTemp - 0.5) {
+      reasoning.factors.push(`Daytime temperature (${currentDayTemp}°F) is below ASHRAE 55 recommended range`);
+    }
+    if (currentNightTemp < optimalNightTemp - 0.5) {
+      reasoning.factors.push(`Nighttime temperature (${currentNightTemp}°F) can be raised for better efficiency`);
+    }
   }
   if (weatherForecast.length >= 24) {
     const next24Temps = weatherForecast.slice(0, 24).map(h => h.temp || h.temperature || 50);
@@ -172,15 +204,24 @@ export function calculateOptimalSchedule(options = {}) {
       nightHours: "10pm - 6am",
     },
     savings: {
-      tempDiff: Math.abs(tempDiff).toFixed(1),
+      tempDiff: absTempDiff.toFixed(1),
       percent: (savingsPercent * 100).toFixed(1),
       monthlyDollars: monthlySavings.toFixed(2),
       annualDollars: (monthlySavings * 12).toFixed(2),
     },
     weatherAdjustment,
     reasoning,
-    hasSavingsOpportunity: tempDiff > 0.5,
-    canOptimize: Math.abs(currentDayTemp - optimalDayTemp) > 0.5 || 
+    // Has savings opportunity if:
+    // 1. Settings are invalid
+    // 2. Settings are wasteful (wrong direction) and significantly different (>0.5°F)
+    // 3. Settings are significantly different from optimal in EITHER direction (>1.5°F) for comfort optimization
+    //    - For heating: if too warm (wasteful) OR too cold (comfort issue)
+    //    - For cooling: if too cold (wasteful) OR too warm (comfort issue, but uses less energy)
+    // Note: For cooling, higher setpoints use less energy but sacrifice comfort, so we still optimize
+    hasSavingsOpportunity: hasInvalidSettings || 
+                          (isWasteful && absTempDiff > 0.5) || 
+                          (absTempDiff > 1.5), // Show opportunity if significantly different from optimal (comfort or efficiency)
+    canOptimize: hasInvalidSettings || Math.abs(currentDayTemp - optimalDayTemp) > 0.5 || 
                  Math.abs(currentNightTemp - optimalNightTemp) > 0.5,
   };
 }

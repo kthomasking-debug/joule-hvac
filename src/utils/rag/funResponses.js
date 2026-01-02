@@ -728,10 +728,9 @@ export function checkFunResponse(query) {
 
   // Fallback when no fun response matches
   const fallbackVariants = [
-    "My joke database has nothing for that one… yet. Teach me and I'll immortalize you.",
-    "I got nothin'. But now I'm curious. Explain it like I'm a very smart toaster.",
-    "That flew right over my heat-exchanger. Try me again — I love learning new chaos.",
-    "Error 404: punchline not found. Submit yours and I'll make it legendary.",
+    "I couldn't find a specific answer for that. Try rephrasing your question or ask about your system's balance point, heat loss factor, or energy costs.",
+    "I need more context to answer that. Try asking about specific aspects like 'What's my balance point?' or 'How can I save money?'",
+    "That question is a bit too general. Be more specific — for example, ask 'What's my heat loss factor?' or 'Why is my bill high?'",
   ];
 
   return {
