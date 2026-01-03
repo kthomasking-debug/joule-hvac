@@ -1,13 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
   Calculator,
   Zap,
   Home,
   Thermometer,
-  Loader,
-  CheckCircle2,
-  AlertCircle,
   Download,
   Info,
   DollarSign,
@@ -25,8 +22,6 @@ export default function EnergyPlusLoadCalc() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  const [serviceStatus, setServiceStatus] = useState(null);
-  const [startingService, setStartingService] = useState(false);
 
   // Rebate lookup state
   const [rebateZipCode, setRebateZipCode] = useState("");
@@ -48,14 +43,6 @@ export default function EnergyPlusLoadCalc() {
   const [climateZone, setClimateZone] = useState(5); // Default to Zone 5
   const [windowType, setWindowType] = useState("double");
   const [orientation, setOrientation] = useState("north");
-
-  // Check service status on mount (with delay to avoid immediate console errors)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      checkServiceStatus();
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleRAGSearch = async () => {
     if (!ragQuery.trim()) {
@@ -119,96 +106,6 @@ export default function EnergyPlusLoadCalc() {
     }
     // Fallback to localhost:3001 (Node.js temp server)
     return 'http://localhost:3001';
-  };
-
-  const checkServiceStatus = async () => {
-    const backendUrl = getBackendUrl();
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-      
-      const response = await fetch(`${backendUrl}/api/energyplus/status`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`Service status check failed: ${response.status}`);
-      }
-      const status = await response.json();
-      setServiceStatus(status);
-    } catch (err) {
-      // Service is not available - handle connection errors silently
-      // Don't log expected connection errors (browser will log network errors automatically)
-      if (err.name === 'AbortError' || !err.message || 
-        err.message.includes('Failed to fetch') || 
-        err.message.includes('ERR_CONNECTION_REFUSED') ||
-        err.message.includes('NetworkError')) {
-        setServiceStatus({
-          status: "error",
-          energyplus_available: false,
-          method: "simplified",
-          error: backendUrl.includes('localhost:3001') 
-            ? "Backend server not running. See instructions below to start it."
-            : "EnergyPlus service not available on bridge server.",
-          backendUrl: backendUrl,
-          needsBackend: backendUrl.includes('localhost:3001'),
-        });
-      } else {
-        // Only log unexpected errors
-        console.warn("Service status check error:", err);
-        setServiceStatus({
-          status: "error",
-          energyplus_available: false,
-          method: "simplified",
-          error: "EnergyPlus service not available.",
-          backendUrl: backendUrl,
-        });
-      }
-    }
-  };
-
-  const handleStartService = async () => {
-    setStartingService(true);
-    setError(null);
-    const backendUrl = getBackendUrl();
-    
-    // If using bridge URL, service is already available (no need to start)
-    if (!backendUrl.includes('localhost:3001')) {
-      // Service is available on bridge - just refresh status, don't show error
-      setStartingService(false);
-      await checkServiceStatus();
-      return;
-    }
-    
-    try {
-      const response = await fetch(`${backendUrl}/api/energyplus/start`, {
-        method: "POST",
-      });
-      const data = await response.json();
-      
-      if (data.success) {
-        // Wait a moment for service to fully start, then check status
-        setTimeout(() => {
-          checkServiceStatus();
-        }, 2000);
-      } else {
-        setError(data.error || "Failed to start EnergyPlus service");
-      }
-    } catch (err) {
-      // Only show user-friendly error, don't log connection errors to console
-      const isConnectionError = err.message?.includes('Failed to fetch') || 
-        err.message?.includes('ERR_CONNECTION_REFUSED') ||
-        err.message?.includes('NetworkError');
-      if (isConnectionError) {
-        setError("Backend server is not running. See instructions below.");
-      } else {
-        setError(err.message || "Failed to start EnergyPlus service");
-        console.error("Error starting EnergyPlus service:", err);
-      }
-    } finally {
-      setStartingService(false);
-    }
   };
 
   const handleCalculate = async () => {
@@ -408,105 +305,6 @@ export default function EnergyPlusLoadCalc() {
           ACCA Manual J-compliant heating and cooling load calculations using DOE EnergyPlus
         </p>
       </div>
-
-      {/* Service Status */}
-      {serviceStatus && (
-        <div
-          className={`mb-6 p-4 rounded-lg border ${
-            serviceStatus.status === "ok"
-              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-              : serviceStatus.status === "error"
-              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-              : "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {serviceStatus.status === "ok" ? (
-              <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-            ) : (
-              <AlertCircle className={`w-5 h-5 ${
-                serviceStatus.status === "error"
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-yellow-600 dark:text-yellow-400"
-              }`} />
-            )}
-            <div className="flex-1">
-              <p className="font-semibold text-gray-900 dark:text-white">
-                {serviceStatus.status === "ok"
-                  ? serviceStatus.energyplus_available
-                    ? "EnergyPlus Available"
-                    : "Service Available (Simplified Calculations)"
-                  : serviceStatus.status === "error"
-                  ? "Service Not Available"
-                  : "Using Simplified Calculation"}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {serviceStatus.status === "ok"
-                  ? serviceStatus.energyplus_available
-                    ? "Full EnergyPlus simulation engine is running"
-                    : "Service is running and ready. Using simplified Manual J-style calculations (full EnergyPlus Python API not installed)."
-                  : serviceStatus.error || "EnergyPlus not available - using Manual J-style simplified calculations"}
-              </p>
-            </div>
-            {serviceStatus.status !== "ok" && (
-              <button
-                onClick={handleStartService}
-                disabled={startingService}
-                className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {startingService ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    Starting...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4" />
-                    Start Service
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-          
-          {/* Show instructions if backend is not available */}
-          {serviceStatus?.needsBackend && serviceStatus?.status === "error" && (
-            <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
-                Backend Server Not Running
-              </h3>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
-                The EnergyPlus service requires a backend server. You have two options:
-              </p>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
-                    Option 1: Use Python Bridge Server (Recommended for remote access)
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-yellow-700 dark:text-yellow-300 ml-2">
-                    <li>Make sure your Joule Bridge is running (Python server on port 8080)</li>
-                    <li>Go to Settings → Joule Bridge Settings</li>
-                    <li>Enter your bridge URL (e.g., http://192.168.1.100:8080)</li>
-                    <li>Save the settings</li>
-                    <li>Refresh this page - EnergyPlus will use the bridge server</li>
-                  </ol>
-                </div>
-                <div>
-                  <p className="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
-                    Option 2: Start Local Node.js Server (For local development)
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-yellow-700 dark:text-yellow-300 ml-2">
-                    <li>Open a terminal in the project directory</li>
-                    <li>Run: <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">npm run temp-server</code></li>
-                    <li>Wait for the server to start on port 3001</li>
-                    <li>Click "Start Service" above to launch EnergyPlus</li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Input Form */}
