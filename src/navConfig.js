@@ -56,6 +56,8 @@ const EcobeeEquipmentMatrix = lazy(() => import("./pages/EcobeeEquipmentMatrix")
 const EcobeeVentilatorExplainer = lazy(() => import("./pages/EcobeeVentilatorExplainer"));
 const EcobeeVentilatorWizard = lazy(() => import("./pages/EcobeeVentilatorWizard"));
 const WholeHouseVentilationEcobeeGuide = lazy(() => import("./pages/WholeHouseVentilationEcobeeGuide"));
+const TwoWaySwitchExplainer = lazy(() => import("./pages/TwoWaySwitchExplainer"));
+const TwoWaySwitchWiringVisualizer = lazy(() => import("./pages/TwoWaySwitchWiringVisualizer"));
 const ComfortSettingStrangenessFix = lazy(() => import("./pages/ComfortSettingStrangenessFix"));
 const Analysis = lazy(() => import("./pages/Analysis"));
 const Control = lazy(() => import("./pages/Control"));
@@ -211,6 +213,28 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Visual guide with ASCII diagrams showing ventilation system types, 2-story home cutaways, and Ecobee ACC wiring patterns (24VAC vs dry contact).",
+  },
+  {
+    path: "/tools/two-way-switch-explainer",
+    name: "Two-Way Switch Explainer",
+    label: "Two-Way Switch Explainer",
+    icon: Cable,
+    Component: TwoWaySwitchExplainer,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive explainer for 3-way switch wiring, phantom voltage, neutral connections, and NEC code references.",
+  },
+  {
+    path: "/tools/two-way-switch-wiring-visualizer",
+    name: "Two-Way Switch Wiring Visualizer",
+    label: "Two-Way Switch Wiring Visualizer",
+    icon: Cable,
+    Component: TwoWaySwitchWiringVisualizer,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Animated visualizer showing 3-way switch contacts, traveler voltage states, ASCII diagrams, induction formulas, and NEC references.",
   },  {
     path: "/tools/comfort-setting-strangeness-fix",
     name: "Comfort Setting Strangeness Fix",
