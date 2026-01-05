@@ -48,9 +48,14 @@ const Upgrades = lazy(() => import("./pages/Upgrades"));
 const DocumentationSetupGuides = lazy(() =>
   import("./pages/DocumentationSetupGuides")
 );
+const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
 const EcobeeTransitionPlanner = lazy(() =>
   import("./pages/EcobeeTransitionPlanner")
 );
+const EcobeeEquipmentMatrix = lazy(() => import("./pages/EcobeeEquipmentMatrix"));
+const EcobeeVentilatorExplainer = lazy(() => import("./pages/EcobeeVentilatorExplainer"));
+const EcobeeVentilatorWizard = lazy(() => import("./pages/EcobeeVentilatorWizard"));
+const ComfortSettingStrangenessFix = lazy(() => import("./pages/ComfortSettingStrangenessFix"));
 const Analysis = lazy(() => import("./pages/Analysis"));
 const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
@@ -100,6 +105,7 @@ import {
   Chrome,
   MapPin,
   DollarSign,
+  Moon,
 } from "lucide-react";
 
 export const routes = [
@@ -150,6 +156,61 @@ export const routes = [
     inMobileNav: true,
     inPrimaryNav: false,
     description: "Visualize Ecobee schedule transitions to avoid immediate restarts",
+  },
+  {
+    path: "/tools/ecobee-settings-sandbox",
+    name: "Ecobee Settings Sandbox",
+    label: "Ecobee Settings Sandbox",
+    icon: SettingsIcon,
+    Component: EcobeeSettingsSandbox,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Virtual playground for Ecobee Premium installation settings and thresholds. See which settings appear/disappear based on equipment configuration.",
+  },
+  {
+    path: "/tools/ecobee-equipment-matrix",
+    name: "Ecobee Equipment Matrix",
+    label: "Ecobee Equipment Matrix",
+    icon: Cable,
+    Component: EcobeeEquipmentMatrix,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Equipment configuration matrix with wiring diagrams for Ecobee Premium. Shows common setups, required terminals, and ASCII wiring diagrams.",
+  },
+  {
+    path: "/tools/ecobee-ventilator-explainer",
+    name: "Ecobee Ventilator Explainer",
+    label: "Ecobee Ventilator Explainer",
+    icon: Thermometer,
+    Component: EcobeeVentilatorExplainer,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive explainer for whole-home ventilator control with Ecobee Premium. Wiring diagrams, relay simulator, and settings navigation.",
+  },
+  {
+    path: "/tools/ecobee-ventilator-wizard",
+    name: "Ecobee Ventilator Setup Wizard",
+    label: "Ecobee Ventilator Setup Wizard",
+    icon: Thermometer,
+    Component: EcobeeVentilatorWizard,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive wiring wizard and Ecobee menu simulator for setting up whole-home ventilation control.",
+  },
+  {
+    path: "/tools/comfort-setting-strangeness-fix",
+    name: "Comfort Setting Strangeness Fix",
+    label: "Comfort Setting Strangeness Fix",
+    icon: Moon,
+    Component: ComfortSettingStrangenessFix,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive guide explaining why sensor participation changes early in Ecobee schedules, with simulations and fixes.",
   },
   {
     path: "/analysis",

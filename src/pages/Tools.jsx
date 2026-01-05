@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -27,6 +27,38 @@ export default function Tools() {
           icon: Thermometer,
           description: "Visualize Ecobee schedule transitions to avoid immediate restarts. Plan your thermostat schedules to prevent short cycling and optimize comfort.",
           color: "green",
+        },
+        {
+          path: "/tools/ecobee-settings-sandbox",
+          name: "Ecobee Settings Sandbox",
+          label: "Ecobee Settings Sandbox",
+          icon: SettingsIcon,
+          description: "Virtual playground for Ecobee Premium installation settings and thresholds. See which settings appear/disappear based on equipment configuration.",
+          color: "purple",
+        },
+        {
+          path: "/tools/ecobee-equipment-matrix",
+          name: "Ecobee Equipment Matrix",
+          label: "Ecobee Equipment Matrix",
+          icon: Cable,
+          description: "Equipment configuration matrix with wiring diagrams for Ecobee Premium. Shows common setups, required terminals, and ASCII wiring diagrams.",
+          color: "blue",
+        },
+        {
+          path: "/tools/ecobee-ventilator-explainer",
+          name: "Ecobee Ventilator Explainer",
+          label: "Ecobee Ventilator Explainer",
+          icon: Thermometer,
+          description: "Interactive explainer for whole-home ventilator control with Ecobee Premium. Wiring diagrams, relay simulator, and settings navigation.",
+          color: "green",
+        },
+        {
+          path: "/tools/comfort-setting-strangeness-fix",
+          name: "Comfort Setting Strangeness Fix",
+          label: "Comfort Setting Strangeness Fix",
+          icon: Moon,
+          description: "Interactive guide explaining why sensor participation changes early in Ecobee schedules, with simulations and fixes.",
+          color: "purple",
         },
       ],
     },
