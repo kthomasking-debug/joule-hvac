@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { queryHVACKnowledge } from "../utils/rag/ragQuery";
 import { fullInputClasses } from "../lib/uiClasses";
+import { calculateLoadSimplified, calculateRebates } from "../lib/energyPlusCalculations";
 
 export default function EnergyPlusLoadCalc() {
   const outlet = useOutletContext() || {};
@@ -94,21 +95,6 @@ export default function EnergyPlusLoadCalc() {
     }
   };
 
-  // Get backend URL (bridge URL if configured, otherwise localhost:3001)
-  const getBackendUrl = () => {
-    try {
-      const bridgeUrl = localStorage.getItem('jouleBridgeUrl');
-      if (bridgeUrl && bridgeUrl !== 'http://localhost:8080') {
-        // Use bridge URL (remove trailing slash if present)
-        return bridgeUrl.replace(/\/$/, '');
-      }
-    } catch (e) {
-      // Ignore localStorage errors
-    }
-    // Fallback to localhost:3001 (Node.js temp server)
-    return 'http://localhost:3001';
-  };
-
   const handleCalculate = async () => {
     setLoading(true);
     setError(null);
@@ -124,117 +110,9 @@ export default function EnergyPlusLoadCalc() {
         orientation,
       };
 
-      // Try EnergyPlus API first
-      let useSimplified = false;
-      try {
-        const backendUrl = getBackendUrl();
-        const response = await fetch(`${backendUrl}/api/energyplus/calculate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
-        });
-
-        if (response.ok) {
-          try {
-            const data = await response.json();
-            // Validate that we got the expected data structure
-            // Accept any response that has heatingLoadBtuHr or is an error response
-            if (data && typeof data === 'object') {
-              if (data.heatingLoadBtuHr !== undefined || data.coolingLoadBtuHr !== undefined || data.error) {
-                setResults(data);
-                setLoading(false);
-                return;
-              } else {
-                // Unexpected response format - log and use simplified
-                console.warn("Unexpected response format from EnergyPlus API:", data);
-                useSimplified = true;
-              }
-            } else {
-              console.warn("Invalid response from EnergyPlus API (not an object):", data);
-              useSimplified = true;
-            }
-          } catch (jsonErr) {
-            // JSON parsing error - log and use simplified
-            console.error("Error parsing EnergyPlus response:", jsonErr);
-            useSimplified = true;
-          }
-        } else {
-          // API exists but returned error - try to get error message
-          try {
-            const errorData = await response.json();
-            console.warn("EnergyPlus API error:", errorData);
-          } catch (e) {
-            // Ignore JSON parse errors for error responses
-          }
-          useSimplified = true;
-        }
-      } catch (fetchErr) {
-        // Connection error - use simplified fallback
-        if (fetchErr.message && (fetchErr.message.includes("Failed to fetch") || 
-            fetchErr.message.includes("ERR_CONNECTION_REFUSED") ||
-            fetchErr.message.includes("NetworkError"))) {
-          useSimplified = true;
-        } else {
-          // Unexpected error - log it
-          console.error("Unexpected error calling EnergyPlus API:", fetchErr);
-          useSimplified = true;
-        }
-      }
-
-      // Fallback to simplified Manual J-style calculation
-      if (useSimplified) {
-        const { calculateSystemSizing } = await import("../utils/calculatorEngines");
-        
-        // Map insulation level to quality string
-        // insulationLevel is a number: 0.45, 0.65, 1.0, or 1.4
-        const insulationLevelNum = Number(insulationLevel);
-        const insulationQualityMap = {
-          0.45: "excellent",
-          0.65: "good",
-          1.0: "average",
-          1.4: "poor",
-        };
-        const insulationQuality = insulationQualityMap[insulationLevelNum] || 
-          (insulationLevelNum <= 0.5 ? "excellent" :
-           insulationLevelNum <= 0.8 ? "good" :
-           insulationLevelNum <= 1.2 ? "average" : "poor");
-
-        // Map climate zone to climate string
-        const climateMap = {
-          1: "hot",
-          2: "hot",
-          3: "hot",
-          4: "moderate",
-          5: "moderate",
-          6: "cold",
-          7: "cold",
-        };
-        const climateZoneStr = climateMap[climateZone] || "moderate";
-
-        const simplifiedResults = calculateSystemSizing({
-          squareFeet: Number(squareFeet),
-          ceilingHeight: Number(ceilingHeight),
-          insulationQuality,
-          windowType,
-          climateZone: climateZoneStr,
-          numberOfOccupants: 2, // Default
-        });
-
-        setResults({
-          method: "simplified",
-          heatingLoadBtuHr: simplifiedResults.heatingLoad,
-          coolingLoadBtuHr: simplifiedResults.coolingLoad,
-          heatingTons: simplifiedResults.heatingTons,
-          coolingTons: simplifiedResults.coolingTons,
-          recommendedTons: simplifiedResults.recommendedTons,
-          squareFeet: Number(squareFeet),
-          ceilingHeight: Number(ceilingHeight),
-          insulationLevel,
-          climateZone: Number(climateZone),
-          windowType,
-          orientation,
-        });
-      }
+      // Use frontend calculation (no backend required)
+      const data = calculateLoadSimplified(params);
+      setResults(data);
     } catch (err) {
       setError(err.message || "Calculation failed. Please check your inputs and try again.");
       console.error("Load calculation error:", err);
@@ -253,30 +131,11 @@ export default function EnergyPlusLoadCalc() {
         throw new Error("Please enter both zip code and equipment SKU");
       }
 
-      const backendUrl = getBackendUrl();
-      const response = await fetch(`${backendUrl}/api/rebates/calculate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          zip_code: rebateZipCode.trim(),
-          equipment_sku: rebateSku.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Rebate lookup failed: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Use frontend calculation (no backend required)
+      const data = calculateRebates(rebateZipCode.trim(), rebateSku.trim());
       setRebateResults(data);
     } catch (err) {
-      // Handle connection errors gracefully
-      if (err.message.includes("Failed to fetch") || err.message.includes("ERR_CONNECTION_REFUSED")) {
-        setRebateError("EnergyPlus service is not running. Please start it with 'npm run energyplus-service' in a separate terminal.");
-      } else {
-        setRebateError(err.message);
-      }
+      setRebateError(err.message);
       console.error("Rebate lookup error:", err);
     } finally {
       setRebateLoading(false);
