@@ -118,9 +118,7 @@ export default function EnergyPlusLoadCalc() {
       // Use frontend calculation (no backend required)
       const data = calculateLoadSimplified(params);
       setResults(data);
-      
-      // Generate AI explanation based on results
-      generateAiExplanation(data, params);
+      setAiExplanation(null); // Reset explanation for new calculation
     } catch (err) {
       setError(err.message || "Calculation failed. Please check your inputs and try again.");
       console.error("Load calculation error:", err);
@@ -129,44 +127,62 @@ export default function EnergyPlusLoadCalc() {
     }
   };
 
-  const generateAiExplanation = async (calculationResults, inputParams) => {
+  const generateAiExplanation = async () => {
     const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
     
-    // Skip if no API key
+    // Check if API key exists
     if (!groqApiKey || !groqApiKey.trim()) {
-      setAiExplanation(null);
+      setShowApiKeyPrompt(true);
+      return;
+    }
+
+    // Check if we have results
+    if (!results) {
       return;
     }
 
     setAiExplanationLoading(true);
+    setShowApiKeyPrompt(false);
     
     try {
       const { askJouleFallback } = await import("../lib/groqAgent");
       const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
       
-      const prompt = `Explain this HVAC load calculation in plain, conversational English:
-
-Building: ${inputParams.squareFeet} sq ft, ${inputParams.ceilingHeight}' ceilings
-Insulation: ${inputParams.insulationLevel}x multiplier (0.65=Good, 1.0=Average, 1.4=Poor)
-Climate Zone: ${inputParams.climateZone}
-Design Temps: ${calculationResults.designHeatingTemp}°F heating, ${calculationResults.designCoolingTemp}°F cooling
-
-Results:
-- Heating Load: ${calculationResults.heatingLoadBtuHr.toLocaleString()} BTU/hr (${calculationResults.heatingTons} tons)
-- Cooling Load: ${calculationResults.coolingLoadBtuHr.toLocaleString()} BTU/hr (${calculationResults.coolingTons} tons)
-- Recommended: ${Math.max(calculationResults.heatingTons, calculationResults.coolingTons)} tons
-
-Breakdown:
-Heating - Envelope: ${calculationResults.breakdown.heating.envelope.toLocaleString()} BTU/hr, Windows: ${calculationResults.breakdown.heating.windows.toLocaleString()} BTU/hr, Infiltration: ${calculationResults.breakdown.heating.infiltration.toLocaleString()} BTU/hr
-Cooling - Envelope: ${calculationResults.breakdown.cooling.envelope.toLocaleString()} BTU/hr, Windows: ${calculationResults.breakdown.cooling.windows.toLocaleString()} BTU/hr, Solar: ${calculationResults.breakdown.cooling.solar.toLocaleString()} BTU/hr, Infiltration: ${calculationResults.breakdown.cooling.infiltration.toLocaleString()} BTU/hr
-
-Write a conversational 3-4 paragraph explanation covering:
-1. What the base heat loss coefficient (0.32) means and how insulation affects it
-2. Why the design temperatures matter and what they represent
-3. How the heating/cooling calculations work and the key factors
-4. What these numbers mean for equipment sizing
-
-Write like you're explaining to a homeowner, not an engineer. Be specific about THIS calculation's actual numbers.`;
+      // Build prompt based on available data
+      let prompt = `Explain this HVAC load calculation in plain, conversational English:\n\n`;
+      
+      // Building parameters
+      prompt += `Building: ${squareFeet} sq ft, ${ceilingHeight}' ceilings\n`;
+      prompt += `Insulation: ${insulationLevel}x multiplier (0.65=Good, 1.0=Average, 1.4=Poor)\n`;
+      prompt += `Climate Zone: ${climateZone}\n`;
+      
+      // Design temps if available
+      if (results.designHeatingTemp !== undefined && results.designCoolingTemp !== undefined) {
+        prompt += `Design Temps: ${results.designHeatingTemp}°F heating, ${results.designCoolingTemp}°F cooling\n`;
+      }
+      
+      prompt += `\nResults:\n`;
+      prompt += `- Heating Load: ${results.heatingLoadBtuHr.toLocaleString()} BTU/hr (${results.heatingTons} tons)\n`;
+      prompt += `- Cooling Load: ${results.coolingLoadBtuHr.toLocaleString()} BTU/hr (${results.coolingTons} tons)\n`;
+      prompt += `- Recommended: ${Math.max(results.heatingTons, results.coolingTons)} tons\n`;
+      
+      // Include breakdown if available
+      if (results.breakdown) {
+        prompt += `\nBreakdown:\n`;
+        if (results.breakdown.heating) {
+          prompt += `Heating - Envelope: ${results.breakdown.heating.envelope.toLocaleString()} BTU/hr, Windows: ${results.breakdown.heating.windows.toLocaleString()} BTU/hr, Infiltration: ${results.breakdown.heating.infiltration.toLocaleString()} BTU/hr\n`;
+        }
+        if (results.breakdown.cooling) {
+          prompt += `Cooling - Envelope: ${results.breakdown.cooling.envelope.toLocaleString()} BTU/hr, Windows: ${results.breakdown.cooling.windows.toLocaleString()} BTU/hr, Solar: ${results.breakdown.cooling.solar.toLocaleString()} BTU/hr, Infiltration: ${results.breakdown.cooling.infiltration.toLocaleString()} BTU/hr\n`;
+        }
+      }
+      
+      prompt += `\nWrite a conversational 3-4 paragraph explanation covering:\n`;
+      prompt += `1. What the base heat loss coefficient (0.32) means and how insulation affects it\n`;
+      prompt += `2. Why the design temperatures matter and what they represent\n`;
+      prompt += `3. How the heating/cooling calculations work and the key factors\n`;
+      prompt += `4. What these numbers mean for equipment sizing\n\n`;
+      prompt += `Write like you're explaining to a homeowner, not an engineer. Be specific about THIS calculation's actual numbers.`;
 
       const result = await askJouleFallback(prompt, groqApiKey, model);
       
@@ -559,24 +575,27 @@ Write like you're explaining to a homeowner, not an engineer. Be specific about 
                     </div>
 
                     {/* AI-generated or static explanation */}
-                    <details 
-                      className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-700 mt-4"
-                      onToggle={(e) => {
-                        if (e.target.open && !aiExplanation && !aiExplanationLoading && results) {
-                          const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
-                          if (!groqApiKey || !groqApiKey.trim()) {
-                            setShowApiKeyPrompt(true);
-                          }
-                        }
-                      }}
-                    >
+                    <details className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-700 mt-4">
                       <summary className="cursor-pointer font-semibold text-indigo-900 dark:text-indigo-100 text-sm flex items-center gap-2">
                         <Info className="w-4 h-4" />
                         Explanation (Plain English)
                         {aiExplanation && <span className="ml-2 text-xs bg-indigo-600 dark:bg-indigo-500 text-white px-2 py-0.5 rounded">AI-Generated</span>}
                       </summary>
                       <div className="mt-4 text-sm text-indigo-900 dark:text-indigo-200 space-y-3 leading-relaxed">
-                        {showApiKeyPrompt && !aiExplanation ? (
+                        {/* AI Explanation Button */}
+                        {!aiExplanation && !aiExplanationLoading && (
+                          <div className="mb-4 pb-4 border-b border-indigo-200 dark:border-indigo-700">
+                            <button
+                              onClick={generateAiExplanation}
+                              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                            >
+                              <Zap className="w-4 h-4" />
+                              Generate AI Explanation (Uses Your Groq API Key)
+                            </button>
+                          </div>
+                        )}
+
+                        {showApiKeyPrompt && !aiExplanation && !aiExplanationLoading ? (
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border-2 border-indigo-300 dark:border-indigo-600">
                             <div className="flex items-start gap-3 mb-4">
                               <Zap className="w-6 h-6 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-1" />
