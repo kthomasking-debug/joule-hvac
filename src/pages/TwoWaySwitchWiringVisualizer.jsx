@@ -260,7 +260,7 @@ Panel neutral  ──────────┬──────────�
       </main>
 
       {/* AI Explanation */}
-      <div style={{ maxWidth: 1150, margin: "14px auto" }}>
+      <div style={{ margin: "10px auto" }}>
         <AIExplanation
           title="Explanation (Plain English)"
           prompt={`You are viewing an animated educational visualizer for 3-way switch wiring. Explain what this visualization demonstrates in plain, conversational English:
@@ -302,30 +302,47 @@ function Card({ title, children }) {
 }
 
 function SwitchToggle({ label, position, setPosition, hintLeft, hintRight }) {
+  const isHot = position === 0;
   return (
     <div style={styles.toggleCard}>
       <div style={styles.toggleLabel}>{label}</div>
-      <div style={styles.toggleRow}>
-        <button
-          onClick={() => setPosition(0)}
-          style={{
-            ...styles.toggleBtn,
-            ...(position === 0 ? styles.toggleBtnOn : {}),
-          }}
-        >
-          UP
-          <div style={styles.toggleHint}>{hintLeft}</div>
-        </button>
-        <button
-          onClick={() => setPosition(1)}
-          style={{
-            ...styles.toggleBtn,
-            ...(position === 1 ? styles.toggleBtnOn : {}),
-          }}
-        >
-          DOWN
-          <div style={styles.toggleHint}>{hintRight}</div>
-        </button>
+      <div style={styles.switchPlate}>
+        {/* Plate background */}
+        <div style={styles.plateBg}>
+          {/* Left position (UP) */}
+          <div
+            onClick={() => setPosition(0)}
+            style={{
+              ...styles.switchPos,
+              background: isHot ? "#dc2626" : "#10b981",
+              opacity: isHot ? 1 : 0.6,
+            }}
+          >
+            UP
+          </div>
+
+          {/* Right position (DOWN) */}
+          <div
+            onClick={() => setPosition(1)}
+            style={{
+              ...styles.switchPos,
+              background: !isHot ? "#dc2626" : "#10b981",
+              opacity: !isHot ? 1 : 0.6,
+            }}
+          >
+            DOWN
+          </div>
+        </div>
+
+        {/* Hints below */}
+        <div style={styles.switchHints}>
+          <div style={{ opacity: isHot ? 1 : 0.5, fontSize: 11, fontWeight: 600 }}>
+            {hintLeft}
+          </div>
+          <div style={{ opacity: !isHot ? 1 : 0.5, fontSize: 11, fontWeight: 600 }}>
+            {hintRight}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -548,56 +565,55 @@ function LampVisual({ on }) {
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: 18,
+    padding: 12,
     background: "#0b1020",
     color: "#e8ecff",
     fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
   },
   header: {
-    maxWidth: 1150,
-    margin: "0 auto 14px",
-    padding: 16,
-    borderRadius: 16,
+    margin: "0 auto 10px",
+    padding: 12,
+    borderRadius: 12,
     background: "rgba(255,255,255,0.06)",
     border: "1px solid rgba(255,255,255,0.10)",
   },
-  titleRow: { display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" },
-  h1: { margin: 0, fontSize: 20, fontWeight: 850, letterSpacing: 0.2 },
-  sub: { marginTop: 6, marginBottom: 0, opacity: 0.85, lineHeight: 1.35 },
-  badges: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+  titleRow: { display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" },
+  h1: { margin: 0, fontSize: 18, fontWeight: 850, letterSpacing: 0.2 },
+  sub: { marginTop: 4, marginBottom: 0, opacity: 0.85, lineHeight: 1.35 },
+  badges: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   badge: {
     display: "flex",
-    gap: 8,
+    gap: 6,
     alignItems: "center",
-    padding: "8px 10px",
+    padding: "6px 8px",
     borderRadius: 999,
     background: "rgba(0,0,0,0.25)",
     border: "1px solid rgba(255,255,255,0.10)",
     fontSize: 13,
   },
-  controls: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 },
+  controls: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 },
   note: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 10,
     background: "rgba(80,160,255,0.10)",
     border: "1px solid rgba(80,160,255,0.25)",
     lineHeight: 1.35,
     fontSize: 13.5,
   },
-  main: { maxWidth: 1150, margin: "0 auto" },
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 },
+  main: { margin: "0 auto" },
+  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 },
   card: {
-    borderRadius: 16,
+    borderRadius: 12,
     background: "rgba(255,255,255,0.05)",
     border: "1px solid rgba(255,255,255,0.10)",
-    padding: 14,
+    padding: 10,
   },
-  cardTitle: { fontWeight: 800, marginBottom: 10 },
+  cardTitle: { fontWeight: 800, marginBottom: 8 },
   pre: {
     margin: 0,
-    padding: 12,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
     background: "rgba(0,0,0,0.35)",
     border: "1px solid rgba(255,255,255,0.10)",
     overflowX: "auto",
@@ -613,39 +629,52 @@ const styles = {
   kicker: { fontSize: 12, opacity: 0.85, marginBottom: 6, fontWeight: 700 },
 
   toggleCard: {
-    padding: 12,
-    borderRadius: 14,
+    padding: 10,
+    borderRadius: 12,
     background: "rgba(0,0,0,0.22)",
     border: "1px solid rgba(255,255,255,0.10)",
   },
-  toggleLabel: { fontWeight: 800, marginBottom: 8, fontSize: 13.5 },
-  toggleRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
-  toggleBtn: {
-    borderRadius: 12,
-    padding: "10px 10px",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#e8ecff",
-    cursor: "pointer",
-    textAlign: "left",
+  toggleLabel: { fontWeight: 800, marginBottom: 6, fontSize: 13.5 },
+  switchPlate: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+  },
+  plateBg: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    width: "100%",
+  },
+  switchPos: {
+    padding: "8px 12px",
+    borderRadius: 8,
     fontWeight: 800,
+    fontSize: 12,
+    textAlign: "center",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+    border: "2px solid rgba(255,255,255,0.1)",
   },
-  toggleBtnOn: {
-    background: "rgba(124,255,124,0.12)",
-    border: "1px solid rgba(124,255,124,0.30)",
+  switchHints: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    width: "100%",
+    textAlign: "center",
   },
-  toggleHint: { fontSize: 11, opacity: 0.8, marginTop: 4, fontWeight: 600 },
 
   visualRow: { display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" },
   device: {
     flex: "0 0 auto",
     width: 320,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     background: "rgba(0,0,0,0.22)",
     border: "1px solid rgba(255,255,255,0.10)",
   },
-  deviceHdr: { marginBottom: 8 },
+  deviceHdr: { marginBottom: 6 },
   deviceTitle: { fontWeight: 900 },
   deviceSub: { fontSize: 12, opacity: 0.8 },
 
@@ -655,22 +684,22 @@ const styles = {
   bundle: {
     flex: "0 0 auto",
     width: 420,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     background: "rgba(0,0,0,0.22)",
     border: "1px solid rgba(255,255,255,0.10)",
   },
-  bundleHdr: { display: "flex", gap: 8, alignItems: "center", fontWeight: 900, marginBottom: 8 },
+  bundleHdr: { display: "flex", gap: 8, alignItems: "center", fontWeight: 900, marginBottom: 6 },
   travelerRow: { display: "grid", gridTemplateColumns: "1fr", gap: 10 },
   bundleNote: { marginTop: 10, fontSize: 12, opacity: 0.8, lineHeight: 1.35 },
 
   traveler: {
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 12,
+    padding: 8,
     background: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.08)",
   },
-  travelerTop: { display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 },
+  travelerTop: { display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 },
   wireTrack: { position: "relative", height: 16, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" },
   wire: { height: "100%", width: "100%", borderRadius: 999 },
   wireHot: { background: "rgba(124,255,124,0.40)" },
@@ -680,14 +709,14 @@ const styles = {
   lamp: {
     flex: "0 0 auto",
     width: 200,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     background: "rgba(0,0,0,0.22)",
     border: "1px solid rgba(255,255,255,0.10)",
     display: "flex",
     flexDirection: "column",
   },
-  lampHdr: { fontWeight: 900, marginBottom: 6 },
+  lampHdr: { fontWeight: 900, marginBottom: 4 },
   lampBody: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center" },
   bulbWrap: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   lampText: { fontWeight: 1000, letterSpacing: 1, fontSize: 14 },
@@ -696,5 +725,5 @@ const styles = {
   mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace" },
   mini: { fontSize: 11.5 },
 
-  footer: { maxWidth: 1150, margin: "14px auto 0", opacity: 0.7, fontSize: 12.5 },
+  footer: { margin: "10px auto 0", opacity: 0.7, fontSize: 12.5 },
 };

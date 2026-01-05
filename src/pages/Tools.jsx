@@ -166,14 +166,6 @@ export default function Tools() {
       description: "Electrical wiring and troubleshooting tools",
       tools: [
         {
-          path: "/tools/two-way-switch-explainer",
-          name: "Two-Way Switch Explainer",
-          label: "Two-Way Switch Explainer",
-          icon: Cable,
-          description: "Interactive explainer for 3-way switch wiring, phantom voltage, neutral connections, and NEC code references.",
-          color: "orange",
-        },
-        {
           path: "/tools/two-way-switch-wiring-visualizer",
           name: "Two-Way Switch Wiring Visualizer",
           label: "Two-Way Switch Wiring Visualizer",

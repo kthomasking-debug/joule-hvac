@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Info, Zap, Loader } from "lucide-react";
+import { Info, Zap, Loader, Send, Trash2 } from "lucide-react";
 
 /**
  * Reusable AI Explanation Component
@@ -18,6 +18,9 @@ export default function AIExplanation({ title = "Explanation (Plain English)", p
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState([]);
 
   const handleSaveApiKey = async () => {
     if (!tempApiKey.trim()) return;
@@ -69,6 +72,7 @@ export default function AIExplanation({ title = "Explanation (Plain English)", p
       
       if (result.success && result.message) {
         setAiExplanation(result.message);
+        setConversationHistory([]);
       }
     } catch (err) {
       console.error("AI explanation error:", err);
@@ -76,6 +80,59 @@ export default function AIExplanation({ title = "Explanation (Plain English)", p
     } finally {
       setAiExplanationLoading(false);
     }
+  };
+
+  const sendFollowUpQuestion = async () => {
+    if (!followUpQuestion.trim()) return;
+
+    const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+    if (!groqApiKey || !groqApiKey.trim()) {
+      setShowApiKeyPrompt(true);
+      return;
+    }
+
+    setFollowUpLoading(true);
+    
+    try {
+      const { askJouleFallback } = await import("../lib/groqAgent");
+      const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
+      
+      // Build conversation context
+      let fullPrompt = `You are having a follow-up conversation about the previous explanation.\n\n`;
+      fullPrompt += `Original explanation:\n${aiExplanation}\n\n`;
+      fullPrompt += `User follow-up question: ${followUpQuestion}\n\n`;
+      fullPrompt += `Please answer the follow-up question in plain, conversational English for a homeowner. Reference the original explanation when relevant.`;
+
+      const result = await askJouleFallback(fullPrompt, groqApiKey, model);
+      
+      if (result.success && result.message) {
+        const updatedHistory = [
+          ...conversationHistory,
+          {
+            role: "user",
+            content: followUpQuestion,
+          },
+          {
+            role: "assistant",
+            content: result.message,
+          },
+        ];
+        
+        // Keep only last 8 messages (rolling window)
+        const trimmedHistory = updatedHistory.slice(-8);
+        setConversationHistory(trimmedHistory);
+        setFollowUpQuestion("");
+      }
+    } catch (err) {
+      console.error("Follow-up question error:", err);
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const clearConversation = () => {
+    setConversationHistory([]);
+    setFollowUpQuestion("");
   };
 
   return (
@@ -146,7 +203,72 @@ export default function AIExplanation({ title = "Explanation (Plain English)", p
             <span>Generating explanation...</span>
           </div>
         ) : aiExplanation ? (
-          <div className="whitespace-pre-line">{aiExplanation}</div>
+          <div className="space-y-4">
+            <div className="whitespace-pre-line">{aiExplanation}</div>
+
+            {/* Follow-up conversation terminal */}
+            <div className="mt-6 pt-4 border-t border-indigo-200 dark:border-indigo-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">Follow-up Questions</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {conversationHistory.length > 0 && `${conversationHistory.length} messages`}
+                  </span>
+                  {conversationHistory.length > 0 && (
+                    <button
+                      onClick={clearConversation}
+                      className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center gap-1"
+                      title="Clear conversation history"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden">
+                {/* Conversation history */}
+                <div className="max-h-64 overflow-y-auto p-3 space-y-3">
+                  {conversationHistory.length === 0 ? (
+                    <div className="text-gray-500 text-xs italic">Ask a follow-up question...</div>
+                  ) : (
+                    conversationHistory.map((msg, idx) => (
+                      <div key={idx} className={`text-sm ${msg.role === "user" ? "text-blue-400" : "text-green-400"}`}>
+                        <div className="font-semibold">{msg.role === "user" ? "You:" : "AI:"}</div>
+                        <div className="whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Input area */}
+                <div className="border-t border-gray-700 p-3 bg-gray-850">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={followUpQuestion}
+                      onChange={(e) => setFollowUpQuestion(e.target.value)}
+                      placeholder="Ask a follow-up question..."
+                      className="flex-1 px-3 py-2 rounded text-sm bg-gray-800 text-gray-100 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && followUpQuestion.trim() && !followUpLoading) {
+                          sendFollowUpQuestion();
+                        }
+                      }}
+                      disabled={followUpLoading}
+                    />
+                    <button
+                      onClick={sendFollowUpQuestion}
+                      disabled={!followUpQuestion.trim() || followUpLoading}
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded font-semibold text-sm transition-colors flex items-center gap-2"
+                    >
+                      {followUpLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </details>
