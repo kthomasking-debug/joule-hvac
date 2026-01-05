@@ -471,7 +471,7 @@ export default function EnergyPlusLoadCalc() {
               </button>
 
               {/* Calculation Methodology */}
-              {results.method === "simplified" && (
+              {(results.method === "simplified" || results.method === "simplified_manual_j") && (
                 <details className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6 border border-gray-200 dark:border-gray-700 mt-6">
                   <summary className="cursor-pointer font-semibold text-gray-900 dark:text-white text-lg mb-4 flex items-center gap-2">
                     <Calculator className="w-5 h-5" />
