@@ -38,6 +38,10 @@ export default function EnergyPlusLoadCalc() {
   const [ragLoading, setRagLoading] = useState(false);
   const [showRAGSearch, setShowRAGSearch] = useState(false);
 
+  // AI explanation state
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [aiExplanationLoading, setAiExplanationLoading] = useState(false);
+
   // Form state
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 2000);
   const [ceilingHeight, setCeilingHeight] = useState(userSettings.ceilingHeight || 8);
@@ -113,11 +117,66 @@ export default function EnergyPlusLoadCalc() {
       // Use frontend calculation (no backend required)
       const data = calculateLoadSimplified(params);
       setResults(data);
+      
+      // Generate AI explanation based on results
+      generateAiExplanation(data, params);
     } catch (err) {
       setError(err.message || "Calculation failed. Please check your inputs and try again.");
       console.error("Load calculation error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateAiExplanation = async (calculationResults, inputParams) => {
+    const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+    
+    // Skip if no API key
+    if (!groqApiKey || !groqApiKey.trim()) {
+      setAiExplanation(null);
+      return;
+    }
+
+    setAiExplanationLoading(true);
+    
+    try {
+      const { askJouleFallback } = await import("../lib/groqAgent");
+      const model = typeof window !== "undefined" ? localStorage.getItem("groqModel") || "llama-3.3-70b-versatile" : "llama-3.3-70b-versatile";
+      
+      const prompt = `Explain this HVAC load calculation in plain, conversational English:
+
+Building: ${inputParams.squareFeet} sq ft, ${inputParams.ceilingHeight}' ceilings
+Insulation: ${inputParams.insulationLevel}x multiplier (0.65=Good, 1.0=Average, 1.4=Poor)
+Climate Zone: ${inputParams.climateZone}
+Design Temps: ${calculationResults.designHeatingTemp}°F heating, ${calculationResults.designCoolingTemp}°F cooling
+
+Results:
+- Heating Load: ${calculationResults.heatingLoadBtuHr.toLocaleString()} BTU/hr (${calculationResults.heatingTons} tons)
+- Cooling Load: ${calculationResults.coolingLoadBtuHr.toLocaleString()} BTU/hr (${calculationResults.coolingTons} tons)
+- Recommended: ${Math.max(calculationResults.heatingTons, calculationResults.coolingTons)} tons
+
+Breakdown:
+Heating - Envelope: ${calculationResults.breakdown.heating.envelope.toLocaleString()} BTU/hr, Windows: ${calculationResults.breakdown.heating.windows.toLocaleString()} BTU/hr, Infiltration: ${calculationResults.breakdown.heating.infiltration.toLocaleString()} BTU/hr
+Cooling - Envelope: ${calculationResults.breakdown.cooling.envelope.toLocaleString()} BTU/hr, Windows: ${calculationResults.breakdown.cooling.windows.toLocaleString()} BTU/hr, Solar: ${calculationResults.breakdown.cooling.solar.toLocaleString()} BTU/hr, Infiltration: ${calculationResults.breakdown.cooling.infiltration.toLocaleString()} BTU/hr
+
+Write a conversational 3-4 paragraph explanation covering:
+1. What the base heat loss coefficient (0.32) means and how insulation affects it
+2. Why the design temperatures matter and what they represent
+3. How the heating/cooling calculations work and the key factors
+4. What these numbers mean for equipment sizing
+
+Write like you're explaining to a homeowner, not an engineer. Be specific about THIS calculation's actual numbers.`;
+
+      const result = await askJouleFallback(prompt, groqApiKey, model);
+      
+      if (result.success && result.message) {
+        setAiExplanation(result.message);
+      }
+    } catch (err) {
+      console.error("AI explanation error:", err);
+      // Silently fail - user can still see static explanation
+    } finally {
+      setAiExplanationLoading(false);
     }
   };
 
@@ -498,34 +557,51 @@ export default function EnergyPlusLoadCalc() {
                       </div>
                     </div>
 
-                    {/* Stream of consciousness explanation */}
+                    {/* AI-generated or static explanation */}
                     <details className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-700 mt-4">
                       <summary className="cursor-pointer font-semibold text-indigo-900 dark:text-indigo-100 text-sm flex items-center gap-2">
                         <Info className="w-4 h-4" />
                         Explanation (Plain English)
+                        {aiExplanation && <span className="ml-2 text-xs bg-indigo-600 dark:bg-indigo-500 text-white px-2 py-0.5 rounded">AI-Generated</span>}
                       </summary>
                       <div className="mt-4 text-sm text-indigo-900 dark:text-indigo-200 space-y-3 leading-relaxed">
-                        <p>
-                          Alright, so here's what's actually happening with these numbers. The 0.32 BTU per square foot per degree Fahrenheit - that's basically how much heat your house loses through the walls, roof, and windows for every degree difference between inside and outside. It's an average from the DOE, so it's a decent starting point for most houses.
-                        </p>
-                        <p>
-                          The insulation multiplier - that's where your actual house comes in. If you've got good insulation (R-19 walls, R-38 roof), you're looking at 0.65, which means you're losing less heat. Poor insulation? That's 1.4, so you're losing way more. The better your insulation, the lower that number gets, and the less heating you need.
-                        </p>
-                        <p>
-                          For heating, we're assuming you want 70°F inside. That's the ASHRAE comfort standard - most people are comfortable around there. Then we subtract the design heating temp for your climate zone. In Zone 5 (Chicago), that's 0°F - meaning 1% of the hours in winter are colder than that. So your heating system needs to handle a 70°F temperature difference (70 inside minus 0 outside). Multiply that by your square footage and the heat loss factor, and boom - that's how many BTUs per hour you need.
-                        </p>
-                        <p>
-                          Cooling's a bit different. We assume 75°F inside (again, ASHRAE standard). The design cooling temp for Zone 5 is 88°F, so that's a 13°F difference. But here's the thing - you've also got internal gains. People, lights, appliances, all that stuff is putting heat into the house. That's why we multiply by 1.2 - it adds 20% to account for all that extra heat. Without that multiplier, you'd undersize your AC and it'd run constantly trying to keep up.
-                        </p>
-                        <p>
-                          The design temps are the key here. They're not the coldest or hottest it ever gets - they're the temps that happen 1% of the time. So 99% of the time, it's warmer than the design heating temp, and 99% of the time it's cooler than the design cooling temp. That's how you size equipment - you want it to handle the extreme cases, but not be oversized for normal operation.
-                        </p>
-                        <p>
-                          One ton equals 12,000 BTU per hour. That's the standard unit for HVAC sizing. So if your heating load comes out to 48,000 BTU/hr, that's 4 tons. Your cooling load might be different - maybe 3.5 tons. You size to whichever is bigger, because the equipment needs to handle both.
-                        </p>
-                        <p className="text-xs italic text-indigo-700 dark:text-indigo-300">
-                          Note: This is a simplified calculation. Real Manual J takes into account window orientation, air infiltration, duct losses, and a bunch of other factors. But for a quick estimate, this gets you in the ballpark. If you're actually buying equipment, get a proper Manual J done by a contractor or use the full EnergyPlus simulation.
-                        </p>
+                        {aiExplanationLoading ? (
+                          <div className="flex items-center justify-center py-8 gap-2">
+                            <Loader className="w-5 h-5 animate-spin" />
+                            <span>Generating explanation...</span>
+                          </div>
+                        ) : aiExplanation ? (
+                          <div className="whitespace-pre-line">{aiExplanation}</div>
+                        ) : (
+                          <>
+                            <p>
+                              Alright, so here's what's actually happening with these numbers. The 0.32 BTU per square foot per degree Fahrenheit - that's basically how much heat your house loses through the walls, roof, and windows for every degree difference between inside and outside. It's an average from the DOE, so it's a decent starting point for most houses.
+                            </p>
+                            <p>
+                              The insulation multiplier - that's where your actual house comes in. If you've got good insulation (R-19 walls, R-38 roof), you're looking at 0.65, which means you're losing less heat. Poor insulation? That's 1.4, so you're losing way more. The better your insulation, the lower that number gets, and the less heating you need.
+                            </p>
+                            <p>
+                              For heating, we're assuming you want 70°F inside. That's the ASHRAE comfort standard - most people are comfortable around there. Then we subtract the design heating temp for your climate zone. In Zone 5 (Chicago), that's 0°F - meaning 1% of the hours in winter are colder than that. So your heating system needs to handle a 70°F temperature difference (70 inside minus 0 outside). Multiply that by your square footage and the heat loss factor, and boom - that's how many BTUs per hour you need.
+                            </p>
+                            <p>
+                              Cooling's a bit different. We assume 75°F inside (again, ASHRAE standard). The design cooling temp for Zone 5 is 88°F, so that's a 13°F difference. But here's the thing - you've also got internal gains. People, lights, appliances, all that stuff is putting heat into the house. That's why we multiply by 1.2 - it adds 20% to account for all that extra heat. Without that multiplier, you'd undersize your AC and it'd run constantly trying to keep up.
+                            </p>
+                            <p>
+                              The design temps are the key here. They're not the coldest or hottest it ever gets - they're the temps that happen 1% of the time. So 99% of the time, it's warmer than the design heating temp, and 99% of the time it's cooler than the design cooling temp. That's how you size equipment - you want it to handle the extreme cases, but not be oversized for normal operation.
+                            </p>
+                            <p>
+                              One ton equals 12,000 BTU per hour. That's the standard unit for HVAC sizing. So if your heating load comes out to 48,000 BTU/hr, that's 4 tons. Your cooling load might be different - maybe 3.5 tons. You size to whichever is bigger, because the equipment needs to handle both.
+                            </p>
+                            <p className="text-xs italic text-indigo-700 dark:text-indigo-300">
+                              Note: This is a simplified calculation. Real Manual J takes into account window orientation, air infiltration, duct losses, and a bunch of other factors. But for a quick estimate, this gets you in the ballpark. If you're actually buying equipment, get a proper Manual J done by a contractor or use the full EnergyPlus simulation.
+                            </p>
+                            {!aiExplanation && (
+                              <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-700">
+                                💡 Tip: Add your Groq API key in Settings to get AI-generated explanations tailored to your specific calculation results.
+                              </p>
+                            )}
+                          </>
+                        )}
                       </div>
                     </details>
                   </div>
