@@ -20,6 +20,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * EcobeeReplayLastNight
@@ -881,6 +882,43 @@ export default function EcobeeReplayLastNight() {
             </ol>
           </div>
         </div>
+
+        {/* AI Explanation */}
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`Explain this heat pump auxiliary heat staging comparison in plain, conversational English:
+
+Simulation Setup:
+- Outdoor temp overnight: ${outdoorF}°F low
+- Setpoint: ${setpointF}°F
+- Heat loss factor: ${heatLossFactor} BTU/hr/°F
+- HP heating rate: ${hpHeatRate} BTU/hr
+- Aux heating rate: ${auxHeatRate} BTU/hr
+
+AUTO Mode (Conservative):
+- Compressor minimum outdoor: ${compMinOutdoorAuto}°F
+- Aux maximum outdoor: ${auxMaxOutdoorAuto}°F
+- Aux simultaneous: ${auxSimultaneousAuto ? "Enabled" : "Disabled"}
+
+MANUAL Mode (User-Controlled):
+- Compressor minimum outdoor: ${compMinOutdoorManual}°F
+- Aux maximum outdoor: ${auxMaxOutdoorManual}°F
+- Aux simultaneous: ${auxSimultaneousManual ? "Enabled" : "Disabled"}
+
+Results:
+- Aux hours avoided (MANUAL vs AUTO): ${auxAvoidedHours >= 0 ? "+" : ""}${auxAvoidedHours.toFixed(1)} hours
+- Cost index change: ${costDeltaPct >= 0 ? "+" : ""}${costDeltaPct.toFixed(1)}%
+- MANUAL held setpoint: ${sumManual?.holds ? "YES" : "NO"}
+- Worst behind setpoint: ${sumManual ? sumManual.worstBehind.toFixed(1) : "N/A"}°F
+
+Write a conversational 3-4 paragraph explanation covering:
+1. What the AUTO vs MANUAL staging modes mean and why the defaults are conservative
+2. How the compressor min/aux max thresholds affect when aux heat engages
+3. What the results show about cost savings vs comfort (holding setpoint)
+4. Practical recommendations for homeowners trying to reduce aux heat usage
+
+Be specific about THESE numbers and explain why "aux at 40°F" is expensive.`}
+        />
       </div>
     </div>
   );
