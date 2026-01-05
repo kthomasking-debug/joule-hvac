@@ -86,10 +86,10 @@ function MiniChart({
   }, [data, yMin, yMax, w, h, pad]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       <div className="mb-2 flex items-baseline justify-between">
-        <div className="text-sm font-semibold text-slate-800">{title}</div>
-        <div className="text-xs text-slate-500">
+        <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">
           {fmt(yMin)}{unit} → {fmt(yMax)}{unit}
         </div>
       </div>
@@ -102,27 +102,27 @@ function MiniChart({
             x2={w - pad}
             y1={pad + t * (h - pad * 2)}
             y2={pad + t * (h - pad * 2)}
-            className="stroke-slate-100"
+            className="stroke-slate-100 dark:stroke-slate-700"
             strokeWidth="1"
           />
         ))}
 
         {/* axis */}
-        <line x1={pad} x2={pad} y1={pad} y2={h - pad} className="stroke-slate-200" strokeWidth="2" />
-        <line x1={pad} x2={w - pad} y1={h - pad} y2={h - pad} className="stroke-slate-200" strokeWidth="2" />
+        <line x1={pad} x2={pad} y1={pad} y2={h - pad} className="stroke-slate-200 dark:stroke-slate-600" strokeWidth="2" />
+        <line x1={pad} x2={w - pad} y1={h - pad} y2={h - pad} className="stroke-slate-200 dark:stroke-slate-600" strokeWidth="2" />
 
         {/* line */}
         <polyline
           points={points}
           fill="none"
-          className="stroke-slate-700"
+          className="stroke-slate-700 dark:stroke-slate-300"
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
 
         {/* last value */}
-        <text x={w - pad} y={pad + 10} textAnchor="end" className="fill-slate-500" fontSize="12">
+        <text x={w - pad} y={pad + 10} textAnchor="end" className="fill-slate-500 dark:fill-slate-400" fontSize="12">
           last: {fmt(data[data.length - 1], 1)}{unit}
         </text>
       </svg>
@@ -132,17 +132,17 @@ function MiniChart({
 
 function ModeStrip({ modes }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-800">Equipment mode over the night</div>
-        <div className="text-xs text-slate-500">(each block = 1 hour)</div>
+        <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">Equipment mode over the night</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">(each block = 1 hour)</div>
       </div>
       <div className="flex gap-1">
         {modes.map((m, i) => (
           <div key={i} className={`h-7 flex-1 rounded ${modeColor(m)}`} title={`Hour ${i}: ${modeLabel(m)}`} />
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700 dark:text-slate-300 sm:grid-cols-4">
         {([
           ["HP", "Heat Pump", "bg-orange-400"],
           ["AUX", "Aux Heat", "bg-red-500"],
@@ -170,13 +170,13 @@ function Slider({
   hint,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <div className="text-sm font-semibold text-slate-800">{label}</div>
-          {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+          <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</div>
+          {hint ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</div> : null}
         </div>
-        <div className="text-sm font-mono text-slate-700">
+        <div className="text-sm font-mono text-slate-700 dark:text-slate-300">
           {fmt(value, step && step < 1 ? 1 : 0)}{suffix ?? ""}
         </div>
       </div>
@@ -189,7 +189,7 @@ function Slider({
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       />
-      <div className="mt-2 flex justify-between text-xs text-slate-400">
+      <div className="mt-2 flex justify-between text-xs text-slate-400 dark:text-slate-500">
         <span>
           {min}
           {suffix}
@@ -210,11 +210,11 @@ function Toggle({
   hint,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm font-semibold text-slate-800">{label}</div>
-          {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+          <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</div>
+          {hint ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</div> : null}
         </div>
         <button
           onClick={() => onChange(!checked)}
@@ -465,16 +465,16 @@ export default function EcobeeAuxHeatSimulatorPage() {
   ]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <header className="mb-8">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700">
             Ecobee / Heat Pump / Aux Heat
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
             Why did my electric bill explode? (Visual simulator)
           </h1>
-          <p className="mt-2 max-w-3xl text-slate-600">
+          <p className="mt-2 max-w-3xl text-slate-600 dark:text-slate-400">
             Most "6× bill" stories are the same: the thermostat is letting <span className="font-semibold">aux heat (resistance strips)</span> do
             the heavy lifting because thresholds are conservative (often <span className="font-mono">Aux max = 40°F</span> and
             <span className="font-mono"> Compressor min = 30°F</span>). This page turns that logic into a simple overnight simulation.
@@ -483,9 +483,9 @@ export default function EcobeeAuxHeatSimulatorPage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-1 space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold text-slate-900">The recommended moves</div>
-              <ol className="mt-3 space-y-2 text-sm text-slate-700">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">The recommended moves</div>
+              <ol className="mt-3 space-y-2 text-sm text-slate-700 dark:text-slate-300">
                 <li>
                   <span className="font-semibold">1)</span> Set <span className="font-mono">Configure Staging → MANUAL</span> (stop "overly conservative" auto behavior).
                 </li>
@@ -502,7 +502,7 @@ export default function EcobeeAuxHeatSimulatorPage() {
                   <span className="font-semibold">5)</span> Watch a cold night: <span className="font-semibold">does indoor temp hold setpoint?</span> If not, allow a little aux.
                 </li>
               </ol>
-              <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+              <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 p-3 text-xs text-slate-600 dark:text-slate-400">
                 This sim is intentionally simplified. It's meant to teach the *shape* of the logic, not replace your installer.
               </div>
             </div>
@@ -675,11 +675,11 @@ export default function EcobeeAuxHeatSimulatorPage() {
 
             <ModeStrip modes={sim.modes} />
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">What happened?</div>
-                  <div className="mt-2 text-sm text-slate-700">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">What happened?</div>
+                  <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
                     <div className="flex flex-wrap gap-x-6 gap-y-2">
                       <span>
                         HP hours: <span className="font-mono font-semibold">{sim.hpHours}</span>
@@ -697,10 +697,10 @@ export default function EcobeeAuxHeatSimulatorPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <div className="text-xs font-semibold text-slate-700">Relative cost vs conservative Auto</div>
-                  <div className="mt-1 text-2xl font-bold text-slate-900">{fmt(pain.relativeVsAuto, 0)}%</div>
-                  <div className="mt-1 text-xs text-slate-600">
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/50 p-4">
+                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">Relative cost vs conservative Auto</div>
+                  <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{fmt(pain.relativeVsAuto, 0)}%</div>
+                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                     {pain.relativeVsAuto < 100
                       ? `~${fmt(100 - pain.relativeVsAuto, 0)}% cheaper than the "aux party starts at 40°F" setup.`
                       : `More expensive than the conservative defaults (usually because aux is running a lot).`}
@@ -708,9 +708,9 @@ export default function EcobeeAuxHeatSimulatorPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-xl p-4 text-sm text-slate-800 ring-1 ring-slate-200">
+              <div className="mt-4 rounded-xl p-4 text-sm text-slate-800 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-slate-700">
                 <div className="font-semibold">Interpretation</div>
-                <ul className="mt-2 list-disc space-y-2 pl-5 text-slate-700">
+                <ul className="mt-2 list-disc space-y-2 pl-5 text-slate-700 dark:text-slate-300">
                   <li>
                     If the mode strip is mostly <span className="font-semibold">red</span> at outdoor temps in the 30s, your thresholds are
                     almost certainly too conservative.
@@ -728,21 +728,21 @@ export default function EcobeeAuxHeatSimulatorPage() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div
                     className={`rounded-xl p-3 text-sm ring-1 ${
-                      sim.heldSetpoint ? "bg-emerald-50 ring-emerald-200" : "bg-amber-50 ring-amber-200"
+                      sim.heldSetpoint ? "bg-emerald-50 dark:bg-emerald-900/20 ring-emerald-200 dark:ring-emerald-800" : "bg-amber-50 dark:bg-amber-900/20 ring-amber-200 dark:ring-amber-800"
                     }`}
                   >
                     <div className="font-semibold">
                       Setpoint hold: {sim.heldSetpoint ? "✅ Held" : "⚠️ Did not hold"}
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">
+                    <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                       {sim.heldSetpoint
                         ? "Nice. Try lowering Aux Max (or disabling simultaneous) to reduce aux usage further."
                         : "If this matches reality, either raise aux usage slightly (or enable simultaneous temporarily) OR address envelope/heat pump capacity."}
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
-                    <div className="font-semibold text-slate-700">Quick calibration trick</div>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-900/50 p-3 text-xs text-slate-600 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">
+                    <div className="font-semibold text-slate-700 dark:text-slate-300">Quick calibration trick</div>
                     <div className="mt-1">
                       Set outdoor temps to match last night, then move <span className="font-mono">House heat loss</span> until the mode strip
                       "feels like" your beestat runtime. Now the sim becomes a decent twin for experimenting safely.
@@ -751,7 +751,7 @@ export default function EcobeeAuxHeatSimulatorPage() {
                 </div>
               </div>
 
-              <div className="mt-4 text-xs text-slate-500">
+              <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">
                 Disclaimer: This is an educational simulator. Real systems have defrost cycles, variable capacity, temperature-dependent
                 COP/capacity, duct losses, and installer-specific wiring/staging.
               </div>
@@ -783,7 +783,7 @@ Please explain in 3-4 paragraphs for a homeowner:
 Use plain English and focus on practical implications for my energy bill.`}
         />
 
-        <footer className="mt-10 text-center text-xs text-slate-500">
+        <footer className="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
           Built for "why is aux running so much?" threads. Make the hidden thermostat logic visible.
         </footer>
       </div>
