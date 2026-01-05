@@ -978,6 +978,56 @@ Questions:
 2) If I move it to Ecobee ACC terminals, do I need to pull new thermostat wire (likely 18/7) so I can remove the PEK?
 3) Any recommended settings for min minutes/hr and lockouts for my climate/device?`}</pre>
             </Label>
+
+            <Label title="Controlling two accessories with Smart Thermostat Premium">
+              <div className="grid gap-3 leading-relaxed">
+                <div>
+                  <b>Smart Thermostat Premium can support two accessories at a time</b>, such as a humidifier and ventilator.
+                </div>
+
+                <div className="border-l-4 border-blue-500 pl-4 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-r-lg">
+                  <div className="font-bold mb-2">Good to Know:</div>
+                  <ul className="m-0 pl-4 space-y-1">
+                    <li>Since the PEK+ terminal is used, you cannot have two accessories if also using the Power Extender Kit or on a Fan Coil Unit with Pipe Sensor.</li>
+                    <li>You cannot connect two accessories of the same type.</li>
+                    <li>At least one Accessory must be a 1 Wire Accessory.</li>
+                    <li>If your Accessory is powered by the HVAC, then it is a 1 Wire Accessory.</li>
+                    <li>If your Accessory has isolated power (generally Ventilator systems) this is a 2 Wire Accessory.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-bold mb-2">Wiring your Smart Thermostat Premium with Dual Accessories</div>
+                  <div className="mb-2">When wiring the ecobee for dual accessories the ACC+, ACC- and PEK+ terminals are used.</div>
+                  <ul className="m-0 pl-4 space-y-1">
+                    <li><b>If you have two 1 Wire Accessories:</b> one will be connected to ACC+, and the other to PEK+</li>
+                    <li><b>If you have one 1 Wire, and one 2 wire Accessory:</b> the PEK+ is used for the 1 Wire, the ACC+ and ACC- is used for the 2 wire Accessory.</li>
+                  </ul>
+                  <div className="mt-2 text-sm opacity-85">Make a note of what accessory is connected to each terminal, as you will need to select this during configuration.</div>
+                </div>
+
+                <div>
+                  <div className="font-bold mb-2">Configuring your Smart Thermostat Premium with Dual Accessories</div>
+                  <div className="mb-2">In order to configure your ecobee for Dual Accessories, you'll need to select "I'm an ecobee Pro" during the initial equipment configuration.</div>
+                  <div className="text-sm opacity-85 mb-2">If you have already installed the ecobee, you will need to reconfigure after wiring the thermostat correctly.</div>
+                  <div className="font-semibold">Go to: Main Menu Hamburger menu icon → General Settings icon → Settings → Installation Settings → Equipment → Reconfigure Equipment</div>
+                </div>
+
+                <div className="border-l-4 border-green-500 pl-4 bg-green-50 dark:bg-green-900/20 p-3 rounded-r-lg">
+                  <div className="font-bold mb-2">From the Configuration menu:</div>
+                  <ol className="m-0 pl-4 space-y-1">
+                    <li>Select "I’m an ecobee Pro"</li>
+                    <li>Tap "I Understand"</li>
+                    <li>Tap "Skip" - If you are a Contractor and have a Pro Pin, you can enter it here instead of skipping</li>
+                    <li>After configuring the wiring, the screen prompt will ask: "Do you have an accessory installed?", Select "I have 2 accessories" and tap Next.</li>
+                    <li>Select your first accessory.</li>
+                    <li>Select terminals for the first accessory, the options will be: 1 Wire (PEK+), 1 wire (ACC+), 2 Wires (ACC+ & ACC-)</li>
+                    <li>Select your second accessory</li>
+                    <li>Select terminals for the second accessory and finish setup by following the prompts.</li>
+                  </ol>
+                </div>
+              </div>
+            </Label>
           </div>
         ) : null}
 

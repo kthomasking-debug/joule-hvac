@@ -785,24 +785,7 @@ function AppInner() {
     }
   }, [location.pathname]);
 
-  // Check if onboarding is completed and redirect if not
-  // MUST be called before any early returns to follow Rules of Hooks
-  React.useEffect(() => {
-    if (termsAccepted && isLoaded) {
-      try {
-        const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
-        // Only redirect if we're not already on onboarding or landing page
-        if (!hasCompletedOnboarding && 
-            location.pathname !== "/onboarding" && 
-            location.pathname !== "/" &&
-            !location.pathname.startsWith("/legal")) {
-          navigate("/onboarding");
-        }
-      } catch {
-        // Ignore localStorage errors
-      }
-    }
-  }, [termsAccepted, isLoaded, location.pathname, navigate]);
+  // Onboarding requirement removed - app opens directly to /home
 
   if (showSplash) {
     return <AnimatedSplash />;

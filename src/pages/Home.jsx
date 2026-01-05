@@ -61,6 +61,25 @@ const HomeDashboard = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const toolsSectionRef = useRef(null);
 
+  // Check if onboarding has been completed
+  const hasCompletedOnboarding = () => {
+    try {
+      return localStorage.getItem("hasCompletedOnboarding") === "true";
+    } catch {
+      return false;
+    }
+  };
+
+  // Handle clicks on main feature buttons - redirect to onboarding if not completed
+  const handleFeatureClick = (targetPath, event) => {
+    event.preventDefault();
+    if (!hasCompletedOnboarding()) {
+      navigate("/onboarding");
+    } else {
+      navigate(targetPath);
+    }
+  };
+
   // Track mouse position for glassmorphic glow (relative to tools section)
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -811,38 +830,38 @@ const HomeDashboard = () => {
         {/* Quick Links */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Top Row: Performance, Cost Forecaster, Analyze System */}
-          <Link
-            to="/analysis/energy-flow"
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors"
+          <button
+            onClick={(e) => handleFeatureClick("/analysis/energy-flow", e)}
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <Activity className="w-6 h-6 text-green-400" />
               <h3 className="text-lg font-semibold text-white">Performance</h3>
             </div>
             <p className="text-sm text-[#A7B0BA]">View heat pump performance and efficiency</p>
-          </Link>
+          </button>
 
-          <Link
-            to="/analysis/forecast"
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors"
+          <button
+            onClick={(e) => handleFeatureClick("/analysis/forecast", e)}
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-green-400" />
               <h3 className="text-lg font-semibold text-white">Cost Forecaster</h3>
             </div>
             <p className="text-sm text-[#A7B0BA]">Forecast weekly costs and optimize schedule</p>
-          </Link>
+          </button>
 
-          <Link
-            to="/analysis/analyzer"
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors"
+          <button
+            onClick={(e) => handleFeatureClick("/analysis/analyzer", e)}
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <BarChart3 className="w-6 h-6 text-green-400" />
               <h3 className="text-lg font-semibold text-white">Analyze System</h3>
             </div>
             <p className="text-sm text-[#A7B0BA]">Deep dive into system performance</p>
-          </Link>
+          </button>
 
           {/* Bottom Row: Monthly Forecast, Optimizer, Blueair Control */}
           {bridgeAvailable && jouleBridge.connected ? (

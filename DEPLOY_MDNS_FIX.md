@@ -69,3 +69,4 @@ ssh tom-pc@192.168.0.106 "sudo systemctl status prostat-bridge"
 
 
 
+
