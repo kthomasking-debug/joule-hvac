@@ -615,6 +615,11 @@ export default function EnergyPlusLoadCalc() {
                               >
                                 Go to Settings
                               </a>
+                              <button
+                                onClick={() => setShowApiKeyPrompt(false)}
+                                className="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                              >
+                                Show Static Explanation
                               </button>
                             </div>
                           </div>
