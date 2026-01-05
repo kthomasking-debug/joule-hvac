@@ -110,11 +110,13 @@ function Step({ n, title, sub }) {
 function DiagramBox({ title, ascii, footer }) {
   return (
     <div className="border border-gray-300 dark:border-gray-600 rounded-2xl overflow-hidden bg-white dark:bg-gray-800">
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700 font-bold">{title}</div>
-      <pre className="m-0 p-3.5 text-xs leading-5 overflow-x-auto bg-gray-50 dark:bg-gray-900">
-        {ascii}
-      </pre>
-      {footer ? <div className="p-3 border-t border-gray-200 dark:border-gray-700">{footer}</div> : null}
+      <div className="p-3 border-b border-gray-200 dark:border-gray-700 font-bold text-sm sm:text-base">{title}</div>
+      <div className="overflow-x-auto -mx-2 sm:mx-0">
+        <pre className="m-0 p-2 sm:p-3.5 text-[10px] sm:text-xs leading-5 overflow-x-auto bg-gray-50 dark:bg-gray-900 min-w-max">
+          {ascii}
+        </pre>
+      </div>
+      {footer ? <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-sm sm:text-base">{footer}</div> : null}
     </div>
   );
 }
@@ -511,15 +513,15 @@ export default function EcobeeVentilatorExplainerPage() {
 
   const bannerStyle = "border border-gray-300 dark:border-gray-600 rounded-2xl p-4 bg-gradient-to-b from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800";
 
-  const page = "font-sans p-4.5 text-slate-900 dark:text-slate-100";
+  const page = "font-sans p-3 sm:p-4.5 text-slate-900 dark:text-slate-100";
 
   return (
     <div className={page}>
       <div className={bannerStyle}>
-        <div className="flex justify-between gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-2xl font-black">Whole-Home Ventilator + Ecobee Premium</div>
-            <div className="opacity-80 mt-1.5">
+            <div className="text-xl sm:text-2xl font-black">Whole-Home Ventilator + Ecobee Premium</div>
+            <div className="opacity-80 mt-1.5 text-sm sm:text-base">
               Does it "just run whenever"? Or does Ecobee control it? (With diagrams + a relay simulator.)
             </div>
             <div className="mt-3">
@@ -545,9 +547,9 @@ export default function EcobeeVentilatorExplainerPage() {
       </div>
 
       {/* GLOBAL QUICK CONTROLS */}
-      <div className="mt-3.5 grid grid-cols-[1.2fr_0.8fr] gap-3.5">
+      <div className="mt-3.5 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-3.5">
         <Label title="Your Setup (adjust to match the OP)">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Wiring approach"
               value={config.wiringMode}
@@ -615,7 +617,7 @@ export default function EcobeeVentilatorExplainerPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <NumberField
               label="Ventilation target"
               value={config.minVentMinutesPerHour}
@@ -915,20 +917,20 @@ This removes the PEK and enables proper accessory control.
         {tab === "sim" ? (
           <div className="grid gap-3.5">
             <Label title="Relays / Contactors (open/close based on your calls + config)">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {relays.map((r) => (
                   <div
                     key={r.name}
                     className="border border-gray-300 dark:border-gray-600 rounded-2xl p-3 bg-white dark:bg-gray-800"
                   >
-                    <div className="flex justify-between gap-2">
+                    <div className="flex flex-col sm:flex-row justify-between gap-2">
                       <div className="font-black">{r.name}</div>
-                      <div className="flex gap-2 items-center">
+                      <div className="flex gap-2 items-center flex-wrap">
                         <Pill on={r.coilEnergized} text={`Coil ${r.coilEnergized ? "Energized" : "Off"}`} />
                         <Pill on={r.contactClosed} text={`Contact ${r.contactClosed ? "CLOSED" : "OPEN"}`} />
                       </div>
                     </div>
-                    <div className="opacity-85 mt-2 leading-6">{r.notes}</div>
+                    <div className="opacity-85 mt-2 leading-6 text-sm sm:text-base">{r.notes}</div>
                   </div>
                 ))}
               </div>
@@ -1018,16 +1020,18 @@ This removes the PEK and enables proper accessory control.
             </Label>
 
             <Label title="What the OP should say in the Reddit follow-up (copy/paste)">
-              <pre
-                className="m-0 p-3.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 overflow-x-auto text-sm leading-tight"
-              >{`Right now my whole-home vent is spliced into the thermostat G (green) wire, and I'm using the PEK.
+              <div className="overflow-x-auto -mx-2 sm:mx-0">
+                <pre
+                  className="m-0 p-3.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 overflow-x-auto text-xs sm:text-sm leading-tight min-w-max px-2 sm:px-3.5"
+                >{`Right now my whole-home vent is spliced into the thermostat G (green) wire, and I'm using the PEK.
 So the vent runs whenever the blower/fan runs (not independently).
 
 I want Ecobee to control it as a Ventilator/HRV/ERV (minutes-per-hour target).
 Questions:
 1) Does my vent control input expect a dry contact closure or a 24V signal?
 2) If I move it to Ecobee ACC terminals, do I need to pull new thermostat wire (likely 18/7) so I can remove the PEK?
-3) Any recommended settings for min minutes/hr and lockouts for my climate/device?`}</pre>
+3) Any recom  </div>
+            mended settings for min minutes/hr and lockouts for my climate/device?`}</pre>
             </Label>
 
             <Label title="Controlling two accessories with Smart Thermostat Premium">
