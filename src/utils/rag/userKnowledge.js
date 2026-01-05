@@ -176,7 +176,9 @@ export function searchUserKnowledge(query) {
       
       // Keyword matches in content
       keywords.forEach((kw) => {
-        const matches = (lowerContent.match(new RegExp(kw, "g")) || []).length;
+        // Escape special regex characters in keyword
+        const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const matches = (lowerContent.match(new RegExp(escapedKw, "g")) || []).length;
         score += matches * 2;
       });
       
