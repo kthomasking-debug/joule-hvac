@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import AIExplanation from "../components/AIExplanation";
 
 export default function TwoWaySwitchExplainer() {
   const [sw1, setSw1] = useState(0); // 0 = up, 1 = down
@@ -149,6 +150,29 @@ NEUTRAL PATH (ALWAYS CONTINUOUS)
           <li>✔️ Neutrals are tied together because they are not switched</li>
           <li>✔️ Either switch can change which traveler is hot</li>
         </ul>
+      </section>
+
+      {/* AI Explanation */}
+      <section>
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`You are viewing an educational visualizer about 3-way switch wiring. Explain what this visualization demonstrates in plain, conversational English:
+
+What the visualization currently shows:
+- Switch 1: ${sw1 ? "DOWN (COM connected to BLACK traveler)" : "UP (COM connected to RED traveler)"}
+- Switch 2: ${sw2 ? "DOWN (COM connected to BLACK traveler)" : "UP (COM connected to RED traveler)"}
+- Hot traveler: ${travelerHot}
+- Light status: ${lightOn ? "ON" : "OFF"}
+
+Educational concepts being demonstrated:
+1. Phantom voltage phenomenon: Why a high-impedance multimeter reads ~40V on the de-energized traveler due to electromagnetic induction between parallel conductors in the same cable
+2. Physics formula: V_induced = ω·M·I where ω=2πf (AC frequency), M=mutual inductance, I=current on hot conductor
+3. Why the phantom voltage disappears when you connect a load or ground
+4. Neutral wire design: Why neutrals splice through switch boxes (NEC requirement) and remain unswitched
+5. SPDT switch operation: How two single-pole double-throw switches create a 3-way circuit where either switch can control the light
+
+This is an educational tool teaching electrical theory - explain what someone is learning from this visualization in a conversational way. Focus on helping them understand why their multimeter readings at home match what this demo shows.`}
+        />
       </section>
     </div>
   );

@@ -183,6 +183,20 @@ export default function Tools() {
         },
       ],
     },
+    {
+      title: "Search Engine",
+      description: "Search HVAC knowledge base and documentation",
+      tools: [
+        {
+          path: "/tools/knowledge-base-search",
+          name: "Knowledge Base Search",
+          label: "Search Knowledge Base",
+          icon: Search,
+          description: "Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.",
+          color: "purple",
+        },
+      ],
+    },
   ];
 
   const colorClasses = {

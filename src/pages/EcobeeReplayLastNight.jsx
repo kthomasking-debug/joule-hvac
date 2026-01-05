@@ -889,21 +889,21 @@ export default function EcobeeReplayLastNight() {
           prompt={`Explain this heat pump auxiliary heat staging comparison in plain, conversational English:
 
 Simulation Setup:
-- Outdoor temp overnight: ${outdoorF}°F low
+- Outdoor temp overnight: ${overnightLowF}°F low
 - Setpoint: ${setpointF}°F
-- Heat loss factor: ${heatLossFactor} BTU/hr/°F
-- HP heating rate: ${hpHeatRate} BTU/hr
-- Aux heating rate: ${auxHeatRate} BTU/hr
+- Heat loss factor: ${heatLossFPerHrPerDeltaF.toFixed(2)} °F/hr/°F
+- HP heating rate: ${hpHeatGainFPerHr.toFixed(1)} °F/hr
+- Aux heating rate: ${auxHeatGainFPerHr.toFixed(1)} °F/hr
 
 AUTO Mode (Conservative):
-- Compressor minimum outdoor: ${compMinOutdoorAuto}°F
-- Aux maximum outdoor: ${auxMaxOutdoorAuto}°F
-- Aux simultaneous: ${auxSimultaneousAuto ? "Enabled" : "Disabled"}
+- Compressor minimum outdoor: ${autoThresholds.compressorMinOutdoorF}°F
+- Aux maximum outdoor: ${autoThresholds.auxMaxOutdoorF}°F
+- Aux simultaneous: ${autoThresholds.auxSimultaneous ? "Enabled" : "Disabled"}
 
 MANUAL Mode (User-Controlled):
-- Compressor minimum outdoor: ${compMinOutdoorManual}°F
-- Aux maximum outdoor: ${auxMaxOutdoorManual}°F
-- Aux simultaneous: ${auxSimultaneousManual ? "Enabled" : "Disabled"}
+- Compressor minimum outdoor: ${manualThresholds.compressorMinOutdoorF}°F
+- Aux maximum outdoor: ${manualThresholds.auxMaxOutdoorF}°F
+- Aux simultaneous: ${manualThresholds.auxSimultaneous ? "Enabled" : "Disabled"}
 
 Results:
 - Aux hours avoided (MANUAL vs AUTO): ${auxAvoidedHours >= 0 ? "+" : ""}${auxAvoidedHours.toFixed(1)} hours

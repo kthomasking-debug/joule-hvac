@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Zap, Lightbulb, ArrowLeftRight } from "lucide-react";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * TwoWaySwitchWiringVisualizer
@@ -257,6 +258,30 @@ Panel neutral  ──────────┬──────────�
           </Card>
         </div>
       </main>
+
+      {/* AI Explanation */}
+      <div style={{ maxWidth: 1150, margin: "14px auto" }}>
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`You are viewing an animated educational visualizer for 3-way switch wiring. Explain what this visualization demonstrates in plain, conversational English:
+
+What the animation currently shows:
+- Switch 1 (LINE side): ${sw1 === 0 ? "COM → RED traveler" : "COM → BLACK traveler"}
+- Switch 2 (LOAD side): ${sw2 === 0 ? "COM → RED traveler" : "COM → BLACK traveler"}
+- Energized traveler: ${travelerHot} (carrying 120V from LINE)
+- De-energized traveler: ${travelerOther} (showing ~40V phantom voltage on a multimeter)
+- Circuit status: ${lightOn ? "COMPLETE - lamp is ON because both switches select the same traveler" : "OPEN - lamp is OFF because switches select different travelers"}
+
+Educational concepts demonstrated by this visualization:
+1. How the "power at one end" topology works: LINE connects to Switch 1 COM, two travelers run between switches, Switch 2 COM connects to lamp hot
+2. Why the lamp only turns ON when both switches route power through the SAME traveler (creating a complete path)
+3. Phantom voltage physics: The de-energized traveler shows ~40V on a meter due to electromagnetic coupling with the hot traveler in the same cable (mutual inductance)
+4. Why the neutral wire is continuous and unswitched from panel to lamp
+5. Real-world meter behavior: High-impedance multimeters detect induced voltage, but it disappears under load
+
+This is an educational demonstration of electrical theory - explain what someone learns by interacting with this animation. Help them understand why their home's 3-way switches behave this way and why phantom voltage readings are normal and safe.`}
+        />
+      </div>
 
       <footer style={styles.footer}>
         Want this to match the "two romex wires" photo scenario exactly? Add one more diagram: "3-way switch loop / dead-end 3-way / feed at light vs feed at switch."

@@ -32,6 +32,12 @@ function cx(...xs) {
   return xs.filter(Boolean).join(" ");
 }
 
+function toHHMM(mins) {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 // ---- Minimal UI atoms (Joule-style dark cards) ----
 const Card = ({ children, className = "" }) => (
   <div className={cx("rounded-2xl border border-[#222A35] bg-[#151A21]", className)}>{children}</div>

@@ -60,6 +60,7 @@ const EcobeeAuxHeatSimulator = lazy(() => import("./pages/EcobeeAuxHeatSimulator
 const EcobeeReplayLastNight = lazy(() => import("./pages/EcobeeReplayLastNight"));
 const TwoWaySwitchExplainer = lazy(() => import("./pages/TwoWaySwitchExplainer"));
 const TwoWaySwitchWiringVisualizer = lazy(() => import("./pages/TwoWaySwitchWiringVisualizer"));
+const KnowledgeBaseSearch = lazy(() => import("./pages/KnowledgeBaseSearch"));
 const ComfortSettingStrangenessFix = lazy(() => import("./pages/ComfortSettingStrangenessFix"));
 const HVACStaticPressure = lazy(() => import("./pages/HVACStaticPressure"));
 const Analysis = lazy(() => import("./pages/Analysis"));
@@ -272,7 +273,19 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Animated visualizer showing 3-way switch contacts, traveler voltage states, ASCII diagrams, induction formulas, and NEC references.",
-  },  {
+  },
+  {
+    path: "/tools/knowledge-base-search",
+    name: "Knowledge Base Search",
+    label: "Search Knowledge Base",
+    icon: Search,
+    Component: KnowledgeBaseSearch,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.",
+  },
+  {
     path: "/tools/comfort-setting-strangeness-fix",
     name: "Comfort Setting Strangeness Fix",
     label: "Comfort Setting Strangeness Fix",

@@ -715,6 +715,32 @@ export default function EcobeeVentilatorExplainerPage() {
       <div className="mt-3.5">
         {tab === "overview" ? (
           <div className="grid gap-3.5">
+            {/* AI Explanation - Prominent placement */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border-2 border-purple-300 dark:border-purple-700 rounded-xl p-5 shadow-lg">
+              <AIExplanation
+                title="AI-Powered Explanation (Plain English)"
+                prompt={`I have a whole-home ventilator with my Ecobee thermostat with the following configuration:
+
+- Wiring Mode: ${config.wiringMode === WiringMode.G_TIED ? 'G-tied (simple damper)' : config.wiringMode === WiringMode.ACC_DRY_CONTACT ? 'ACC dry contact' : 'ACC with 24V relay'}
+- Ventilator Type: ${config.ventType === VentType.FRESH_AIR_DAMPER ? 'Fresh air damper' : config.ventType === VentType.HRV_ERV ? 'HRV/ERV' : 'Inline fan'}
+- Accessory Configured As: ${config.accessoryConfiguredAs === AccBehavior.VENTILATOR ? 'Ventilator' : config.accessoryConfiguredAs}
+- Target Ventilation: ${config.minVentMinutesPerHour} minutes per hour
+- Allow Vent with HVAC: ${config.allowVentWithHVAC ? 'Yes' : 'No'}
+- Lockout Below: ${config.lockoutBelowOutdoorF ? config.lockoutBelowOutdoorF + '°F' : 'None'}
+- Using Ecobee to Control: ${config.useEcobeeToControlVent ? 'Yes' : 'No'}
+- Current Outdoor Temp: ${config.outdoorTempF}°F
+
+Please explain in 3-4 paragraphs for a homeowner:
+
+1. How whole-home ventilation works and why it's important for indoor air quality
+2. The difference between G-tied wiring (simple damper) vs ACC wiring (smart control) and what features each supports
+3. How the Ecobee controls the ventilator to meet the minutes-per-hour target, including when it runs with HVAC calls vs independently
+4. Common setup mistakes (like wiring to G but expecting ACC features) and how to verify correct configuration
+
+Use plain English and help me understand if my current setup is optimal for my needs.`}
+              />
+            </div>
+            
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-2">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
@@ -1596,29 +1622,6 @@ export function EcobeeMenuSimulator({
           </div>
         </div>
       </Card>
-
-      <AIExplanation
-        title="Explanation (Plain English)"
-        prompt={`I have a whole-home ventilator with my Ecobee thermostat with the following configuration:
-
-- Wiring Mode: ${config.wiringMode === WiringMode.G_TIED ? 'G-tied (simple damper)' : config.wiringMode === WiringMode.ACC_DRY_CONTACT ? 'ACC dry contact' : 'ACC with 24V relay'}
-- Ventilator Type: ${config.ventType === VentType.FRESH_AIR_DAMPER ? 'Fresh air damper' : config.ventType === VentType.HRV_ERV ? 'HRV/ERV' : 'Inline fan'}
-- Accessory Configured As: ${config.accessoryConfiguredAs === AccBehavior.VENTILATOR ? 'Ventilator' : config.accessoryConfiguredAs}
-- Target Ventilation: ${config.minVentMinutesPerHour} minutes per hour
-- Allow Vent with HVAC: ${config.allowVentWithHVAC ? 'Yes' : 'No'}
-- Lockout Below: ${config.lockoutBelowOutdoorF ? config.lockoutBelowOutdoorF + '°F' : 'None'}
-- Using Ecobee to Control: ${config.useEcobeeToControlVent ? 'Yes' : 'No'}
-- Current Outdoor Temp: ${config.outdoorTempF}°F
-
-Please explain in 3-4 paragraphs for a homeowner:
-
-1. How whole-home ventilation works and why it's important for indoor air quality
-2. The difference between G-tied wiring (simple damper) vs ACC wiring (smart control) and what features each supports
-3. How the Ecobee controls the ventilator to meet the minutes-per-hour target, including when it runs with HVAC calls vs independently
-4. Common setup mistakes (like wiring to G but expecting ACC features) and how to verify correct configuration
-
-Use plain English and help me understand if my current setup is optimal for my needs.`}
-      />
     </div>
   );
 }
