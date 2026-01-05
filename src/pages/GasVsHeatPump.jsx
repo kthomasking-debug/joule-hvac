@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Zap, MapPin, Info, Flame, Home, TrendingUp, AlertCircle, ChevronDown, ChevronUp, Calculator, Award, Leaf } from 'lucide-react';
 import { inputClasses, fullInputClasses, selectClasses } from '../lib/uiClasses';
 import { DashboardLink } from '../components/DashboardLink';
+import AIExplanation from '../components/AIExplanation';
 import { fetchGeocodeCandidates, chooseBestCandidate, reverseGeocode } from '../utils/geocode';
 import { fetchStateAverageGasPrice, fetchStateAverageRate } from '../lib/eia';
 import { getStateCode } from '../lib/eiaRates';
@@ -1582,6 +1583,26 @@ const GasVsHeatPump = () => {
           </div>
         </div>
       )}
+
+      {/* AI Explanation */}
+      <AIExplanation
+        prompt={`Explain how heat pump vs gas furnace heating costs differ based on climate, efficiency ratings, and utility rates. 
+
+User's comparison details:
+- Location: ${locationQuery || 'Not specified'}
+- Heat pump efficiency: ${efficiency} SEER2, ${(efficiency * 0.95).toFixed(1)} HSPF2 (estimated)
+- Gas furnace efficiency: ${(gasFurnaceAFUE * 100).toFixed(0)}% AFUE
+- Electricity cost: $${utilityCost.toFixed(3)}/kWh
+- Natural gas cost: $${gasCostPerTherm.toFixed(3)}/therm
+- Indoor temperature: ${indoorTemp}°F
+- Home size: ${squareFeet} sq ft
+${weeklyMetrics ? `- Weekly heat pump cost: $${weeklyMetrics.totalHPCost.toFixed(2)}` : ''}
+${weeklyMetrics ? `- Weekly gas furnace cost: $${weeklyMetrics.totalGasCost.toFixed(2)}` : ''}
+${weeklyMetrics ? `- Weekly savings: $${weeklyMetrics.totalSavings.toFixed(2)} (${savingsPercent})` : ''}
+${weeklyMetrics ? `- Estimated annual savings: ${annualSavingsLabel}` : ''}
+
+Explain why these specific results occur given this location's climate, the efficiency ratings involved (HSPF2, SEER2, AFUE), and how utility rate differences impact the comparison. Also discuss when a heat pump is more cost-effective than gas and vice versa.`}
+      />
     </div>
   );
 };

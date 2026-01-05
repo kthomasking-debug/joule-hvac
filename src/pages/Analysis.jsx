@@ -8,6 +8,7 @@ import {
   Activity,
   MapPin
 } from 'lucide-react';
+import AIExplanation from '../components/AIExplanation';
 
 // Lazy load components to isolate any import issues
 const SevenDayCostForecaster = lazy(() => import('./SevenDayCostForecaster'));
@@ -164,6 +165,22 @@ const Analysis = () => {
             <ActiveComponent />
           </Suspense>
         </div>
+
+        {/* AI Explanation for City Comparison */}
+        {(location.pathname.includes('/city-comparison') || location.pathname.includes('/city-cost-comparison')) && (
+          <AIExplanation
+            prompt={`Explain how location affects heating and cooling costs when comparing cities.
+
+Key factors to discuss:
+- Climate differences measured by HDD (Heating Degree Days) and CDD (Cooling Degree Days)
+- How regional utility rates vary (electricity $/kWh and natural gas $/therm)
+- Impact of equipment efficiency (SEER2, HSPF2, AFUE) on costs in different climates
+- Why a heat pump might be cost-effective in one climate but not another
+- How weather patterns and temperature extremes affect annual operating costs
+
+The user is comparing cities to understand where their HVAC system would be most cost-effective. Help them understand the climate and economic factors that drive these cost differences.`}
+          />
+        )}
       </div>
     </div>
   );
