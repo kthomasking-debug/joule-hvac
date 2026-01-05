@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * Ecobee Aux Heat Visual Simulator
@@ -757,6 +758,30 @@ export default function EcobeeAuxHeatSimulatorPage() {
             </div>
           </div>
         </div>
+
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`I have a heat pump system with the following configuration:
+
+- Setpoint: ${setpointF}°F
+- Starting Indoor Temperature: ${initialIndoorF}°F
+- Outdoor Temperature Range: ${outdoorStartF}°F to ${outdoorEndF}°F
+- Heat Pump Capacity: ${hpCapacity} units
+- Aux Heat Capacity: ${auxCapacity} units
+- Configure Staging: ${stagingManual ? 'MANUAL' : 'AUTO'}
+- Compressor Minimum Outdoor Temp: ${compressorMinOutdoor}°F
+- Aux Heat Maximum Outdoor Temp: ${auxMaxOutdoor}°F
+- Aux Simultaneous Operation: ${auxSimultaneous ? 'Enabled' : 'Disabled'}
+- Aux Delta Temperature: ${auxDelta}°F
+
+Please explain in 3-4 paragraphs for a homeowner:
+1. How the aux heat staging logic works and when aux heat is allowed to run
+2. Why the Compressor Minimum and Aux Maximum threshold settings matter for efficiency and cost
+3. What happens with Aux Simultaneous Operation enabled vs disabled
+4. How to optimize these settings to minimize expensive aux heat usage while keeping the house comfortable
+
+Use plain English and focus on practical implications for my energy bill.`}
+        />
 
         <footer className="mt-10 text-center text-xs text-slate-500">
           Built for "why is aux running so much?" threads. Make the hidden thermostat logic visible.

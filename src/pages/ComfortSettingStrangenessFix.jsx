@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
   Copy,
 } from "lucide-react";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * Comfort Setting Strangeness — Sensor participation changes 5–10 min early
@@ -570,6 +571,32 @@ export default function ComfortSettingStrangenessFix() {
             </Card>
           </div>
         </div>
+
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`My Ecobee thermostat has the following schedule configuration:
+
+- Home Comfort Setting: ${targetHomeF}°F (sensors: thermostat, living room)
+- Sleep Comfort Setting: ${targetSleepF}°F (sensors: bedroom only)
+- Sleep starts at: ${toHHMM(sleepStartMin)}
+- Pre-transition window: ${preWindowMin} minutes before Sleep
+- Bedroom is typically ${bedroomCoolerBy.toFixed(1)}°F cooler than other rooms
+
+Features enabled:
+- Smart Recovery: ${smartRecovery ? 'On' : 'Off'}
+- Follow Me: ${followMe ? 'On' : 'Off'}
+- Smart Home & Away: ${smartHomeAway ? 'On' : 'Off'}
+- Hold Participation: ${holdParticipation ? 'On' : 'Off'}
+
+I'm experiencing sensor participation changes 5-10 minutes BEFORE my scheduled comfort setting transition. Please explain in 3-4 paragraphs for a homeowner:
+
+1. Why sensor participation changes early (before the scheduled time) and what causes this behavior
+2. How Smart Recovery, Follow Me, and Smart Home & Away features can affect schedule transitions
+3. The interaction between schedule boundaries, sensor participation, and temperature thresholds
+4. Practical solutions to prevent early transitions (adjusting schedule times, disabling features, hold participation, etc.)
+
+Use plain English and focus on actionable steps I can take to fix this issue.`}
+        />
       </div>
     </div>
   );

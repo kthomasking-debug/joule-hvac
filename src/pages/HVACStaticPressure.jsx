@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { AlertCircle, Wind, Gauge, TrendingDown } from 'lucide-react';
+import AIExplanation from '../components/AIExplanation';
 
 const HVACStaticPressure = () => {
   const [staticPressure, setStaticPressure] = useState(0.5);
@@ -334,6 +335,26 @@ const HVACStaticPressure = () => {
             <li>What specific duct modifications would bring pressure into spec?</li>
           </ol>
         </div>
+
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`My HVAC system has the following measurements:
+
+- Static Pressure: ${staticPressure.toFixed(2)} inches of water column
+- Recommended Pressure: ${recommendedPressure.toFixed(2)} inches of water column
+- Status: ${getStatus().text}
+- Airflow Reduction: ${airflowReduction.toFixed(1)}%
+- System Efficiency Loss: ${efficiencyLoss.toFixed(1)}%
+- Blower Motor Strain: ${motorStrain.toFixed(1)}%
+
+Please explain in 3-4 paragraphs for a homeowner:
+1. What static pressure means and why it matters for my furnace's performance and lifespan
+2. How the current pressure level (${staticPressure.toFixed(2)} in. w.c.) affects airflow, efficiency, and equipment strain
+3. What causes high static pressure (undersized ducts, restrictions, etc.) and what the consequences are
+4. What I should discuss with my HVAC technician to resolve this issue
+
+Use plain English and focus on practical implications - comfort, energy bills, and equipment longevity.`}
+        />
       </div>
     </div>
   );

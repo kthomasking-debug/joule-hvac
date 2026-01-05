@@ -10,6 +10,7 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from "recharts";
+import AIExplanation from "../components/AIExplanation";
 
 // A single-page visualizer for the "Warmup step" schedule solution:
 // Sleep 68°F → Warmup 70°F → Home 72°F
@@ -414,6 +415,26 @@ export default function EcobeeTransitionPlannerPage() {
             </div>
           </motion.div>
         </div>
+
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`My Ecobee thermostat schedule has the following configuration:
+
+- Sleep: ${sleepTemp}°F (starts at ${sleepStart})
+- Warmup: ${warmupTemp}°F (starts at ${warmupStart})
+- Home: ${homeTemp}°F (starts at ${homeStart})
+- Heat Differential: ${heatDiff}°F
+- Target Minimum Off Time: ${minOffGoal} minutes
+
+Please explain in 3-4 paragraphs for a homeowner:
+
+1. Why creating a "Warmup" comfort setting between Sleep and Home prevents excessive furnace cycling
+2. How the heat differential setting affects when the furnace turns on and off, and why large temperature jumps cause problems
+3. The relationship between schedule transition times and giving the furnace adequate rest periods
+4. Practical tips for optimizing my schedule to balance comfort, equipment longevity, and energy efficiency
+
+Use plain English and help me understand the "why" behind the three-step Sleep→Warmup→Home approach.`}
+        />
 
         <div className="mt-8 text-xs text-slate-500">
           Note: This tool visualizes setpoints (what Ecobee is asked to do). Actual cycling also depends on your furnace board logic, room heat-up rate, and Ecobee thresholds.

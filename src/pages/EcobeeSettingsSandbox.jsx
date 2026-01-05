@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Shield, Activity, ThermometerSnowflake, Info, SlidersHorizontal, Droplets } from "lucide-react";
+import AIExplanation from "../components/AIExplanation";
 
 // Basic UI components (simplified versions for this component)
 const Card = ({ children, className = "" }) => (
@@ -1096,6 +1097,26 @@ No heating equipment`}`}
           </Card>
         </div>
       </div>
+
+      <AIExplanation
+        title="Explanation (Plain English)"
+        prompt={`I have an Ecobee thermostat with the following equipment configuration:
+
+- Heat Pump: ${hasHeatPump ? 'Yes' : 'No'}
+- Furnace/Aux Heat: ${hasFurnaceAux ? 'Yes' : 'No'}
+- Humidifier: ${humidifierPresent ? `Yes (${humidifierType}, ${humidifierWiring} wiring)` : 'No'}
+- Dehumidifier: ${dehumidifierPresent ? 'Yes' : 'No'}
+- Humidity Control Range: ${humidityLow}% - ${humidityHigh}%
+- AC Overcool Enabled: ${acOvercoolEnabled ? `Yes (max ${acOvercoolMax}°F)` : 'No'}
+
+Please explain in 3-4 paragraphs for a homeowner:
+1. How this equipment configuration affects which settings and features are available on my Ecobee
+2. Why certain humidity or temperature control options appear or disappear based on my wiring
+3. How the humidifier/dehumidifier settings interact with my HVAC calls
+4. Any important considerations or common mistakes with this configuration
+
+Use plain English without technical jargon where possible.`}
+      />
 
       <div className="text-xs text-muted-foreground">
         Disclaimer: This UI is an educational simulator. Real ecobee firmware behavior varies by model, wiring detection, region, and software versions.

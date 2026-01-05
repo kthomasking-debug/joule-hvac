@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * Whole-Home Ventilator + Ecobee Premium (Single-Page Explainer)
@@ -1595,6 +1596,29 @@ export function EcobeeMenuSimulator({
           </div>
         </div>
       </Card>
+
+      <AIExplanation
+        title="Explanation (Plain English)"
+        prompt={`I have a whole-home ventilator with my Ecobee thermostat with the following configuration:
+
+- Wiring Mode: ${config.wiringMode === WiringMode.G_TIED ? 'G-tied (simple damper)' : config.wiringMode === WiringMode.ACC_DRY_CONTACT ? 'ACC dry contact' : 'ACC with 24V relay'}
+- Ventilator Type: ${config.ventType === VentType.FRESH_AIR_DAMPER ? 'Fresh air damper' : config.ventType === VentType.HRV_ERV ? 'HRV/ERV' : 'Inline fan'}
+- Accessory Configured As: ${config.accessoryConfiguredAs === AccBehavior.VENTILATOR ? 'Ventilator' : config.accessoryConfiguredAs}
+- Target Ventilation: ${config.minVentMinutesPerHour} minutes per hour
+- Allow Vent with HVAC: ${config.allowVentWithHVAC ? 'Yes' : 'No'}
+- Lockout Below: ${config.lockoutBelowOutdoorF ? config.lockoutBelowOutdoorF + '°F' : 'None'}
+- Using Ecobee to Control: ${config.useEcobeeToControlVent ? 'Yes' : 'No'}
+- Current Outdoor Temp: ${config.outdoorTempF}°F
+
+Please explain in 3-4 paragraphs for a homeowner:
+
+1. How whole-home ventilation works and why it's important for indoor air quality
+2. The difference between G-tied wiring (simple damper) vs ACC wiring (smart control) and what features each supports
+3. How the Ecobee controls the ventilator to meet the minutes-per-hour target, including when it runs with HVAC calls vs independently
+4. Common setup mistakes (like wiring to G but expecting ACC features) and how to verify correct configuration
+
+Use plain English and help me understand if my current setup is optimal for my needs.`}
+      />
     </div>
   );
 }

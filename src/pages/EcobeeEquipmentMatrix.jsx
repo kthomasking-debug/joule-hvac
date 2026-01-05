@@ -8,6 +8,7 @@ import {
   Filter,
   Info,
 } from "lucide-react";
+import AIExplanation from "../components/AIExplanation";
 
 /**
  * Ecobee Premium — Equipment Config Matrix + Wiring Diagrams
@@ -770,6 +771,20 @@ export default function EcobeeEquipmentMatrix() {
             })}
           </div>
         </div>
+
+        <AIExplanation
+          title="Explanation (Plain English)"
+          prompt={`I'm looking at different Ecobee equipment wiring configurations. Currently viewing ${filtered.length} configuration(s)${activeTags.length > 0 ? ` filtered by: ${activeTags.join(', ')}` : ''}.
+
+Please explain in 3-4 paragraphs for a homeowner:
+
+1. How Ecobee thermostat wiring works and what the common terminal letters mean (Y, W, G, C, Rc, etc.)
+2. The difference between basic configurations (conventional furnace) and more complex setups (heat pump with aux, dual fuel, accessories)
+3. How equipment wiring affects what features and settings are available in the Ecobee interface
+4. Important safety considerations and why it's critical to match the wiring diagram to your actual equipment control board labels
+
+Use plain English without assuming electrical knowledge. Help me understand what to verify before attempting any wiring changes.`}
+        />
 
         <div className="mt-8 text-xs text-gray-500">
           Tip: If you want, I can extend this page to auto-generate diagrams from
