@@ -41,6 +41,7 @@ export default function EnergyPlusLoadCalc() {
   // AI explanation state
   const [aiExplanation, setAiExplanation] = useState(null);
   const [aiExplanationLoading, setAiExplanationLoading] = useState(false);
+  const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(false);
 
   // Form state
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 2000);
@@ -558,14 +559,47 @@ Write like you're explaining to a homeowner, not an engineer. Be specific about 
                     </div>
 
                     {/* AI-generated or static explanation */}
-                    <details className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-700 mt-4">
+                    <details 
+                      className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-700 mt-4"
+                      onToggle={(e) => {
+                        if (e.target.open && !aiExplanation && !aiExplanationLoading && results) {
+                          const groqApiKey = typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : "";
+                          if (!groqApiKey || !groqApiKey.trim()) {
+                            setShowApiKeyPrompt(true);
+                          }
+                        }
+                      }}
+                    >
                       <summary className="cursor-pointer font-semibold text-indigo-900 dark:text-indigo-100 text-sm flex items-center gap-2">
                         <Info className="w-4 h-4" />
                         Explanation (Plain English)
                         {aiExplanation && <span className="ml-2 text-xs bg-indigo-600 dark:bg-indigo-500 text-white px-2 py-0.5 rounded">AI-Generated</span>}
                       </summary>
                       <div className="mt-4 text-sm text-indigo-900 dark:text-indigo-200 space-y-3 leading-relaxed">
-                        {aiExplanationLoading ? (
+                        {showApiKeyPrompt && !aiExplanation ? (
+                          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border-2 border-indigo-300 dark:border-indigo-600">
+                            <div className="flex items-start gap-3 mb-4">
+                              <Zap className="w-6 h-6 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-1" />
+                              <div>
+                                <h4 className="font-semibold text-indigo-900 dark:text-indigo-100 mb-2">
+                                  Get AI-Generated Explanations
+                                </h4>
+                                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                                  Add your Groq API key to receive personalized explanations tailored to your specific calculation results, instead of generic explanations.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <a
+                                href="/settings"
+                                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-center"
+                              >
+                                Go to Settings
+                              </a>
+                              </button>
+                            </div>
+                          </div>
+                        ) : aiExplanationLoading ? (
                           <div className="flex items-center justify-center py-8 gap-2">
                             <Loader className="w-5 h-5 animate-spin" />
                             <span>Generating explanation...</span>
