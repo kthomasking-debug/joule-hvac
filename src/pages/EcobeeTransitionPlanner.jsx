@@ -49,17 +49,17 @@ function SegmentBar({ seg, dayStart, dayEnd }) {
 
   return (
     <div
-      className={`absolute top-0 h-full ${bg} rounded-xl shadow-sm border border-black/5`}
+      className={`absolute top-0 h-full ${bg} rounded-xl shadow-sm border border-black/5 dark:border-black/20`}
       style={{ left: `${left}%`, width: `${width}%` }}
       title={`${seg.name}: ${toHHMM(seg.start)}–${toHHMM(seg.end)} @ ${seg.temp}°F`}
     >
       <div className="h-full flex items-center px-3">
-        <div className="text-sm font-semibold text-black/80">
+        <div className="text-sm font-semibold text-black/80 dark:text-black/90">
           {seg.name}
-          <span className="ml-2 font-normal text-black/60">
+          <span className="ml-2 font-normal text-black/60 dark:text-black/70">
             {toHHMM(seg.start)}–{toHHMM(seg.end)}
           </span>
-          <span className="ml-2 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold text-black/70">
+          <span className="ml-2 inline-flex items-center rounded-full bg-white/70 dark:bg-white/80 px-2 py-0.5 text-xs font-semibold text-black/70 dark:text-black/80">
             {seg.temp}°F
           </span>
         </div>
@@ -70,7 +70,7 @@ function SegmentBar({ seg, dayStart, dayEnd }) {
 
 function Badge({ children }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-900/5 px-2.5 py-1 text-xs font-semibold text-slate-800">
+    <span className="inline-flex items-center rounded-full bg-slate-900/5 dark:bg-slate-100/10 px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200">
       {children}
     </span>
   );
@@ -79,7 +79,7 @@ function Badge({ children }) {
 function Field({ label, children }) {
   return (
     <div className="space-y-1">
-      <div className="text-xs font-semibold text-slate-700">{label}</div>
+      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</div>
       {children}
     </div>
   );
@@ -89,7 +89,7 @@ function Input({ ...props }) {
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300 ${
+      className={`w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600 ${
         props.className ?? ""
       }`}
     />
@@ -236,7 +236,7 @@ export default function EcobeeTransitionPlannerPage() {
   }, [analysis, heatDiff, minOffGoal]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -245,10 +245,10 @@ export default function EcobeeTransitionPlannerPage() {
           className="space-y-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Ecobee Transition Planner</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Ecobee Transition Planner</h1>
             <Badge>Visual fix for "stop → immediate restart"</Badge>
           </div>
-          <p className="text-slate-700 max-w-3xl">
+          <p className="text-slate-700 dark:text-slate-300 max-w-3xl">
             If your schedule jumps from a low Sleep setpoint to a higher Home setpoint right after a cycle ends, the thermostat can call for heat again almost immediately. The usual workaround is a short <b>Warmup</b> step that bridges the jump.
           </p>
         </motion.div>
@@ -259,36 +259,36 @@ export default function EcobeeTransitionPlannerPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.05 }}
-            className="lg:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 p-5"
+            className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-5"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">Inputs</h2>
-              <span className="text-xs text-slate-500">Morning window: 00:00–09:00</span>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Inputs</h2>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Morning window: 00:00–09:00</span>
             </div>
 
             <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Sleep temp (°F)">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 text-sm font-semibold text-slate-900">{sleepTemp}°</div>
+                  <div className="w-14 text-sm font-semibold text-slate-900 dark:text-slate-100">{sleepTemp}°</div>
                   <Slider value={sleepTemp} onChange={(v) => setSleepTemp(Math.round(v))} min={55} max={75} step={1} />
                 </div>
               </Field>
               <Field label="Warmup temp (°F)">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 text-sm font-semibold text-slate-900">{warmupTemp}°</div>
+                  <div className="w-14 text-sm font-semibold text-slate-900 dark:text-slate-100">{warmupTemp}°</div>
                   <Slider value={warmupTemp} onChange={(v) => setWarmupTemp(Math.round(v))} min={55} max={75} step={1} />
                 </div>
               </Field>
               <Field label="Home temp (°F)">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 text-sm font-semibold text-slate-900">{homeTemp}°</div>
+                  <div className="w-14 text-sm font-semibold text-slate-900 dark:text-slate-100">{homeTemp}°</div>
                   <Slider value={homeTemp} onChange={(v) => setHomeTemp(Math.round(v))} min={55} max={80} step={1} />
                 </div>
               </Field>
 
               <Field label="Heat differential (°F)">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 text-sm font-semibold text-slate-900">{formatF(heatDiff)}°</div>
+                  <div className="w-14 text-sm font-semibold text-slate-900 dark:text-slate-100">{formatF(heatDiff)}°</div>
                   <Slider value={heatDiff} onChange={(v) => setHeatDiff(Math.round(v * 10) / 10)} min={0.5} max={4.0} step={0.1} />
                 </div>
               </Field>
@@ -304,30 +304,30 @@ export default function EcobeeTransitionPlannerPage() {
               </Field>
               <Field label="Min off-time goal (min)">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 text-sm font-semibold text-slate-900">{minOffGoal}</div>
+                  <div className="w-14 text-sm font-semibold text-slate-900 dark:text-slate-100">{minOffGoal}</div>
                   <Slider value={minOffGoal} onChange={(v) => setMinOffGoal(Math.round(v))} min={0} max={30} step={1} />
                 </div>
               </Field>
             </div>
 
-            <div className="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4">
-              <div className="text-sm font-bold text-slate-900">Quick read</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-slate-700">
+            <div className="mt-5 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-4">
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Quick read</div>
+              <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <div className="flex items-center justify-between">
                   <span>Sleep → Home jump</span>
-                  <span className={`font-semibold ${analysis.riskImmediateRestart ? "text-rose-700" : "text-emerald-700"}`}>
+                  <span className={`font-semibold ${analysis.riskImmediateRestart ? "text-rose-700 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
                     {formatF(analysis.sleepToHomeJump)}°F {analysis.riskImmediateRestart ? "(risk)" : "(ok)"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Warmup → Home jump</span>
-                  <span className={`font-semibold ${analysis.reducedRisk ? "text-emerald-700" : "text-rose-700"}`}>
+                  <span className={`font-semibold ${analysis.reducedRisk ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
                     {formatF(analysis.warmToHomeJump)}°F {analysis.reducedRisk ? "(smoothed)" : "(still sharp)"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Warmup window</span>
-                  <span className={`font-semibold ${analysis.spacing < minOffGoal ? "text-amber-700" : "text-slate-900"}`}>
+                  <span className={`font-semibold ${analysis.spacing < minOffGoal ? "text-amber-700 dark:text-amber-400" : "text-slate-900 dark:text-slate-100"}`}>
                     {analysis.spacing} min
                   </span>
                 </div>
@@ -336,7 +336,7 @@ export default function EcobeeTransitionPlannerPage() {
 
             <div className="mt-4 space-y-2">
               {hint.map((h, i) => (
-                <div key={i} className="text-sm text-slate-700 leading-relaxed">
+                <div key={i} className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                   • {h}
                 </div>
               ))}
@@ -350,11 +350,11 @@ export default function EcobeeTransitionPlannerPage() {
             transition={{ duration: 0.35, delay: 0.1 }}
             className="lg:col-span-3 space-y-6"
           >
-            <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5">
+            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Schedule blocks</h2>
-                  <p className="text-sm text-slate-600">The Warmup step bridges the setpoint jump so you don't finish a cycle at Sleep, then immediately need Home.</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Schedule blocks</h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">The Warmup step bridges the setpoint jump so you don't finish a cycle at Sleep, then immediately need Home.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Badge>Sleep</Badge>
@@ -363,13 +363,13 @@ export default function EcobeeTransitionPlannerPage() {
                 </div>
               </div>
 
-              <div className="mt-5 relative h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden">
+              <div className="mt-5 relative h-14 rounded-2xl bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 overflow-hidden">
                 {segments.map((seg) => (
                   <SegmentBar key={seg.name} seg={seg} dayStart={dayWindowStart} dayEnd={dayWindowEnd} />
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>00:00</span>
                 <span>03:00</span>
                 <span>06:00</span>
@@ -377,11 +377,11 @@ export default function EcobeeTransitionPlannerPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5">
+            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-5">
               <div className="flex items-end justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Setpoint over time</h2>
-                  <p className="text-sm text-slate-600">What the thermostat is being asked to do, visually.</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Setpoint over time</h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">What the thermostat is being asked to do, visually.</p>
                 </div>
               </div>
 
@@ -401,12 +401,12 @@ export default function EcobeeTransitionPlannerPage() {
                 </ResponsiveContainer>
               </div>
 
-              <div className="mt-3 text-xs text-slate-500 leading-relaxed">
+              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 Dashed line = Sleep temp + differential ({sleepTemp}°F + {formatF(heatDiff)}°F). A big step above that line right at the Home transition is where quick restarts commonly happen.
               </div>
             </div>
 
-            <div className="rounded-2xl bg-slate-900 text-white shadow-sm p-5">
+            <div className="rounded-2xl bg-slate-900 dark:bg-slate-950 text-white shadow-sm p-5">
               <div className="text-sm font-semibold text-white/80">Recommended template</div>
               <div className="mt-2 text-xl font-bold">Sleep {sleepTemp}°F → Warmup {warmupTemp}°F → Home {homeTemp}°F</div>
               <div className="mt-2 text-sm text-white/80">
@@ -436,7 +436,7 @@ Please explain in 3-4 paragraphs for a homeowner:
 Use plain English and help me understand the "why" behind the three-step Sleep→Warmup→Home approach.`}
         />
 
-        <div className="mt-8 text-xs text-slate-500">
+        <div className="mt-8 text-xs text-slate-500 dark:text-slate-400">
           Note: This tool visualizes setpoints (what Ecobee is asked to do). Actual cycling also depends on your furnace board logic, room heat-up rate, and Ecobee thresholds.
         </div>
       </div>
