@@ -1030,8 +1030,8 @@ I want Ecobee to control it as a Ventilator/HRV/ERV (minutes-per-hour target).
 Questions:
 1) Does my vent control input expect a dry contact closure or a 24V signal?
 2) If I move it to Ecobee ACC terminals, do I need to pull new thermostat wire (likely 18/7) so I can remove the PEK?
-3) Any recom  </div>
-            mended settings for min minutes/hr and lockouts for my climate/device?`}</pre>
+3) Any recommended settings for min minutes/hr and lockouts for my climate/device?`}</pre>
+              </div>
             </Label>
 
             <Label title="Controlling two accessories with Smart Thermostat Premium">
