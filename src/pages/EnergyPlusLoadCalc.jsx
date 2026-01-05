@@ -42,6 +42,8 @@ export default function EnergyPlusLoadCalc() {
   const [aiExplanation, setAiExplanation] = useState(null);
   const [aiExplanationLoading, setAiExplanationLoading] = useState(false);
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState("");
+  const [savingApiKey, setSavingApiKey] = useState(false);
 
   // Form state
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 2000);
@@ -124,6 +126,23 @@ export default function EnergyPlusLoadCalc() {
       console.error("Load calculation error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!tempApiKey.trim()) return;
+    
+    setSavingApiKey(true);
+    try {
+      localStorage.setItem("groqApiKey", tempApiKey.trim());
+      setShowApiKeyPrompt(false);
+      setTempApiKey("");
+      // Auto-generate explanation after saving key
+      await generateAiExplanation();
+    } catch (err) {
+      console.error("Error saving API key:", err);
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -596,31 +615,44 @@ export default function EnergyPlusLoadCalc() {
                         )}
 
                         {showApiKeyPrompt && !aiExplanation && !aiExplanationLoading ? (
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border-2 border-indigo-300 dark:border-indigo-600">
-                            <div className="flex items-start gap-3 mb-4">
-                              <Zap className="w-6 h-6 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-1" />
-                              <div>
-                                <h4 className="font-semibold text-indigo-900 dark:text-indigo-100 mb-2">
-                                  Get AI-Generated Explanations
-                                </h4>
-                                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                                  Add your Groq API key to receive personalized explanations tailored to your specific calculation results, instead of generic explanations.
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-3">
-                              <a
-                                href="/settings"
-                                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-center"
-                              >
-                                Go to Settings
-                              </a>
+                          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                            <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                              Enter your Groq API Key
+                            </label>
+                            <div className="flex gap-2 mb-2">
+                              <input
+                                type="password"
+                                value={tempApiKey}
+                                onChange={(e) => setTempApiKey(e.target.value)}
+                                placeholder="gsk_..."
+                                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && tempApiKey.trim()) {
+                                    handleSaveApiKey();
+                                  }
+                                }}
+                              />
                               <button
-                                onClick={() => setShowApiKeyPrompt(false)}
-                                className="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                                onClick={handleSaveApiKey}
+                                disabled={!tempApiKey.trim() || savingApiKey}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition-colors"
                               >
-                                Show Static Explanation
+                                {savingApiKey ? "Saving..." : "Save"}
                               </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href="https://console.groq.com/keys"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors"
+                              >
+                                <Zap className="w-3.5 h-3.5" />
+                                Get Free API Key →
+                              </a>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                No credit card required
+                              </p>
                             </div>
                           </div>
                         ) : aiExplanationLoading ? (
@@ -630,36 +662,7 @@ export default function EnergyPlusLoadCalc() {
                           </div>
                         ) : aiExplanation ? (
                           <div className="whitespace-pre-line">{aiExplanation}</div>
-                        ) : (
-                          <>
-                            <p>
-                              Alright, so here's what's actually happening with these numbers. The 0.32 BTU per square foot per degree Fahrenheit - that's basically how much heat your house loses through the walls, roof, and windows for every degree difference between inside and outside. It's an average from the DOE, so it's a decent starting point for most houses.
-                            </p>
-                            <p>
-                              The insulation multiplier - that's where your actual house comes in. If you've got good insulation (R-19 walls, R-38 roof), you're looking at 0.65, which means you're losing less heat. Poor insulation? That's 1.4, so you're losing way more. The better your insulation, the lower that number gets, and the less heating you need.
-                            </p>
-                            <p>
-                              For heating, we're assuming you want 70°F inside. That's the ASHRAE comfort standard - most people are comfortable around there. Then we subtract the design heating temp for your climate zone. In Zone 5 (Chicago), that's 0°F - meaning 1% of the hours in winter are colder than that. So your heating system needs to handle a 70°F temperature difference (70 inside minus 0 outside). Multiply that by your square footage and the heat loss factor, and boom - that's how many BTUs per hour you need.
-                            </p>
-                            <p>
-                              Cooling's a bit different. We assume 75°F inside (again, ASHRAE standard). The design cooling temp for Zone 5 is 88°F, so that's a 13°F difference. But here's the thing - you've also got internal gains. People, lights, appliances, all that stuff is putting heat into the house. That's why we multiply by 1.2 - it adds 20% to account for all that extra heat. Without that multiplier, you'd undersize your AC and it'd run constantly trying to keep up.
-                            </p>
-                            <p>
-                              The design temps are the key here. They're not the coldest or hottest it ever gets - they're the temps that happen 1% of the time. So 99% of the time, it's warmer than the design heating temp, and 99% of the time it's cooler than the design cooling temp. That's how you size equipment - you want it to handle the extreme cases, but not be oversized for normal operation.
-                            </p>
-                            <p>
-                              One ton equals 12,000 BTU per hour. That's the standard unit for HVAC sizing. So if your heating load comes out to 48,000 BTU/hr, that's 4 tons. Your cooling load might be different - maybe 3.5 tons. You size to whichever is bigger, because the equipment needs to handle both.
-                            </p>
-                            <p className="text-xs italic text-indigo-700 dark:text-indigo-300">
-                              Note: This is a simplified calculation. Real Manual J takes into account window orientation, air infiltration, duct losses, and a bunch of other factors. But for a quick estimate, this gets you in the ballpark. If you're actually buying equipment, get a proper Manual J done by a contractor or use the full EnergyPlus simulation.
-                            </p>
-                            {!aiExplanation && (
-                              <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-700">
-                                💡 Tip: Add your Groq API key in Settings to get AI-generated explanations tailored to your specific calculation results.
-                              </p>
-                            )}
-                          </>
-                        )}
+                        ) : null}
                       </div>
                     </details>
                   </div>
