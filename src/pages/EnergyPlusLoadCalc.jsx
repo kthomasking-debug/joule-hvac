@@ -11,6 +11,7 @@ import {
   Tag,
   Database,
   Search,
+  Loader,
 } from "lucide-react";
 import { queryHVACKnowledge } from "../utils/rag/ragQuery";
 import { fullInputClasses } from "../lib/uiClasses";
