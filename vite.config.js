@@ -21,7 +21,9 @@ export default defineConfig({
     ],
   },
   resolve: {
+    extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
     alias: {
+      "@": path.resolve(__dirname, "./src"),
       // Ensure only one React instance is used across the app
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),

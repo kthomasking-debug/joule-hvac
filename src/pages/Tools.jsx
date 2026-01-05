@@ -1,12 +1,34 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap } from "lucide-react";
 
 /**
  * Tools Index Page
  * Lists all available tools
  */
 export default function Tools() {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Tools that require onboarding completion
+  const requiresOnboarding = [
+    "/tools/heat-pump-vs-gas-furnace",
+    "/tools/city-cost-comparison",
+  ];
+  
+  const handleToolClick = (e, toolPath) => {
+    // Check if this tool requires onboarding
+    if (requiresOnboarding.includes(toolPath)) {
+      const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+      
+      if (!hasCompletedOnboarding) {
+        e.preventDefault();
+        navigate("/onboarding");
+        return;
+      }
+    }
+  };
+
   const sections = [
     {
       title: "HVAC Calculation & Sizing",
@@ -51,6 +73,36 @@ export default function Tools() {
           icon: Thermometer,
           description: "Interactive explainer for whole-home ventilator control with Ecobee Premium. Wiring diagrams, relay simulator, and settings navigation.",
           color: "green",
+        },
+        {
+          path: "/tools/ecobee-aux-heat-simulator",
+          name: "Ecobee Aux Heat Simulator",
+          label: "Ecobee Aux Heat Simulator",
+          icon: Thermometer,
+          description: "Interactive simulator for heat pump auxiliary heat decision logic. Shows when aux heat engages based on temperature differentials and system settings.",
+          color: "orange",
+        },
+        {          path: "/tools/ecobee-replay-last-night",
+          name: "Replay Last Night",
+          label: "Replay Last Night: Aux Heat Simulator",
+          icon: Zap,
+          description: "See why 'Aux starts at 40°F' nukes your bill. Compare AUTO vs MANUAL staging thresholds and find the sweet spot where your house still holds setpoint.",
+          color: "orange",
+        },
+        {          path: "/tools/ecobee-replay-last-night",
+          name: "Replay Last Night",
+          label: "Replay Last Night: Aux Heat Simulator",
+          icon: Zap,
+          description: "See why 'Aux starts at 40°F' nukes your bill. Compare AUTO vs MANUAL staging thresholds and find the sweet spot where your house still holds setpoint.",
+          color: "orange",
+        },
+        {
+          path: "/tools/hvac-static-pressure",
+          name: "Static Pressure Analyzer",
+          label: "HVAC Static Pressure Analyzer",
+          icon: Gauge,
+          description: "Analyze how ductwork static pressure affects furnace performance, efficiency, and blower motor lifespan. Interactive tool to understand pressure impact.",
+          color: "orange",
         },
         {
           path: "/tools/comfort-setting-strangeness-fix",
@@ -146,6 +198,25 @@ export default function Tools() {
     orange: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400",
   };
 
+  // Flatten all tools and filter based on search query
+  const filteredSections = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return sections;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return sections
+      .map((section) => ({
+        ...section,
+        tools: section.tools.filter((tool) =>
+          tool.name.toLowerCase().includes(query) ||
+          tool.label.toLowerCase().includes(query) ||
+          tool.description.toLowerCase().includes(query)
+        ),
+      }))
+      .filter((section) => section.tools.length > 0);
+  }, [searchQuery, sections]);
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="mb-8">
@@ -157,8 +228,36 @@ export default function Tools() {
         </p>
       </div>
 
+      {/* Search Bar */}
+      <div className="mb-8">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search tools by name or description..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-10 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              title="Clear search"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+        {searchQuery && filteredSections.length === 0 && (
+          <p className="text-gray-600 dark:text-gray-400 mt-4 text-center">
+            No tools found matching "{searchQuery}". Try a different search term.
+          </p>
+        )}
+      </div>
+
       <div className="space-y-12">
-        {sections.map((section, sectionIndex) => (
+        {filteredSections.map((section, sectionIndex) => (
           <div key={sectionIndex}>
             <div className="mb-4">
               <h2 className={`text-2xl font-semibold mb-1 ${
@@ -187,6 +286,8 @@ export default function Tools() {
                     onClick={(e) => {
                       if (isComingSoon) {
                         e.preventDefault();
+                      } else {
+                        handleToolClick(e, tool.path);
                       }
                     }}
                     className={`block rounded-lg border p-6 transition-all ${

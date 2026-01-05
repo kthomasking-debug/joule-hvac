@@ -56,9 +56,12 @@ const EcobeeEquipmentMatrix = lazy(() => import("./pages/EcobeeEquipmentMatrix")
 const EcobeeVentilatorExplainer = lazy(() => import("./pages/EcobeeVentilatorExplainer"));
 const EcobeeVentilatorWizard = lazy(() => import("./pages/EcobeeVentilatorWizard"));
 const WholeHouseVentilationEcobeeGuide = lazy(() => import("./pages/WholeHouseVentilationEcobeeGuide"));
+const EcobeeAuxHeatSimulator = lazy(() => import("./pages/EcobeeAuxHeatSimulator"));
+const EcobeeReplayLastNight = lazy(() => import("./pages/EcobeeReplayLastNight"));
 const TwoWaySwitchExplainer = lazy(() => import("./pages/TwoWaySwitchExplainer"));
 const TwoWaySwitchWiringVisualizer = lazy(() => import("./pages/TwoWaySwitchWiringVisualizer"));
 const ComfortSettingStrangenessFix = lazy(() => import("./pages/ComfortSettingStrangenessFix"));
+const HVACStaticPressure = lazy(() => import("./pages/HVACStaticPressure"));
 const Analysis = lazy(() => import("./pages/Analysis"));
 const Control = lazy(() => import("./pages/Control"));
 const Hardware = lazy(() => import("./pages/Hardware"));
@@ -109,6 +112,7 @@ import {
   MapPin,
   DollarSign,
   Moon,
+  Gauge,
 } from "lucide-react";
 
 export const routes = [
@@ -213,6 +217,39 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Visual guide with ASCII diagrams showing ventilation system types, 2-story home cutaways, and Ecobee ACC wiring patterns (24VAC vs dry contact).",
+  },
+  {
+    path: "/tools/ecobee-aux-heat-simulator",
+    name: "Ecobee Aux Heat Simulator",
+    label: "Ecobee Aux Heat Simulator",
+    icon: Thermometer,
+    Component: EcobeeAuxHeatSimulator,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive simulator for heat pump auxiliary heat decision logic. Shows when aux heat engages based on temperature differentials and system settings.",
+  },
+  {
+    path: "/tools/ecobee-replay-last-night",
+    name: "Replay Last Night",
+    label: "Replay Last Night: Aux Heat Simulator",
+    icon: Zap,
+    Component: EcobeeReplayLastNight,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Compare AUTO vs MANUAL staging to optimize aux heat usage. See why 'Aux starts at 40°F' nukes your bill.",
+  },
+  {
+    path: "/tools/hvac-static-pressure",
+    name: "HVAC Static Pressure",
+    label: "HVAC Static Pressure Analyzer",
+    icon: Gauge,
+    Component: HVACStaticPressure,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Analyze how ductwork static pressure affects furnace performance, efficiency, and blower motor lifespan. Interactive tool to understand pressure impact.",
   },
   {
     path: "/tools/two-way-switch-explainer",

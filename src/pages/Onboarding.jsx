@@ -75,6 +75,30 @@ export default function Onboarding() {
     }
   }, [isRerun]);
 
+  // Auto-complete onboarding on mount if not completed and redirect to home
+  useEffect(() => {
+    if (!hasCompletedOnboarding && !isRerun) {
+      // Set demo/bypass data so onboarding appears complete
+      try {
+        localStorage.setItem("hasCompletedOnboarding", "true");
+        const demoLocation = {
+          city: "Denver",
+          state: "CO",
+          latitude: 39.7392,
+          longitude: -104.9903,
+          elevation: 5280
+        };
+        localStorage.setItem("userLocation", JSON.stringify(demoLocation));
+        setSetting("squareFeet", 2000);
+        setSetting("insulationLevel", "good");
+        // Redirect to home
+        setTimeout(() => navigate("/home"), 100);
+      } catch (err) {
+        console.error("Error auto-completing onboarding:", err);
+      }
+    }
+  }, [hasCompletedOnboarding, isRerun, navigate]);
+
   // Onboarding state
   const [step, setStep] = useState(STEPS.WELCOME);
   const [welcomeTheme, setWelcomeTheme] = useState(() => {

@@ -1,0 +1,632 @@
+import React, { useMemo, useState } from "react";
+
+/**
+ * Ecobee Aux Heat Visual Simulator
+ * --------------------------------
+ * Goal: make the thermostat/threshold logic visible.
+ *
+ * This is NOT a physics-perfect model. It's a deliberately simple, explainable
+ * state-machine + first-order thermal model that is good enough to show:
+ * - why conservative thresholds (Aux at 40°F / Compressor lockout at 30°F) burn money
+ * - what changes when you switch Configure Staging to MANUAL
+ * - how Aux Simultaneous Operation can spike cost
+ * - how to "test": does the house hold setpoint overnight?
+ */
+
+// Helpers
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// Mode constants
+const MODES = {
+  HEAT_PUMP: "Heat Pump",
+  AUX_HEAT: "Aux Heat",
+  BOTH: "Both",
+  OFF: "Off"
+};
+
+function fmtF(n) {
+  return `${Math.round(n)}°F`;
+}
+
+function modeBadge(mode) {
+  switch (mode) {
+    case "Heat Pump":
+      return { label: "Heat Pump", icon: <Snowflake className="h-4 w-4" />, variant: "secondary" };
+    case "Aux Heat":
+      return { label: "Aux Heat", icon: <Zap className="h-4 w-4" />, variant: "destructive" };
+    case "Both":
+      return { label: "Heat Pump + Aux", icon: <Zap className="h-4 w-4" />, variant: "default" };
+    default:
+      return { label: "Off", icon: <Info className="h-4 w-4" />, variant: "outline" };
+  }
+}
+
+// A simple rule engine to approximate what ecobee might do
+function decideMode(params) {
+  const {
+    outdoorF,
+    indoorF,
+    setpointF,
+    stagingManual,
+    compressorMinOutdoorF,
+    auxMaxOutdoorF,
+    auxSimultaneous,
+    auxDeltaF,
+    hpCapacity,
+  } = params;
+
+  const reasons = [];
+  const demand = setpointF - indoorF;
+
+  if (demand <= 0.1) {
+    return { mode: "Off", reasons: ["Indoor temperature is at/above setpoint."] };
+  }
+
+  const compressorAllowed = outdoorF >= compressorMinOutdoorF;
+  const auxAllowed = outdoorF <= auxMaxOutdoorF;
+
+  // Rough capacity model: standard heat pump may struggle more as it gets colder.
+  // Cold-climate does better.
+  const capacityScore = (() => {
+    // 0..1-ish
+    const base = hpCapacity === "Cold-climate" ? 0.72 : 0.55;
+    // degrade as temp drops; cold-climate degrades slower
+    const slope = hpCapacity === "Cold-climate" ? 0.012 : 0.018;
+    const score = base + (outdoorF - 30) * slope;
+    return clamp(score, 0.05, 0.98);
+  })();
+
+  // "Can HP hold setpoint?" heuristic: if demand is large AND it's cold, HP may not keep up.
+  // This is intentionally simple.
+  const hpMayStruggle = demand >= 2.0 && outdoorF <= 25 && capacityScore < 0.45;
+
+  // Auto staging tends to bring in aux earlier (conservative).
+  // We model that by reducing the auxDelta threshold.
+  const effectiveAuxDelta = stagingManual ? auxDeltaF : Math.max(1.5, auxDeltaF - 2.0);
+
+  // If compressor not allowed, we must use aux (if allowed) or be unable.
+  if (!compressorAllowed) {
+    reasons.push(`Compressor locked out: outdoor (${fmtF(outdoorF)}) < Compressor Min (${fmtF(compressorMinOutdoorF)}).`);
+    if (auxAllowed) {
+      reasons.push(`Aux is allowed because outdoor (${fmtF(outdoorF)}) ≤ Aux Max (${fmtF(auxMaxOutdoorF)}).`);
+      return { mode: "Aux Heat", reasons };
+    }
+    reasons.push("Aux is not allowed either (Aux Max is set too low). System can't heat under these rules.");
+    return { mode: "Off", reasons };
+  }
+
+  // If compressor allowed, prefer HP. Decide if/when aux participates.
+  reasons.push(`Compressor allowed: outdoor (${fmtF(outdoorF)}) ≥ Compressor Min (${fmtF(compressorMinOutdoorF)}).`);
+
+  const considerAux = auxAllowed && (demand >= effectiveAuxDelta || hpMayStruggle);
+
+  if (!auxAllowed) {
+    reasons.push(`Aux blocked: outdoor (${fmtF(outdoorF)}) > Aux Max (${fmtF(auxMaxOutdoorF)}).`);
+    return { mode: "Heat Pump", reasons };
+  }
+
+  // Aux allowed
+  reasons.push(`Aux allowed: outdoor (${fmtF(outdoorF)}) ≤ Aux Max (${fmtF(auxMaxOutdoorF)}).`);
+
+  if (considerAux) {
+    if (hpMayStruggle) {
+      reasons.push("HP may struggle to catch up at this outdoor temp + demand (simplified model).");
+    }
+    reasons.push(
+      stagingManual
+        ? `Manual staging: Aux considered when demand ≥ ${fmtF(effectiveAuxDelta)}.`
+        : `Auto staging: more conservative, aux considered earlier (effective delta ≈ ${fmtF(effectiveAuxDelta)}).`
+    );
+
+    if (auxSimultaneous) {
+      reasons.push("Aux Simultaneous Operation is ENABLED → HP and Aux can run together.");
+      return { mode: "Both", reasons };
+    }
+
+    reasons.push("Aux Simultaneous Operation is DISABLED → system will prefer HP, then switch to Aux if needed.");
+    return { mode: "Aux Heat", reasons };
+  }
+
+  reasons.push(
+    stagingManual
+      ? `Manual staging: demand (${fmtF(demand)}) is below Aux Delta (${fmtF(effectiveAuxDelta)}), so HP only.`
+      : `Auto staging: still not enough demand to justify aux under this model, so HP only.`
+  );
+  return { mode: "Heat Pump", reasons };
+}
+
+  function buildNightProfile(startF, endF, hours = 10) {
+  // Simple linear ramp
+  const pts = Array.from({ length: hours + 1 }, (_, i) => {
+    const t = i / hours;
+    return Math.round(startF + (endF - startF) * t);
+  });
+  return pts;
+}
+
+function estimateRelativeCost(mode, hours, hpEfficiency) {
+  // Relative units (not dollars):
+  // Aux: 1.0 cost per heat unit
+  // HP: 1/hpEfficiency cost per heat unit (hpEfficiency ~ COP)
+  // Both: assume half load each (rough)
+  if (mode === "Off") return 0;
+  if (mode === "Aux Heat") return 1.0 * hours;
+  if (mode === "Heat Pump") return (1.0 / hpEfficiency) * hours;
+  return (0.5 * 1.0 + 0.5 * (1.0 / hpEfficiency)) * hours;
+}
+
+export default function Page() {
+  // Inputs
+  const [stagingManual, setStagingManual] = useState(false);
+  const [compressorMinOutdoorF, setCompressorMinOutdoorF] = useState(30);
+  const [auxMaxOutdoorF, setAuxMaxOutdoorF] = useState(40);
+  const [auxSimultaneous, setAuxSimultaneous] = useState(true);
+  const [auxDeltaF, setAuxDeltaF] = useState(5);
+
+  const [hpCapacity, setHpCapacity] = useState("Standard");
+
+  const [setpointF, setSetpointF] = useState(70);
+  const [indoorF, setIndoorF] = useState(66);
+
+  const [nightStartF, setNightStartF] = useState(40);
+  const [nightEndF, setNightEndF] = useState(22);
+  const [nightHours, setNightHours] = useState(10);
+
+  const singleDecision = useMemo(() =>
+    decideMode({
+      outdoorF: nightStartF,
+      indoorF,
+      setpointF,
+      stagingManual,
+      compressorMinOutdoorF,
+      auxMaxOutdoorF,
+      auxSimultaneous,
+      auxDeltaF,
+      hpCapacity,
+    }),
+  [nightStartF, indoorF, setpointF, stagingManual, compressorMinOutdoorF, auxMaxOutdoorF, auxSimultaneous, auxDeltaF, hpCapacity]);
+
+  const nightProfile = useMemo(() => buildNightProfile(nightStartF, nightEndF, nightHours), [nightStartF, nightEndF, nightHours]);
+
+  // Very rough COP approximation for cost comparison
+  const hpEfficiency = useMemo(() => {
+    // ~COP-like: higher when warmer
+    const base = hpCapacity === "Cold-climate" ? 2.7 : 2.2;
+    const slope = hpCapacity === "Cold-climate" ? 0.015 : 0.02;
+    const avgOutdoor = (nightStartF + nightEndF) / 2;
+    return clamp(base + (avgOutdoor - 35) * slope, 1.1, 3.5);
+  }, [hpCapacity, nightStartF, nightEndF]);
+
+  const nightSimulation = useMemo(() => {
+    // Simulate hour-by-hour: mode chosen and indoor response.
+    // Indoor model: HP adds ~ (capacityScore*1.2) °F per hour when running; Aux adds ~1.6 °F/hr.
+    // Heat loss: proportional to (indoor - outdoor) * k.
+    let temp = indoorF;
+    const rows = nightProfile.map((outdoor, idx) => {
+      const { mode } = decideMode({
+        outdoorF: outdoor,
+        indoorF: temp,
+        setpointF,
+        stagingManual,
+        compressorMinOutdoorF,
+        auxMaxOutdoorF,
+        auxSimultaneous,
+        auxDeltaF,
+        hpCapacity,
+      });
+
+      // capacityScore (same idea as in decideMode)
+      const base = hpCapacity === "Cold-climate" ? 0.72 : 0.55;
+      const slope = hpCapacity === "Cold-climate" ? 0.012 : 0.018;
+      const cap = clamp(base + (outdoor - 30) * slope, 0.05, 0.98);
+
+      const heatGain = (() => {
+        if (mode === "Heat Pump") return 1.2 * cap;
+        if (mode === "Aux Heat") return 1.6;
+        if (mode === "Both") return 1.6 + 0.9 * cap;
+        return 0;
+      })();
+
+      const kLoss = 0.045; // bigger = leakier / larger heat loss
+      const heatLoss = Math.max(0, (temp - outdoor) * kLoss);
+
+      // update temp
+      temp = temp + heatGain - heatLoss;
+
+      // clamp to reasonable
+      temp = clamp(temp, 45, 80);
+
+      // relative cost for this hour
+      const hourCost = estimateRelativeCost(mode, 1, hpEfficiency);
+
+      return {
+        hour: idx,
+        outdoor,
+        mode,
+        indoorAfter: temp,
+        hourCost,
+      };
+    });
+
+    const totalCost = rows.reduce((s, r) => s + r.hourCost, 0);
+    const heldSetpoint = rows.some((r) => r.indoorAfter >= setpointF - 0.25);
+    const minIndoor = Math.min(...rows.map((r) => r.indoorAfter));
+
+    return { rows, totalCost, heldSetpoint, minIndoor };
+  }, [nightProfile, indoorF, setpointF, stagingManual, compressorMinOutdoorF, auxMaxOutdoorF, auxSimultaneous, auxDeltaF, hpCapacity, hpEfficiency]);
+
+  const guidance = useMemo(() => {
+const warnings = [];
+
+    if (auxMaxOutdoorF >= 38) {
+      warnings.push({
+        title: "Aux is allowed at very mild outdoor temps",
+        detail: "An Aux Heat Max of ~40°F can cause strips to run a lot, even though modern heat pumps usually can handle 20s/30s. This is a common 'why is my bill insane?' setting.",
+      });
+    }
+
+    if (compressorMinOutdoorF >= 28) {
+      warnings.push({
+        title: "Compressor lockout is probably too high",
+        detail: "A Compressor Min Outdoor Temp of ~30°F can lock out the heat pump in normal winter weather and force Aux. Many modern systems can run into the teens or lower (check your model specs).",
+      });
+    }
+
+    if (!stagingManual) {
+      warnings.push({
+        title: "Auto staging can be overly conservative",
+        detail: "Auto staging tends to bring Aux in sooner. Switching to MANUAL gives you control over when strips are allowed to help.",
+      });
+    }
+
+    if (auxSimultaneous) {
+      warnings.push({
+        title: "Aux + Heat Pump together can spike usage",
+        detail: "If 'Aux Simultaneous Operation' is enabled, the thermostat may run both at once to recover faster—great for comfort, brutal for the electric bill.",
+      });
+    }
+
+    return warnings;
+  }, [auxMaxOutdoorF, compressorMinOutdoorF, stagingManual, auxSimultaneous]);
+
+  const presetMoneySaver = () => {
+    setStagingManual(true);
+    setCompressorMinOutdoorF(10);
+    setAuxMaxOutdoorF(25);
+    setAuxSimultaneous(false);
+    setAuxDeltaF(6);
+    setHpCapacity("Standard");
+  };
+
+  const presetConservative = () => {
+    setStagingManual(false);
+    setCompressorMinOutdoorF(30);
+    setAuxMaxOutdoorF(40);
+    setAuxSimultaneous(true);
+    setAuxDeltaF(5);
+    setHpCapacity("Standard");
+  };
+
+  const badge = modeBadge(singleDecision.mode);
+
+  return (
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Why your electric bill exploded (Ecobee + Heat Pump + Aux Heat)</h1>
+              <p className="text-muted-foreground mt-2 max-w-3xl">
+                If your thresholds are conservative, Ecobee can run <b>Aux Heat (electric strips)</b> for hours when the heat pump could have handled it.
+                This page explains the "best answer" and lets you <b>simulate a cold night</b> while you tweak the key settings.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={presetConservative}>Preset: Conservative (bill 🔥)</Button>
+              <Button onClick={presetMoneySaver}>Preset: Money saver</Button>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Thermometer className="h-5 w-5" /> The short answer
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm leading-relaxed">
+              <div className="space-y-2">
+                <p>
+                  The fix is usually: <b>stop locking out the compressor so early</b> and <b>stop allowing Aux to run at mild temperatures</b>.
+                  That means:
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><b>Configure Staging → MANUAL</b> (so you control Aux behavior)</li>
+                  <li><b>Lower "Compressor Min Outdoor Temp"</b> (often 5–15°F to start, depending on your heat pump)</li>
+                  <li><b>Lower "Aux Heat Max Outdoor Temp"</b> (often 20–30°F to start)</li>
+                  <li><b>Consider disabling "Aux Simultaneous Operation"</b> (comfort ↑, electric bill ↑↑)</li>
+                </ul>
+                <p>
+                  Then watch a cold night: if the house <b>holds setpoint</b>, you've likely saved money.
+                  If it <b>can't keep up</b>, bring Aux in a bit sooner (raise Aux Max slightly or lower Aux Delta).
+                </p>
+              </div>
+
+              {guidance.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {guidance.map((w, i) => (
+                    <div key={i} className="flex gap-3 rounded-xl border p-3">
+                      <AlertTriangle className="h-5 w-5 mt-0.5" />
+                      <div>
+                        <div className="font-medium">{w.title}</div>
+                        <div className="text-muted-foreground">{w.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Quick check</span>
+                <Badge variant={badge.variant} className="gap-2">
+                  {badge.icon}
+                  {badge.label}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="text-muted-foreground">Given your current indoor temp, setpoint, and outdoor temp (night start), the model predicts:</div>
+              <div className="rounded-xl border p-3 space-y-2">
+                {singleDecision.reasons.map((r, idx) => (
+                  <div key={idx} className="text-muted-foreground">• {r}</div>
+                ))}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Educational model — use your equipment specs and beestat graphs to validate.
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <Card className="lg:col-span-2 rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle>Controls (simulate your thresholds)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="font-medium">Configure Staging</Label>
+                  <div className="text-xs text-muted-foreground">Auto is conservative; Manual gives you control.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Auto</span>
+                  <Switch checked={stagingManual} onCheckedChange={setStagingManual} />
+                  <span className="text-xs">Manual</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium">Compressor Min Outdoor Temp</Label>
+                  <span className="text-sm tabular-nums">{fmtF(compressorMinOutdoorF)}</span>
+                </div>
+                <Slider value={[compressorMinOutdoorF]} min={-10} max={45} step={1} onValueChange={(v) => setCompressorMinOutdoorF(v[0])} />
+                <div className="text-xs text-muted-foreground">
+                  If outdoor temp is below this, compressor is locked out (forces Aux if allowed).
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium">Aux Heat Max Outdoor Temp</Label>
+                  <span className="text-sm tabular-nums">{fmtF(auxMaxOutdoorF)}</span>
+                </div>
+                <Slider value={[auxMaxOutdoorF]} min={-10} max={55} step={1} onValueChange={(v) => setAuxMaxOutdoorF(v[0])} />
+                <div className="text-xs text-muted-foreground">
+                  Aux (strips) is allowed when outdoor temp is at or below this.
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="font-medium">Aux Simultaneous Operation</Label>
+                  <div className="text-xs text-muted-foreground">When enabled, HP + Aux can run together.</div>
+                </div>
+                <Switch checked={auxSimultaneous} onCheckedChange={setAuxSimultaneous} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium">Aux Delta (how far behind before Aux helps)</Label>
+                  <span className="text-sm tabular-nums">{fmtF(auxDeltaF)}</span>
+                </div>
+                <Slider value={[auxDeltaF]} min={1} max={10} step={0.5} onValueChange={(v) => setAuxDeltaF(v[0])} />
+                <div className="text-xs text-muted-foreground">
+                  Higher = less Aux (cheaper, slower recovery). Lower = more Aux (faster, $$$).
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-medium">Heat pump type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={hpCapacity === "Standard" ? "default" : "secondary"}
+                    className="rounded-xl"
+                    onClick={() => setHpCapacity("Standard")}
+                  >
+                    Standard
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={hpCapacity === "Cold-climate" ? "default" : "secondary"}
+                    className="rounded-xl"
+                    onClick={() => setHpCapacity("Cold-climate")}
+                  >
+                    Cold-climate
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  This affects the simplified "can it keep up?" behavior in the simulator.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="font-medium">Indoor now (°F)</Label>
+                  <Input value={indoorF} onChange={(e) => setIndoorF(clamp(Number(e.target.value || 0), 45, 80))} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-medium">Setpoint (°F)</Label>
+                  <Input value={setpointF} onChange={(e) => setSetpointF(clamp(Number(e.target.value || 0), 50, 80))} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-3 rounded-2xl shadow-sm">
+            <CardHeader>
+              <CardTitle>Cold-night simulator</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label className="font-medium">Night start outdoor (°F)</Label>
+                  <Input value={nightStartF} onChange={(e) => setNightStartF(clamp(Number(e.target.value || 0), -20, 70))} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-medium">Night end outdoor (°F)</Label>
+                  <Input value={nightEndF} onChange={(e) => setNightEndF(clamp(Number(e.target.value || 0), -20, 70))} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-medium">Hours</Label>
+                  <Input value={nightHours} onChange={(e) => setNightHours(clamp(Number(e.target.value || 0), 4, 14))} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-muted-foreground">Avg outdoor</div>
+                  <div className="text-lg font-semibold tabular-nums">{fmtF((nightStartF + nightEndF) / 2)}</div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-muted-foreground">Estimated HP efficiency (COP-ish)</div>
+                  <div className="text-lg font-semibold tabular-nums">{hpEfficiency.toFixed(2)}</div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-muted-foreground">Relative "cost units" (lower is better)</div>
+                  <div className="text-lg font-semibold tabular-nums">{nightSimulation.totalCost.toFixed(2)}</div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden">
+                <div className="grid grid-cols-4 bg-muted/40 px-3 py-2 text-xs font-medium">
+                  <div>Hour</div>
+                  <div>Outdoor</div>
+                  <div>Mode</div>
+                  <div>Indoor (after)</div>
+                </div>
+                <div className="max-h-[340px] overflow-auto">
+                  {nightSimulation.rows.map((r, idx) => {
+                    const b = modeBadge(r.mode);
+                    const holds = r.indoorAfter >= setpointF - 0.25;
+                    return (
+                      <div key={idx} className="grid grid-cols-4 px-3 py-2 text-sm border-t items-center">
+                        <div className="tabular-nums text-muted-foreground">{r.hour}</div>
+                        <div className="tabular-nums">{fmtF(r.outdoor)}</div>
+                        <div>
+                          <Badge variant={b.variant} className="gap-2">
+                            {b.icon}
+                            {b.label}
+                          </Badge>
+                        </div>
+                        <div className={`tabular-nums font-medium ${holds ? "" : "text-amber-600"}`}>{fmtF(r.indoorAfter)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-muted-foreground">Did it hold setpoint at any point?</div>
+                  <div className="text-lg font-semibold">{nightSimulation.heldSetpoint ? "Mostly / eventually" : "No — likely needs Aux sooner"}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    If it can't keep up: raise Aux Max slightly, lower Aux Delta, or verify equipment (refrigerant/defrost/airflow).
+                  </div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-muted-foreground">Lowest indoor temp during the night</div>
+                  <div className="text-lg font-semibold tabular-nums">{fmtF(nightSimulation.minIndoor)}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    A big drop suggests either thresholds are too strict or the heat pump capacity/house heat loss is the limiting factor.
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-medium">What to do in real life</div>
+                    <div className="text-muted-foreground">
+                      Use <b>beestat.io</b> to verify whether you're seeing lots of Aux (red) vs Heat Pump (orange). If your outdoor unit is modern and
+                      rated for cold temps, the goal is: <b>compressor runs most of the time</b>, Aux only helps when you're behind or when it's truly too cold.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle>Suggested starting points (what Reddit was trying to say, but calmer)</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-xl border p-4">
+              <div className="font-medium">All-electric + modern heat pump</div>
+              <div className="text-muted-foreground mt-1">Start around:</div>
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li>Staging: <b>Manual</b></li>
+                <li>Compressor Min: <b>5–15°F</b></li>
+                <li>Aux Max: <b>20–30°F</b></li>
+                <li>Aux Delta: <b>5–7°F</b></li>
+              </ul>
+            </div>
+            <div className="rounded-xl border p-4">
+              <div className="font-medium">Cold-climate heat pump</div>
+              <div className="text-muted-foreground mt-1">You can often go lower:</div>
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li>Compressor Min: <b>0°F or below</b> (if rated)</li>
+                <li>Aux Max: <b>0–15°F</b></li>
+                <li>Keep Aux mostly as "catch-up"</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border p-4">
+              <div className="font-medium">If it can't hold temp</div>
+              <div className="text-muted-foreground mt-1">Don't panic — tune gently:</div>
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li>Raise Aux Max by <b>5°F</b></li>
+                <li>Or lower Aux Delta by <b>1–2°F</b></li>
+                <li>If still bad: verify <b>refrigerant, airflow, defrost</b></li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="text-xs text-muted-foreground pb-8">
+          Safety note: changing thresholds is generally safe, but if you have unusual equipment (dual-fuel, lockouts, fossil aux, etc.) or persistent inability
+          to heat, consult your installer and the outdoor unit's specs.
+        </div>
+      </div>
+    </div>
+  );
+}
