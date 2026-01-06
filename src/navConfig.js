@@ -58,6 +58,7 @@ const EcobeeVentilatorWizard = lazy(() => import("./pages/EcobeeVentilatorWizard
 const WholeHouseVentilationEcobeeGuide = lazy(() => import("./pages/WholeHouseVentilationEcobeeGuide"));
 const EcobeeAuxHeatSimulator = lazy(() => import("./pages/EcobeeAuxHeatSimulator"));
 const EcobeeReplayLastNight = lazy(() => import("./pages/EcobeeReplayLastNight"));
+const EcobeeFrostControlFix = lazy(() => import("./pages/EcobeeFrostControlFix"));
 const TwoWaySwitchExplainer = lazy(() => import("./pages/TwoWaySwitchExplainer"));
 const TwoWaySwitchWiringVisualizer = lazy(() => import("./pages/TwoWaySwitchWiringVisualizer"));
 const KnowledgeBaseSearch = lazy(() => import("./pages/KnowledgeBaseSearch"));
@@ -240,6 +241,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Compare AUTO vs MANUAL staging to optimize aux heat usage. See why 'Aux starts at 40°F' nukes your bill.",
+  },
+  {
+    path: "/tools/ecobee-frost-control-fix",
+    name: "Ecobee Frost Control Fix",
+    label: "Ecobee Frost Control Missing?",
+    icon: Thermometer,
+    Component: EcobeeFrostControlFix,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Fix for Ecobee thermostat frost control settings disappearing. Interactive guide to resolve the AC Overcooling bug.",
   },
   {
     path: "/tools/hvac-static-pressure",

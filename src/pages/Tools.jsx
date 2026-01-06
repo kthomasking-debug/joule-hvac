@@ -136,6 +136,14 @@ export default function Tools() {
       comingSoon: true,
       tools: [
         {
+          path: "/tools/ecobee-frost-control-fix",
+          name: "Ecobee Frost Control Fix",
+          label: "Ecobee Frost Control Missing?",
+          icon: Thermometer,
+          description: "Fix for Ecobee thermostat frost control settings disappearing. Interactive guide to resolve the AC Overcooling bug.",
+          color: "orange",
+        },
+        {
           path: "/tools/hvac-troubleshooting",
           name: "HVAC Troubleshooting",
           label: "HVAC Troubleshooting",
