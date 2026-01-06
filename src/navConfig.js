@@ -59,6 +59,7 @@ const WholeHouseVentilationEcobeeGuide = lazy(() => import("./pages/WholeHouseVe
 const EcobeeAuxHeatSimulator = lazy(() => import("./pages/EcobeeAuxHeatSimulator"));
 const EcobeeReplayLastNight = lazy(() => import("./pages/EcobeeReplayLastNight"));
 const EcobeeFrostControlFix = lazy(() => import("./pages/EcobeeFrostControlFix"));
+const HotTubWireCalculator = lazy(() => import("./pages/HotTubWireCalculator"));
 const TwoWaySwitchExplainer = lazy(() => import("./pages/TwoWaySwitchExplainer"));
 const TwoWaySwitchWiringVisualizer = lazy(() => import("./pages/TwoWaySwitchWiringVisualizer"));
 const KnowledgeBaseSearch = lazy(() => import("./pages/KnowledgeBaseSearch"));
@@ -252,6 +253,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Fix for Ecobee thermostat frost control settings disappearing. Interactive guide to resolve the AC Overcooling bug.",
+  },
+  {
+    path: "/tools/hot-tub-wire-calculator",
+    name: "Hot Tub Wire Calculator",
+    label: "Hot Tub Wire Size Calculator",
+    icon: Zap,
+    Component: HotTubWireCalculator,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Calculate wire gauge requirements and voltage drop for hot tub installations. Verify if existing wire meets NEC code requirements.",
   },
   {
     path: "/tools/hvac-static-pressure",

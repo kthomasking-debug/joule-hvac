@@ -173,6 +173,14 @@ export default function Tools() {
       description: "Electrical wiring and troubleshooting tools",
       tools: [
         {
+          path: "/tools/hot-tub-wire-calculator",
+          name: "Hot Tub Wire Calculator",
+          label: "Hot Tub Wire Size Calculator",
+          icon: Zap,
+          description: "Calculate wire gauge requirements and voltage drop for hot tub installations. Verify if existing wire meets NEC code requirements.",
+          color: "orange",
+        },
+        {
           path: "/tools/two-way-switch-wiring-visualizer",
           name: "Two-Way Switch Wiring Visualizer",
           label: "Two-Way Switch Wiring Visualizer",
