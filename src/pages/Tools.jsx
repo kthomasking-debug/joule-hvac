@@ -133,7 +133,6 @@ export default function Tools() {
     {
       title: "Troubleshooting & Support",
       description: "Diagnostic tools and support resources",
-      comingSoon: true,
       tools: [
         {
           path: "/tools/ecobee-frost-control-fix",
