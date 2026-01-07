@@ -107,6 +107,7 @@ export default function Tools() {
           color: "purple",
         },
       ],
+    },
     {
       title: "Troubleshooting & Support",
       description: "Diagnostic tools and support resources",
