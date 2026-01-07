@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   ThermometerSun,
   DollarSign,
+  MapPin,
 } from "lucide-react";
 import AskJoule from "../components/AskJoule";
 import HomeTopSection from "../components/HomeTopSection";
