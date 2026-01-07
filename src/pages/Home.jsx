@@ -864,90 +864,50 @@ const HomeDashboard = () => {
             <p className="text-sm text-[#A7B0BA]">Deep dive into system performance</p>
           </button>
 
-          {/* Bottom Row: Monthly Forecast, Optimizer, Blueair Control */}
-          {bridgeAvailable && jouleBridge.connected ? (
-            <Link
-              to="/analysis/monthly-budget"
-              className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <TrendingUp className="w-6 h-6 text-blue-400" />
-                <h3 className="text-lg font-semibold text-white">Monthly Forecast</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">View monthly budget and daily breakdown</p>
-            </Link>
-          ) : (
-            <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 opacity-50 cursor-not-allowed" title="Bridge Required">
-              <div className="flex items-center gap-3 mb-2">
-                <TrendingUp className="w-6 h-6 text-slate-500" />
-                <h3 className="text-lg font-semibold text-slate-500">Monthly Forecast</h3>
-              </div>
-              <p className="text-sm text-slate-600">Pair with Ecobee in Settings to enable</p>
+          {/* Bottom Row: Monthly Forecast, Optimizer, System Costs, Location Costs */}
+          <Link
+            to="/analysis/monthly-budget"
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingUp className="w-6 h-6 text-blue-400" />
+              <h3 className="text-lg font-semibold text-white">Monthly Forecast</h3>
             </div>
-          )}
+            <p className="text-sm text-[#A7B0BA]">View monthly budget and daily breakdown</p>
+          </Link>
 
-          {bridgeAvailable && jouleBridge.connected ? (
-            <Link
-              to="/optimize"
-              className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Sparkles className="w-6 h-6 text-blue-400" />
-                <h3 className="text-lg font-semibold text-white">Optimizer</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">One-click optimizations to save money</p>
-            </Link>
-          ) : (
-            <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 opacity-50 cursor-not-allowed" title="Bridge Required">
-              <div className="flex items-center gap-3 mb-2">
-                <Sparkles className="w-6 h-6 text-slate-500" />
-                <h3 className="text-lg font-semibold text-slate-500">Optimizer</h3>
-              </div>
-              <p className="text-sm text-slate-600">Pair with Ecobee in Settings to enable</p>
+          <Link
+            to="/optimize"
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <Sparkles className="w-6 h-6 text-blue-400" />
+              <h3 className="text-lg font-semibold text-white">Optimizer</h3>
             </div>
-          )}
+            <p className="text-sm text-[#A7B0BA]">One-click optimizations to save money</p>
+          </Link>
 
-          {bridgeAvailable && jouleBridge.connected ? (
-            <Link
-              to="/tools/heat-pump-vs-gas-furnace"
-              className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <DollarSign className="w-6 h-6 text-amber-400" />
-                <h3 className="text-lg font-semibold text-white">System Costs</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">Compare heat pump vs gas furnace savings for your climate</p>
-            </Link>
-          ) : (
-            <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 opacity-50 cursor-not-allowed" title="Bridge Required">
-              <div className="flex items-center gap-3 mb-2">
-                <DollarSign className="w-6 h-6 text-slate-500" />
-                <h3 className="text-lg font-semibold text-slate-500">System Costs</h3>
-              </div>
-              <p className="text-sm text-slate-600">Pair with Ecobee in Settings to enable</p>
+          <Link
+            to="/tools/heat-pump-vs-gas-furnace"
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <DollarSign className="w-6 h-6 text-amber-400" />
+              <h3 className="text-lg font-semibold text-white">System Costs</h3>
             </div>
-          )}
+            <p className="text-sm text-[#A7B0BA]">Compare heat pump vs gas furnace savings for your climate</p>
+          </Link>
 
-          {bridgeAvailable && jouleBridge.connected ? (
-            <Link
-              to="/tools/city-cost-comparison"
-              className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <MapPin className="w-6 h-6 text-amber-400" />
-                <h3 className="text-lg font-semibold text-white">Location Costs</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">See how your utility rates compare to other cities</p>
-            </Link>
-          ) : (
-            <div className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 opacity-50 cursor-not-allowed" title="Bridge Required">
-              <div className="flex items-center gap-3 mb-2">
-                <MapPin className="w-6 h-6 text-slate-500" />
-                <h3 className="text-lg font-semibold text-slate-500">Location Costs</h3>
-              </div>
-              <p className="text-sm text-slate-600">Pair with Ecobee in Settings to enable</p>
+          <Link
+            to="/tools/city-cost-comparison"
+            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <MapPin className="w-6 h-6 text-amber-400" />
+              <h3 className="text-lg font-semibold text-white">Location Costs</h3>
             </div>
-          )}
+            <p className="text-sm text-[#A7B0BA]">See how your utility rates compare to other cities</p>
+          </Link>
         </div>
       </div>
     </div>
