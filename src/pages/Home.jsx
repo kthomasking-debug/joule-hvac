@@ -947,6 +947,7 @@ const HomeDashboard = () => {
               <p className="text-sm text-slate-600">Pair with Ecobee in Settings to enable</p>
             </div>
           )}
+        </div>
       </div>
     </div>
   );
