@@ -107,29 +107,6 @@ export default function Tools() {
           color: "purple",
         },
       ],
-    },
-    {
-      title: "Cost Comparison",
-      description: "Compare costs between systems and locations",
-      tools: [
-        {
-          path: "/tools/heat-pump-vs-gas-furnace",
-          name: "Heat Pump vs Gas Furnace Cost",
-          label: "Heat Pump vs Gas Furnace Cost",
-          icon: Search,
-          description: "Compare heat pump vs gas furnace costs for your home and climate. See which system saves you more money based on your utility rates and usage patterns.",
-          color: "blue",
-        },
-        {
-          path: "/tools/city-cost-comparison",
-          name: "City Cost Comparison",
-          label: "City Cost Comparison",
-          icon: MapPin,
-          description: "Compare heating and cooling costs between different cities and climates. See how location affects your energy bills.",
-          color: "green",
-        },
-      ],
-    },
     {
       title: "Troubleshooting & Support",
       description: "Diagnostic tools and support resources",
