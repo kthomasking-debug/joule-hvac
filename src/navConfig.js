@@ -29,6 +29,7 @@ const NWSSnowfallChart = lazy(() => import("./pages/NWSSnowfallChart"));
 const EnergyPlusLoadCalc = lazy(() => import("./pages/EnergyPlusLoadCalc"));
 const WiringDiagramGenerator = lazy(() => import("./pages/WiringDiagramGenerator"));
 const ThermostatWiringHelper = lazy(() => import("./pages/ThermostatWiringHelper"));
+const BoschZoningSim = lazy(() => import("./pages/BoschZoningSim"));
 const EquipmentSettingsGuide = lazy(() => import("./pages/EquipmentSettingsGuide"));
 const HVACTroubleshooting = lazy(() => import("./pages/HVACTroubleshooting"));
 const AskJouleHelp = lazy(() => import("./pages/AskJouleHelp"));
@@ -731,6 +732,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Interactive Ecobee wiring diagnostic: identify missing W/O/B connections, system type, and safety steps to restore heat mode.",
+  },
+  {
+    path: "/tools/bosch-zoning-sim",
+    name: "Bosch IDS + Ecobee Zoning Simulator",
+    label: "Bosch Zoning Simulator",
+    icon: Cable,
+    Component: BoschZoningSim,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Understand how Bosch inverter zoning systems interact with Ecobee thresholds. Prevent fan-only standby cycles with differential settings.",
   },
   {
     path: "/tools/equipment-settings",

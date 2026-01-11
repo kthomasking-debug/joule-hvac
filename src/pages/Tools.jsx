@@ -160,6 +160,14 @@ export default function Tools() {
           description: "Interactive Ecobee wiring diagnostic to restore heat mode: identify missing W/O/B connections, system type, and safety steps.",
           color: "blue",
         },
+        {
+          path: "/tools/bosch-zoning-sim",
+          name: "Bosch Zoning Simulator",
+          label: "Bosch Zoning Simulator",
+          icon: Cable,
+          description: "Understand how Bosch inverter systems interact with Ecobee differential thresholds. Prevent fan-only standby cycles.",
+          color: "blue",
+        },
       ],
     },
     {
