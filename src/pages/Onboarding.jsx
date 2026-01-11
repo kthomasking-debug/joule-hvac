@@ -48,31 +48,16 @@ export default function Onboarding() {
   // Check if this is a forced re-run
   const isRerun = searchParams.get("rerun") === "true";
 
-  // Check if onboarding is already completed (but allow re-running if rerun param is set)
-  // Also verify that required data actually exists - don't trust the flag alone
+  // Check if onboarding should be shown
+  // ONLY show onboarding if explicitly triggered with rerun=true parameter
+  // This means onboarding is skipped on app startup but can be manually triggered from Mission Control
   const hasCompletedOnboarding = useMemo(() => {
     if (isRerun) {
       return false; // Force show onboarding flow if rerun parameter is present
     }
-    try {
-      const flag = localStorage.getItem("hasCompletedOnboarding") === "true";
-      if (!flag) return false;
-      
-      // Verify that required onboarding data actually exists
-      const userLocation = localStorage.getItem("userLocation");
-      const settings = getAllSettings();
-      
-      // Check if we have location data
-      const hasLocation = userLocation && JSON.parse(userLocation)?.city && JSON.parse(userLocation)?.state;
-      
-      // Check if we have basic building data
-      const hasBuildingData = settings?.squareFeet && settings?.squareFeet > 0;
-      
-      // Only consider onboarding complete if we have both location and building data
-      return hasLocation && hasBuildingData;
-    } catch {
-      return false;
-    }
+    // For all other cases (direct navigation without rerun param), skip onboarding
+    // Users will be redirected to home via the conditional render below
+    return true;
   }, [isRerun]);
 
   // Onboarding state
@@ -383,7 +368,15 @@ export default function Onboarding() {
     } catch {
       // ignore
     }
-    navigate("/home");
+    
+    // Check if there's a redirect path stored from Mission Control
+    const redirectPath = sessionStorage.getItem("onboardingRedirectPath");
+    if (redirectPath) {
+      sessionStorage.removeItem("onboardingRedirectPath");
+      navigate(redirectPath);
+    } else {
+      navigate("/home");
+    }
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
   // Handle next step

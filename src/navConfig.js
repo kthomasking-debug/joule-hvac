@@ -25,8 +25,10 @@ const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
 const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Tools = lazy(() => import("./pages/Tools"));
+const NWSSnowfallChart = lazy(() => import("./pages/NWSSnowfallChart"));
 const EnergyPlusLoadCalc = lazy(() => import("./pages/EnergyPlusLoadCalc"));
 const WiringDiagramGenerator = lazy(() => import("./pages/WiringDiagramGenerator"));
+const ThermostatWiringHelper = lazy(() => import("./pages/ThermostatWiringHelper"));
 const EquipmentSettingsGuide = lazy(() => import("./pages/EquipmentSettingsGuide"));
 const HVACTroubleshooting = lazy(() => import("./pages/HVACTroubleshooting"));
 const AskJouleHelp = lazy(() => import("./pages/AskJouleHelp"));
@@ -698,6 +700,17 @@ export const routes = [
     description: "ACCA Manual J-compliant load calcs using DOE EnergyPlus. Get your BTUs, tons, and sizing right the first time. No more guessing on SEER, HSPF, or AFUE ratings.",
   },
   {
+    path: "/tools/snowfall-forecast",
+    name: "NWS Snowfall Forecast",
+    label: "Snowfall Forecast",
+    icon: Moon,
+    Component: NWSSnowfallChart,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "7-day snowfall forecast from the National Weather Service. See expected accumulation and plan for winter weather impacts on your heating system.",
+  },
+  {
     path: "/tools/wiring-diagram",
     name: "Wiring Diagram Generator",
     label: "Wiring Diagram Generator",
@@ -707,6 +720,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Generate ASCII wiring diagrams for Ecobee thermostat installs. Handles PEK setups, heat pump configs, conventional systems, and all that jazz. No C-wire? No problem.",
+  },
+  {
+    path: "/tools/thermostat-wiring-helper",
+    name: "Thermostat Wiring Helper",
+    label: "Thermostat Wiring Helper",
+    icon: Cable,
+    Component: ThermostatWiringHelper,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Interactive Ecobee wiring diagnostic: identify missing W/O/B connections, system type, and safety steps to restore heat mode.",
   },
   {
     path: "/tools/equipment-settings",

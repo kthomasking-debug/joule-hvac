@@ -50,14 +50,6 @@ const SmartThermostatDemo = () => {
   const setUserSetting = outlet.setUserSetting;
   const { unitSystem } = useUnitSystem();
   
-  // Route guard: Redirect to onboarding if not completed
-  useEffect(() => {
-    const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding");
-    if (!hasCompletedOnboarding) {
-      navigate("/onboarding");
-    }
-  }, [navigate]);
-  
   // Load userLocation from localStorage
   const userLocation = useMemo(() => {
     try {

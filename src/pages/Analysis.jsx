@@ -53,6 +53,9 @@ const Analysis = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, navigate]);
 
+  // Check if we're on a city comparison route
+  const isCityComparisonRoute = location.pathname.includes('/city-comparison') || location.pathname.includes('/city-cost-comparison');
+
   // City Cost Comparison wrapper components
   const CityComparison = () => {
     // Check if we're on a sub-route (support both old /analysis and new /tools paths)
@@ -106,54 +109,8 @@ const Analysis = () => {
   return (
     <div className="min-h-screen bg-[#0C0F14]">
       <div className="mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        {/* Page Header - Always visible */}
-        <header className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-xl font-semibold text-white">Forecaster</h1>
-            <Link
-              to="/analysis/annual"
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-            >
-              <TrendingUp className="w-3 h-3" />
-              Annual Forecast
-            </Link>
-          </div>
-          <p className="text-xs text-[#A7B0BA] italic">
-            Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
-          </p>
-        </header>
-
-        {/* Tab Navigation - Always visible */}
-        <div className="mb-3">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
-                    activeTab === tab.id
-                      ? 'bg-[#1E4CFF] text-white'
-                      : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* Tab Description */}
-          {tabDescriptions[activeTab] && (
-            <p className="mt-1.5 text-xs text-[#A7B0BA]">
-              {tabDescriptions[activeTab]}
-            </p>
-          )}
-        </div>
-
-        {/* Active Tab Content */}
-        <div className="animate-fade-in-up">
+        {/* Render City Comparison if on that route */}
+        {isCityComparisonRoute ? (
           <Suspense fallback={
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -162,9 +119,71 @@ const Analysis = () => {
               </div>
             </div>
           }>
-            <ActiveComponent />
+            <CityComparison />
           </Suspense>
-        </div>
+        ) : (
+          <>
+            {/* Page Header - Always visible */}
+            <header className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <h1 className="text-xl font-semibold text-white">Forecaster</h1>
+                <Link
+                  to="/analysis/annual"
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                >
+                  <TrendingUp className="w-3 h-3" />
+                  Annual Forecast
+                </Link>
+              </div>
+              <p className="text-xs text-[#A7B0BA] italic">
+                Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
+              </p>
+            </header>
+
+            {/* Tab Navigation - Always visible */}
+            <div className="mb-3">
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => handleTabChange(tab.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap text-sm font-medium ${
+                        activeTab === tab.id
+                          ? 'bg-[#1E4CFF] text-white'
+                          : 'bg-[#151A21] text-[#A7B0BA] hover:bg-[#1D232C] border border-[#222A35]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Tab Description */}
+              {tabDescriptions[activeTab] && (
+                <p className="mt-1.5 text-xs text-[#A7B0BA]">
+                  {tabDescriptions[activeTab]}
+                </p>
+              )}
+            </div>
+
+            {/* Active Tab Content */}
+            <div className="animate-fade-in-up">
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                    <p className="text-sm text-[#A7B0BA]">Loading...</p>
+                  </div>
+                </div>
+              }>
+                <ActiveComponent />
+              </Suspense>
+            </div>
+          </>
+        )}
 
         {/* AI Explanation for City Comparison */}
         {(location.pathname.includes('/city-comparison') || location.pathname.includes('/city-cost-comparison')) && (

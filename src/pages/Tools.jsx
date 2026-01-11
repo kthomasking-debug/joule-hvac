@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap, CloudSnow } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -10,23 +10,9 @@ export default function Tools() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   
-  // Tools that require onboarding completion
-  const requiresOnboarding = [
-    "/tools/heat-pump-vs-gas-furnace",
-    "/tools/city-cost-comparison",
-  ];
-  
   const handleToolClick = (e, toolPath) => {
-    // Check if this tool requires onboarding
-    if (requiresOnboarding.includes(toolPath)) {
-      const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
-      
-      if (!hasCompletedOnboarding) {
-        e.preventDefault();
-        navigate("/onboarding");
-        return;
-      }
-    }
+    // All tools are now accessible without requiring onboarding
+    // Onboarding can be triggered manually from Mission Control
   };
 
   const sections = [
@@ -166,6 +152,14 @@ export default function Tools() {
           description: "Animated visualizer showing 3-way switch contacts, traveler voltage states, ASCII diagrams, induction formulas, and NEC references.",
           color: "orange",
         },
+        {
+          path: "/tools/thermostat-wiring-helper",
+          name: "Thermostat Wiring Helper",
+          label: "Thermostat Wiring Helper",
+          icon: Cable,
+          description: "Interactive Ecobee wiring diagnostic to restore heat mode: identify missing W/O/B connections, system type, and safety steps.",
+          color: "blue",
+        },
       ],
     },
     {
@@ -179,6 +173,20 @@ export default function Tools() {
           icon: Search,
           description: "Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.",
           color: "purple",
+        },
+      ],
+    },
+    {
+      title: "Weather & Climate",
+      description: "Weather forecasts and climate data visualization",
+      tools: [
+        {
+          path: "/tools/snowfall-forecast",
+          name: "NWS Snowfall Forecast",
+          label: "Snowfall Forecast",
+          icon: CloudSnow,
+          description: "7-day snowfall forecast from the National Weather Service. View predicted snowfall amounts and probabilities for your location.",
+          color: "blue",
         },
       ],
     },

@@ -48,6 +48,7 @@ import {
 import { calculateBalancePoint } from "../utils/balancePointCalculator";
 import computeAnnualPrecisionEstimate from "../lib/fullPrecisionEstimate";
 import { getRecentlyViewed, removeFromRecentlyViewed } from "../utils/recentlyViewed";
+import { getAllSettings } from "../lib/unifiedSettingsManager";
 import * as heatUtils from "../lib/heatUtils";
 import { routes } from "../navConfig";
 import { getCached, getCachedBatch } from "../utils/cachedStorage";
@@ -62,22 +63,33 @@ const HomeDashboard = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const toolsSectionRef = useRef(null);
 
-  // Check if onboarding has been completed
-  const hasCompletedOnboarding = () => {
-    try {
-      return localStorage.getItem("hasCompletedOnboarding") === "true";
-    } catch {
-      return false;
-    }
-  };
-
-  // Handle clicks on main feature buttons - redirect to onboarding if not completed
+  // Handle clicks on main feature buttons - require onboarding first
   const handleFeatureClick = (targetPath, event) => {
     event.preventDefault();
-    if (!hasCompletedOnboarding()) {
-      navigate("/onboarding");
-    } else {
-      navigate(targetPath);
+    try {
+      const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+      const userLocation = localStorage.getItem("userLocation");
+      const settings = getAllSettings?.();
+      
+      // Check if user has truly completed onboarding with required data
+      const hasValidOnboarding = hasCompletedOnboarding && 
+        userLocation && 
+        JSON.parse(userLocation)?.city && 
+        JSON.parse(userLocation)?.state &&
+        settings?.squareFeet && 
+        settings?.squareFeet > 0;
+      
+      if (!hasValidOnboarding) {
+        // Store the target path so onboarding can redirect after completion
+        sessionStorage.setItem("onboardingRedirectPath", targetPath);
+        navigate("/onboarding?rerun=true");
+      } else {
+        navigate(targetPath);
+      }
+    } catch (error) {
+      // If there's any error checking onboarding, require it
+      sessionStorage.setItem("onboardingRedirectPath", targetPath);
+      navigate("/onboarding?rerun=true");
     }
   };
 
@@ -806,8 +818,8 @@ const HomeDashboard = () => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="px-3 py-1 bg-purple-500/20 border border-purple-400/30 rounded-md text-xs font-semibold text-purple-200 uppercase tracking-wider">
-                    Coming Soon
+                  <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-md text-xs font-semibold text-green-200 uppercase tracking-wider">
+                    New Feature
                   </span>
                 </div>
                 <p className="text-base text-white font-semibold mb-2">
@@ -817,7 +829,7 @@ const HomeDashboard = () => {
                     rel="noopener noreferrer"
                     className="hover:text-purple-200 transition-colors"
                   >
-                    Pair with Ecobee to enable full features (Requires Joule Server)
+                    Pair with Ecobee to enable full features
                   </a>
                 </p>
                 <p className="text-sm text-slate-300">
