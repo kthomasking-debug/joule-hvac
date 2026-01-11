@@ -30,54 +30,53 @@ export default function ThermostatWiringHelper() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-700 px-4 py-8">
-      <div className="max-w-6xl mx-auto flex gap-4">
-        {/* Sticky Navigation Sidebar */}
-        <nav className={`
-          fixed left-0 top-0 h-screen bg-white dark:bg-gray-900 shadow-lg z-40 transform transition-transform duration-300 w-64
-          ${navOpen ? "translate-x-0" : "-translate-x-full"}
-          lg:static lg:translate-x-0 lg:w-56 lg:rounded-tl-2xl lg:rounded-bl-2xl
-        `}>
-          <div className="h-full overflow-y-auto p-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-6">Navigation</h2>
-            <ul className="space-y-2">
-              {navSections.map((section) => (
-                <li key={section.id}>
-                  <button
-                    onClick={() => scrollToSection(section.id)}
-                    className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition"
-                  >
-                    {section.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </nav>
+      {/* Sticky Navigation Sidebar - Mobile Only */}
+      <nav className={`
+        fixed left-0 top-0 h-screen bg-white dark:bg-gray-900 shadow-lg z-40 transform transition-transform duration-300 w-64
+        ${navOpen ? "translate-x-0" : "-translate-x-full"}
+        md:hidden
+      `}>
+        <div className="h-full overflow-y-auto p-4">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-6">Navigation</h2>
+          <ul className="space-y-2">
+            {navSections.map((section) => (
+              <li key={section.id}>
+                <button
+                  onClick={() => scrollToSection(section.id)}
+                  className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition"
+                >
+                  {section.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
 
-        {/* Overlay for mobile */}
-        {navOpen && (
-          <div
-            className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-            onClick={() => setNavOpen(false)}
-          />
-        )}
+      {/* Overlay for mobile */}
+      {navOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
 
-        {/* Toggle Button */}
-        <button
-          onClick={() => setNavOpen(!navOpen)}
-          className="fixed bottom-6 right-6 lg:hidden z-50 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-3 shadow-lg"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {navOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
+      {/* Toggle Button - Mobile Only */}
+      <button
+        onClick={() => setNavOpen(!navOpen)}
+        className="fixed bottom-6 right-6 md:hidden z-50 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-3 shadow-lg"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {navOpen ? (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          ) : (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          )}
+        </svg>
+      </button>
 
-        {/* Main Content */}
-        <div className="flex-1 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden lg:rounded-tr-2xl lg:rounded-br-2xl">
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden">
         <header className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white px-8 py-10 text-center">
           <h1 className="text-3xl font-bold mb-2">🔧 Thermostat Wiring Diagnostic</h1>
           <p className="text-lg opacity-90">No heat option? Let's figure out why together</p>
@@ -325,7 +324,6 @@ export default function ThermostatWiringHelper() {
             </div>
           </section>
         </main>
-        </div>
       </div>
     </div>
   );
