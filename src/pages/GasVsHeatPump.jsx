@@ -406,7 +406,7 @@ const GasVsHeatPump = () => {
     setEnergyCostsError(null);
 
     try {
-      // Extract state from location name (e.g., "Chicago, IL" -> "IL")
+      // Extract state from location name (handles "City, ST" and "City, State, Country")
       const locationStr = foundLocationName || locationQuery || '';
       const stateMatch = locationStr.match(/,?\s*([A-Z]{2})\s*$/);
       let stateCode = null;
@@ -414,9 +414,12 @@ const GasVsHeatPump = () => {
       if (stateMatch) {
         stateCode = stateMatch[1];
       } else {
-        // Try to extract state name and convert to code
         const parts = locationStr.split(',').map(s => s.trim());
-        if (parts.length >= 2) {
+        if (parts.length >= 3) {
+          // Expect formats like "Chicago, Illinois, United States" — use the second-to-last as state
+          const stateName = parts[parts.length - 2];
+          stateCode = getStateCode(stateName);
+        } else if (parts.length >= 2) {
           const stateName = parts[parts.length - 1];
           stateCode = getStateCode(stateName);
         }
