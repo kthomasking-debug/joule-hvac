@@ -156,7 +156,7 @@ const GasVsHeatPump = () => {
   const [showCandidateList, setShowCandidateList] = useState(false);
   const [lowHeatLossWarning, setLowHeatLossWarning] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
-  const [simpleMode, setSimpleMode] = useState(true);
+  const [simpleMode, setSimpleMode] = useState(false);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   // Basic US state abbreviation to name mapping for better geocoding disambiguation
