@@ -463,6 +463,13 @@ const GasVsHeatPump = () => {
     }
   };
 
+  // Auto-fetch state averages once a location is confirmed
+  useEffect(() => {
+    if (!foundLocationName || !eiaApiKey || fetchingEnergyCosts) return;
+    handleApplyEnergyCosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foundLocationName, eiaApiKey]);
+
   // Auto-load location from onboarding on mount
   useEffect(() => {
     // If we already have coordinates from onboarding, set the found location name
