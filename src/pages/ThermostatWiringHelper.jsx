@@ -325,6 +325,7 @@ export default function ThermostatWiringHelper() {
             </div>
           </section>
         </main>
+        </div>
       </div>
     </div>
   );
