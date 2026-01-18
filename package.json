@@ -9,6 +9,7 @@
     "kill-port:5173": "powershell -ExecutionPolicy ByPass -File scripts/kill-port.ps1 5173",
     "dev": "vite",
     "dev:clean": "powershell -ExecutionPolicy ByPass -File scripts/kill-port.ps1 5173 && npm run dev",
+    "dev:clean:linux": "pkill -9 -f \"vite|npm run dev\" || true && vite",
     "test": "vitest --run",
     "test:parser": "vitest --run src/utils/__tests__/askJouleParser.test.js",
     "test:parser:watch": "vitest src/utils/__tests__/askJouleParser.test.js",

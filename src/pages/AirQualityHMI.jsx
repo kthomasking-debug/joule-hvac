@@ -20,6 +20,7 @@ import { useJouleBridgeContext } from '../contexts/JouleBridgeContext';
 import { useEcobee } from '../hooks/useEcobee';
 import { getEcobeeCredentials } from '../lib/ecobeeApi';
 import { getPollenData } from '../lib/pollenApi';
+import { fetchGeocodeCandidates, chooseBestCandidate } from '../utils/geocode';
 
 /**
  * Air Quality HMI - Control and monitor dehumidifier and Blueair
@@ -42,6 +43,8 @@ export default function AirQualityHMI() {
   const [pollenLoading, setPollenLoading] = useState(false);
   const [pollenError, setPollenError] = useState(null);
   const [aqiData, setAqiData] = useState(null);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [userLocation, setUserLocation] = useState(null);
   
   // Motion sensor data
   const [motionDetected, setMotionDetected] = useState(false);
@@ -73,6 +76,19 @@ export default function AirQualityHMI() {
       setPollenLoading(false);
     }
   }, []);
+
+  // Load saved location (if present)
+  useEffect(() => {
+    try {
+      const locRaw = localStorage.getItem('userLocation');
+      if (locRaw) {
+        const loc = JSON.parse(locRaw);
+        if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
+          setUserLocation(loc);
+        }
+      }
+    } catch {}
+  }, []);
   
   // Fetch pollen data on mount and periodically
   useEffect(() => {
@@ -80,6 +96,35 @@ export default function AirQualityHMI() {
     const interval = setInterval(fetchPollenData, 300000); // Every 5 minutes
     return () => clearInterval(interval);
   }, [fetchPollenData]);
+
+  // Fetch AQI via Open-Meteo Air Quality API when location is available
+  const fetchAQIOpenMeteo = useCallback(async (lat, lon) => {
+    try {
+      const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=pm2_5,pm10,us_aqi&timezone=auto`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Open-Meteo AQ failed');
+      const data = await res.json();
+      const hourly = data?.hourly || {};
+      const idx = (hourly.time && Array.isArray(hourly.time)) ? hourly.time.length - 1 : -1;
+      const pm25 = idx >= 0 && hourly.pm2_5 ? hourly.pm2_5[idx] : null;
+      const pm10 = idx >= 0 && hourly.pm10 ? hourly.pm10[idx] : null;
+      const usAqi = idx >= 0 && hourly.us_aqi ? hourly.us_aqi[idx] : null;
+      setAqiData({ pm25, pm10, usAqi, source: 'open-meteo' });
+      // If our pollenData exists, merge AQI value in for unified display
+      setPollenData(prev => {
+        if (!prev) return { pollen: {}, aqi: usAqi ?? null, timestamp: new Date().toISOString(), source: 'open-meteo' };
+        return { ...prev, aqi: usAqi ?? prev.aqi, source: prev.source || 'open-meteo' };
+      });
+    } catch (e) {
+      console.warn('Open-Meteo AQ fetch failed:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userLocation?.latitude && userLocation?.longitude) {
+      fetchAQIOpenMeteo(userLocation.latitude, userLocation.longitude);
+    }
+  }, [userLocation, fetchAQIOpenMeteo]);
   
   // Get humidity from active integration
   const indoorHumidity = bridgeAvailable && jouleBridge.connected
@@ -443,6 +488,45 @@ export default function AirQualityHMI() {
                 <RefreshCw className={`w-4 h-4 text-gray-600 dark:text-gray-400 ${pollenLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
+
+            {/* Location input (optional) */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Location</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={locationQuery}
+                  onChange={(e) => setLocationQuery(e.target.value)}
+                  placeholder={userLocation ? `${userLocation.name || 'Saved location'}` : 'City, State or ZIP'}
+                  className="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-100"
+                />
+                <button
+                  onClick={async () => {
+                    try {
+                      if (!locationQuery.trim()) return;
+                      const candidates = await fetchGeocodeCandidates(locationQuery.trim());
+                      const best = chooseBestCandidate(candidates);
+                      if (best) {
+                        const loc = { name: `${best.name}, ${best.admin1 || best.country || ''}`.trim(), latitude: best.latitude, longitude: best.longitude };
+                        setUserLocation(loc);
+                        localStorage.setItem('userLocation', JSON.stringify(loc));
+                        fetchAQIOpenMeteo(best.latitude, best.longitude);
+                      }
+                    } catch (e) {
+                      console.warn('Location search failed:', e);
+                    }
+                  }}
+                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Set
+                </button>
+              </div>
+              {userLocation && (
+                <div className="mt-1 text-xs text-gray-500">
+                  Using: {userLocation.name || `${userLocation.latitude.toFixed(3)}, ${userLocation.longitude.toFixed(3)}`}
+                </div>
+              )}
+            </div>
             
             {/* Pollen Count */}
             <div className="mb-6">
@@ -558,6 +642,16 @@ export default function AirQualityHMI() {
                       style={{ width: `${Math.min(100, (pollenData.aqi / 200) * 100)}%` }}
                     />
                   </div>
+                  {aqiData && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400">
+                      <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                        PM2.5: <span className="font-semibold text-gray-800 dark:text-gray-200">{aqiData.pm25 ?? 'N/A'}</span>
+                      </div>
+                      <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                        PM10: <span className="font-semibold text-gray-800 dark:text-gray-200">{aqiData.pm10 ?? 'N/A'}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">No data available</p>
