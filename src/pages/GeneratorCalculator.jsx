@@ -3,8 +3,9 @@ import {
   Zap, Clock, Flame, BarChart3, Thermometer, 
   Power, Activity, ChevronUp, ChevronDown,
   Droplets, X, Settings, ArrowRight, CheckCircle2,
-  Wand2, DollarSign, Wind, Snowflake 
+  Wand2, DollarSign, Wind, Snowflake, Network, Lock, AlertCircle, Loader2
 } from 'lucide-react';
+import { setBridgeBase, shareSettingsWithPi } from '../lib/bridgeApi';
 
 const GeneratorDashboard = () => {
   // --- STATE ---
@@ -20,6 +21,13 @@ const GeneratorDashboard = () => {
   
   const [showMath, setShowMath] = useState(false);
   const [selectedLoads, setSelectedLoads] = useState(['fridge', 'well', 'lights']);
+  
+  // Bridge Setup State
+  const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
+  const [pairingCode, setPairingCode] = useState('');
+  const [bridgeConnecting, setBridgeConnecting] = useState(false);
+  const [bridgeError, setBridgeError] = useState(null);
+  const [bridgeConnected, setBridgeConnected] = useState(false);
 
   // --- CONFIG DATA ---
   const specs = {
@@ -92,7 +100,73 @@ const GeneratorDashboard = () => {
 
   // --- ONBOARDING RENDERER ---
   if (onboarding) {
-    const totalSteps = 5; // Model, Heating, Fuel, Runtime, Confirm
+    const totalSteps = 6; // Model, Heating, Fuel, Runtime, Bridge, Confirm
+
+    // Generate pairing code (4-digit random)
+    const generatePairingCode = () => {
+      const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      setPairingCode(code);
+      return code;
+    };
+
+    // Test bridge connection
+    const testBridgeConnection = async () => {
+      if (!bridgeIp.trim()) {
+        setBridgeError('Please enter a bridge IP address');
+        return;
+      }
+      
+      setBridgeConnecting(true);
+      setBridgeError(null);
+      
+      try {
+        const code = pairingCode || generatePairingCode();
+        const bridgeUrl = `http://${bridgeIp.trim()}:8090`;
+        
+        // Test connectivity
+        const testRes = await fetch(`${bridgeUrl}/status`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (!testRes.ok) throw new Error('Bridge not responding');
+        
+        // Send pairing code and generator config to bridge
+        const configPayload = {
+          pairingCode: code,
+          timestamp: new Date().toISOString(),
+          generatorConfig: {
+            model,
+            heatingType,
+            fuelPrice,
+            tankSize,
+            runtimeHours,
+            selectedLoads,
+          }
+        };
+        
+        const configRes = await fetch(`${bridgeUrl}/api/generator-config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(configPayload),
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (!configRes.ok) throw new Error('Failed to send configuration');
+        
+        // Store bridge settings
+        setBridgeBase(bridgeUrl);
+        localStorage.setItem('bridgeIp', bridgeIp);
+        localStorage.setItem('pairingCode', code);
+        
+        setBridgeConnected(true);
+      } catch (err) {
+        setBridgeError(err.message || 'Failed to connect to bridge');
+        setBridgeConnected(false);
+      } finally {
+        setBridgeConnecting(false);
+      }
+    };
 
     return (
       <div className="h-screen w-screen bg-[#0f172a] text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -256,8 +330,95 @@ const GeneratorDashboard = () => {
               </div>
             )}
 
-            {/* STEP 5: CONFIRMATION */}
+            {/* STEP 5: BRIDGE SETUP */}
             {step === 5 && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="text-center">
+                  <h2 className="text-4xl font-black text-white mb-2">Connect Joule Bridge</h2>
+                  <p className="text-slate-400">Set up your backup power monitoring system</p>
+                </div>
+                
+                <div className="space-y-6">
+                  {/* Bridge IP Input */}
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
+                      <Network size={16} /> Bridge IP Address
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="192.168.1.100" 
+                      value={bridgeIp} 
+                      onChange={(e) => setBridgeIp(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-xl py-4 px-4 text-lg font-mono text-white focus:outline-none focus:border-cyan-400 transition-colors"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">Find this on your Pi bridge device or router</p>
+                  </div>
+
+                  {/* Pairing Code Display */}
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
+                      <Lock size={16} /> Pairing Code
+                    </label>
+                    <div className="flex gap-3">
+                      <div className="flex-1 bg-slate-800 border border-slate-600 rounded-xl py-4 px-4 text-3xl font-black text-cyan-400 font-mono text-center">
+                        {pairingCode || '----'}
+                      </div>
+                      <button
+                        onClick={() => generatePairingCode()}
+                        className="px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors"
+                      >
+                        Generate
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">Share this code with your bridge for verification</p>
+                  </div>
+
+                  {/* Error Message */}
+                  {bridgeError && (
+                    <div className="bg-red-950/50 border border-red-800 rounded-xl p-4 flex gap-3 text-sm text-red-200">
+                      <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+                      <span>{bridgeError}</span>
+                    </div>
+                  )}
+
+                  {/* Connection Status */}
+                  {bridgeConnected && (
+                    <div className="bg-green-950/50 border border-green-800 rounded-xl p-4 flex gap-3 text-sm text-green-200">
+                      <CheckCircle2 size={18} className="flex-shrink-0 mt-0.5" />
+                      <span>Bridge connected successfully! Configuration sent.</span>
+                    </div>
+                  )}
+
+                  {/* Test Connection Button */}
+                  <button
+                    onClick={testBridgeConnection}
+                    disabled={bridgeConnecting || !bridgeIp.trim()}
+                    className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    {bridgeConnecting ? (
+                      <>
+                        <Loader2 size={20} className="animate-spin" /> Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <Network size={20} /> Test Connection & Send Config
+                      </>
+                    )}
+                  </button>
+
+                  {/* Skip Option */}
+                  <button
+                    onClick={() => { setBridgeError(null); setStep(6); }}
+                    className="w-full py-3 text-slate-400 hover:text-slate-300 font-semibold text-sm uppercase tracking-wider"
+                  >
+                    Skip Bridge Setup (Complete Later)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 6: CONFIRMATION */}
+            {step === 6 && (
               <div className="text-center space-y-8 animate-in fade-in zoom-in duration-500">
                 <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle2 size={48} className="text-green-400" />
@@ -266,6 +427,7 @@ const GeneratorDashboard = () => {
                   <h2 className="text-4xl font-black text-white mb-4">Setup Complete</h2>
                   <p className="text-slate-400 max-w-md mx-auto">
                     Your {model} dashboard is configured with <strong>{heatingType === 'gas' ? 'Gas Heating' : 'Electric Heat Pump'}</strong>.
+                    {bridgeConnected && ' Bridge is connected and ready.'}
                   </p>
                 </div>
               </div>
@@ -284,12 +446,12 @@ const GeneratorDashboard = () => {
               
               <button 
                 onClick={() => {
-                  if (step < 5) setStep(s => s + 1);
+                  if (step < 6) setStep(s => s + 1);
                   else setOnboarding(false);
                 }}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-900 text-lg font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-cyan-500/25"
               >
-                {step === 5 ? 'Launch Dashboard' : 'Next Step'} <ArrowRight size={20}/>
+                {step === 6 ? 'Launch Dashboard' : 'Next Step'} <ArrowRight size={20}/>
               </button>
             </div>
 
