@@ -11,6 +11,10 @@ import {
   ChevronRight,
   Zap,
   ArrowRight,
+  Network,
+  Lock,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -20,6 +24,7 @@ import { setSetting, getAllSettings } from "../lib/unifiedSettingsManager";
 import { calculateHeatLoss } from "../lib/heatUtils";
 import UnitSystemToggle from "../components/UnitSystemToggle";
 import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
+import { setBridgeBase } from "../lib/bridgeApi";
 
 // Build public path helper
 function buildPublicPath(path) {
@@ -36,7 +41,8 @@ const STEPS = {
   WELCOME: 0,
   LOCATION: 1,
   BUILDING: 2,
-  CONFIRMATION: 3,
+  BRIDGE: 3,
+  CONFIRMATION: 4,
 };
 
 export default function Onboarding() {
@@ -142,7 +148,14 @@ export default function Onboarding() {
   }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
-  const totalSteps = 4; // Always 4 steps: Welcome, Location, Building, Confirmation
+  const totalSteps = 5; // Always 5 steps: Welcome, Location, Building, Bridge, Confirmation
+  
+  // Bridge Setup State
+  const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
+  const [pairingCode, setPairingCode] = useState('');
+  const [bridgeConnecting, setBridgeConnecting] = useState(false);
+  const [bridgeError, setBridgeError] = useState(null);
+  const [bridgeConnected, setBridgeConnected] = useState(false);
 
   // Load saved location on mount
   useEffect(() => {
@@ -450,6 +463,8 @@ export default function Onboarding() {
       }
       
       setBuildingError(null); // Clear any errors
+      setStep(STEPS.BRIDGE);
+    } else if (step === STEPS.BRIDGE) {
       setStep(STEPS.CONFIRMATION);
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
@@ -459,6 +474,73 @@ export default function Onboarding() {
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
   const themeData = getWelcomeTheme(welcomeTheme);
+
+  // Generate pairing code
+  const generatePairingCode = useCallback(() => {
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    setPairingCode(code);
+    return code;
+  }, []);
+
+  // Test bridge connection
+  const testBridgeConnection = useCallback(async () => {
+    if (!bridgeIp.trim()) {
+      setBridgeError('Please enter a bridge IP address');
+      return;
+    }
+    
+    setBridgeConnecting(true);
+    setBridgeError(null);
+    
+    try {
+      const code = pairingCode || generatePairingCode();
+      const bridgeUrl = `http://${bridgeIp.trim()}:8090`;
+      
+      // Test connectivity
+      const testRes = await fetch(`${bridgeUrl}/status`, { 
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (!testRes.ok) throw new Error('Bridge not responding');
+      
+      // Send forecast data to bridge
+      const forecastData = localStorage.getItem('last_forecast_summary');
+      const configPayload = {
+        pairingCode: code,
+        timestamp: new Date().toISOString(),
+        forecast_summary: forecastData ? JSON.parse(forecastData) : null,
+        location: foundLocation ? {
+          city: foundLocation.city,
+          state: foundLocation.state,
+          latitude: foundLocation.latitude,
+          longitude: foundLocation.longitude,
+          elevation: locationElevation,
+        } : null,
+      };
+      
+      const configRes = await fetch(`${bridgeUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configPayload),
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (!configRes.ok) throw new Error('Failed to send configuration');
+      
+      // Store bridge settings
+      setBridgeBase(bridgeUrl);
+      localStorage.setItem('bridgeIp', bridgeIp);
+      localStorage.setItem('pairingCode', code);
+      
+      setBridgeConnected(true);
+    } catch (err) {
+      setBridgeError(err.message || 'Failed to connect to bridge');
+      setBridgeConnected(false);
+    } finally {
+      setBridgeConnecting(false);
+    }
+  }, [bridgeIp, pairingCode, generatePairingCode, foundLocation, locationElevation]);
 
   // If already completed, show a quick redirect message
   if (hasCompletedOnboarding) {
@@ -932,7 +1014,105 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 3: Confirmation (Required for all modes) */}
+        {/* Step 4: Bridge Setup (Optional) */}
+        {step === STEPS.BRIDGE && (
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <Network size={48} className="mx-auto text-blue-600 dark:text-blue-400 mb-4" />
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+                Connect Joule Bridge
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Set up your backup power monitoring system
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Bridge IP Input */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
+                  <Network size={16} /> Bridge IP Address
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="192.168.1.100" 
+                  value={bridgeIp} 
+                  onChange={(e) => setBridgeIp(e.target.value)}
+                  className={fullInputClasses}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Find this on your Pi bridge device or router</p>
+              </div>
+
+              {/* Pairing Code Display */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
+                  <Lock size={16} /> Pairing Code
+                </label>
+                <div className="flex gap-3">
+                  <div className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg py-4 px-4 text-3xl font-black text-blue-600 dark:text-blue-400 font-mono text-center">
+                    {pairingCode || '----'}
+                  </div>
+                  <button
+                    onClick={() => generatePairingCode()}
+                    className="btn btn-primary px-6"
+                  >
+                    Generate
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Share this code with your bridge for verification</p>
+              </div>
+
+              {/* Error Message */}
+              {bridgeError && (
+                <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 rounded-lg p-4 flex gap-3 text-sm text-red-700 dark:text-red-200">
+                  <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+                  <span>{bridgeError}</span>
+                </div>
+              )}
+
+              {/* Connection Status */}
+              {bridgeConnected && (
+                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4 flex gap-3 text-sm text-green-700 dark:text-green-200">
+                  <CheckCircle2 size={18} className="flex-shrink-0 mt-0.5" />
+                  <span>Bridge connected successfully! Configuration sent.</span>
+                </div>
+              )}
+
+              {/* Test Connection Button */}
+              <button
+                onClick={testBridgeConnection}
+                disabled={bridgeConnecting || !bridgeIp.trim()}
+                className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {bridgeConnecting ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" /> Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Network size={20} /> Test Connection & Send Config
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="flex gap-3 justify-center mt-8">
+              <button
+                onClick={() => setStep(STEPS.BUILDING)}
+                className="btn btn-outline px-6 py-3"
+              >
+                Back
+              </button>
+              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+                <span className="flex items-center gap-1">
+                  {bridgeConnected ? 'Continue' : 'Skip & Continue'} <ChevronRight size={18} />
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Confirmation (Required for all modes) */}
         {step === STEPS.CONFIRMATION && (
           <div className="text-center">
             <div className="mb-4">
