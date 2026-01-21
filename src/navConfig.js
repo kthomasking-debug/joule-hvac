@@ -1,5 +1,6 @@
 // src/navConfig.js
 import { lazy } from "react";
+import { Navigate } from "react-router-dom";
 
 // Lazy load all page components for code splitting and faster initial load
 const LandingPage = lazy(() => import("./pages/LandingPage"));
@@ -354,7 +355,7 @@ export const routes = [
     name: "Budget (Redirect)",
     label: "Budget (Redirect)",
     icon: TrendingUp,
-    Component: () => { window.location.href = '/analysis/monthly'; return null; },
+    Component: () => <Navigate to="/analysis/monthly" replace />,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
@@ -1150,7 +1151,7 @@ export const routes = [
     name: "Forecast (Redirect)",
     label: "Forecast (Redirect)",
     icon: Calendar,
-    Component: () => { window.location.href = '/analysis/weekly'; return null; },
+    Component: () => <Navigate to="/analysis/weekly" replace />,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
