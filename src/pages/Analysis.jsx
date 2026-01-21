@@ -23,7 +23,7 @@ const Analysis = () => {
   
   // Determine active tab from URL or default to forecast
   const getActiveTab = () => {
-    if (location.pathname.includes('/analysis/forecast') || location.pathname === '/analysis') {
+    if (location.pathname.includes('/analysis/weekly') || location.pathname.includes('/analysis/forecast') || location.pathname === '/analysis') {
       return 'forecast';
     }
     if (location.pathname.includes('/analysis/monthly') || location.pathname.includes('/analysis/budget')) {
@@ -46,7 +46,7 @@ const Analysis = () => {
   // Sync activeTab with location changes and redirect to default if needed
   useEffect(() => {
     if (location.pathname === '/analysis') {
-      navigate('/analysis/forecast', { replace: true });
+      navigate('/analysis/weekly', { replace: true });
       return;
     }
     setActiveTab(getActiveTab());

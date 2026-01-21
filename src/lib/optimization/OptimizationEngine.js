@@ -1083,7 +1083,7 @@ export function getQuickActions(options = {}) {
       label: "Prepare for Cold",
       description: "Pre-heat your home before temperatures drop",
       action: "navigate",
-      target: "/analysis/forecast",
+      target: "/analysis/weekly",
     });
   }
 
@@ -1095,7 +1095,7 @@ export function getQuickActions(options = {}) {
       label: "Prepare for Heat",
       description: "Pre-cool your home before temperatures spike",
       action: "navigate",
-      target: "/analysis/forecast",
+      target: "/analysis/weekly",
     });
   }
 
@@ -1146,7 +1146,7 @@ export function getQuickActions(options = {}) {
     label: "This Week's Forecast",
     description: "See your predicted costs for the next 7 days",
     action: "navigate",
-    target: "/analysis/forecast",
+    target: "/analysis/weekly",
   });
 
   actions.push({
@@ -1156,7 +1156,7 @@ export function getQuickActions(options = {}) {
     label: "City Comparison",
     description: "Compare costs across different locations",
     action: "navigate",
-    target: "/analysis/budget",
+    target: "/analysis/monthly",
   });
 
   return actions.sort((a, b) => a.priority - b.priority);

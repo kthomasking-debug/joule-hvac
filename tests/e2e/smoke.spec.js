@@ -209,7 +209,7 @@ test.describe("Smoke Tests - Production Build", () => {
       browserName === "firefox" ? "domcontentloaded" : "networkidle";
 
     try {
-      await page.goto("/analysis/forecast", {
+      await page.goto("/analysis/weekly", {
         waitUntil,
         timeout,
       });
@@ -217,7 +217,7 @@ test.describe("Smoke Tests - Production Build", () => {
       // Retry once if navigation fails (especially for Firefox)
       if (browserName === "firefox" && error.message.includes("timeout")) {
         await page.waitForTimeout(2000);
-        await page.goto("/analysis/forecast", {
+        await page.goto("/analysis/weekly", {
           waitUntil: "domcontentloaded",
           timeout,
         });

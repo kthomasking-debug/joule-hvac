@@ -265,7 +265,7 @@ test.describe("Application Navigation", () => {
     const pages = [
       { name: "Home", path: "/home" },
       { name: "Settings", path: "/config" },
-      { name: "7-Day Forecast", path: "/analysis/forecast" },
+      { name: "7-Day Forecast", path: "/analysis/weekly" },
       { name: "System Performance Analyzer", path: "/analysis/analyzer" },
       { name: "Energy Flow", path: "/energy-flow" },
       { name: "Monthly Budget", path: "/analysis/monthly" },
@@ -437,7 +437,7 @@ test.describe("7-Day Cost Forecaster", () => {
       browserName === "firefox" ? "domcontentloaded" : "networkidle";
 
     try {
-      await page.goto("/analysis/forecast", { waitUntil, timeout });
+      await page.goto("/analysis/weekly", { waitUntil, timeout });
     } catch (error) {
       if (
         browserName === "firefox" &&
@@ -446,7 +446,7 @@ test.describe("7-Day Cost Forecaster", () => {
       ) {
         // Retry once for Firefox connection issues
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        await page.goto("/analysis/forecast", { waitUntil, timeout });
+        await page.goto("/analysis/weekly", { waitUntil, timeout });
       } else {
         throw error;
       }
