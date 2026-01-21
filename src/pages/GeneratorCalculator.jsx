@@ -3,7 +3,7 @@ import {
   Zap, Clock, Flame, BarChart3, Thermometer, 
   Power, Activity, ChevronUp, ChevronDown,
   Droplets, X, Settings, ArrowRight, CheckCircle2,
-  Wand2, DollarSign, Wind, Snowflake // Added Wind/Snowflake for Heat Pump
+  Wand2, DollarSign, Wind, Snowflake 
 } from 'lucide-react';
 
 const GeneratorDashboard = () => {
@@ -33,7 +33,7 @@ const GeneratorDashboard = () => {
     { id: 'fridge', label: 'Fridge/Freezer', kw: 1.2, icon: <Thermometer size={18} /> },
     { id: 'well', label: 'Well Pump', kw: 1.5, icon: <Droplets size={18} /> },
     { id: 'furnace', label: 'Gas Furnace Fan', kw: 0.6, icon: <Flame size={18} /> },
-    { id: 'heatpump', label: 'Heat Pump (Heating)', kw: 4.0, icon: <Wind size={18} /> }, // New Item
+    { id: 'heatpump', label: 'Heat Pump (Heating)', kw: 4.0, icon: <Wind size={18} /> },
     { id: 'microwave', label: 'Microwave', kw: 1.5, icon: <Zap size={18} /> },
     { id: 'water', label: 'Elec. Water Heater', kw: 4.5, icon: <Droplets size={18} /> },
     { id: 'stove', label: 'Electric Stove', kw: 3.0, icon: <Activity size={18} /> },
@@ -75,7 +75,9 @@ const GeneratorDashboard = () => {
 
     // Auto-update selected loads based on Heating Type choice
     setSelectedLoads(prev => {
+      // Remove both heating types first
       const basic = prev.filter(id => id !== 'furnace' && id !== 'heatpump');
+      // Add back the selected one
       if (heatingType === 'heatpump') return [...basic, 'heatpump'];
       return [...basic, 'furnace'];
     });
@@ -133,7 +135,7 @@ const GeneratorDashboard = () => {
               </div>
             )}
 
-            {/* STEP 2: HEATING SYSTEM (NEW) */}
+            {/* STEP 2: HEATING SYSTEM */}
             {step === 2 && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="text-center">
@@ -236,7 +238,7 @@ const GeneratorDashboard = () => {
                   </div>
                 </div>
 
-                {/* Preview Calculation based on current state (including heating choice) */}
+                {/* Preview Calculation */}
                 <div className="grid grid-cols-2 gap-4">
                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 text-center">
                       <div className="text-xs text-slate-500 uppercase font-bold">Est. Daily Cost</div>
@@ -251,11 +253,6 @@ const GeneratorDashboard = () => {
                       </div>
                    </div>
                 </div>
-                {heatingType === 'heatpump' && (
-                  <div className="bg-blue-500/10 text-blue-300 text-xs text-center p-2 rounded border border-blue-500/20">
-                     <Wind size={12} className="inline mr-1"/> Heat Pump selected. High power draw expected.
-                  </div>
-                )}
               </div>
             )}
 
