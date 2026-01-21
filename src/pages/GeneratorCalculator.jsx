@@ -233,11 +233,13 @@ const GeneratorCalculator = () => {
         </h1>
       </div>
 
-      {/* Main Grid: 3 columns */}
-      <div className="grid grid-cols-3 gap-3" style={{height: 'calc(100vh - 120px)'}}>
+      {/* Main Container: Flex layout for grid + graph */}
+      <div className="flex flex-col gap-3" style={{height: 'calc(100vh - 120px)'}}>
+        {/* Main Grid: 3 columns */}
+        <div className="grid grid-cols-3 gap-3 flex-1 overflow-hidden">
         
-        {/* LEFT COLUMN - Controls */}
-        <div className="space-y-3 overflow-auto">
+          {/* LEFT COLUMN - Controls */}
+          <div className="space-y-3 overflow-auto">
           {/* Top Controls */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded border border-slate-200 dark:border-slate-700">
@@ -430,23 +432,21 @@ const GeneratorCalculator = () => {
           </div>
         </div>
 
-      </div>
+        {/* Collapsible Graph Section */}
+        <div className="bg-white dark:bg-slate-900 rounded border dark:border-slate-700 overflow-hidden flex-shrink-0">
+          <button
+            onClick={() => setShowGraph(!showGraph)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition font-semibold text-lg"
+          >
+            <span className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-blue-600" />
+              Load Analysis Graph
+            </span>
+            <ChevronDown className={`h-5 w-5 transition-transform ${showGraph ? 'rotate-180' : ''}`} />
+          </button>
 
-      {/* Collapsible Graph Section */}
-      <div className="mt-3 bg-white dark:bg-slate-900 rounded border dark:border-slate-700 overflow-hidden">
-        <button
-          onClick={() => setShowGraph(!showGraph)}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition font-semibold text-lg"
-        >
-          <span className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-blue-600" />
-            Load Analysis Graph
-          </span>
-          <ChevronDown className={`h-5 w-5 transition-transform ${showGraph ? 'rotate-180' : ''}`} />
-        </button>
-
-        {showGraph && (
-          <div className="p-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+          {showGraph && (
+            <div className="p-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
             {/* Load Visualization */}
             <div className="space-y-4">
               {/* Large Load Bar */}
@@ -523,7 +523,8 @@ const GeneratorCalculator = () => {
               </div>
             </div>
           </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
