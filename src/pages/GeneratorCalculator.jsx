@@ -11,11 +11,11 @@ const GeneratorCalculator = () => {
   const [heatPumpKw, setHeatPumpKw] = useState(10);
 
   const heatPumpOptions = [
-    { kw: 5, label: '5 kW', desc: 'Milder climates, rarely freezing' },
-    { kw: 8, label: '8 kW', desc: 'Moderate climates' },
-    { kw: 10, label: '10 kW', desc: 'Colder climates, emergency heating' },
-    { kw: 13, label: '13 kW', desc: 'Very cold climates' },
-    { kw: 15, label: '15 kW', desc: 'Extreme cold/large spaces' },
+    { kw: 5, label: '5 kW (1.5 ton)', desc: 'Milder climates, rarely freezing' },
+    { kw: 8, label: '8 kW (2 ton)', desc: 'Moderate climates' },
+    { kw: 10, label: '10 kW (3 ton)', desc: 'Colder climates, emergency heating' },
+    { kw: 13, label: '13 kW (3.5 ton)', desc: 'Very cold climates' },
+    { kw: 15, label: '15 kW (4 ton)', desc: 'Extreme cold/large spaces' },
   ];
 
   const baselineOptions = [
@@ -139,7 +139,7 @@ const GeneratorCalculator = () => {
           <Zap className="h-8 w-8 text-yellow-400" />
           <h1 className="text-2xl font-bold">Generator Fuel & Cost Estimator</h1>
         </div>
-        <p className="text-blue-200 mt-2 text-sm">Modeling Kohler 14RESA / 20RESA Propane Usage</p>
+        <p className="text-blue-200 mt-2 text-sm">Typical heat pump backup power requirements</p>
       </div>
 
       <div className="bg-white dark:bg-slate-900 p-6 rounded-b-lg shadow-lg dark:shadow-slate-900/40 space-y-8">
