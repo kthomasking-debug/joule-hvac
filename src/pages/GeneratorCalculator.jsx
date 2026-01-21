@@ -447,8 +447,8 @@ const GeneratorCalculator = () => {
 
           {showGraph && (
             <div className="p-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-            {/* Load Visualization */}
-            <div className="space-y-4">
+              {/* Load Visualization */}
+              <div className="space-y-4">
               {/* Large Load Bar */}
               <div>
                 <div className="flex justify-between mb-2">
