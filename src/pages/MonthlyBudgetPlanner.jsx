@@ -2634,13 +2634,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
 
 
       {/* Quick Answer - Monthly Cost Estimate at Top */}
-      {mode === "budget" && monthlyEstimate && (
+      {mode === "budget" && (
         <div className="mb-2">
           <AnswerCard
-            loading={false}
+            loading={!monthlyEstimate || loading}
             location={locationData ? `${locationData.city}, ${locationData.state}` : null}
             temp={Math.round(effectiveIndoorTemp)}
-            weeklyCost={monthlyEstimate.cost}
+            weeklyCost={monthlyEstimate?.cost || 0}
             energyMode={energyMode}
             primarySystem={primarySystem}
             timePeriod="month"
