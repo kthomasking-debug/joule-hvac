@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 const GeneratorCalculator = () => {
   const [model, setModel] = useState('20kW');
-  const [baselineSelections, setBaselineSelections] = useState([]);
+  const [baselineSelections, setBaselineSelections] = useState(['lights-fridge']);
   const [fuelPrice, setFuelPrice] = useState(3.0);
   const [tankSize, setTankSize] = useState(500);
   const [heatPumpRunning, setHeatPumpRunning] = useState(false);
@@ -69,6 +69,26 @@ const GeneratorCalculator = () => {
   // Generator capacity
   const maxGenKw = model === '14kW' ? 14 : 20;
 
+  // Quick preset configurations
+  const applyPreset = (presetName) => {
+    switch (presetName) {
+      case 'essentials':
+        setBaselineSelections(['lights-fridge', 'well-pump']);
+        setHeatPumpRunning(false);
+        break;
+      case 'winter':
+        setBaselineSelections(['lights-fridge', 'well-pump', 'gas-furnace']);
+        setHeatPumpRunning(true);
+        break;
+      case 'full':
+        setBaselineSelections(['lights-fridge', 'well-pump', 'gas-furnace', 'microwave']);
+        setHeatPumpRunning(false);
+        break;
+      default:
+        setBaselineSelections([]);
+    }
+  };
+
   // Baseline load from selected utilities
   const baselineKw = baselineSelections.reduce((sum, id) => {
     const item = baselineOptions.find((opt) => opt.id === id);
@@ -79,6 +99,8 @@ const GeneratorCalculator = () => {
   // Heat pump load contribution
   const heatPumpLoadPercent = heatPumpRunning ? Math.round((heatPumpKw / maxGenKw) * 100) : 0;
   const totalLoadPercent = Math.min(100, baselineLoadPercent + heatPumpLoadPercent);
+  const totalKw = baselineKw + (heatPumpRunning ? heatPumpKw : 0);
+  const isOverloaded = totalKw > maxGenKw;
 
   // Consumption and costs are based on total load
   const gph = parseFloat(getGPH(totalLoadPercent, model));
@@ -245,16 +267,59 @@ const GeneratorCalculator = () => {
         <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-xl border-2 border-blue-100 dark:border-blue-900/60">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <label className="font-bold text-lg text-slate-800 dark:text-slate-100">Baseline Electrical Load</label>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">Select the household equipment you plan to power (excluding the heat pump above).</p>
+              <label className="font-bold text-xl text-slate-800 dark:text-slate-100">Baseline Electrical Load</label>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Select the household equipment you plan to power</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-500 dark:text-slate-300">Baseline</p>
-              <span className="text-2xl font-mono text-blue-600 dark:text-blue-300 font-bold">{baselineLoadPercent}%</span>
+              <p className="text-sm text-slate-500 dark:text-slate-300">Using</p>
+              <span className="text-3xl font-mono text-blue-600 dark:text-blue-300 font-bold">{baselineKw.toFixed(1)} kW</span>
               {heatPumpRunning && (
-                <p className="text-xs text-slate-500 dark:text-slate-300 mt-1">+ Heat Pump {heatPumpLoadPercent}%</p>
+                <p className="text-sm text-slate-500 dark:text-slate-300 mt-1">+ {heatPumpKw} kW heat pump</p>
               )}
-              <p className="text-xs text-slate-700 dark:text-slate-200 mt-1">Total: {totalLoadPercent}%</p>
+              <p className="text-lg font-bold text-slate-700 dark:text-slate-200 mt-2">Total: {totalKw.toFixed(1)} kW</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">({totalLoadPercent}% of {maxGenKw}kW)</p>
+            </div>
+          </div>
+
+          {isOverloaded && (
+            <div className="bg-red-100 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-700 p-4 rounded-lg mb-4">
+              <p className="text-red-900 dark:text-red-100 font-bold text-lg flex items-center gap-2">
+                <AlertTriangle className="h-6 w-6" />
+                OVERLOAD WARNING
+              </p>
+              <p className="text-red-800 dark:text-red-200 mt-1 text-base">
+                Your selected load ({totalKw.toFixed(1)} kW) exceeds generator capacity ({maxGenKw} kW). Turn off some appliances or upgrade to a larger generator.
+              </p>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Quick Presets:</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => applyPreset('essentials')}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-base transition-colors"
+              >
+                Essentials Only
+              </button>
+              <button
+                onClick={() => applyPreset('winter')}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-base transition-colors"
+              >
+                Winter Emergency
+              </button>
+              <button
+                onClick={() => applyPreset('full')}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold text-base transition-colors"
+              >
+                Full House
+              </button>
+              <button
+                onClick={() => setBaselineSelections([])}
+                className="px-4 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded-lg font-semibold text-base transition-colors"
+              >
+                Clear All
+              </button>
             </div>
           </div>
 
@@ -284,10 +349,10 @@ const GeneratorCalculator = () => {
                   />
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-800 dark:text-slate-100">{item.label}</span>
-                      <span className="text-xs font-mono text-blue-700 dark:text-blue-300">~{item.kw} kW</span>
+                      <span className="font-semibold text-base text-slate-800 dark:text-slate-100">{item.label}</span>
+                      <span className="text-sm font-mono font-bold text-blue-700 dark:text-blue-300">{item.kw} kW</span>
                     </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{item.desc}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">{item.desc}</p>
                   </div>
                 </label>
               );
