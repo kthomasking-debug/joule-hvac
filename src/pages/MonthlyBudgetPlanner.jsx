@@ -626,8 +626,72 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [mode, setMode] = useState(initialMode);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1); // Default to current month
   const [locationData, setLocationData] = useState(null);
-  const [monthlyEstimate, setMonthlyEstimate] = useState(null);
+  
+  // Cache key for monthly estimate
+  const getEstimateCacheKey = useCallback(() => {
+    if (!locationData?.latitude || !locationData?.longitude) return null;
+    const lat = Number(locationData.latitude).toFixed(2);
+    const lon = Number(locationData.longitude).toFixed(2);
+    const settingsKey = `${primarySystem}_${energyMode}_${selectedMonth}_${indoorTemp}_${nighttimeTemp}_${utilityCost?.toFixed(3)}`;
+    return `monthly_estimate_${lat}_${lon}_${settingsKey}`;
+  }, [locationData?.latitude, locationData?.longitude, primarySystem, energyMode, selectedMonth, indoorTemp, nighttimeTemp, utilityCost]);
+  
+  // Initialize monthlyEstimate from cache if available
+  const initialEstimate = useMemo(() => {
+    const cacheKey = getEstimateCacheKey();
+    if (!cacheKey) return null;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+        // Cache for 30 minutes (same as forecast)
+        if (age < 30 * 60 * 1000) {
+          if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+            console.log(`📦 Using cached monthly estimate (${Math.round(age / 1000)}s old)`);
+          }
+          return data;
+        }
+        sessionStorage.removeItem(cacheKey);
+      }
+    } catch (err) {
+      console.warn('Cache read error for estimate:', err);
+    }
+    return null;
+  }, [getEstimateCacheKey]);
+  
+  const [monthlyEstimate, setMonthlyEstimate] = useState(initialEstimate);
   const [showCalculations, setShowCalculations] = useState(false);
+  
+  // Cache monthly estimate when it's calculated
+  const setMonthlyEstimateCached = useCallback((estimate) => {
+    setMonthlyEstimate(estimate);
+    if (estimate && locationData?.latitude && locationData?.longitude) {
+      // Calculate cache key with current values
+      const lat = Number(locationData.latitude).toFixed(2);
+      const lon = Number(locationData.longitude).toFixed(2);
+      const settingsKey = `${primarySystem}_${energyMode}_${selectedMonth}_${indoorTemp}_${nighttimeTemp}_${utilityCost?.toFixed(3)}`;
+      const cacheKey = `monthly_estimate_${lat}_${lon}_${settingsKey}`;
+      
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          data: estimate,
+          timestamp: Date.now()
+        }));
+        if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+          console.log(`💾 Cached monthly estimate for key: ${cacheKey}`);
+        }
+      } catch (err) {
+        console.warn('Cache write error for estimate:', err);
+      }
+    }
+  }, [locationData?.latitude, locationData?.longitude, primarySystem, energyMode, selectedMonth, indoorTemp, nighttimeTemp, utilityCost]);
+  
+  // Wrapper for fetchHistoricalData that uses cached setter for Location A
+  const setMonthlyEstimateForHistorical = useCallback((estimate) => {
+    // Use cached version for Location A
+    setMonthlyEstimateCached(estimate);
+  }, [setMonthlyEstimateCached]);
   
   // Year selection for aux heat calculation
   const [auxHeatYear, setAuxHeatYear] = useState(() => new Date().getFullYear() - 1); // Default to previous year
@@ -838,9 +902,18 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     [utilityCost, gasCost]
   );
 
+  // Track last fetched state to prevent duplicate fetches
+  const lastFetchedStateRef = useRef(null);
+
   // Automatically fetch electricity rates when Location A changes
   useEffect(() => {
     if (locationData?.state) {
+      // Only fetch if state actually changed
+      if (lastFetchedStateRef.current === locationData.state) {
+        return;
+      }
+      lastFetchedStateRef.current = locationData.state;
+      
       console.log("Fetching rates for Location A:", locationData.state);
       fetchUtilityRate(locationData.state, "electricity").then((result) => {
         console.log("Location A rate fetch result:", result);
@@ -849,7 +922,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           setElectricityRateSourceA(result.source);
           // Update monthlyEstimate if it exists
           if (monthlyEstimate) {
-            setMonthlyEstimate({
+            setMonthlyEstimateCached({
               ...monthlyEstimate,
               electricityRate: result.rate,
             });
@@ -868,13 +941,23 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         });
       }
     } else {
-      console.log("Location A state not available:", locationData);
+      lastFetchedStateRef.current = null;
     }
-  }, [locationData?.state, fetchUtilityRate, primarySystem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationData?.state, primarySystem]);
 
+  // Track last fetched state for Location B
+  const lastFetchedStateBRef = useRef(null);
+  
   // Automatically fetch electricity rates when Location B changes
   useEffect(() => {
     if (locationDataB?.state) {
+      // Only fetch if state actually changed
+      if (lastFetchedStateBRef.current === locationDataB.state) {
+        return;
+      }
+      lastFetchedStateBRef.current = locationDataB.state;
+      
       console.log("Fetching rates for Location B:", locationDataB.state);
       fetchUtilityRate(locationDataB.state, "electricity").then((result) => {
         console.log("Location B rate fetch result:", result);
@@ -902,9 +985,10 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         });
       }
     } else {
-      console.log("Location B state not available:", locationDataB);
+      lastFetchedStateBRef.current = null;
     }
-  }, [locationDataB?.state, fetchUtilityRate, primarySystem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationDataB?.state, primarySystem]);
 
   // Get user's location from localStorage (set during onboarding)
   useEffect(() => {
@@ -1311,13 +1395,15 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             });
             
             if (setEstimate === setMonthlyEstimateB) setHistoricalTempsB(temps);
-            if (setEstimate === setMonthlyEstimate) setHistoricalTempsA(temps);
+            if (setEstimate === setMonthlyEstimate || setEstimate === setMonthlyEstimateForHistorical) setHistoricalTempsA(temps);
             
-            const isLocationA = setEstimate === setMonthlyEstimate;
+            const isLocationA = setEstimate === setMonthlyEstimate || setEstimate === setMonthlyEstimateForHistorical;
             const rateResult = await fetchUtilityRate(locData.state, "electricity");
             if (isLocationA) setElectricityRateSourceA(rateResult.source);
             else setElectricityRateSourceB(rateResult.source);
-            calculateMonthlyEstimate(temps, setEstimate, rateResult.rate);
+            // Use cached setter for Location A
+            const setterToUse = isLocationA ? setMonthlyEstimateCached : setEstimate;
+            calculateMonthlyEstimate(temps, setterToUse, rateResult.rate);
             setLoadingState(false);
             return;
           }
@@ -1366,25 +1452,29 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         });
 
         if (setEstimate === setMonthlyEstimateB) setHistoricalTempsB(temps);
-        if (setEstimate === setMonthlyEstimate) setHistoricalTempsA(temps);
+        if (setEstimate === setMonthlyEstimate || setEstimate === setMonthlyEstimateForHistorical) setHistoricalTempsA(temps);
 
-        const isLocationA = setEstimate === setMonthlyEstimate;
+        const isLocationA = setEstimate === setMonthlyEstimate || setEstimate === setMonthlyEstimateForHistorical;
         const rateResult = await fetchUtilityRate(locData.state, "electricity");
         if (isLocationA) setElectricityRateSourceA(rateResult.source);
         else setElectricityRateSourceB(rateResult.source);
-        calculateMonthlyEstimate(temps, setEstimate, rateResult.rate);
+        // Use cached setter for Location A
+        const setterToUse = isLocationA ? setMonthlyEstimateCached : setEstimate;
+        calculateMonthlyEstimate(temps, setterToUse, rateResult.rate);
       } catch (error) {
         console.warn("Error fetching historical data", error);
         setErrorState(
           "Could not fetch historical climate data. Using typical estimates."
         );
-        const isLocationA = setEstimate === setMonthlyEstimate;
+        const isLocationA = setEstimate === setMonthlyEstimate || setEstimate === setMonthlyEstimateForHistorical;
         const rateResult = await fetchUtilityRate(
           locData?.state,
           "electricity"
         );
         if (isLocationA) setElectricityRateSourceA(rateResult.source);
         else setElectricityRateSourceB(rateResult.source);
+        // Use cached setter for Location A
+        const setterToUse = isLocationA ? setMonthlyEstimateCached : setEstimate;
         const commonParams = {
           squareFeet,
           insulationLevel,
@@ -1398,7 +1488,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           estimateTypicalCDDCost({
             ...commonParams,
             month: selectedMonth,
-            setEstimate,
+            setEstimate: setterToUse,
             capacity,
             locationData,
             userSettings,
@@ -1407,7 +1497,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           estimateTypicalHDDCost({
             ...commonParams,
             month: selectedMonth,
-            setEstimate,
+            setEstimate: setterToUse,
             hspf: hspf2,
             locationData,
             userSettings,
@@ -1445,20 +1535,20 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           // If forecast model is "typical", use the distribution model (pass empty array)
           // to match the Annual Breakdown calculation exactly
           const temps = forecastModel === "typical" ? [] : adjustedForecast;
-          calculateMonthlyEstimate(temps, setMonthlyEstimate, result.rate);
+          calculateMonthlyEstimate(temps, setMonthlyEstimateCached, result.rate);
         });
       } else {
         // If forecast model is "typical", use the distribution model directly without fetching historical data
         if (forecastModel === "typical") {
           fetchUtilityRate(locationData.state, "electricity").then(result => {
             setElectricityRateSourceA(result.source);
-            calculateMonthlyEstimate([], setMonthlyEstimate, result.rate);
+            calculateMonthlyEstimate([], setMonthlyEstimateCached, result.rate);
           });
         } else {
           // Fall back to historical data fetch
           fetchHistoricalData(
             locationData,
-            setMonthlyEstimate,
+            setMonthlyEstimateForHistorical,
             setLoading,
             setError
           );

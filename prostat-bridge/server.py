@@ -3699,12 +3699,40 @@ def save_settings(settings):
         return False
 
 async def handle_get_settings(request):
-    """GET /api/settings - Get all user settings"""
+    """GET /api/settings - Get all user settings
+    
+    Returns data in format expected by e-ink display:
+    {
+        'last_forecast_summary': {...},
+        'userSettings': {...},
+        'location': {...}
+    }
+    """
     try:
         settings = load_settings()
+        
+        # Try to load forecast data if available
+        forecast_data = None
+        try:
+            # Check for forecast data in settings file or separate cache
+            forecast_file = os.path.join(get_data_directory(), 'last_forecast_summary.json')
+            if os.path.exists(forecast_file):
+                with open(forecast_file, 'r') as f:
+                    forecast_data = json.load(f)
+            # Also check if it's stored in settings
+            elif 'last_forecast_summary' in settings:
+                forecast_data = settings.get('last_forecast_summary')
+        except Exception as e:
+            logger.debug(f"Could not load forecast data: {e}")
+        
+        # Extract location from settings
+        location = settings.get('location') or settings.get('userLocation')
+        
+        # Return in format expected by e-ink display (flat structure, not nested)
         return web.json_response({
-            'success': True,
-            'settings': settings
+            'last_forecast_summary': forecast_data,
+            'userSettings': settings,
+            'location': location
         })
     except Exception as e:
         logger.error(f"Error getting settings: {e}")
@@ -3841,6 +3869,130 @@ async def handle_delete_setting(request):
             }, status=404)
     except Exception as e:
         logger.error(f"Error deleting setting: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_cost_estimate(request):
+    """POST /api/cost-estimate - Calculate weekly/monthly HVAC cost estimate"""
+    try:
+        data = await request.json()
+        outdoor_temp = data.get('outdoor_temp')
+        target_temp = data.get('target_temp')
+        duration_hours = data.get('duration_hours', 168)  # Default 1 week
+        
+        if outdoor_temp is None or target_temp is None:
+            return web.json_response({
+                'success': False,
+                'error': 'outdoor_temp and target_temp are required'
+            }, status=400)
+        
+        # Try to get device status for more accurate calculation
+        device_id = None
+        try:
+            device_ids = list(pairings.keys())
+            if device_ids:
+                device_id = device_ids[0]  # Use primary device
+                status = await get_thermostat_data(device_id)
+                # Could use status data for more accurate calculation
+        except Exception as e:
+            logger.debug(f"Could not get device status for cost calculation: {e}")
+        
+        # Calculate cost based on temperature difference
+        temp_diff = abs(target_temp - outdoor_temp)
+        
+        # Determine if heating or cooling
+        if outdoor_temp < target_temp - 2:  # Heating
+            # Heating degree-days per week
+            weekly_dd = temp_diff * 7
+            # Rough estimate: $0.50 per degree-day for typical 1500 sqft home
+            weekly_cost = weekly_dd * 0.50
+        elif outdoor_temp > target_temp + 2:  # Cooling
+            # Cooling degree-days per week (less efficient than heating)
+            weekly_dd = temp_diff * 7
+            # Cooling costs more per degree-day
+            weekly_cost = weekly_dd * 0.60
+        else:
+            # Mild weather, minimal HVAC usage
+            weekly_cost = 2.00
+        
+        # Ensure minimum cost
+        weekly_cost = max(weekly_cost, 1.00)
+        monthly_cost = weekly_cost * 4.33
+        
+        return web.json_response({
+            'success': True,
+            'weeklyCost': round(weekly_cost, 2),
+            'monthlyCost': round(monthly_cost, 2)
+        })
+    except Exception as e:
+        logger.error(f"Error calculating cost estimate: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_setpoint_delta(request):
+    """POST /api/setpoint - Adjust temperature setpoint by delta (for e-ink display)"""
+    try:
+        data = await request.json()
+        delta = data.get('delta', 0)
+        
+        if not isinstance(delta, (int, float)):
+            return web.json_response({
+                'success': False,
+                'error': 'delta must be a number'
+            }, status=400)
+        
+        # Get primary device
+        device_ids = list(pairings.keys())
+        if not device_ids:
+            return web.json_response({
+                'success': False,
+                'error': 'No device paired'
+            }, status=400)
+        
+        device_id = device_ids[0]
+        
+        # Get current target temperature
+        try:
+            status = await get_thermostat_data(device_id)
+            current_target_c = status.get('target_temperature')
+            
+            if current_target_c is None:
+                return web.json_response({
+                    'success': False,
+                    'error': 'Could not get current target temperature'
+                }, status=500)
+            
+            # HomeKit returns Celsius, but e-ink works in Fahrenheit
+            # Convert to Fahrenheit, apply delta, convert back to Celsius
+            current_target_f = (current_target_c * 9/5) + 32
+            new_target_f = current_target_f + delta
+            new_target_c = (new_target_f - 32) * 5/9
+            
+            # Round to reasonable precision
+            new_target_c = round(new_target_c, 1)
+            
+            # Set new temperature
+            await set_temperature(device_id, new_target_c)
+            
+            return web.json_response({
+                'success': True,
+                'new_target': round(new_target_f, 1),
+                'new_target_c': new_target_c
+            })
+        except Exception as e:
+            logger.error(f"Error adjusting setpoint: {e}")
+            return web.json_response({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    except Exception as e:
+        logger.error(f"Error in setpoint delta handler: {e}")
         return web.json_response({
             'success': False,
             'error': str(e)
@@ -4206,6 +4358,10 @@ async def init_app():
     app.router.add_post('/api/settings', handle_set_settings_batch)
     app.router.add_post('/api/settings/{key}', handle_set_setting)
     app.router.add_delete('/api/settings/{key}', handle_delete_setting)
+    
+    # E-ink display endpoints
+    app.router.add_post('/api/cost-estimate', handle_cost_estimate)
+    app.router.add_post('/api/setpoint', handle_setpoint_delta)
     
     # WiFi configuration endpoints
     app.router.add_get('/api/wifi/status', handle_wifi_status)
