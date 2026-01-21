@@ -1,5 +1,5 @@
 ﻿import React, { useMemo, useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import {
   Thermometer,
   DollarSign,
@@ -42,6 +42,15 @@ import { getStateElectricityRate } from "../data/stateRates";
  * thermostat via HomeKit (Joule Bridge), without any scheduling complexity.
  */
 const WeeklyForecast = () => {
+  // Route guard: redirect to onboarding if not completed
+  const navigate = useNavigate();
+  useEffect(() => {
+    const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+    if (!hasCompletedOnboarding) {
+      navigate("/onboarding");
+    }
+  }, [navigate]);
+  
   // Get outlet context for user settings
   const outletContext = useOutletContext() || {};
   const { userSettings = {} } = outletContext;
