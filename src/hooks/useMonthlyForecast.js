@@ -2,12 +2,53 @@
 import { useState, useEffect, useRef } from "react";
 
 /**
+ * Cache helpers for forecast data
+ */
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+
+function getCachedForecast(lat, lon, month) {
+  try {
+    const cacheKey = `forecast_${lat.toFixed(2)}_${lon.toFixed(2)}_${month}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (!cached) return null;
+    
+    const { data, timestamp } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+    
+    if (age < CACHE_DURATION) {
+      console.log(`📦 Using cached forecast data (${Math.round(age / 1000)}s old)`);
+      return data;
+    }
+    
+    // Cache expired, remove it
+    sessionStorage.removeItem(cacheKey);
+    return null;
+  } catch (err) {
+    console.warn('Cache read error:', err);
+    return null;
+  }
+}
+
+function setCachedForecast(lat, lon, month, data) {
+  try {
+    const cacheKey = `forecast_${lat.toFixed(2)}_${lon.toFixed(2)}_${month}`;
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }));
+  } catch (err) {
+    console.warn('Cache write error:', err);
+  }
+}
+
+/**
  * useMonthlyForecast - fetches a 15-day forecast and fills remaining days with historical averages
  * Returns { dailyForecast, loading, error, refetch }
  *
  * Strategy:
- * 1. Fetch 15-day forecast from Open-Meteo (supports up to 16 days)
- * 2. For days not covered by forecast, use historical averages from Open-Meteo archive API
+ * 1. Check cache first
+ * 2. Fetch 15-day forecast from Open-Meteo (supports up to 16 days)
+ * 3. For days not covered by forecast, use historical averages from Open-Meteo archive API
  */
 export default function useMonthlyForecast(lat, lon, month, options = {}) {
   const { enabled = true } = options;
@@ -33,6 +74,14 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
     // Validate latitude is between -90 and 90, longitude between -180 and 180
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
       console.warn("Coordinates out of valid range:", { lat, lon });
+      return;
+    }
+
+    // Check cache first
+    const cached = getCachedForecast(lat, lon, targetMonth);
+    if (cached) {
+      setDailyForecast(cached);
+      setLoading(false);
       return;
     }
 
@@ -172,8 +221,9 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
       });
 
       // Step 2: Fetch historical averages for the entire month
+      // Reduced from 10 years to 3 years for faster loading (still statistically significant)
       const currentYear = today.getFullYear();
-      const startYear = currentYear - 10;
+      const startYear = currentYear - 3;
       const endYear = currentYear - 1;
 
       // Fetch historical data for the entire month across multiple years
@@ -276,6 +326,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
           }
 
           setDailyForecast(completeMonth);
+          setCachedForecast(lat, lon, targetMonth, completeMonth);
         } else {
           // If archive fails, use forecast for available days and average for the rest
           console.warn(
@@ -316,8 +367,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
               });
             }
           }
-          setDailyForecast(completeMonth);
-        }
+          setDailyForecast(completeMonth);          setCachedForecast(lat, lon, targetMonth, completeMonth);        }
       } catch (archiveErr) {
         // If archive fetch fails, use forecast data only
         console.warn("Historical archive fetch failed:", archiveErr);
@@ -356,6 +406,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
           }
         }
         setDailyForecast(fallbackMonth);
+        setCachedForecast(lat, lon, targetMonth, fallbackMonth);
       }
     } catch (err) {
       if (err.name === "AbortError") return; // canceled
