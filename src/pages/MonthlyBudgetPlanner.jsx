@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useOutletContext, Link } from "react-router-dom";
+import { useOutletContext, Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
   Thermometer,
@@ -259,6 +259,15 @@ function estimateTypicalCDDCost(params) {
 }
 
 const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
+  // Route guard: redirect to onboarding if not completed
+  const navigate = useNavigate();
+  useEffect(() => {
+    const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+    if (!hasCompletedOnboarding) {
+      navigate("/onboarding");
+    }
+  }, [navigate]);
+  
   const { unitSystem } = useUnitSystem();
   const outletContext = useOutletContext() || {};
   const { userSettings, setUserSetting } = outletContext;
