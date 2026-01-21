@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Zap, Clock, Flame, BarChart3, Thermometer, 
   Power, Activity, ChevronUp, ChevronDown,
   Droplets, X, Settings, ArrowRight, CheckCircle2,
-  Wand2, DollarSign // Added DollarSign here
+  Wand2, DollarSign, Wind, Snowflake // Added Wind/Snowflake for Heat Pump
 } from 'lucide-react';
 
 const GeneratorDashboard = () => {
@@ -11,7 +11,9 @@ const GeneratorDashboard = () => {
   const [onboarding, setOnboarding] = useState(true); 
   const [step, setStep] = useState(1);
   
+  // Configuration State
   const [model, setModel] = useState('20kW');
+  const [heatingType, setHeatingType] = useState('gas'); // 'gas' or 'heatpump'
   const [fuelPrice, setFuelPrice] = useState(3.0);
   const [tankSize, setTankSize] = useState(500);
   const [runtimeHours, setRuntimeHours] = useState(5);
@@ -29,15 +31,15 @@ const GeneratorDashboard = () => {
     { id: 'lights', label: 'LED Lights Zone A', kw: 0.3, icon: <Zap size={18} /> },
     { id: 'lights2', label: 'LED Lights Zone B', kw: 0.3, icon: <Zap size={18} /> },
     { id: 'fridge', label: 'Fridge/Freezer', kw: 1.2, icon: <Thermometer size={18} /> },
-    { id: 'freezer', label: 'Deep Freezer', kw: 0.8, icon: <Thermometer size={18} /> },
     { id: 'well', label: 'Well Pump', kw: 1.5, icon: <Droplets size={18} /> },
-    { id: 'sump', label: 'Sump Pump', kw: 1.0, icon: <Droplets size={18} /> },
-    { id: 'furnace', label: 'Furnace Fan', kw: 0.6, icon: <Flame size={18} /> },
+    { id: 'furnace', label: 'Gas Furnace Fan', kw: 0.6, icon: <Flame size={18} /> },
+    { id: 'heatpump', label: 'Heat Pump (Heating)', kw: 4.0, icon: <Wind size={18} /> }, // New Item
     { id: 'microwave', label: 'Microwave', kw: 1.5, icon: <Zap size={18} /> },
     { id: 'water', label: 'Elec. Water Heater', kw: 4.5, icon: <Droplets size={18} /> },
     { id: 'stove', label: 'Electric Stove', kw: 3.0, icon: <Activity size={18} /> },
-    { id: 'ac', label: 'Central A/C (3 Ton)', kw: 3.5, icon: <Activity size={18} /> },
+    { id: 'ac', label: 'Central A/C', kw: 3.5, icon: <Snowflake size={18} /> },
     { id: 'dryer', label: 'Electric Dryer', kw: 5.0, icon: <Zap size={18} /> },
+    { id: 'sump', label: 'Sump Pump', kw: 1.0, icon: <Droplets size={18} /> },
   ];
 
   // --- CALCULATIONS ---
@@ -51,18 +53,13 @@ const GeneratorDashboard = () => {
   const loadPercent = (totalKw / maxKw) * 100;
   const isOverloaded = totalKw > maxKw;
 
-  // FIXED INTERPOLATION FUNCTION
+  // Efficiency Curve Logic
   const getGPH = (pct) => {
     const data = specs[model].consumption;
     const p = Math.min(Math.max(pct, 0), 100);
-    
     let idx = Math.floor(p / 25);
     let ratio = (p % 25) / 25;
-
-    if (idx >= 4) {
-      idx = 3;
-      ratio = 1;
-    }
+    if (idx >= 4) { idx = 3; ratio = 1; }
     return data[idx] + (data[idx + 1] - data[idx]) * ratio;
   };
 
@@ -72,14 +69,29 @@ const GeneratorDashboard = () => {
   const usableTank = tankSize * 0.8;
   const daysUntilEmpty = usableTank / (currentGPH * runtimeHours || 0.001);
 
+  // --- LOGIC: Apply Onboarding Choices ---
+  useEffect(() => {
+    if (!onboarding) return; // Only run during onboarding changes
+
+    // Auto-update selected loads based on Heating Type choice
+    setSelectedLoads(prev => {
+      const basic = prev.filter(id => id !== 'furnace' && id !== 'heatpump');
+      if (heatingType === 'heatpump') return [...basic, 'heatpump'];
+      return [...basic, 'furnace'];
+    });
+  }, [heatingType, onboarding]);
+
   const setPreset = (type) => {
-    if (type === 'survival') setSelectedLoads(['fridge', 'well', 'furnace', 'lights']);
-    if (type === 'comfort') setSelectedLoads(['fridge', 'well', 'furnace', 'lights', 'lights2', 'freezer', 'microwave']);
+    const heat = heatingType === 'heatpump' ? 'heatpump' : 'furnace';
+    if (type === 'survival') setSelectedLoads(['fridge', 'well', 'lights', heat]);
+    if (type === 'comfort') setSelectedLoads(['fridge', 'well', 'lights', 'lights2', 'microwave', heat]);
     if (type === 'reset') setSelectedLoads([]);
   };
 
   // --- ONBOARDING RENDERER ---
   if (onboarding) {
+    const totalSteps = 5; // Model, Heating, Fuel, Runtime, Confirm
+
     return (
       <div className="h-screen w-screen bg-[#0f172a] text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
         {/* Background Accents */}
@@ -90,13 +102,13 @@ const GeneratorDashboard = () => {
 
         <div className="max-w-2xl w-full z-10">
           {/* Progress Bar */}
-          <div className="flex justify-between items-center mb-12 px-2">
-             {[1, 2, 3, 4].map(s => (
-               <div key={s} className={`h-2 flex-1 rounded-full mx-1 transition-all duration-500 ${s <= step ? 'bg-cyan-400' : 'bg-slate-800'}`}></div>
+          <div className="flex justify-between items-center mb-8 px-2">
+             {Array.from({length: totalSteps}).map((_, i) => (
+               <div key={i} className={`h-2 flex-1 rounded-full mx-1 transition-all duration-500 ${i + 1 <= step ? 'bg-cyan-400' : 'bg-slate-800'}`}></div>
              ))}
           </div>
 
-          <div className="bg-slate-900/50 border border-slate-700/50 p-8 md:p-12 rounded-3xl shadow-2xl backdrop-blur-xl">
+          <div className="bg-slate-900/50 border border-slate-700/50 p-8 md:p-12 rounded-3xl shadow-2xl backdrop-blur-xl min-h-[500px] flex flex-col justify-between">
             
             {/* STEP 1: MODEL */}
             {step === 1 && (
@@ -121,12 +133,50 @@ const GeneratorDashboard = () => {
               </div>
             )}
 
-            {/* STEP 2: FUEL & TANK */}
+            {/* STEP 2: HEATING SYSTEM (NEW) */}
             {step === 2 && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="text-center">
-                  <h2 className="text-4xl font-black text-white mb-2">Fuel Configuration</h2>
-                  <p className="text-slate-400">Set your propane costs and tank capacity.</p>
+                  <h2 className="text-4xl font-black text-white mb-2">Primary Heating</h2>
+                  <p className="text-slate-400">Heating is a major factor in fuel consumption.</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Option A: Gas Furnace */}
+                  <button 
+                    onClick={() => setHeatingType('gas')}
+                    className={`p-6 rounded-2xl border-2 text-left transition-all ${heatingType === 'gas' ? 'bg-amber-600/20 border-amber-500' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}
+                  >
+                    <div className="bg-amber-500/20 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-amber-500">
+                      <Flame size={24} />
+                    </div>
+                    <div className="font-bold text-xl text-white mb-1">Gas / Propane</div>
+                    <div className="text-xs text-slate-400">Uses mostly fuel. Low electrical load (fan only).</div>
+                    <div className="mt-3 font-mono text-xs font-bold text-amber-500">~0.6 kW Load</div>
+                  </button>
+
+                  {/* Option B: Heat Pump */}
+                  <button 
+                    onClick={() => setHeatingType('heatpump')}
+                    className={`p-6 rounded-2xl border-2 text-left transition-all ${heatingType === 'heatpump' ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}
+                  >
+                    <div className="bg-blue-500/20 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-blue-400">
+                      <Wind size={24} />
+                    </div>
+                    <div className="font-bold text-xl text-white mb-1">Elec. Heat Pump</div>
+                    <div className="text-xs text-slate-400">Uses electricity to move heat. High load.</div>
+                    <div className="mt-3 font-mono text-xs font-bold text-blue-400">~4.0 kW Load</div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: FUEL & TANK */}
+            {step === 3 && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="text-center">
+                  <h2 className="text-4xl font-black text-white mb-2">Fuel Config</h2>
+                  <p className="text-slate-400">Set propane costs and tank capacity.</p>
                 </div>
                 
                 <div className="space-y-6">
@@ -156,14 +206,13 @@ const GeneratorDashboard = () => {
                         </button>
                       ))}
                     </div>
-                    <p className="text-center text-xs text-slate-500 mt-3">Calculations assume 80% usable capacity.</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 3: RUNTIME */}
-            {step === 3 && (
+            {/* STEP 4: RUNTIME */}
+            {step === 4 && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                  <div className="text-center">
                   <h2 className="text-4xl font-black text-white mb-2">Runtime Strategy</h2>
@@ -187,27 +236,31 @@ const GeneratorDashboard = () => {
                   </div>
                 </div>
 
-                {/* Preview Calculation */}
+                {/* Preview Calculation based on current state (including heating choice) */}
                 <div className="grid grid-cols-2 gap-4">
                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 text-center">
                       <div className="text-xs text-slate-500 uppercase font-bold">Est. Daily Cost</div>
                       <div className="text-2xl font-black text-emerald-400">
-                        ${(1.5 * fuelPrice * runtimeHours).toFixed(0)}*
+                        ${dailyCost.toFixed(0)}
                       </div>
                    </div>
                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 text-center">
                       <div className="text-xs text-slate-500 uppercase font-bold">Est. Duration</div>
-                      <div className="text-2xl font-black text-white">
-                        {((tankSize * 0.8) / (1.5 * runtimeHours)).toFixed(0)} Days*
+                      <div className={`text-2xl font-black ${daysUntilEmpty < 3 ? 'text-red-400' : 'text-white'}`}>
+                        {daysUntilEmpty.toFixed(0)} Days
                       </div>
                    </div>
                 </div>
-                <p className="text-[10px] text-center text-slate-600">*Estimates based on average 50% load.</p>
+                {heatingType === 'heatpump' && (
+                  <div className="bg-blue-500/10 text-blue-300 text-xs text-center p-2 rounded border border-blue-500/20">
+                     <Wind size={12} className="inline mr-1"/> Heat Pump selected. High power draw expected.
+                  </div>
+                )}
               </div>
             )}
 
-            {/* STEP 4: CONFIRMATION */}
-            {step === 4 && (
+            {/* STEP 5: CONFIRMATION */}
+            {step === 5 && (
               <div className="text-center space-y-8 animate-in fade-in zoom-in duration-500">
                 <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle2 size={48} className="text-green-400" />
@@ -215,14 +268,14 @@ const GeneratorDashboard = () => {
                 <div>
                   <h2 className="text-4xl font-black text-white mb-4">Setup Complete</h2>
                   <p className="text-slate-400 max-w-md mx-auto">
-                    Your {model} dashboard is configured. You can tweak these settings anytime from the top control bar.
+                    Your {model} dashboard is configured with <strong>{heatingType === 'gas' ? 'Gas Heating' : 'Electric Heat Pump'}</strong>.
                   </p>
                 </div>
               </div>
             )}
 
             {/* NAVIGATION BUTTONS */}
-            <div className="flex gap-4 mt-12 pt-8 border-t border-slate-700/50">
+            <div className="flex gap-4 mt-8 pt-8 border-t border-slate-700/50">
               {step > 1 && (
                 <button 
                   onClick={() => setStep(s => s - 1)}
@@ -234,12 +287,12 @@ const GeneratorDashboard = () => {
               
               <button 
                 onClick={() => {
-                  if (step < 4) setStep(s => s + 1);
+                  if (step < 5) setStep(s => s + 1);
                   else setOnboarding(false);
                 }}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-900 text-lg font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-cyan-500/25"
               >
-                {step === 4 ? 'Launch Dashboard' : 'Next Step'} <ArrowRight size={20}/>
+                {step === 5 ? 'Launch Dashboard' : 'Next Step'} <ArrowRight size={20}/>
               </button>
             </div>
 
@@ -249,11 +302,11 @@ const GeneratorDashboard = () => {
     )
   }
 
-  // --- MAIN DASHBOARD (Existing Code) ---
+  // --- MAIN DASHBOARD ---
   return (
     <div className="h-screen w-screen bg-[#0f172a] text-slate-100 font-sans overflow-hidden flex flex-col selection:bg-cyan-500/30">
       
-      {/* --- HEADER --- */}
+      {/* HEADER */}
       <header className="h-20 px-6 border-b border-slate-700/50 flex items-center justify-between shrink-0 bg-[#0f172a] z-20 shadow-lg">
         <div className="flex items-center gap-4">
           <div className="bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/20">
@@ -268,7 +321,7 @@ const GeneratorDashboard = () => {
         </div>
 
         <div className="flex items-center gap-4">
-           {/* Recalibrate Button */}
+           {/* Recalibrate */}
            <button 
              onClick={() => { setStep(1); setOnboarding(true); }}
              className="p-3 rounded-xl bg-slate-800 text-slate-400 hover:text-cyan-400 border border-slate-600 hover:border-cyan-400 transition-all"
@@ -299,7 +352,7 @@ const GeneratorDashboard = () => {
         </div>
       </header>
 
-      {/* --- MAIN DASHBOARD BODY --- */}
+      {/* BODY */}
       <div className="flex-1 flex overflow-hidden relative">
         
         {/* LEFT PANEL */}
@@ -413,6 +466,9 @@ const GeneratorDashboard = () => {
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
              {loads.map(item => {
                 const active = selectedLoads.includes(item.id);
+                // Highlight the user's primary heating choice specially
+                const isPrimaryHeating = (item.id === 'heatpump' && heatingType === 'heatpump') || (item.id === 'furnace' && heatingType === 'gas');
+                
                 return (
                   <button 
                     key={item.id}
@@ -421,7 +477,7 @@ const GeneratorDashboard = () => {
                       active 
                       ? 'bg-slate-800 border-green-500/50 shadow-lg translate-x-1' 
                       : 'bg-transparent border-slate-800 opacity-50 hover:opacity-100 hover:bg-slate-800/50 hover:border-slate-700'
-                    }`}
+                    } ${isPrimaryHeating && active ? 'border-cyan-400/80' : ''}`}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`p-2 rounded-full ${active ? 'bg-green-500/20 text-green-400' : 'bg-slate-800 text-slate-500'}`}>
