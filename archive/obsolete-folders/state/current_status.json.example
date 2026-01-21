@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-11-24T10:30:00Z",
+  "thermostat": {
+    "indoorTemp": 72.5,
+    "targetTemp": 70,
+    "mode": "heat",
+    "fanMode": "auto",
+    "systemRunning": true,
+    "stage": "stage1",
+    "hold": false
+  },
+  "sensors": {
+    "main": {
+      "temp": 72.5,
+      "humidity": null,
+      "occupancy": null
+    },
+    "outdoor": {
+      "temp": 35,
+      "humidity": 65,
+      "source": "weather_api"
+    }
+  },
+  "heatPump": {
+    "compressorRunning": true,
+    "auxHeatActive": false,
+    "defrostActive": false,
+    "outdoorUnitRunning": true
+  },
+  "runtime": {
+    "compressorMinutesToday": 240,
+    "auxHeatMinutesToday": 15,
+    "fanMinutesToday": 300
+  }
+}
+

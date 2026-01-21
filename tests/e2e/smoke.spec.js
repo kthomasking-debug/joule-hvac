@@ -122,7 +122,7 @@ test.describe("Smoke Tests - Production Build", () => {
         : "networkidle";
 
     try {
-      await page.goto("/analysis/budget", {
+      await page.goto("/analysis/monthly", {
         waitUntil,
         timeout,
       });
@@ -130,7 +130,7 @@ test.describe("Smoke Tests - Production Build", () => {
       // Retry once if navigation fails (especially for Firefox)
       if (browserName === "firefox" && error.message.includes("timeout")) {
         await page.waitForTimeout(2000);
-        await page.goto("/analysis/budget", {
+        await page.goto("/analysis/monthly", {
           waitUntil: "domcontentloaded",
           timeout,
         });

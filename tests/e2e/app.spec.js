@@ -268,7 +268,7 @@ test.describe("Application Navigation", () => {
       { name: "7-Day Forecast", path: "/analysis/forecast" },
       { name: "System Performance Analyzer", path: "/analysis/analyzer" },
       { name: "Energy Flow", path: "/energy-flow" },
-      { name: "Monthly Budget", path: "/analysis/budget" },
+      { name: "Monthly Budget", path: "/analysis/monthly" },
       { name: "Upgrade ROI", path: "/upgrade-roi" },
     ];
 
@@ -607,7 +607,7 @@ test.describe("Monthly Budget Planner", () => {
       browserName === "firefox" ? "domcontentloaded" : "networkidle";
 
     try {
-      await page.goto("/analysis/budget", { waitUntil, timeout });
+      await page.goto("/analysis/monthly", { waitUntil, timeout });
       await acceptTermsIfPresent(page);
     } catch (error) {
       if (
@@ -617,7 +617,7 @@ test.describe("Monthly Budget Planner", () => {
       ) {
         // Retry once for Firefox connection issues
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        await page.goto("/analysis/budget", { waitUntil, timeout });
+        await page.goto("/analysis/monthly", { waitUntil, timeout });
         await acceptTermsIfPresent(page);
       } else {
         throw error;

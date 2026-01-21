@@ -1134,7 +1134,7 @@ export function getQuickActions(options = {}) {
       label: "Approaching Budget",
       description: `You've used ${((costSoFar / budgetLimit) * 100).toFixed(0)}% of your monthly budget`,
       action: "navigate",
-      target: "/analysis/budget",
+      target: "/analysis/monthly",
     });
   }
 

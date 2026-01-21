@@ -26,7 +26,7 @@ const Analysis = () => {
     if (location.pathname.includes('/analysis/forecast') || location.pathname === '/analysis') {
       return 'forecast';
     }
-    if (location.pathname.includes('/analysis/budget')) {
+    if (location.pathname.includes('/analysis/monthly') || location.pathname.includes('/analysis/budget')) {
       return 'budget';
     }
     if (location.pathname.includes('/analysis/annual')) {

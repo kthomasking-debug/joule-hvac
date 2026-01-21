@@ -1,0 +1,29 @@
+BRIDGE DEBUGGING REQUIREMENTS:
+- Make the smallest change that could work
+- Don't claim success until you run: bash scripts/deployment/validate-bridge-health.sh and it prints JOULE_BRIDGE_OK=1
+- If command output is unknown, ask for it—don't guess
+- Keep changes in <file-list> only
+- Check logs first: journalctl -u joule-bridge.service -n 50 --no-pager
+- Verify the bridge is actually running: systemctl status joule-bridge.service
+- Test endpoints manually if validation fails: curl http://localhost:3002/health
+- Summarize: root cause, fix, and why the oracle proves it
+
+ORACLE: bash scripts/deployment/validate-bridge-health.sh | grep "JOULE_BRIDGE_OK=1"
+KEY BRIDGE FILES:
+- prostat-bridge/server.py - Main bridge server (Python)
+- pi-zero-bridge/server.js - Node.js bridge (if using Pi Zero)
+- prostat-bridge/requirements.txt - Python dependencies
+- prostat-bridge/*.service - SystemD service files
+
+COMMON ISSUES:
+- Bridge not running: systemctl start joule-bridge.service
+- Port conflict: Check if port 3002 is in use: lsof -i :3002
+- Missing dependencies: pip3 install -r prostat-bridge/requirements.txt
+- Permission issues: Check service file user/group settings
+- Connection refused: Firewall blocking port or wrong host/port
+
+FILES: <comma-separated-file-list>
+SCOPE: <brief-description-of-change>
+
+<your-actual-request-here>
+
