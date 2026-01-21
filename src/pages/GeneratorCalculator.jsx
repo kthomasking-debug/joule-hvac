@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Fuel, DollarSign, Zap, Clock, AlertTriangle, Droplets } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Fuel, DollarSign, Zap, Clock, AlertTriangle, Droplets, X, ChevronRight, Check } from 'lucide-react';
 
 const GeneratorCalculator = () => {
   const [model, setModel] = useState('20kW');
@@ -8,6 +8,17 @@ const GeneratorCalculator = () => {
   const [tankSize, setTankSize] = useState(500);
   const [heatPumpRunning, setHeatPumpRunning] = useState(false);
   const [heatPumpKw, setHeatPumpKw] = useState(10);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+
+  // Initialize onboarding on first visit
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem('generatorCalcOnboarded');
+    if (!hasSeenOnboarding) {
+      setShowOnboarding(true);
+      localStorage.setItem('generatorCalcOnboarded', 'true');
+    }
+  }, []);
 
   const heatPumpOptions = [
     { kw: 5, label: '5 kW (1.5 ton)' },
@@ -75,8 +86,144 @@ const GeneratorCalculator = () => {
     }
   };
 
+  const onboardingSteps = [
+    {
+      title: "Welcome to Generator Fuel & Cost Estimator",
+      description: "This tool helps you calculate fuel consumption, runtime, and daily operating costs for backup generators. Perfect for planning power outages or emergency preparedness.",
+      icon: <Zap className="h-12 w-12 text-yellow-400" />
+    },
+    {
+      title: "Select Your Generator Model",
+      description: "Choose between 14kW or 20kW. The generator's power capacity determines what appliances you can run simultaneously. A 20kW is more powerful but burns fuel faster.",
+      icon: <Fuel className="h-12 w-12 text-blue-500" />
+    },
+    {
+      title: "Set Fuel Price & Tank Size",
+      description: "Enter your local diesel/fuel price per gallon and your generator's tank capacity. These values calculate your exact daily costs and how long the tank will last.",
+      icon: <DollarSign className="h-12 w-12 text-green-500" />
+    },
+    {
+      title: "Choose Your Load (Baseline)",
+      description: "Select which appliances you plan to run. Each appliance shows its power draw in kW. The total load cannot exceed your generator's capacity or it will overload.",
+      icon: <Droplets className="h-12 w-12 text-blue-600" />
+    },
+    {
+      title: "Heat Pump (Optional)",
+      description: "Only add this if you have an actual heat pump for heating (not a gas furnace + AC). Select your heat pump's capacity in kW. This is mutually exclusive with Gas Furnace Fan.",
+      icon: <AlertTriangle className="h-12 w-12 text-amber-500" />
+    },
+    {
+      title: "Quick Presets",
+      description: "Use pre-configured scenarios: Essentials (lights, fridge, pump), Winter (add furnace fan), Full House (add microwave). Or click Clear to start fresh.",
+      icon: <Check className="h-12 w-12 text-green-600" />
+    },
+    {
+      title: "Understanding Your Results",
+      description: "Left column shows load details. Middle column displays fuel consumption, costs, and tank runtime. Right column provides efficiency tips and recommendations for managing generator use.",
+      icon: <Clock className="h-12 w-12 text-purple-600" />
+    },
+    {
+      title: "Two Operating Strategies",
+      description: "CONTINUOUS (24/7): Always running - expensive but ensures power anytime. INTERVAL (5 hrs/day): Strategic timing - saves 75% on fuel by running 2hrs morning + 2hrs evening. Tank lasts much longer!",
+      icon: <Zap className="h-12 w-12 text-orange-500" />
+    },
+  ];
+
+  const handleNextStep = () => {
+    if (onboardingStep < onboardingSteps.length - 1) {
+      setOnboardingStep(onboardingStep + 1);
+    } else {
+      setShowOnboarding(false);
+    }
+  };
+
+  const handlePrevStep = () => {
+    if (onboardingStep > 0) {
+      setOnboardingStep(onboardingStep - 1);
+    }
+  };
+
   return (
     <div className="w-full h-screen overflow-hidden p-3 bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100">
+      {/* Onboarding Modal */}
+      {showOnboarding && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-900 rounded-lg p-6 max-w-2xl w-11/12 max-h-96 overflow-auto shadow-2xl">
+            {/* Close Button */}
+            <button
+              onClick={() => setShowOnboarding(false)}
+              className="absolute top-4 right-4 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
+            >
+              <X className="h-6 w-6" />
+            </button>
+
+            {/* Step Content */}
+            <div className="text-center mb-6">
+              <div className="flex justify-center mb-4">
+                {onboardingSteps[onboardingStep].icon}
+              </div>
+              <h2 className="text-3xl font-bold mb-3 text-slate-900 dark:text-white">
+                {onboardingSteps[onboardingStep].title}
+              </h2>
+              <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+                {onboardingSteps[onboardingStep].description}
+              </p>
+            </div>
+
+            {/* Progress Indicator */}
+            <div className="flex gap-1 justify-center mb-6">
+              {onboardingSteps.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`h-2 rounded-full transition ${
+                    idx === onboardingStep ? 'bg-blue-600 w-8' : 'bg-slate-300 dark:bg-slate-600 w-2'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex justify-between items-center">
+              <button
+                onClick={handlePrevStep}
+                disabled={onboardingStep === 0}
+                className="px-4 py-2 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+              >
+                ← Back
+              </button>
+              
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                Step {onboardingStep + 1} of {onboardingSteps.length}
+              </span>
+
+              <button
+                onClick={handleNextStep}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold flex items-center gap-2"
+              >
+                {onboardingStep === onboardingSteps.length - 1 ? (
+                  <>
+                    <Check className="h-4 w-4" /> Let's Go
+                  </>
+                ) : (
+                  <>
+                    Next <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Help Button (to trigger onboarding again) */}
+      <button
+        onClick={() => { setOnboardingStep(0); setShowOnboarding(true); }}
+        className="fixed bottom-4 right-4 z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 shadow-lg flex items-center gap-2 text-sm font-semibold"
+        title="Show onboarding guide"
+      >
+        <Clock className="h-4 w-4" /> Help
+      </button>
+
       {/* Header */}
       <div className="bg-blue-900 text-white p-3 rounded-lg mb-3">
         <h1 className="text-3xl font-bold flex items-center gap-2">
