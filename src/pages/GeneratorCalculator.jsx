@@ -522,7 +522,6 @@ const GeneratorCalculator = () => {
                 </div>
               </div>
             </div>
-            </div>
             )}
           </div>
         </div>
