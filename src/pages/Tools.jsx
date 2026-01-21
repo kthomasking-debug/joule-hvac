@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap, CloudSnow } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap, CloudSnow, Monitor, Droplets } from "lucide-react";
 
 /**
  * Tools Index Page
@@ -130,12 +130,28 @@ export default function Tools() {
           description: "Self-service diagnostics and troubleshooting. Check status, view logs, system info, and perform basic maintenance tasks.",
           color: "orange",
         },
+        {
+          path: "/tools/eink-bridge-display",
+          name: "Pi E-Ink Display",
+          label: "Pi E-Ink Bridge Display",
+          icon: Monitor,
+          description: "See exactly what the Pi Zero 2 W Waveshare e-paper shows, with live bridge data and the same Status/Actions/Guide navigation.",
+          color: "blue",
+        },
       ],
     },
     {
       title: "Electrical",
       description: "Electrical wiring and troubleshooting tools",
       tools: [
+        {
+          path: "/tools/generator-calculator",
+          name: "Generator Fuel & Cost",
+          label: "Generator Fuel & Cost Estimator",
+          icon: Droplets,
+          description: "Estimate Kohler 14/20 RESA propane burn rate, daily cost, and savings with interval runtime.",
+          color: "green",
+        },
         {
           path: "/tools/hot-tub-wire-calculator",
           name: "Hot Tub Wire Calculator",

@@ -36,6 +36,7 @@ const AskJouleHelp = lazy(() => import("./pages/AskJouleHelp"));
 const ContactorDemo = lazy(() => import("./pages/ContactorDemo"));
 const SmartThermostatDemo = lazy(() => import("./pages/SmartThermostatDemo"));
 const AirQualityHMI = lazy(() => import("./pages/AirQualityHMI"));
+const EInkBridgeDisplay = lazy(() => import("./pages/EInkBridgeDisplay"));
 const AgentConsole = lazy(() => import("./pages/AgentConsole"));
 const UpgradeROIAnalyzer = lazy(() => import("./pages/UpgradeROIAnalyzer"));
 const AskJouleCommandCenter = lazy(() =>
@@ -51,7 +52,6 @@ const Upgrades = lazy(() => import("./pages/Upgrades"));
 const DocumentationSetupGuides = lazy(() =>
   import("./pages/DocumentationSetupGuides")
 );
-const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
 const EcobeeTransitionPlanner = lazy(() =>
   import("./pages/EcobeeTransitionPlanner")
 );
@@ -86,6 +86,8 @@ const BridgeSupport = lazy(() => import("./pages/BridgeSupport"));
 const RemoteSettings = lazy(() => import("./pages/RemoteSettings"));
 const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
+const GeneratorCalculator = lazy(() => import("./pages/GeneratorCalculator"));
+const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
 
 import {
   Home as HomeIcon,
@@ -119,6 +121,8 @@ import {
   DollarSign,
   Moon,
   Gauge,
+  Monitor,
+  Droplets,
 } from "lucide-react";
 
 export const routes = [
@@ -569,6 +573,17 @@ export const routes = [
     description: "Self-service diagnostics and troubleshooting. Check status, view logs, and perform basic maintenance tasks.",
   },
   {
+    path: "/tools/eink-bridge-display",
+    name: "E-Ink Bridge Display",
+    label: "Pi E-Ink Bridge Display",
+    icon: Monitor,
+    Component: EInkBridgeDisplay,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Live preview of the Pi Zero 2 W Waveshare e-paper screen with status/actions and bottom navigation.",
+  },
+  {
     path: "/remote-settings",
     name: "Remote Settings",
     label: "Remote Settings",
@@ -678,6 +693,18 @@ export const routes = [
     inPrimaryNav: false,
   },
   // ===== TOOLS SECTION =====
+  {
+    path: "/tools/generator-calculator",
+    name: "Generator Fuel & Cost Estimator",
+    label: "Generator Fuel & Cost Estimator",
+    icon: Droplets,
+    Component: GeneratorCalculator,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description:
+      "Model Kohler 14/20 RESA propane usage and interval savings.",
+  },
   {
     path: "/tools",
     name: "Tools",
