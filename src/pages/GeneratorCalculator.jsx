@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Fuel, DollarSign, Zap, Clock, AlertTriangle, Droplets, X, ChevronRight, Check } from 'lucide-react';
+import { Fuel, DollarSign, Zap, Clock, AlertTriangle, Droplets, X, ChevronRight, Check, ChevronDown } from 'lucide-react';
 
 const GeneratorCalculator = () => {
   const [model, setModel] = useState('20kW');
@@ -10,6 +10,7 @@ const GeneratorCalculator = () => {
   const [heatPumpKw, setHeatPumpKw] = useState(10);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [showGraph, setShowGraph] = useState(false);
 
   // Initialize onboarding on first visit
   useEffect(() => {
@@ -429,6 +430,100 @@ const GeneratorCalculator = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* Collapsible Graph Section */}
+      <div className="mt-3 bg-white dark:bg-slate-900 rounded border dark:border-slate-700 overflow-hidden">
+        <button
+          onClick={() => setShowGraph(!showGraph)}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition font-semibold text-lg"
+        >
+          <span className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-blue-600" />
+            Load Analysis Graph
+          </span>
+          <ChevronDown className={`h-5 w-5 transition-transform ${showGraph ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showGraph && (
+          <div className="p-4 border-t dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            {/* Load Visualization */}
+            <div className="space-y-4">
+              {/* Large Load Bar */}
+              <div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-lg font-semibold">Generator Load</span>
+                  <span className={`text-2xl font-bold ${isOverloaded ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                    {totalLoadPercent}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-300 dark:bg-slate-700 rounded-full h-8 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all flex items-center justify-center font-bold text-white text-sm ${
+                      isOverloaded ? 'bg-red-600' : totalLoadPercent >= 80 ? 'bg-orange-500' : totalLoadPercent >= 50 ? 'bg-yellow-500' : 'bg-green-600'
+                    }`}
+                    style={{ width: `${Math.min(totalLoadPercent, 100)}%` }}
+                  >
+                    {totalLoadPercent > 5 && `${totalKw.toFixed(1)}/${maxGenKw} kW`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Load Breakdown */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">Baseline Load</p>
+                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{baselineKw.toFixed(1)} kW</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{Math.round((baselineKw / maxGenKw) * 100)}% of capacity</p>
+                </div>
+
+                {heatPumpRunning && (
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded border border-purple-200 dark:border-purple-800">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">Heat Pump Load</p>
+                    <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{heatPumpLoadKw.toFixed(1)} kW</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{Math.round((heatPumpLoadKw / maxGenKw) * 100)}% of capacity</p>
+                  </div>
+                )}
+
+                <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded border border-slate-200 dark:border-slate-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">Available Capacity</p>
+                  <p className="text-2xl font-bold text-slate-700 dark:text-slate-300">{Math.max(0, maxGenKw - totalKw).toFixed(1)} kW</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{Math.max(0, 100 - totalLoadPercent)}% remaining</p>
+                </div>
+
+                <div className={`p-3 rounded border ${isOverloaded ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'}`}>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">Status</p>
+                  <p className={`text-2xl font-bold mt-1 ${isOverloaded ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
+                    {isOverloaded ? '⚠️ Overloaded' : '✓ Safe'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Efficiency Zone */}
+              <div className="bg-gradient-to-r from-yellow-100 to-green-100 dark:from-yellow-900/30 dark:to-green-900/30 p-4 rounded border border-yellow-200 dark:border-yellow-800">
+                <p className="font-semibold mb-2">⚡ Efficiency Zone</p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-red-400 rounded"></div>
+                    <span>0-25% (Low efficiency - wastes fuel)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-yellow-400 rounded"></div>
+                    <span>25-50% (Moderate)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-green-500 rounded"></div>
+                    <span>50-100% (Peak efficiency - best fuel economy)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-red-600 rounded"></div>
+                    <span>100%+ (Overload - generator damage risk)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
