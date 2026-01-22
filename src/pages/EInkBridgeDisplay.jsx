@@ -528,9 +528,59 @@ export default function EInkBridgeDisplay() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-      <div className="p-4">
-        <div className="relative mx-auto" style={{ width: SCREEN_W * SCALE + 30, height: SCREEN_H * SCALE + 30 }}>
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900">
+      <div className="max-w-6xl mx-auto p-6">
+        {/* Documentation */}
+        <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+            <h2 className="text-lg font-bold mb-3 text-slate-900 dark:text-slate-100">🖥️ E-Ink Display Emulator</h2>
+            <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+              Preview of the Waveshare 2.13" e-paper display for Raspberry Pi Zero 2W.
+            </p>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+              <li>✓ Real 250×122px dimensions</li>
+              <li>✓ Monospace font rendering</li>
+              <li>✓ 1-bit color (black & white)</li>
+              <li>✓ Three-page navigation (Status/Actions/Guide)</li>
+            </ul>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+            <h2 className="text-lg font-bold mb-3 text-slate-900 dark:text-slate-100">⚙️ Cost Calculation (v2.0) ✅</h2>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+              <li>✓ Uses <strong>actual electricity rates</strong> from settings</li>
+              <li>✓ Accounts for building square footage</li>
+              <li>✓ Input validation (bounds checking)</li>
+              <li>✓ Persistent cache (~/.local/share/joule-hmi/)</li>
+              <li>ℹ️ Falls back to bridge API or local estimation</li>
+            </ul>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+            <h2 className="text-lg font-bold mb-3 text-slate-900 dark:text-slate-100">🎮 Bridge APIs (v2.0)</h2>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+              <li><code className="bg-slate-100 dark:bg-slate-900 px-2 py-1">/api/cost-estimate</code> - Real rate-based costs</li>
+              <li><code className="bg-slate-100 dark:bg-slate-900 px-2 py-1">/api/setpoint ±10°F</code> - Safe delta bounds</li>
+              <li><code className="bg-slate-100 dark:bg-slate-900 px-2 py-1">/api/settings</code> - User rates & location</li>
+              <li>All endpoints include input validation</li>
+            </ul>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+            <h2 className="text-lg font-bold mb-3 text-slate-900 dark:text-slate-100">📋 Status Indicators</h2>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+              <li><strong>SIG</strong>: WiFi signal (0-3 bars)</li>
+              <li><strong>OK/ERR</strong>: Bridge connection status</li>
+              <li><strong>Cost source</strong>: "bridge", "local", or "forecast"</li>
+              <li>Partial refresh enabled for lower power consumption</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Display Emulator */}
+        <div className="flex items-center justify-center">
+          <div className="p-4">
+            <div className="relative mx-auto" style={{ width: SCREEN_W * SCALE + 30, height: SCREEN_H * SCALE + 30 }}>
           <div className="absolute inset-0 rounded-[28px] bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 dark:from-slate-800 dark:via-slate-800 dark:to-slate-700 shadow-[0_30px_80px_rgba(15,23,42,0.35)]" />
           <div
             className="absolute top-3 left-3 rounded-[22px] border border-slate-900/60 bg-white overflow-hidden shadow-[0_14px_40px_rgba(0,0,0,0.18)]"
@@ -626,6 +676,8 @@ export default function EInkBridgeDisplay() {
               />
             </div>
           </div>
+        </div>
+        </div>
         </div>
       </div>
 

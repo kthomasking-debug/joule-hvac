@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -63,6 +64,7 @@ function AppInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useMode();
+  const queryClient = useQueryClient();
   
   // Auto-accept terms on mount (for Reddit demo - skip terms modal)
   React.useEffect(() => {
@@ -70,6 +72,57 @@ function AppInner() {
       markTermsAccepted();
     }
   }, [termsAccepted, isLoaded, markTermsAccepted]);
+  
+  // Prefetch forecast data for current and next month on app mount
+  React.useEffect(() => {
+    const prefetchForecasts = async () => {
+      try {
+        const userLocation = localStorage.getItem('userLocation');
+        if (!userLocation) return;
+        
+        const location = JSON.parse(userLocation);
+        if (!location.latitude || !location.longitude) return;
+        
+        const today = new Date();
+        const currentMonth = today.getMonth() + 1;
+        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+        
+        const { prefetchMonthlyForecast } = await import('./utils/prefetchForecast.js');
+        
+        // Prefetch current and next month in parallel
+        await Promise.all([
+          queryClient.prefetchQuery({
+            queryKey: ['monthlyForecast', location.latitude, location.longitude, currentMonth],
+            queryFn: ({ signal }) => prefetchMonthlyForecast({
+              lat: location.latitude,
+              lon: location.longitude,
+              month: currentMonth,
+              signal,
+            }),
+            staleTime: 15 * 60 * 1000,
+          }),
+          queryClient.prefetchQuery({
+            queryKey: ['monthlyForecast', location.latitude, location.longitude, nextMonth],
+            queryFn: ({ signal }) => prefetchMonthlyForecast({
+              lat: location.latitude,
+              lon: location.longitude,
+              month: nextMonth,
+              signal,
+            }),
+            staleTime: 15 * 60 * 1000,
+          }),
+        ]);
+        
+        console.log('🚀 Prefetched forecast data for months:', currentMonth, nextMonth);
+      } catch (err) {
+        console.warn('[App] Forecast prefetch failed:', err);
+      }
+    };
+    
+    // Wait a bit before prefetching to not slow down initial load
+    const timer = setTimeout(prefetchForecasts, 2000);
+    return () => clearTimeout(timer);
+  }, [queryClient]);
   
   // Index markdown documentation on app load
   React.useEffect(() => {

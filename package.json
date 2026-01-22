@@ -63,6 +63,7 @@
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
     "@picovoice/porcupine-web": "^3.0.3",
+    "@tanstack/react-query": "^5.90.19",
     "@testing-library/dom": "^10.4.1",
     "ai": "^5.0.93",
     "cors": "^2.8.5",

@@ -1,13 +1,27 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.jsx";
 import "./styles/tailwind.css";
 import "./styles/ui.css";
 import "./styles/design-system.css";
 import "./styles/print.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import { routes } from "./navConfig.js";
+import { routes } from "./navConfig.jsx";
+
+// Create React Query client with optimized settings for background fetching
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 15 * 60 * 1000, // Data stays fresh for 15 minutes
+      cacheTime: 30 * 60 * 1000, // Cache persists for 30 minutes
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+      refetchOnReconnect: true, // Refetch when reconnecting
+      retry: 2, // Retry failed requests twice
+    },
+  },
+});
 
 // Expose parser for E2E tests (production build)
 // This allows tests to access parseAskJoule without dynamic imports
@@ -124,8 +138,10 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <ErrorBoundary reloadOnError>
-      <RouterProvider router={router} />
-    </ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary reloadOnError>
+        <RouterProvider router={router} />
+      </ErrorBoundary>
+    </QueryClientProvider>
   </React.StrictMode>
 );

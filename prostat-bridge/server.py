@@ -3876,12 +3876,13 @@ async def handle_delete_setting(request):
 
 
 async def handle_cost_estimate(request):
-    """POST /api/cost-estimate - Calculate weekly/monthly HVAC cost estimate"""
+    """POST /api/cost-estimate - Calculate weekly/monthly HVAC cost estimate
+    Uses actual utility rates from user settings. Validates input bounds."""
     try:
         data = await request.json()
         outdoor_temp = data.get('outdoor_temp')
         target_temp = data.get('target_temp')
-        duration_hours = data.get('duration_hours', 168)  # Default 1 week
+        duration_hours = data.get('duration_hours', 168)
         
         if outdoor_temp is None or target_temp is None:
             return web.json_response({
@@ -3889,46 +3890,70 @@ async def handle_cost_estimate(request):
                 'error': 'outdoor_temp and target_temp are required'
             }, status=400)
         
-        # Try to get device status for more accurate calculation
-        device_id = None
+        # Validate inputs
         try:
-            device_ids = list(pairings.keys())
-            if device_ids:
-                device_id = device_ids[0]  # Use primary device
-                status = await get_thermostat_data(device_id)
-                # Could use status data for more accurate calculation
+            outdoor_temp = float(outdoor_temp)
+            target_temp = float(target_temp)
+            duration_hours = max(1, int(duration_hours))
+            
+            if outdoor_temp < -50 or outdoor_temp > 130:
+                return web.json_response({
+                    'success': False,
+                    'error': 'outdoor_temp must be -50°F to 130°F'
+                }, status=400)
+            
+            if target_temp < 60 or target_temp > 85:
+                return web.json_response({
+                    'success': False,
+                    'error': 'target_temp must be 60°F to 85°F'
+                }, status=400)
+        except (ValueError, TypeError):
+            return web.json_response({
+                'success': False,
+                'error': 'Temperatures must be numbers'
+            }, status=400)
+        
+        # Load actual rates from user settings
+        electricity_rate = 0.13
+        building_sqft = 1500
+        
+        try:
+            settings_file = CONFIG_DIR / 'user_settings.json'
+            if settings_file.exists():
+                with open(settings_file) as f:
+                    s = json.load(f)
+                    if s.get('electricityRate'):
+                        electricity_rate = float(s['electricityRate'])
+                    if s.get('squareFeet'):
+                        building_sqft = float(s['squareFeet'])
         except Exception as e:
-            logger.debug(f"Could not get device status for cost calculation: {e}")
+            logger.debug(f"Settings load: {e}")
         
-        # Calculate cost based on temperature difference
+        # Calculate BTU requirement based on temp diff and building size
         temp_diff = abs(target_temp - outdoor_temp)
+        btu_per_sqft_per_deg = 12
+        estimated_btu_hr = building_sqft * temp_diff * btu_per_sqft_per_deg
         
-        # Determine if heating or cooling
-        if outdoor_temp < target_temp - 2:  # Heating
-            # Heating degree-days per week
-            weekly_dd = temp_diff * 7
-            # Rough estimate: $0.50 per degree-day for typical 1500 sqft home
-            weekly_cost = weekly_dd * 0.50
-        elif outdoor_temp > target_temp + 2:  # Cooling
-            # Cooling degree-days per week (less efficient than heating)
-            weekly_dd = temp_diff * 7
-            # Cooling costs more per degree-day
-            weekly_cost = weekly_dd * 0.60
-        else:
-            # Mild weather, minimal HVAC usage
-            weekly_cost = 2.00
+        # Convert to kWh (1kWh=3412 BTU, 70% HVAC efficiency)
+        estimated_kwh_per_hour = estimated_btu_hr / 3412 / 0.7
         
-        # Ensure minimum cost
-        weekly_cost = max(weekly_cost, 1.00)
+        # Calculate cost
+        estimated_cost = estimated_kwh_per_hour * duration_hours * electricity_rate
+        weekly_cost = (estimated_cost / duration_hours) * 168
         monthly_cost = weekly_cost * 4.33
+        
+        if temp_diff > 5:
+            weekly_cost = max(weekly_cost, 1.00)
+            monthly_cost = max(monthly_cost, 4.00)
         
         return web.json_response({
             'success': True,
             'weeklyCost': round(weekly_cost, 2),
-            'monthlyCost': round(monthly_cost, 2)
+            'monthlyCost': round(monthly_cost, 2),
+            'electricity_rate': electricity_rate
         })
     except Exception as e:
-        logger.error(f"Error calculating cost estimate: {e}")
+        logger.error(f"Cost estimate error: {e}")
         return web.json_response({
             'success': False,
             'error': str(e)
@@ -3936,7 +3961,7 @@ async def handle_cost_estimate(request):
 
 
 async def handle_setpoint_delta(request):
-    """POST /api/setpoint - Adjust temperature setpoint by delta (for e-ink display)"""
+    """POST /api/setpoint - Adjust temperature with validation and bounds checking"""
     try:
         data = await request.json()
         delta = data.get('delta', 0)
@@ -3944,7 +3969,21 @@ async def handle_setpoint_delta(request):
         if not isinstance(delta, (int, float)):
             return web.json_response({
                 'success': False,
-                'error': 'delta must be a number'
+                'error': 'delta must be number'
+            }, status=400)
+        
+        # Validate delta is within safe bounds
+        try:
+            delta = float(delta)
+            if abs(delta) > 10:
+                return web.json_response({
+                    'success': False,
+                    'error': f'delta must be -10 to +10°F (got {delta})'
+                }, status=400)
+        except (ValueError, TypeError):
+            return web.json_response({
+                'success': False,
+                'error': 'delta must be valid number'
             }, status=400)
         
         # Get primary device
@@ -3957,7 +3996,6 @@ async def handle_setpoint_delta(request):
         
         device_id = device_ids[0]
         
-        # Get current target temperature
         try:
             status = await get_thermostat_data(device_id)
             current_target_c = status.get('target_temperature')
@@ -3965,34 +4003,42 @@ async def handle_setpoint_delta(request):
             if current_target_c is None:
                 return web.json_response({
                     'success': False,
-                    'error': 'Could not get current target temperature'
+                    'error': 'Cannot get current temperature'
                 }, status=500)
             
-            # HomeKit returns Celsius, but e-ink works in Fahrenheit
-            # Convert to Fahrenheit, apply delta, convert back to Celsius
+            # Convert Celsius to Fahrenheit, apply delta
             current_target_f = (current_target_c * 9/5) + 32
             new_target_f = current_target_f + delta
-            new_target_c = (new_target_f - 32) * 5/9
             
-            # Round to reasonable precision
+            # Validate result is in safe range (60°F - 85°F)
+            if new_target_f < 60 or new_target_f > 85:
+                return web.json_response({
+                    'success': False,
+                    'error': f'Result {round(new_target_f, 1)}°F outside safe range (60-85°F)'
+                }, status=400)
+            
+            # Convert back to Celsius for HomeKit
+            new_target_c = (new_target_f - 32) * 5/9
             new_target_c = round(new_target_c, 1)
             
-            # Set new temperature
             await set_temperature(device_id, new_target_c)
+            
+            logger.info(f"Setpoint: {current_target_f:.1f}°F → {new_target_f:.1f}°F")
             
             return web.json_response({
                 'success': True,
                 'new_target': round(new_target_f, 1),
-                'new_target_c': new_target_c
+                'new_target_c': new_target_c,
+                'previous_target': round(current_target_f, 1)
             })
         except Exception as e:
-            logger.error(f"Error adjusting setpoint: {e}")
+            logger.error(f"Setpoint error: {e}")
             return web.json_response({
                 'success': False,
                 'error': str(e)
             }, status=500)
     except Exception as e:
-        logger.error(f"Error in setpoint delta handler: {e}")
+        logger.error(f"Setpoint handler error: {e}")
         return web.json_response({
             'success': False,
             'error': str(e)

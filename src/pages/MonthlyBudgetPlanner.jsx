@@ -622,10 +622,46 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   // Local setters that call the global context setter
   const setUseElectricAuxHeat = (v) => setUserSetting("useElectricAuxHeat", v);
 
-  // Component-specific state
-  const [mode, setMode] = useState(initialMode);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1); // Default to current month
-  const [locationData, setLocationData] = useState(null);
+  // Component-specific state - with persistence
+  // IMPORTANT: Always use userSettings over initialMode prop to maintain state across route changes
+  const [mode, setModeState] = useState(() => {
+    // If we have a persisted mode, use it (even if initialMode prop differs)
+    // This prevents state loss when navigating between /analysis/monthly, /analysis/annual, etc.
+    if (userSettings?.budgetPlannerMode) {
+      return userSettings.budgetPlannerMode;
+    }
+    // Only use initialMode prop for very first visit
+    return initialMode;
+  });
+  const [selectedMonth, setSelectedMonthState] = useState(() => {
+    return userSettings?.budgetPlannerMonth || new Date().getMonth() + 1;
+  });
+  
+  // Wrapper setters that persist to userSettings
+  const setMode = useCallback((newMode) => {
+    setModeState(newMode);
+    if (setUserSetting) {
+      setUserSetting("budgetPlannerMode", newMode);
+    }
+  }, [setUserSetting]);
+  
+  const setSelectedMonth = useCallback((newMonth) => {
+    setSelectedMonthState(newMonth);
+    if (setUserSetting) {
+      setUserSetting("budgetPlannerMonth", newMonth);
+    }
+  }, [setUserSetting]);
+  
+  // Load location data synchronously on mount to enable cache lookups
+  const [locationData, setLocationData] = useState(() => {
+    try {
+      const saved = localStorage.getItem("userLocation");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error loading location:", e);
+    }
+    return null;
+  });
   
   // Cache key for monthly estimate
   const getEstimateCacheKey = useCallback(() => {
@@ -662,6 +698,30 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   
   const [monthlyEstimate, setMonthlyEstimate] = useState(initialEstimate);
   const [showCalculations, setShowCalculations] = useState(false);
+  
+  // Restore cached estimate when locationData becomes available (if not already loaded)
+  useEffect(() => {
+    if (locationData && !monthlyEstimate) {
+      const cacheKey = getEstimateCacheKey();
+      if (cacheKey) {
+        try {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+            if (age < 30 * 60 * 1000) {
+              setMonthlyEstimate(data);
+              if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+                console.log(`📦 Restored cached estimate after location load (${Math.round(age / 1000)}s old)`);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Cache restore error:', err);
+        }
+      }
+    }
+  }, [locationData, monthlyEstimate, getEstimateCacheKey]);
   
   // Cache monthly estimate when it's calculated
   const setMonthlyEstimateCached = useCallback((estimate) => {
@@ -708,6 +768,11 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   );
   const [forecastModel, setForecastModel] = useState("current"); // "typical" | "current" | "polarVortex"
   const [showAnnualPlanner, setShowAnnualPlanner] = useState(false); // Collapsed by default for reduced cognitive load
+  useEffect(() => {
+    if (mode === "annual") {
+      setShowAnnualPlanner(true);
+    }
+  }, [mode]);
   const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default - less important
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [thermostatModel, setThermostatModel] = useState("current"); // "current" | "flat70" | "flat68" | "custom"
@@ -719,7 +784,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     locationData?.latitude,
     locationData?.longitude,
     selectedMonth,
-    { enabled: !!locationData && mode === "budget" }
+    { enabled: !!locationData } // Removed mode check - loads in background
   );
 
   // Apply temperature adjustments based on forecast model
@@ -904,101 +969,85 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
 
   // Track last fetched state to prevent duplicate fetches
   const lastFetchedStateRef = useRef(null);
+  const isFetchingRateRef = useRef(false);
 
   // Automatically fetch electricity rates when Location A changes
   useEffect(() => {
     if (locationData?.state) {
-      // Only fetch if state actually changed
-      if (lastFetchedStateRef.current === locationData.state) {
+      // Only fetch if state actually changed and not already fetching
+      if (lastFetchedStateRef.current === locationData.state || isFetchingRateRef.current) {
         return;
       }
       lastFetchedStateRef.current = locationData.state;
+      isFetchingRateRef.current = true;
       
-      console.log("Fetching rates for Location A:", locationData.state);
       fetchUtilityRate(locationData.state, "electricity").then((result) => {
-        console.log("Location A rate fetch result:", result);
         if (result?.rate) {
           setElectricityRateA(result.rate);
           setElectricityRateSourceA(result.source);
-          // Update monthlyEstimate if it exists
-          if (monthlyEstimate) {
-            setMonthlyEstimateCached({
-              ...monthlyEstimate,
-              electricityRate: result.rate,
-            });
-          }
-        } else {
-          console.warn("No rate returned for Location A:", locationData.state, "Result:", result);
         }
       }).catch((err) => {
         console.error("Error fetching rate for Location A:", err);
+      }).finally(() => {
+        isFetchingRateRef.current = false;
       });
+      
       if (primarySystem === "gasFurnace") {
         fetchUtilityRate(locationData.state, "gas").then((result) => {
           if (result?.rate) {
             setGasRateA(result.rate);
           }
+        }).catch((err) => {
+          console.error("Error fetching gas rate for Location A:", err);
         });
       }
     } else {
       lastFetchedStateRef.current = null;
     }
+    // Don't include fetchUtilityRate in deps - it changes on every render causing loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationData?.state, primarySystem]);
 
   // Track last fetched state for Location B
   const lastFetchedStateBRef = useRef(null);
+  const isFetchingRateBRef = useRef(false);
   
   // Automatically fetch electricity rates when Location B changes
   useEffect(() => {
     if (locationDataB?.state) {
-      // Only fetch if state actually changed
-      if (lastFetchedStateBRef.current === locationDataB.state) {
+      // Only fetch if state actually changed and not already fetching
+      if (lastFetchedStateBRef.current === locationDataB.state || isFetchingRateBRef.current) {
         return;
       }
       lastFetchedStateBRef.current = locationDataB.state;
+      isFetchingRateBRef.current = true;
       
-      console.log("Fetching rates for Location B:", locationDataB.state);
       fetchUtilityRate(locationDataB.state, "electricity").then((result) => {
-        console.log("Location B rate fetch result:", result);
         if (result?.rate) {
           setElectricityRateB(result.rate);
           setElectricityRateSourceB(result.source);
-          // Update monthlyEstimateB if it exists
-          if (monthlyEstimateB) {
-            setMonthlyEstimateB({
-              ...monthlyEstimateB,
-              electricityRate: result.rate,
-            });
-          }
-        } else {
-          console.warn("No rate returned for Location B:", locationDataB.state);
         }
       }).catch((err) => {
         console.error("Error fetching rate for Location B:", err);
+      }).finally(() => {
+        isFetchingRateBRef.current = false;
       });
+      
       if (primarySystem === "gasFurnace") {
         fetchUtilityRate(locationDataB.state, "gas").then((result) => {
           if (result?.rate) {
             setGasRateB(result.rate);
           }
+        }).catch((err) => {
+          console.error("Error fetching gas rate for Location B:", err);
         });
       }
     } else {
       lastFetchedStateBRef.current = null;
     }
+    // Don't include fetchUtilityRate in deps - it changes on every render causing loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationDataB?.state, primarySystem]);
-
-  // Get user's location from localStorage (set during onboarding)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("userLocation");
-      if (saved) setLocationData(JSON.parse(saved));
-    } catch (e) {
-      console.error("Error loading location:", e);
-    }
-  }, []);
 
   /**
    * Get effective heat loss factor (BTU/hr/°F)
@@ -3263,7 +3312,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       This graph shows the hourly temperature profile for each day of the month, calculated using a sinusoidal curve. 
                       Temperatures are lowest around 6 AM and highest around 2 PM, creating a realistic daily temperature cycle.
                     </p>
-                    <div className="w-full" style={{ height: '400px' }}>
+                    <div className="w-full" style={{ height: '400px', minHeight: '400px' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={graphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -3515,10 +3564,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       <tr 
                         key={idx} 
                         className={`even:bg-white odd:bg-gray-50 dark:even:bg-gray-800 dark:odd:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors ${
-                          isToday ? 'bg-blue-100 dark:bg-blue-900/30 font-semibold' : ''
+                          isToday ? 'bg-blue-200 dark:bg-blue-800 font-bold border-l-4 border-blue-600 dark:border-blue-400' : ''
                         }`}
                       >
-                        <td className="py-2 px-3 font-semibold text-gray-900 dark:text-gray-100">{day.day}</td>
+                        <td className={`py-2 px-3 font-semibold ${isToday ? 'text-blue-900 dark:text-blue-100' : 'text-gray-900 dark:text-gray-100'}`}>
+                          {isToday && <span className="mr-1">📍</span>}{day.day}
+                          {isToday && <span className="ml-2 text-xs bg-blue-600 dark:bg-blue-500 text-white px-2 py-0.5 rounded-full">Today</span>}
+                        </td>
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-2">
                             <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-16"></div>
@@ -4575,7 +4627,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                           Shows how nighttime temperatures drop significantly, requiring more heating and potentially aux heat for heat pumps. 
                           Transition months (like April, May, September, October) may also require cooling during warmer days.
                         </p>
-                        <div className="w-full" style={{ height: '400px' }}>
+                        <div className="w-full" style={{ height: '400px', minHeight: '400px' }}>
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={winterGraphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -4682,7 +4734,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                           Shows how daytime temperatures peak in the afternoon, requiring more cooling during peak hours. 
                           Transition months (like April, May, September, October) may also require heating during cooler nights.
                         </p>
-                        <div className="w-full" style={{ height: '400px' }}>
+                        <div className="w-full" style={{ height: '400px', minHeight: '400px' }}>
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={summerGraphData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -6669,7 +6721,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       </p>
                     )}
                   </div>
-                  <div className="w-full" style={{ height: '350px' }}>
+                  <div className="w-full" style={{ height: '350px', minHeight: '350px' }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={combinedData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />

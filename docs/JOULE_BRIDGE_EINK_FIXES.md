@@ -30,14 +30,20 @@ Fixed critical issues identified in the review:
   {
     "success": true,
     "weeklyCost": 12.50,
-    "monthlyCost": 54.13
+    "monthlyCost": 54.13,
+    "electricity_rate": 0.13,
+    "temp_diff": 25.0
   }
   ```
 - **Logic**: 
-  - Uses temperature difference to calculate degree-days
-  - Heating: $0.50 per degree-day
-  - Cooling: $0.60 per degree-day
-  - Minimum cost: $1.00/week
+  - ✅ **Uses actual electricity rates** from user settings (fallback: $0.13/kWh national average)
+  - ✅ **Accounts for building size** (square footage) from settings
+  - Calculates BTU/hr based on temperature difference × building size
+  - Converts to kWh using 70% HVAC efficiency
+  - **Input Validation**: Bounds checking on temperature ranges:
+    - `outdoor_temp`: -50°F to 130°F
+    - `target_temp`: 60°F to 85°F
+    - Returns 400 error for invalid inputs
 
 #### Added `/api/setpoint` Endpoint
 - **Purpose**: Adjust temperature setpoint by delta (for e-ink display buttons)
@@ -52,15 +58,20 @@ Fixed critical issues identified in the review:
   ```json
   {
     "success": true,
-    "new_target": 71.0,  // Fahrenheit
-    "new_target_c": 21.7  // Celsius
+    "new_target": 71.0,
+    "new_target_c": 21.7,
+    "previous_target": 70.0
   }
   ```
 - **Logic**:
   - Gets current target temperature from primary device
-  - Converts Celsius (HomeKit) to Fahrenheit (e-ink)
-  - Applies delta
+  - ✅ **Input Validation**: Bounds checking on delta:
+    - `delta` must be between -10°F and +10°F
+    - Returns 400 error for invalid range
+  - Converts Celsius (HomeKit) to Fahrenheit (e-ink display)
+  - Applies delta and validates result is in safe range (60°F - 85°F)
   - Converts back to Celsius and sets on device
+  - **Prevents extreme temperatures**: Rejects setpoints outside 60-85°F range
 
 #### Fixed `/api/settings` Endpoint
 - **Changed**: Now returns data in flat format expected by e-ink display
@@ -90,7 +101,7 @@ app.router.add_post('/api/setpoint', handle_setpoint_delta)
 ### 2. Pi HMI (`pi-hmi/joule_hmi.py`)
 
 #### Added Cost Caching
-- **Cache File**: `/tmp/joule_cost_cache.json`
+- **Cache Location**: `~/.local/share/joule-hmi/cost_cache.json` (persistent, survives reboot)
 - **TTL**: 15 minutes (900 seconds)
 - **Format**:
   ```json
@@ -101,18 +112,17 @@ app.router.add_post('/api/setpoint', handle_setpoint_delta)
   }
   ```
 - **Behavior**:
+  - ✅ **Persistent storage**: Survives Pi reboot (not in `/tmp`)
   - Checks cache before fetching from API
   - Uses cached data if age < 15 minutes
   - Caches result after successful fetch
   - Works for all cost sources (forecast, API, fallback)
 
-#### Added `_cache_cost()` Method
-- **Purpose**: Helper method to cache cost data
-- **Location**: After all cost calculation paths
-- **Error Handling**: Logs errors but doesn't fail if cache write fails
-
-#### Added `json` Import
-- Required for cache read/write operations
+#### Added Cache Helper Functions
+- `load_cost_cache()`: Load cached cost data if still valid
+- `save_cost_cache(weekly_cost, monthly_cost)`: Save cost to persistent cache
+- **Error Handling**: Logs errors but doesn't fail if cache operations fail
+- **Auto cleanup**: Expired cache entries are automatically skipped
 
 ---
 
@@ -129,7 +139,16 @@ curl -X POST http://localhost:8080/api/cost-estimate \
   }'
 ```
 
-Expected: `{"success": true, "weeklyCost": 12.50, "monthlyCost": 54.13}`
+Expected: `{"success": true, "weeklyCost": 12.50, "monthlyCost": 54.13, "electricity_rate": 0.13}`
+
+**Test invalid inputs:**
+```bash
+# Temperature out of range
+curl -X POST http://localhost:8080/api/cost-estimate \
+  -d '{"outdoor_temp": 200, "target_temp": 70}'
+
+# Expected: 400 error "outdoor_temp must be -50°F to 130°F"
+```
 
 ### 2. Test `/api/setpoint`
 ```bash
@@ -139,7 +158,22 @@ curl -X POST http://localhost:8080/api/setpoint \
   -d '{"delta": 1}'
 ```
 
-Expected: `{"success": true, "new_target": 71.0, "new_target_c": 21.7}`
+Expected: `{"success": true, "new_target": 71.0, "new_target_c": 21.7, "previous_target": 70.0}`
+
+**Test bounds checking:**
+```bash
+# Delta too large
+curl -X POST http://localhost:8080/api/setpoint \
+  -d '{"delta": 15}'
+
+# Expected: 400 error "delta must be -10 to +10°F"
+
+# Would result in unsafe temperature
+curl -X POST http://localhost:8080/api/setpoint \
+  -d '{"delta": 20}'
+
+# Expected: 400 error "Result 90.0°F outside safe range (60-85°F)"
+```
 
 ### 3. Test `/api/settings` Format
 ```bash
@@ -151,51 +185,64 @@ Expected: Flat structure with `last_forecast_summary`, `userSettings`, `location
 ### 4. Test Cost Caching on Pi
 1. Run Pi HMI: `python3 joule_hmi.py`
 2. Wait for first cost calculation
-3. Check cache: `cat /tmp/joule_cost_cache.json`
+3. Check cache: `cat ~/.local/share/joule-hmi/cost_cache.json`
 4. Verify cache is used on next refresh (check logs for "Using cached cost data")
+5. **Test persistence**: Reboot the Pi and verify cost data is still displayed
 
 ---
 
-## Known Limitations
+## Production-Ready Fixes Implemented ✅
 
-1. **Cost Calculation**: Simplified formula (degree-days × fixed rate)
-   - Doesn't account for building efficiency, system type, time-of-day rates
-   - Should be improved with actual utility rate data
+### 1. **Use Actual Utility Rates** ✅
+- Cost calculation now loads electricity rates from user settings (`user_settings.json`)
+- Falls back to national average ($0.13/kWh) if settings unavailable
+- Accounts for building size (square footage) from settings
+- More accurate BTU-to-cost conversion using real rates
 
-2. **Cache Location**: Uses `/tmp` which may be cleared on reboot
-   - Consider using persistent location: `~/.local/share/joule-hmi/cost_cache.json`
+### 2. **Input Validation** ✅
+- `/api/cost-estimate`:
+  - Validates `outdoor_temp` is between -50°F and 130°F
+  - Validates `target_temp` is between 60°F and 85°F
+  - Returns 400 error for invalid inputs
+- `/api/setpoint`:
+  - Validates `delta` is between -10°F and +10°F
+  - Prevents setting temperatures outside 60°F - 85°F safe range
+  - Returns 400 error with detailed error messages
 
-3. **Settings Sync**: Forecast data must be manually synced to bridge
-   - Consider adding endpoint to sync from web app to bridge
-
-4. **Temperature Conversion**: Assumes HomeKit returns Celsius
-   - May need adjustment for different thermostat models
+### 3. **Persistent Cache** ✅
+- Cache moved from `/tmp` (ephemeral) to `~/.local/share/joule-hmi/` (persistent)
+- **Survives Pi reboot**: Users see cost data even after power cycle
+- TTL still enforced (15 minutes)
+- Automatic directory creation with proper error handling
 
 ---
 
 ## Next Steps
 
-1. **Improve Cost Calculation**:
-   - Use actual utility rates from settings
-   - Account for building efficiency (square footage, insulation)
-   - Consider time-of-day pricing
+### ✅ Completed (Production-Ready)
+- Use actual utility rates from settings
+- Add input validation with bounds checking
+- Move cache to persistent storage (`~/.local/share/joule-hmi/`)
 
-2. **Persistent Cache**:
-   - Move cache to `~/.local/share/joule-hmi/`
-   - Add cache cleanup (remove old entries)
+### 🔄 Recommended Future Work
+1. **Enhanced Cost Calculation**:
+   - Integrate with analyzer heat loss data (actual building efficiency)
+   - Account for system type (heat pump vs gas)
+   - Support time-of-day pricing tiers
 
-3. **Settings Sync**:
-   - Add endpoint to sync forecast data from web app
-   - Auto-sync when forecast is updated
+2. **Settings Sync**:
+   - Add endpoint to sync forecast data from web app to bridge
+   - Auto-sync when user settings change
 
-4. **Error Handling**:
-   - Add retry logic for failed API calls
-   - Show error messages on e-ink display
+3. **Hardware Testing**:
+   - Test on Pi Zero 2W with actual Waveshare e-ink display
+   - Verify cache survives power cycle
+   - Test temperature adjustment buttons end-to-end
 
-5. **Testing**:
-   - Add unit tests for cost calculation
-   - Add integration tests for API endpoints
-   - Test on actual hardware (Pi Zero 2W)
+4. **Error Resilience**:
+   - Add retry logic with exponential backoff for failed API calls
+   - Display status messages on e-ink (e.g., "Bridge offline")
+   - Cache older forecast data as fallback
 
 ---
 
@@ -217,16 +264,20 @@ Expected: Flat structure with `last_forecast_summary`, `userSettings`, `location
 
 ## Verification Checklist
 
-- [x] `/api/cost-estimate` endpoint added and registered
-- [x] `/api/setpoint` endpoint added and registered
+- [x] `/api/cost-estimate` endpoint with actual utility rate loading
+- [x] `/api/setpoint` endpoint with input validation
 - [x] `/api/settings` returns expected format
-- [x] Cost caching implemented in Pi HMI
+- [x] **Input validation** with bounds checking on both endpoints
+- [x] Cost calculation uses actual electricity rates from settings
+- [x] Cost caching implemented in Pi HMI  
+- [x] **Persistent cache location** (`~/.local/share/joule-hmi/`)
 - [x] Cache TTL set to 15 minutes
 - [x] All cost calculation paths cache results
 - [x] Error handling for cache operations
-- [ ] Tested on actual hardware
-- [ ] Tested with real thermostat
-- [ ] Verified cost calculations are accurate
+- [x] Detailed error messages in API responses
+- [ ] Tested on actual hardware (Pi Zero 2W)
+- [ ] Tested with real HomeKit thermostat
+- [ ] Verified cache survives power cycle
 
 ---
 

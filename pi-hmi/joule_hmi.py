@@ -11,6 +11,7 @@ import time
 import json
 import requests
 import subprocess
+from pathlib import Path
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
@@ -31,6 +32,14 @@ FULL_REFRESH_EVERY = 10  # Full refresh every N partial refreshes
 DISPLAY_WIDTH = 250
 DISPLAY_HEIGHT = 122
 
+# Cache configuration (persistent location)
+CACHE_DIR = Path.home() / '.local/share/joule-hmi'
+COST_CACHE_FILE = CACHE_DIR / 'cost_cache.json'
+COST_CACHE_TTL = 900  # 15 minutes
+
+# Ensure cache directory exists
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 # Layout coordinates (from deployment guide)
 HEADER_RECT = (0, 0, 250, 18)
 FOOTER_RECT = (0, 95, 250, 110)
@@ -48,6 +57,43 @@ FONT_PATHS = [
     '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
     '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf'
 ]
+
+
+# ============================================================================
+# Cache Helpers (persistent storage)
+# ============================================================================
+
+def load_cost_cache():
+    """Load cached cost data if still valid (within TTL)"""
+    try:
+        if COST_CACHE_FILE.exists():
+            with open(COST_CACHE_FILE) as f:
+                cache = json.load(f)
+                age = time.time() - cache.get('timestamp', 0)
+                if age < COST_CACHE_TTL:
+                    print(f"✓ Using cached cost data ({age:.0f}s old)")
+                    return cache
+                else:
+                    print(f"✗ Cache expired ({age:.0f}s old, TTL: {COST_CACHE_TTL}s)")
+    except Exception as e:
+        print(f"Cache load error: {e}")
+    return None
+
+
+def save_cost_cache(weekly_cost, monthly_cost):
+    """Save cost data to persistent cache"""
+    try:
+        cache_data = {
+            'weekly_cost': f"${weekly_cost:.2f}/wk",
+            'monthly_cost': f"${monthly_cost:.2f}/mo",
+            'timestamp': time.time()
+        }
+        with open(COST_CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f)
+        print(f"✓ Cached cost data to {COST_CACHE_FILE}")
+    except Exception as e:
+        print(f"Cache save error: {e}")
+
 
 class JouleHMI:
     def __init__(self):
@@ -172,22 +218,7 @@ class JouleHMI:
             self.wifi_signal = 0
     
     def fetch_weekly_cost(self):
-        """Fetch weekly HVAC cost estimate with caching"""
-        # Check cache first (15-minute TTL)
-        cache_file = '/tmp/joule_cost_cache.json'
-        try:
-            if os.path.exists(cache_file):
-                with open(cache_file, 'r') as f:
-                    cached = json.load(f)
-                    age = time.time() - cached.get('timestamp', 0)
-                    if age < 900:  # 15 minutes
-                        self.weekly_cost = cached.get('weekly_cost')
-                        self.monthly_cost = cached.get('monthly_cost')
-                        print(f"Using cached cost data (age: {age:.0f}s)")
-                        return
-        except Exception as e:
-            print(f"Cache read error: {e}")
-        
+        """Fetch weekly HVAC cost estimate"""
         # First try to read from Forecaster's localStorage data (via bridge)
         try:
             response = requests.get(f'{BRIDGE_URL}/api/settings', timeout=5)
@@ -207,8 +238,6 @@ class JouleHMI:
                     if cost and isinstance(cost, (int, float)):
                         self.weekly_cost = f"${cost:.2f}/wk"
                         self.monthly_cost = f"${cost * 4.33:.2f}/mo"
-                        # Cache the result
-                        self._cache_cost()
                         return
         except Exception as e:
             print(f"localStorage forecast fetch error: {e}")
@@ -233,8 +262,6 @@ class JouleHMI:
                     if data.get('success'):
                         self.weekly_cost = f"${data['weeklyCost']:.2f}/wk"
                         self.monthly_cost = f"${data['monthlyCost']:.2f}/mo"
-                        # Cache the result
-                        self._cache_cost()
                         return
         except Exception as e:
             print(f"Cost estimate API error: {e}")
@@ -278,22 +305,6 @@ class JouleHMI:
             print(f"Cost calculation error: {e}")
             self.weekly_cost = "$5.00/wk"
             self.monthly_cost = "$21.65/mo"
-        
-        # Cache the result (even if it's a fallback)
-        self._cache_cost()
-    
-    def _cache_cost(self):
-        """Cache cost data to file"""
-        try:
-            cache_file = '/tmp/joule_cost_cache.json'
-            with open(cache_file, 'w') as f:
-                json.dump({
-                    'weekly_cost': self.weekly_cost,
-                    'monthly_cost': self.monthly_cost,
-                    'timestamp': time.time()
-                }, f)
-        except Exception as e:
-            print(f"Cache write error: {e}")
     
     def fetch_outdoor_weather(self):
         """Fetch outdoor temperature and humidity from NWS or OpenMeteo"""

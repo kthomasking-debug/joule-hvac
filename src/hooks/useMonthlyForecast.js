@@ -1,119 +1,50 @@
 // src/hooks/useMonthlyForecast.js
-import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+// React Query handles caching automatically - no need for manual cache helpers
 
 /**
- * Cache helpers for forecast data
- */
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
-
-function getCachedForecast(lat, lon, month) {
-  try {
-    const cacheKey = `forecast_${lat.toFixed(2)}_${lon.toFixed(2)}_${month}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (!cached) return null;
-    
-    const { data, timestamp } = JSON.parse(cached);
-    const age = Date.now() - timestamp;
-    
-    if (age < CACHE_DURATION) {
-      console.log(`📦 Using cached forecast data (${Math.round(age / 1000)}s old)`);
-      return data;
-    }
-    
-    // Cache expired, remove it
-    sessionStorage.removeItem(cacheKey);
-    return null;
-  } catch (err) {
-    console.warn('Cache read error:', err);
-    return null;
-  }
-}
-
-function setCachedForecast(lat, lon, month, data) {
-  try {
-    const cacheKey = `forecast_${lat.toFixed(2)}_${lon.toFixed(2)}_${month}`;
-    sessionStorage.setItem(cacheKey, JSON.stringify({
-      data,
-      timestamp: Date.now()
-    }));
-  } catch (err) {
-    console.warn('Cache write error:', err);
-  }
-}
-
-/**
- * useMonthlyForecast - fetches a 15-day forecast and fills remaining days with historical averages
- * Returns { dailyForecast, loading, error, refetch }
- *
+ * Fetch function for monthly forecast - extracted for React Query
  * Strategy:
- * 1. Check cache first
- * 2. Fetch 15-day forecast from Open-Meteo (supports up to 16 days)
- * 3. For days not covered by forecast, use historical averages from Open-Meteo archive API
+ * 1. Fetch 15-day forecast from Open-Meteo (supports up to 16 days)
+ * 2. For days not covered by forecast, use historical averages from Open-Meteo archive API
  */
-export default function useMonthlyForecast(lat, lon, month, options = {}) {
-  const { enabled = true } = options;
-  const [dailyForecast, setDailyForecast] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const abortRef = useRef(null);
+async function fetchMonthlyForecast({ lat, lon, month, signal }) {
+  const latitude = lat;
+  const longitude = lon;
+  const targetMonth = month;
+  if (!latitude || !longitude || !targetMonth) {
+    throw new Error('Missing required parameters');
+  }
 
-  const fetchData = async (latitude, longitude, targetMonth) => {
-    if (!latitude || !longitude || !targetMonth) return;
+  // Validate coordinates are valid numbers
+  const validLat = Number(latitude);
+  const validLon = Number(longitude);
+  if (!Number.isFinite(validLat) || !Number.isFinite(validLon)) {
+    throw new Error(`Invalid coordinates: ${latitude}, ${longitude}`);
+  }
 
-    // Validate coordinates are valid numbers
-    const lat = Number(latitude);
-    const lon = Number(longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      console.warn("Invalid coordinates for forecast:", {
+  // Validate latitude is between -90 and 90, longitude between -180 and 180
+  if (validLat < -90 || validLat > 90 || validLon < -180 || validLon > 180) {
+    throw new Error(`Coordinates out of range: ${validLat}, ${validLon}`);
+  }
+
+  try {
+    // Step 1: Fetch 15-day forecast from Open-Meteo
+    // Request both daily temps AND hourly humidity (can get both in one call)
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min&hourly=relativehumidity_2m&temperature_unit=fahrenheit&timezone=auto&forecast_days=15`;
+
+    if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+      console.log("🌤️ Fetching 15-day forecast:", {
         latitude,
         longitude,
+        url: forecastUrl,
       });
-      return;
     }
 
-    // Validate latitude is between -90 and 90, longitude between -180 and 180
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      console.warn("Coordinates out of valid range:", { lat, lon });
-      return;
-    }
-
-    // Check cache first
-    const cached = getCachedForecast(lat, lon, targetMonth);
-    if (cached) {
-      setDailyForecast(cached);
-      setLoading(false);
-      return;
-    }
-
-    if (abortRef.current) {
-      try {
-        abortRef.current.abort();
-      } catch {
-        /* noop */
-      }
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Step 1: Fetch 15-day forecast from Open-Meteo
-      // Request both daily temps AND hourly humidity (can get both in one call)
-      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min&hourly=relativehumidity_2m&temperature_unit=fahrenheit&timezone=auto&forecast_days=15`;
-
-      if (typeof window !== "undefined" && import.meta?.env?.DEV) {
-        console.log("🌤️ Fetching 15-day forecast:", {
-          latitude,
-          longitude,
-          url: forecastUrl,
-        });
-      }
-
-      const forecastResp = await fetch(forecastUrl, {
-        signal: controller.signal,
-      });
+    const forecastResp = await fetch(forecastUrl, {
+      signal,
+    });
 
       if (!forecastResp.ok) {
         // Try to get more details from the error response
@@ -245,7 +176,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
 
       try {
         const archiveResp = await fetch(archiveUrl, {
-          signal: controller.signal,
+          signal,
         });
 
         if (archiveResp.ok) {
@@ -254,7 +185,12 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
           // Build complete month: use forecast where available, historical for the rest
           const completeMonth = [];
           for (let day = 1; day <= daysInMonth; day++) {
-            if (forecastMap.has(day)) {
+            const dayDate = new Date(currentYear, targetMonth - 1, day);
+            const isPastDay = dayDate < today.setHours(0, 0, 0, 0);
+            
+            // Use forecast only if the day has actual forecast data
+            // For past days or days beyond forecast range, use historical
+            if (forecastMap.has(day) && !isPastDay) {
               // Use forecast data
               const forecastDay = forecastMap.get(day);
               completeMonth.push({
@@ -266,7 +202,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
                 source: "forecast",
               });
             } else {
-              // Use historical average
+              // Use historical average for past days or days beyond forecast range
               const tempsForThisDay = [];
 
               // Extract temperatures for this day across all years
@@ -325,8 +261,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
             }
           }
 
-          setDailyForecast(completeMonth);
-          setCachedForecast(lat, lon, targetMonth, completeMonth);
+          return completeMonth;
         } else {
           // If archive fails, use forecast for available days and average for the rest
           console.warn(
@@ -367,7 +302,7 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
               });
             }
           }
-          setDailyForecast(completeMonth);          setCachedForecast(lat, lon, targetMonth, completeMonth);        }
+          return completeMonth;        }
       } catch (archiveErr) {
         // If archive fetch fails, use forecast data only
         console.warn("Historical archive fetch failed:", archiveErr);
@@ -405,28 +340,33 @@ export default function useMonthlyForecast(lat, lon, month, options = {}) {
             });
           }
         }
-        setDailyForecast(fallbackMonth);
-        setCachedForecast(lat, lon, targetMonth, fallbackMonth);
+        return fallbackMonth;
       }
     } catch (err) {
-      if (err.name === "AbortError") return; // canceled
-
       console.error("Error fetching monthly forecast:", err);
-      setError(err.message || "Unknown error fetching forecast");
-    } finally {
-      setLoading(false);
+      throw err;
     }
+}
+
+/**
+ * React Query hook wrapper for monthly forecast
+ * Automatically fetches in background and keeps data fresh
+ */
+export default function useMonthlyForecast(lat, lon, month, options = {}) {
+  const { enabled = true } = options;
+
+  const query = useQuery({
+    queryKey: ['monthlyForecast', lat, lon, month],
+    queryFn: ({ signal }) => fetchMonthlyForecast({ lat, lon, month, signal }),
+    enabled: enabled && !!lat && !!lon && !!month,
+    staleTime: 15 * 60 * 1000, // 15 minutes
+    cacheTime: 30 * 60 * 1000, // 30 minutes
+  });
+
+  return {
+    dailyForecast: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
   };
-
-  useEffect(() => {
-    if (!enabled) return;
-    fetchData(lat, lon, month);
-    return () => {
-      if (abortRef.current) abortRef.current.abort();
-    };
-  }, [lat, lon, month, enabled]);
-
-  const refetch = () => fetchData(lat, lon, month);
-
-  return { dailyForecast, loading, error, refetch };
 }
