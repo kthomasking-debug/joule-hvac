@@ -238,8 +238,8 @@ export default function BridgeSupport() {
     };
     
     try {
-      // Health check
-      const healthRes = await fetchWithTimeout(`${bridgeUrl}/health`);
+      // Health check - verify bridge is actually connected by testing a real bridge API endpoint
+      const healthRes = await fetchWithTimeout(`${bridgeUrl}/api/bridge/info`, {}, 5000);
       if (healthRes.ok) {
         results.health = await healthRes.json();
         results.connected = true;

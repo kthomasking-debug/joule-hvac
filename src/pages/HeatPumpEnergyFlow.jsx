@@ -838,23 +838,62 @@ const HeatPumpEnergyFlow = () => {
     const steps = Math.max(1, Math.ceil(hoursElapsed / dt));
     let T_noAux = indoorTemp;
     let T_withAux = indoorTemp;
+    
+    // For furnaces, assume thermostat cycling with deadband
+    // For heat pumps, run continuously as before
+    const setpoint = indoorTemp; // Target is current indoor temp
+    const deadband = 0.5; // °F - turn on below this, off above this
+    let furnaceRunning = false;
+    
     for (let i = 0; i <= steps; i++) {
       const t = i * dt;
 
-      // Compute building loss at current indoor temps
-      const loss_noAux = H * (T_noAux - currentOutdoor);
-      const Q_in_noAux = thermalOutputBtu_now; // no auxiliary
-      const dT_noAux = (Q_in_noAux - loss_noAux) / C; // °F/hr
+      // For furnaces: thermostat cycling (furnace turns on/off)
+      if (primarySystem === "gasFurnace") {
+        // Furnace thermostat logic: turn on below setpoint - deadband, off above setpoint
+        if (T_noAux < setpoint - deadband) {
+          furnaceRunning = true;
+        } else if (T_noAux >= setpoint) {
+          furnaceRunning = false;
+        }
+        
+        // With cycling: only get heat when furnace is running
+        const Q_in_cycling = furnaceRunning ? thermalOutputBtu_now : 0;
+        const loss_cycling = H * (T_noAux - currentOutdoor);
+        const dT_cycling = (Q_in_cycling - loss_cycling) / C;
+        T_noAux = T_noAux + dT_cycling * dt;
+      } else {
+        // For heat pumps: modulate output to maintain setpoint (more realistic than continuous full-power)
+        const loss_noAux = H * (T_noAux - currentOutdoor);
+        
+        // Thermostat modulation: reduce capacity if temp is above setpoint
+        let modulatedOutput = thermalOutputBtu_now;
+        if (T_noAux >= setpoint) {
+          // Above setpoint: modulate down to just meet heat loss (maintains temp)
+          modulatedOutput = Math.min(loss_noAux, thermalOutputBtu_now);
+        } else if (T_noAux < setpoint - deadband) {
+          // Below deadband: run at full capacity
+          modulatedOutput = thermalOutputBtu_now;
+        } else {
+          // In deadband (between setpoint - deadband and setpoint): modulate proportionally
+          const tempInBand = T_noAux - (setpoint - deadband);
+          const bandWidth = deadband;
+          const modulationFraction = tempInBand / bandWidth; // 0 to 1
+          modulatedOutput = loss_noAux + modulationFraction * (thermalOutputBtu_now - loss_noAux);
+        }
+        
+        const Q_in_noAux = modulatedOutput;
+        const dT_noAux = (Q_in_noAux - loss_noAux) / C;
+        T_noAux = T_noAux + dT_noAux * dt;
+      }
 
-      // With aux: auxiliary supplies deficit up to meeting building loss
+      // With aux: auxiliary supplies deficit up to meeting building loss (same for both)
       const loss_withAux = H * (T_withAux - currentOutdoor);
       const auxNeeded = Math.max(0, loss_withAux - thermalOutputBtu_now);
       const Q_in_withAux = thermalOutputBtu_now + auxNeeded;
       const dT_withAux = (Q_in_withAux - loss_withAux) / C;
 
       series.push({ time: t, T_noAux, T_withAux });
-
-      T_noAux = T_noAux + dT_noAux * dt;
       T_withAux = T_withAux + dT_withAux * dt;
     }
     return series;
@@ -3451,8 +3490,7 @@ const HeatPumpEnergyFlow = () => {
                       ⚠️ Modeling note:
                     </p>
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                      This simulation ignores thermostat cycling and assumes continuous operation.
-                      The steady-state temperature is a mathematical artifact, not a real indoor temperature prediction.
+                      This simulation models thermostat behavior: furnaces cycle on/off to maintain setpoint; heat pumps modulate output. It provides qualitative insight into system response, not precise transient predictions.
                     </p>
                   </div>
                   

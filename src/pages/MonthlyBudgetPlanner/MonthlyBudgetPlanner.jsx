@@ -37,226 +37,56 @@ import {
   inputClasses,
   fullInputClasses,
   selectClasses,
-} from "../lib/uiClasses";
-import ThermostatScheduleCard from "../components/ThermostatScheduleCard";
-import ThermostatScheduleClock from "../components/ThermostatScheduleClock";
-import AnswerCard from "../components/AnswerCard";
+} from "../../lib/uiClasses";
+import ThermostatScheduleCard from "../../components/ThermostatScheduleCard";
+import ThermostatScheduleClock from "../../components/ThermostatScheduleClock";
+import AnswerCard from "../../components/AnswerCard";
 import {
   loadThermostatSettings,
-} from "../lib/thermostatSettings";
-import OneClickOptimizer from "../components/optimization/OneClickOptimizer";
-import useMonthlyForecast from "../hooks/useMonthlyForecast";
-import useHistoricalHourly from "../hooks/useHistoricalHourly";
+} from "../../lib/thermostatSettings";
+import OneClickOptimizer from "../../components/optimization/OneClickOptimizer";
+import useMonthlyForecast from "../../hooks/useMonthlyForecast";
+import useHistoricalHourly from "../../hooks/useHistoricalHourly";
 import {
   estimateMonthlyCoolingCostFromCDD,
   estimateMonthlyHeatingCostFromHDD,
-} from "../lib/budgetUtils";
-
-// Constants for math display
-const BASE_BTU_PER_SQFT = 22.67;
-const BASE_COOLING_LOAD_FACTOR = 28.0;
-import { getAnnualHDD, getAnnualCDD } from "../lib/hddData";
-import * as heatUtils from "../lib/heatUtils";
-import { getCached, setCached } from "../utils/cachedStorage";
+} from "../../lib/budgetUtils";
+import { getAnnualHDD, getAnnualCDD } from "../../lib/hddData";
+import { 
+  BASE_BTU_PER_SQFT,
+  BASE_COOLING_LOAD_FACTOR,
+  STATE_NAME_BY_ABBR,
+  normalize 
+} from "./constants";
+import {
+  getTypicalHDD,
+  getTypicalCDD,
+  estimateTypicalHDDCost,
+  estimateTypicalCDDCost
+} from "./calculations";
+import * as heatUtils from "../../lib/heatUtils";
+import { getCached, setCached } from "../../utils/cachedStorage";
 import {
   defaultFixedChargesByState,
   defaultFallbackFixedCharges,
   normalizeStateToAbbreviation,
-} from "../data/fixedChargesByState";
+} from "../../data/fixedChargesByState";
 import {
   fetchLiveElectricityRate,
   fetchLiveGasRate,
   getStateCode,
-} from "../lib/eiaRates";
+} from "../../lib/eiaRates";
 import {
   calculateElectricityCO2,
   calculateGasCO2,
   formatCO2,
-} from "../lib/carbonFootprint";
-import { getBestEquivalent, calculateCO2Equivalents, formatCO2Equivalent } from "../lib/co2Equivalents";
-import { useUnitSystem, formatEnergyFromKwh } from "../lib/units";
+} from "../../lib/carbonFootprint";
+import { getBestEquivalent, calculateCO2Equivalents, formatCO2Equivalent } from "../../lib/co2Equivalents";
+import { useUnitSystem, formatEnergyFromKwh } from "../../lib/units";
 import {
   STATE_ELECTRICITY_RATES,
   STATE_GAS_RATES,
-} from "../data/stateRates";
-
-// US State abbreviations to full names for input like "Chicago, IL"
-const STATE_NAME_BY_ABBR = {
-  AL: "Alabama",
-  AK: "Alaska",
-  AZ: "Arizona",
-  AR: "Arkansas",
-  CA: "California",
-  CO: "Colorado",
-  CT: "Connecticut",
-  DE: "Delaware",
-  FL: "Florida",
-  GA: "Georgia",
-  HI: "Hawaii",
-  ID: "Idaho",
-  IL: "Illinois",
-  IN: "Indiana",
-  IA: "Iowa",
-  KS: "Kansas",
-  KY: "Kentucky",
-  LA: "Louisiana",
-  ME: "Maine",
-  MD: "Maryland",
-  MA: "Massachusetts",
-  MI: "Michigan",
-  MN: "Minnesota",
-  MS: "Mississippi",
-  MO: "Missouri",
-  MT: "Montana",
-  NE: "Nebraska",
-  NV: "Nevada",
-  NH: "New Hampshire",
-  NJ: "New Jersey",
-  NM: "New Mexico",
-  NY: "New York",
-  NC: "North Carolina",
-  ND: "North Dakota",
-  OH: "Ohio",
-  OK: "Oklahoma",
-  OR: "Oregon",
-  PA: "Pennsylvania",
-  RI: "Rhode Island",
-  SC: "South Carolina",
-  SD: "South Dakota",
-  TN: "Tennessee",
-  TX: "Texas",
-  UT: "Utah",
-  VT: "Vermont",
-  VA: "Virginia",
-  WA: "Washington",
-  WV: "West Virginia",
-  WI: "Wisconsin",
-  WY: "Wyoming",
-};
-
-const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
-
-// --- Typical HDD/CDD helpers (moved outside component for rules-of-hooks compliance) ---
-function getTypicalHDD(month) {
-  const typicalHDD = { 1: 1200, 2: 1000, 10: 200, 11: 500, 12: 1100 };
-  return typicalHDD[month] || 800;
-}
-
-function getTypicalCDD(month) {
-  const typicalCDD = { 5: 100, 6: 250, 7: 450, 8: 400, 9: 250 };
-  return typicalCDD[month] || 300;
-}
-
-function estimateTypicalHDDCost(params) {
-  // Use the same scaling logic as annual breakdown for consistency
-  const monthlyHDDDist = [1200, 1000, 600, 200, 50, 10, 0, 0, 20, 200, 500, 1100]; // Jan-Dec
-  const totalTypicalHDD = monthlyHDDDist.reduce((a, b) => a + b, 0); // ~4880
-  
-  // Get location-specific annual HDD if available
-  let annualHDD = 5000; // default fallback
-  if (params.locationData?.city && params.locationData?.state) {
-    // getAnnualHDD is already imported at top of file
-    annualHDD = getAnnualHDD(params.locationData.city, params.locationData.state);
-  }
-  
-  // Scale monthly HDD to location's annual total (same as annual breakdown)
-  const monthIndex = params.month - 1; // Convert 1-12 to 0-11
-  const monthHDD = totalTypicalHDD > 0 ? (monthlyHDDDist[monthIndex] / totalTypicalHDD) * annualHDD : 0;
-  
-  // Calculate temperature multiplier - use actual thermostat settings first
-  // Priority: 1) userSettings.winterThermostatDay/Night, 2) thermostatSettings comfortSettings, 3) defaults
-  let winterDayTemp = params.userSettings?.winterThermostatDay;
-  let winterNightTemp = params.userSettings?.winterThermostatNight;
-  
-  // If not in userSettings, check thermostat settings
-  if (winterDayTemp === undefined || winterNightTemp === undefined) {
-    try {
-      const thermostatSettings = loadThermostatSettings();
-      const comfortSettings = thermostatSettings?.comfortSettings;
-      
-      if (winterDayTemp === undefined) {
-        winterDayTemp = comfortSettings?.home?.heatSetPoint ?? 70;
-      }
-      if (winterNightTemp === undefined) {
-        winterNightTemp = comfortSettings?.sleep?.heatSetPoint ?? 66; // Default is 66, not 68
-      }
-    } catch {
-      // Fallback to defaults if thermostat settings can't be loaded
-      if (winterDayTemp === undefined) {
-        winterDayTemp = 70;
-      }
-      if (winterNightTemp === undefined) {
-        winterNightTemp = 66; // Default is 66, not 68 (from thermostatSettings.js)
-      }
-    }
-  }
-  const avgWinterIndoorTemp = (winterDayTemp * 16 + winterNightTemp * 8) / 24;
-  const baseWinterOutdoorTemp = 35;
-  const baseWinterDelta = 65 - baseWinterOutdoorTemp; // 30°F
-  const actualWinterDelta = avgWinterIndoorTemp - baseWinterOutdoorTemp;
-  const winterTempMultiplier = actualWinterDelta / baseWinterDelta;
-  
-  const estimate = estimateMonthlyHeatingCostFromHDD({
-    hdd: monthHDD,
-    squareFeet: params.squareFeet,
-    insulationLevel: params.insulationLevel,
-    homeShape: params.homeShape,
-    ceilingHeight: params.ceilingHeight,
-    hspf: params.hspf || params.efficiency,
-    electricityRate: params.electricityRate,
-  });
-  
-  // Apply temperature multiplier (same as annual breakdown)
-  if (estimate && estimate.cost > 0) {
-    estimate.cost = estimate.cost * winterTempMultiplier;
-  }
-  
-  // Fixed costs are now handled by calculateMonthlyEstimate wrapper
-  // No need to add them here to avoid double-counting
-  params.setEstimate(estimate);
-}
-
-function estimateTypicalCDDCost(params) {
-  // Use the same scaling logic as annual breakdown for consistency
-  const monthlyCDDDist = [0, 0, 10, 60, 150, 300, 450, 400, 250, 100, 10, 0]; // Jan-Dec
-  const totalTypicalCDD = monthlyCDDDist.reduce((a, b) => a + b, 0); // ~1730
-  
-  // Get location-specific annual CDD if available
-  let annualCDD = 1500; // default fallback
-  if (params.locationData?.city && params.locationData?.state) {
-    // getAnnualCDD is already imported at top of file
-    annualCDD = getAnnualCDD(params.locationData.city, params.locationData.state);
-  }
-  
-  // Scale monthly CDD to location's annual total (same as annual breakdown)
-  const monthIndex = params.month - 1; // Convert 1-12 to 0-11
-  const monthCDD = totalTypicalCDD > 0 ? (monthlyCDDDist[monthIndex] / totalTypicalCDD) * annualCDD : 0;
-  
-  // Calculate temperature multiplier (same as annual breakdown)
-  const summerDayTemp = params.userSettings?.summerThermostat ?? 76;
-  const summerNightTemp = params.userSettings?.summerThermostatNight ?? 78;
-  const avgSummerIndoorTemp = (summerDayTemp * 16 + summerNightTemp * 8) / 24;
-  const baseSummerOutdoorTemp = 85;
-  const baseSummerDelta = baseSummerOutdoorTemp - 65; // 20°F
-  const actualSummerDelta = baseSummerOutdoorTemp - avgSummerIndoorTemp;
-  const summerTempMultiplier = actualSummerDelta / baseSummerDelta;
-  
-  const estimate = estimateMonthlyCoolingCostFromCDD({
-    ...params,
-    cdd: monthCDD,
-    seer2: params.efficiency,
-  });
-  
-  // Apply temperature multiplier (same as annual breakdown)
-  if (estimate && estimate.cost > 0) {
-    estimate.cost = estimate.cost * summerTempMultiplier;
-  }
-  
-  // Fixed costs are now handled by calculateMonthlyEstimate wrapper
-  // No need to add them here to avoid double-counting
-  
-  params.setEstimate(estimate);
-}
+} from "../../data/stateRates";
 
 const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   // Route guard: redirect to onboarding if not completed
