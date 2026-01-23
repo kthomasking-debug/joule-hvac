@@ -62,30 +62,35 @@ export default function WeatherAlerts({
     }
   };
 
+  // In compact mode, only show the most critical anomaly and hide warnings
+  const displayAnomalies = compact && analysis.anomalies.length > 0 
+    ? [analysis.anomalies[0]] 
+    : analysis.anomalies;
+
   return (
-    <div className={`space-y-3 ${compact ? "" : "mb-4"}`}>
+    <div className={`space-y-3 ${compact ? "" : "mb-4"} flex flex-col h-full`}>
       {/* Critical Anomalies */}
-      {analysis.anomalies.map((anomaly, idx) => {
+      {displayAnomalies.map((anomaly, idx) => {
         const style = severityStyles[anomaly.severity] || severityStyles.medium;
         
         return (
           <div
             key={`anomaly-${idx}`}
-            className={`relative overflow-hidden rounded-2xl border ${style.border} ${style.shadow} shadow-lg transition-all duration-300 hover:scale-[1.01]`}
+            className={`relative overflow-hidden rounded-2xl border ${style.border} ${style.shadow} shadow-lg transition-all duration-300 hover:scale-[1.01] flex flex-col h-full`}
           >
             {/* Animated gradient background */}
             <div className={`absolute inset-0 bg-gradient-to-r ${style.bg} opacity-80`} />
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer" />
             
-            <div className="relative p-4">
-              <div className="flex items-start gap-4">
-                <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-slate-900/50 flex items-center justify-center ${style.icon}`}>
+            <div className={`relative ${compact ? 'p-6' : 'p-8'}`}>
+              <div className="flex items-start gap-5">
+                <div className={`flex-shrink-0 ${compact ? 'w-12 h-12' : 'w-16 h-16'} rounded-xl bg-slate-900/50 flex items-center justify-center ${style.icon}`}>
                   {getIcon(anomaly.type)}
                 </div>
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-lg text-white">{anomaly.title}</h4>
+                    <h4 className={`font-bold ${compact ? 'text-lg' : 'text-2xl'} text-white`}>{anomaly.title}</h4>
                     {anomaly.severity === "extreme" && (
                       <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold animate-pulse">
                         EXTREME
@@ -93,11 +98,11 @@ export default function WeatherAlerts({
                     )}
                   </div>
                   
-                  <p className="text-sm text-slate-300 mb-2">{anomaly.description}</p>
+                  <p className={`${compact ? 'text-lg' : 'text-xl'} text-slate-200 mb-2 font-medium`}>{anomaly.description}</p>
                   
-                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <div className={`flex flex-wrap items-center gap-4 hidden`}>
                     <span className="flex items-center gap-1.5 text-green-400 font-medium">
-                      <TrendingUp size={14} />
+                      <TrendingUp size={compact ? 12 : 14} />
                       {anomaly.impact}
                     </span>
                     
@@ -109,7 +114,7 @@ export default function WeatherAlerts({
                   </div>
                   
                   {anomaly.advice && (
-                    <p className="mt-2 text-sm text-amber-300/80 italic">
+                    <p className="hidden">
                       💡 {anomaly.advice}
                     </p>
                   )}
@@ -129,8 +134,8 @@ export default function WeatherAlerts({
         );
       })}
 
-      {/* Informational Warnings */}
-      {analysis.warnings && analysis.warnings.map((warning, idx) => (
+      {/* Informational Warnings - Hidden in compact mode */}
+      {!compact && analysis.warnings && analysis.warnings.map((warning, idx) => (
         <div
           key={`warning-${idx}`}
           className="relative overflow-hidden rounded-xl p-3 bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm"

@@ -14,6 +14,7 @@ import {
   Settings,
   Info,
   GraduationCap,
+  BarChart2,
   BarChart3,
   Zap,
   Sun,
@@ -605,9 +606,16 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   }, [mode]);
   const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default - less important
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
+  const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
+  const [showHeatingCosts, setShowHeatingCosts] = useState(false); // Collapsed by default
+  const [showCoolingCosts, setShowCoolingCosts] = useState(false); // Collapsed by default
+  const [showTemperatureProfiles, setShowTemperatureProfiles] = useState(false); // Collapsed by default
   const [thermostatModel, setThermostatModel] = useState("current"); // "current" | "flat70" | "flat68" | "custom"
   const [annualCostData, setAnnualCostData] = useState(null); // Store annual cost data for top card
   const annualCostDataRef = useRef(null); // Ref to store calculated values without causing re-renders
+  const dailyMetricsRef = useRef([]); // Ref to store dailyMetrics for analytics section
+  const totalForecastCostRef = useRef(0); // Ref to store totalForecastCost for analytics section
+  const totalForecastEnergyRef = useRef(0); // Ref to store totalForecastEnergy for analytics section
   
   // Daily forecast for breakdown
   const { dailyForecast, loading: forecastLoading, error: forecastError } = useMonthlyForecast(
@@ -2141,7 +2149,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                 if (perf.hpKwh !== undefined) {
                   monthHeatingKwh += perf.hpKwh;
                 }
-                if (hour.temp < balancePoint && useElectricAuxHeat && perf.auxKwh !== undefined) {
+                // Only include aux when the toggle is on; rely on performance model to flag aux hours
+                if (useElectricAuxHeat && perf.auxKwh !== undefined && perf.auxKwh > 0) {
                   monthHeatingKwh += perf.auxKwh;
                 }
               } else if (primarySystem === "gasFurnace") {
@@ -2609,11 +2618,15 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             loading={!monthlyEstimate || loading}
             location={locationData ? `${locationData.city}, ${locationData.state}` : null}
             temp={Math.round(effectiveIndoorTemp)}
-            weeklyCost={monthlyEstimate?.cost || 0}
+            weeklyCost={(() => {
+              const fixed = monthlyEstimate?.fixedCost || 0;
+              const forecastCost = totalForecastCostRef.current || monthlyEstimate?.cost || 0;
+              return forecastCost + fixed;
+            })()}
             energyMode={energyMode}
             primarySystem={primarySystem}
             timePeriod="month"
-            compact={true}
+            compact={false}
           />
         </div>
       )}
@@ -3325,6 +3338,11 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             
             const totalForecastCost = dailyMetrics.reduce((sum, d) => sum + d.cost, 0);
             const totalForecastEnergy = dailyMetrics.reduce((sum, d) => sum + d.energy, 0);
+            
+            // Store in refs for analytics section access
+            dailyMetricsRef.current = dailyMetrics;
+            totalForecastCostRef.current = totalForecastCost;
+            totalForecastEnergyRef.current = totalForecastEnergy;
             
             // Calculate max values for progress bars (with guards for empty arrays)
             const maxEnergy = dailyMetrics.length > 0 ? Math.max(...dailyMetrics.map(d => d.energy), 1) : 1;
@@ -4051,7 +4069,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                         }
                         
                         // Aux heat energy (only when needed)
-                        if (hour.temp < balancePoint && useElectricAuxHeat) {
+                        if (useElectricAuxHeat) {
                           if (perf.auxKwh !== undefined && perf.auxKwh > 0) {
                             totalAuxKwh += perf.auxKwh;
                           } else if (perf.auxKw > 0) {
@@ -4146,7 +4164,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                           }
                           
                           // Aux heat energy (only when needed) - nighttime is colder, so aux is more likely
-                          if (hour.temp < balancePoint && useElectricAuxHeat) {
+                          if (useElectricAuxHeat) {
                             if (perf.auxKwh !== undefined && perf.auxKwh > 0) {
                               totalAuxKwh += perf.auxKwh;
                             } else if (perf.auxKw > 0) {
@@ -4295,9 +4313,26 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                   </div>
                 )}
                   
-                {/* Monthly Breakdown */}
-                <div className="mt-6 space-y-4">
-                  <h4 className="font-semibold text-high-contrast text-lg mb-3">Monthly Breakdown</h4>
+                {/* Monthly Breakdown - Collapsible Dropdown */}
+                <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <button
+                    onClick={() => setShowMonthlyBreakdown(!showMonthlyBreakdown)}
+                    className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg">
+                        <BarChart2 size={24} className="text-white" />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">Monthly Breakdown</h3>
+                    </div>
+                    {showMonthlyBreakdown ? (
+                      <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </button>
+                  {showMonthlyBreakdown && (
+                  <div className="p-6 pt-0 space-y-4 border-t border-gray-200 dark:border-gray-700">
                   
                   {/* Combined Monthly Costs - Shows total cost per month, highlighting months with both heating and cooling */}
                   <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
@@ -4404,11 +4439,30 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       </div>
                     </div>
                   )}
+                  </div>
+                  )}
                 </div>
                 
-                {/* Sinusoidal Temperature Graphs */}
-                <div className="mt-8 space-y-6">
-                  <h4 className="font-semibold text-high-contrast text-lg mb-4">Annual Temperature Profiles</h4>
+                {/* Annual Temperature Profiles - Collapsible Dropdown */}
+                <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <button
+                    onClick={() => setShowTemperatureProfiles(!showTemperatureProfiles)}
+                    className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg">
+                        <Thermometer size={24} className="text-white" />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">Annual Temperature Profiles</h3>
+                    </div>
+                    {showTemperatureProfiles ? (
+                      <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </button>
+                  {showTemperatureProfiles && (
+                  <div className="p-6 pt-0 space-y-6 border-t border-gray-200 dark:border-gray-700">
                   
                   {/* Winter Months Graph */}
                   {annualHeatingCost > 0 && (() => {
@@ -4622,7 +4676,308 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       </div>
                     );
                   })()}
+                  </div>
+                  )}
                 </div>
+                
+                {/* Show me the math section for Annual Mode */}
+                <details className="mt-8 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <summary className="p-4 cursor-pointer text-lg font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg flex items-center gap-2">
+                    <span>📐</span> Show me the math (Annual Forecast)
+                  </summary>
+                  <div className="p-4 pt-0 space-y-6">
+                    
+                    {/* Building Characteristics */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">Building Characteristics</h4>
+                      <div className="bg-white dark:bg-gray-800 rounded p-3 text-xs space-y-2">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          📊 Using Calculated (DOE Data)
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Square Feet:</span>
+                              <span className="font-bold">{squareFeet.toLocaleString()} sq ft</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Insulation Level:</span>
+                              <span className="font-bold">{insulationLevel.toFixed(2)}x</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Home Shape Factor:</span>
+                              <span className="font-bold">{homeShape.toFixed(2)}x</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Ceiling Height:</span>
+                              <span className="font-bold">{ceilingHeight} ft</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Design Heat Loss @ 70°F ΔT:</span>
+                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight }) / 1000).toFixed(1)}k BTU/hr</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">BTU Loss per °F:</span>
+                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight }) / 70).toFixed(1)} BTU/hr/°F</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* System Configuration */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">System Configuration</h4>
+                      <div className="bg-white dark:bg-gray-800 rounded p-3 text-xs space-y-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Primary System:</span>
+                              <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "gasFurnace" ? "Gas Furnace" : "Resistance"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Capacity:</span>
+                              <span className="font-bold">{capacity}k BTU</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">HSPF2:</span>
+                              <span className="font-bold">{hspf2}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">SEER2:</span>
+                              <span className="font-bold">{efficiency}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Electricity Rate:</span>
+                              <span className="font-bold">${utilityCost.toFixed(3)} / kWh</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Temperature Settings */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">Temperature Settings</h4>
+                      <div className="bg-white dark:bg-gray-800 rounded p-3 text-xs space-y-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Heat Set Point (Day):</span>
+                              <span className="font-bold">{homeHeatSetPoint}°F</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Heat Set Point (Night):</span>
+                              <span className="font-bold">{sleepHeatSetPoint}°F</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Cool Set Point (Day):</span>
+                              <span className="font-bold">{homeCoolSetPoint}°F</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Cool Set Point (Night):</span>
+                              <span className="font-bold">{sleepCoolSetPoint}°F</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Schedule:</span>
+                            <span className="font-bold">{daytimeStartTime}–{nighttimeStartTime} (Home) • {nighttimeStartTime}–{daytimeStartTime} (Sleep)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Annual Summary */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">📊 Annual Summary</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 rounded-lg p-3 text-center border border-green-200 dark:border-green-800">
+                          <div className="text-2xl font-bold text-green-600 dark:text-green-400">${totalAnnualCost.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Total Annual</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg p-3 text-center border border-blue-200 dark:border-blue-800">
+                          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">${annualVariableHeating.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Heating</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/30 dark:to-teal-900/30 rounded-lg p-3 text-center border border-cyan-200 dark:border-cyan-800">
+                          <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${annualVariableCooling.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Cooling</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/30 dark:to-slate-900/30 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-600">
+                          <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">${annualFixedOnly.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Fixed Fees</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Degree Days Analysis */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">🌡️ Degree Days Analysis</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                          <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{Math.round(annualHDD)} HDD</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Annual Heating Degree Days</div>
+                          <div className="text-xs text-gray-400 mt-1">Base 65°F</div>
+                        </div>
+                        <div className="bg-cyan-50 dark:bg-cyan-900/30 rounded-lg p-3 border border-cyan-200 dark:border-cyan-800">
+                          <div className="text-lg font-bold text-cyan-600 dark:text-cyan-400">{Math.round(annualCDD)} CDD</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Annual Cooling Degree Days</div>
+                          <div className="text-xs text-gray-400 mt-1">Base 65°F</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 bg-white dark:bg-gray-800 rounded p-3 text-xs">
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-600 dark:text-gray-400">Cost per HDD:</span>
+                          <span className="font-bold">${annualHDD > 0 ? (annualVariableHeating / annualHDD).toFixed(3) : "0"}/HDD</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Cost per CDD:</span>
+                          <span className="font-bold">${annualCDD > 0 ? (annualVariableCooling / annualCDD).toFixed(3) : "0"}/CDD</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Peak Months */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">🔥 Peak Cost Months</h4>
+                      <div className="space-y-2">
+                        {(() => {
+                          const monthData = monthNames.map((name, idx) => ({
+                            name,
+                            heating: monthlyHeatingCosts[idx],
+                            cooling: monthlyCoolingCosts[idx],
+                            total: monthlyHeatingCosts[idx] + monthlyCoolingCosts[idx],
+                            hdd: monthlyHDDValues[idx],
+                            cdd: monthlyCDDValues[idx],
+                          }));
+                          
+                          return monthData
+                            .sort((a, b) => b.total - a.total)
+                            .slice(0, 3)
+                            .map((month, idx) => (
+                              <div key={month.name} className="flex items-center justify-between bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-lg">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}</span>
+                                  <div>
+                                    <div className="font-medium text-gray-900 dark:text-white">{month.name}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                      {month.hdd > 0 && `${month.hdd} HDD`}
+                                      {month.hdd > 0 && month.cdd > 0 && " • "}
+                                      {month.cdd > 0 && `${month.cdd} CDD`}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-bold text-green-600 dark:text-green-400">${month.total.toFixed(2)}</div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    {month.heating > 0 && <span className="text-blue-500">🔥${month.heating.toFixed(0)}</span>}
+                                    {month.heating > 0 && month.cooling > 0 && " "}
+                                    {month.cooling > 0 && <span className="text-cyan-500">❄️${month.cooling.toFixed(0)}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            ));
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {/* Seasonal Breakdown */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">📅 Seasonal Breakdown</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {(() => {
+                          const seasons = [
+                            { name: "Winter", months: [11, 0, 1], emoji: "❄️" }, // Dec, Jan, Feb
+                            { name: "Spring", months: [2, 3, 4], emoji: "🌸" }, // Mar, Apr, May
+                            { name: "Summer", months: [5, 6, 7], emoji: "☀️" }, // Jun, Jul, Aug
+                            { name: "Fall", months: [8, 9, 10], emoji: "🍂" }, // Sep, Oct, Nov
+                          ];
+                          
+                          return seasons.map(season => {
+                            const heating = season.months.reduce((sum, m) => sum + monthlyHeatingCosts[m], 0);
+                            const cooling = season.months.reduce((sum, m) => sum + monthlyCoolingCosts[m], 0);
+                            const total = heating + cooling;
+                            
+                            return (
+                              <div key={season.name} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700 text-center">
+                                <div className="text-lg mb-1">{season.emoji}</div>
+                                <div className="font-semibold text-gray-900 dark:text-white text-sm">{season.name}</div>
+                                <div className="text-lg font-bold text-green-600 dark:text-green-400">${total.toFixed(0)}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  {heating > 0 && <span className="text-blue-500">H:${heating.toFixed(0)}</span>}
+                                  {heating > 0 && cooling > 0 && " "}
+                                  {cooling > 0 && <span className="text-cyan-500">C:${cooling.toFixed(0)}</span>}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {/* Rate Sensitivity */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">💡 Electricity Rate Sensitivity (±20%)</h4>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-center border border-green-200 dark:border-green-800">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">At ${(utilityCost * 0.8).toFixed(3)}/kWh (-20%)</div>
+                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                            ${((annualVariableHeating + annualVariableCooling) * 0.8 + annualFixedOnly).toFixed(0)}
+                          </div>
+                          <div className="text-xs text-green-600 dark:text-green-400">
+                            Save ${((annualVariableHeating + annualVariableCooling) * 0.2).toFixed(0)}/year
+                          </div>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3 text-center border border-blue-200 dark:border-blue-800">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Current Rate ${utilityCost.toFixed(3)}/kWh</div>
+                          <div className="text-xl font-bold text-gray-700 dark:text-gray-300">${totalAnnualCost.toFixed(0)}</div>
+                        </div>
+                        <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-3 text-center border border-red-200 dark:border-red-800">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">At ${(utilityCost * 1.2).toFixed(3)}/kWh (+20%)</div>
+                          <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                            ${((annualVariableHeating + annualVariableCooling) * 1.2 + annualFixedOnly).toFixed(0)}
+                          </div>
+                          <div className="text-xs text-red-600 dark:text-red-400">
+                            +${((annualVariableHeating + annualVariableCooling) * 0.2).toFixed(0)}/year
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Monthly Average */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3">📈 Monthly Averages</h4>
+                      <div className="bg-white dark:bg-gray-800 rounded p-3 text-sm space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Average Monthly Total:</span>
+                          <span className="font-bold">${(totalAnnualCost / 12).toFixed(2)}/month</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Average Monthly Heating:</span>
+                          <span className="font-bold text-blue-600 dark:text-blue-400">${(annualVariableHeating / 12).toFixed(2)}/month</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Average Monthly Cooling:</span>
+                          <span className="font-bold text-cyan-600 dark:text-cyan-400">${(annualVariableCooling / 12).toFixed(2)}/month</span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <span className="text-gray-600 dark:text-gray-400">Fixed Fees per Month:</span>
+                          <span className="font-bold">${(annualFixedOnly / 12).toFixed(2)}/month</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                  </div>
+                </details>
+                
               </>
             );
           })()}
@@ -6702,7 +7057,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       </div>
       )}
 
-      {/* Live Math Calculations Pulldown */}
+      {/* Live Math Calculations Pulldown - Monthly Mode Only */}
+      {mode !== "annual" && (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
         <button
           onClick={() => setShowCalculations(!showCalculations)}
@@ -6712,7 +7068,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
               <GraduationCap size={24} className="text-white" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Show me the math</h3>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Show me the math (Monthly Forecast)</h3>
           </div>
           {showCalculations ? (
             <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
@@ -7337,8 +7693,382 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                 const annualCost = annualVariableCost + annualFixedCost;
                 const monthlyRatio = monthlyHDD / annualHDD;
                 
+                // ========== COMPREHENSIVE ANALYTICS CALCULATIONS ==========
+                
+                // Get data from refs (stored during forecast calculation)
+                const dailyMetrics = dailyMetricsRef.current || [];
+                const totalForecastCost = totalForecastCostRef.current || 0;
+                const totalForecastEnergy = totalForecastEnergyRef.current || 0;
+                
+                // Skip analytics if no data available
+                if (dailyMetrics.length === 0) {
+                  return (
+                    <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                      <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Heating Cost</h4>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Loading forecast data for analytics...
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // 1. Historical vs Forecast Breakdown
+                const historicalDays = dailyMetrics.filter(d => d.source === 'historical');
+                const forecastDays = dailyMetrics.filter(d => d.source === 'forecast');
+                const historicalCost = historicalDays.reduce((sum, d) => sum + d.cost, 0);
+                const forecastCost = forecastDays.reduce((sum, d) => sum + d.cost, 0);
+                const historicalEnergy = historicalDays.reduce((sum, d) => sum + d.energy, 0);
+                const forecastEnergy = forecastDays.reduce((sum, d) => sum + d.energy, 0);
+                
+                // 2. Auxiliary Heat Analysis
+                const totalAuxEnergy = dailyMetrics.reduce((sum, d) => sum + (d.auxEnergy || 0), 0);
+                const totalHpEnergy = totalForecastEnergy - totalAuxEnergy;
+                const auxPercentage = totalForecastEnergy > 0 ? (totalAuxEnergy / totalForecastEnergy) * 100 : 0;
+                const daysWithAux = dailyMetrics.filter(d => (d.auxEnergy || 0) > 0.1).length;
+                const auxCost = totalAuxEnergy * utilityCost;
+                const hpCost = totalHpEnergy * utilityCost;
+                
+                // 3. Top 5 Peak Cost Days
+                const top5Days = [...dailyMetrics].sort((a, b) => b.cost - a.cost).slice(0, 5);
+                
+                // 4. Day/Night Cost Breakdown
+                // Use winterThermostat from userSettings directly since thermostatSettings isn't in scope
+                const indoorTemp = winterThermostat || 70;
+                const nighttimeTemp = indoorTemp - 3; // Standard 3 degree night setback
+                const dayHours = 16;
+                const nightHours = 8;
+                const avgDailyEnergy = totalForecastEnergy / dailyMetrics.length;
+                const estimatedDaytimeFraction = dayHours / 24 * 1.1; // Slightly higher since daytime is typically colder
+                const estimatedDaytimeEnergy = avgDailyEnergy * estimatedDaytimeFraction * dailyMetrics.length;
+                const estimatedNighttimeEnergy = totalForecastEnergy - estimatedDaytimeEnergy;
+                const estimatedDaytimeCost = estimatedDaytimeEnergy * utilityCost;
+                const estimatedNighttimeCost = estimatedNighttimeEnergy * utilityCost;
+                
+                // 5. Weather vs 30-Year Normal
+                const actualMonthHDD = dailyMetrics.reduce((sum, d) => {
+                  const hdd = Math.max(0, 65 - d.avg);
+                  return sum + hdd;
+                }, 0);
+                const typicalMonthHDD = monthlyHDD; // This is already from 30-year normals
+                const hddDiff = actualMonthHDD - typicalMonthHDD;
+                const hddPercentDiff = typicalMonthHDD > 0 ? (hddDiff / typicalMonthHDD) * 100 : 0;
+                
+                // 6. Balance Point Analysis
+                const balancePointTemp = 65; // Standard balance point
+                const daysAboveBalance = dailyMetrics.filter(d => d.avg >= balancePointTemp).length;
+                const daysBelowBalance = dailyMetrics.filter(d => d.avg < balancePointTemp).length;
+                const balancePointPercentage = dailyMetrics.length > 0 ? (daysBelowBalance / dailyMetrics.length) * 100 : 0;
+                const avgTempBelowBalance = daysBelowBalance > 0 
+                  ? dailyMetrics.filter(d => d.avg < balancePointTemp).reduce((sum, d) => sum + d.avg, 0) / daysBelowBalance 
+                  : 0;
+                
+                // 7. Electricity Rate Sensitivity
+                const costAtPlusTwenty = totalForecastEnergy * (utilityCost * 1.2);
+                const costAtMinusTwenty = totalForecastEnergy * (utilityCost * 0.8);
+                
+                // 8. Weekly Breakdown
+                const weeks = [];
+                let currentWeek = { start: null, end: null, days: [], cost: 0, energy: 0 };
+                dailyMetrics.forEach((day, idx) => {
+                  if (!currentWeek.start) currentWeek.start = day.date;
+                  currentWeek.end = day.date;
+                  currentWeek.days.push(day);
+                  currentWeek.cost += day.cost;
+                  currentWeek.energy += day.energy;
+                  
+                  if ((idx + 1) % 7 === 0 || idx === dailyMetrics.length - 1) {
+                    weeks.push({ ...currentWeek });
+                    currentWeek = { start: null, end: null, days: [], cost: 0, energy: 0 };
+                  }
+                });
+                
+                // 9. Realized Efficiency
+                const avgOutdoorTemp = dailyMetrics.reduce((sum, d) => sum + d.avg, 0) / dailyMetrics.length;
+                const avgIndoorTemp = indoorTemp;
+                const avgTempDiff = avgIndoorTemp - avgOutdoorTemp;
+                const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight });
+                const btuLossPerDegF = estimatedDesignHeatLoss / 70;
+                const totalHours = dailyMetrics.length * 24;
+                const totalBtuDelivered = totalForecastEnergy * 3412.14; // Convert kWh to BTU
+                const totalBtuNeeded = btuLossPerDegF * avgTempDiff * totalHours;
+                const realizedCOP = totalHpEnergy > 0 ? totalBtuNeeded / (totalHpEnergy * 3412.14) : 0;
+                const ratedCOP = hspf2 / 3.412; // Convert HSPF2 to COP
+                
+                // 10. Optimization Opportunities
+                const potentialSetbackSavings = estimatedNighttimeCost * 0.15; // 15% potential savings
+                const potentialAuxReduction = auxCost * 0.5; // 50% reduction if optimized
+                
                 return (
-                  <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                  <>
+                    {/* Comprehensive Analytics Section */}
+                    <div className="mt-6 space-y-4">
+                      {/* 1. Historical vs Forecast */}
+                      <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          📊 Data Source Breakdown
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Historical Data ({historicalDays.length} days)</div>
+                            <div className="text-xs space-y-1">
+                              <div className="flex justify-between">
+                                <span>Energy:</span>
+                                <span className="font-bold">{Math.round(historicalEnergy)} kWh</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Cost:</span>
+                                <span className="font-bold">${historicalCost.toFixed(2)}</span>
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">✓ High confidence - actual weather data</div>
+                            </div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Forecast Data ({forecastDays.length} days)</div>
+                            <div className="text-xs space-y-1">
+                              <div className="flex justify-between">
+                                <span>Energy:</span>
+                                <span className="font-bold">{Math.round(forecastEnergy)} kWh</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Cost:</span>
+                                <span className="font-bold">${forecastCost.toFixed(2)}</span>
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">⚠️ Forecast - subject to change</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 2. Auxiliary Heat Analysis (Heat Pump Only) */}
+                      {primarySystem === "heatPump" && useElectricAuxHeat && (
+                        <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                            ⚡ Auxiliary Heat Analysis
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Aux Heat Usage</div>
+                              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{auxPercentage.toFixed(1)}%</div>
+                              <div className="text-xs text-gray-500">of total energy</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Days Using Aux</div>
+                              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{daysWithAux}</div>
+                              <div className="text-xs text-gray-500">out of {dailyMetrics.length} days</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Aux Heat Cost</div>
+                              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">${auxCost.toFixed(2)}</div>
+                              <div className="text-xs text-gray-500">HP: ${hpCost.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 3. Top 5 Peak Cost Days */}
+                      <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-950 dark:to-pink-950 rounded-lg p-4 border border-red-200 dark:border-red-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          🔥 Top 5 Peak Cost Days
+                        </h4>
+                        <div className="space-y-2">
+                          {top5Days.map((day, idx) => (
+                            <div key={idx} className="bg-white dark:bg-gray-900 rounded p-2 flex justify-between items-center">
+                              <div>
+                                <span className="font-semibold">{day.day}</span>
+                                <span className="text-xs text-gray-500 ml-2">Avg: {Math.round(day.avg)}°F</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-red-600 dark:text-red-400">${day.cost.toFixed(2)}</div>
+                                <div className="text-xs text-gray-500">{Math.round(day.energy)} kWh</div>
+                                {day.auxEnergy > 0 && <div className="text-xs text-orange-500">⚡ {Math.round(day.auxEnergy)} kWh aux</div>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* 4. Day/Night Cost Breakdown */}
+                      <div className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950 dark:to-amber-950 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          🌅 Day/Night Cost Estimate
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">☀️ Daytime (6AM-10PM)</div>
+                            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">${estimatedDaytimeCost.toFixed(2)}</div>
+                            <div className="text-xs text-gray-500 mt-1">16 hours @ {indoorTemp}°F setpoint</div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">🌙 Nighttime (10PM-6AM)</div>
+                            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">${estimatedNighttimeCost.toFixed(2)}</div>
+                            <div className="text-xs text-gray-500 mt-1">8 hours @ {Math.round(nighttimeTemp)}°F setpoint</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 5. Weather vs 30-Year Normal */}
+                      <div className="bg-gradient-to-r from-cyan-50 to-teal-50 dark:from-cyan-950 dark:to-teal-950 rounded-lg p-4 border border-cyan-200 dark:border-cyan-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          🌡️ Weather vs 30-Year Normal
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Actual Month HDD</div>
+                            <div className="text-2xl font-bold">{Math.round(actualMonthHDD)}</div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Normal Month HDD</div>
+                            <div className="text-2xl font-bold">{Math.round(typicalMonthHDD)}</div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Difference</div>
+                            <div className={`text-2xl font-bold ${hddPercentDiff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                              {hddPercentDiff > 0 ? '+' : ''}{hddPercentDiff.toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-gray-500">{hddPercentDiff > 0 ? 'Colder than normal' : 'Warmer than normal'}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 6. Balance Point Analysis */}
+                      {primarySystem === "heatPump" && (
+                        <div className="bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950 dark:to-violet-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                            ⚖️ Balance Point Analysis
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Balance Point</div>
+                              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{balancePointTemp}°F</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Heating Days</div>
+                              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{daysBelowBalance}</div>
+                              <div className="text-xs text-gray-500">{balancePointPercentage.toFixed(0)}% of month</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Temp on Heating Days</div>
+                              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{Math.round(avgTempBelowBalance)}°F</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 7. Electricity Rate Sensitivity */}
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          💡 Electricity Rate Sensitivity (±20%)
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">At ${(utilityCost * 0.8).toFixed(3)}/kWh (-20%)</div>
+                            <div className="text-2xl font-bold text-green-600 dark:text-green-400">${costAtMinusTwenty.toFixed(2)}</div>
+                            <div className="text-xs text-gray-500">Save ${(totalForecastCost - costAtMinusTwenty).toFixed(2)}</div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Current Rate ${utilityCost.toFixed(3)}/kWh</div>
+                            <div className="text-2xl font-bold">${totalForecastCost.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">At ${(utilityCost * 1.2).toFixed(3)}/kWh (+20%)</div>
+                            <div className="text-2xl font-bold text-red-600 dark:text-red-400">${costAtPlusTwenty.toFixed(2)}</div>
+                            <div className="text-xs text-gray-500">+${(costAtPlusTwenty - totalForecastCost).toFixed(2)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 8. Weekly Breakdown */}
+                      <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          📅 Weekly Breakdown
+                        </h4>
+                        <div className="space-y-2">
+                          {weeks.map((week, idx) => (
+                            <div key={idx} className="bg-white dark:bg-gray-900 rounded p-3 flex justify-between items-center">
+                              <div>
+                                <span className="font-semibold">Week {idx + 1}</span>
+                                <span className="text-xs text-gray-500 ml-2">
+                                  {week.start?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {week.end?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-indigo-600 dark:text-indigo-400">${week.cost.toFixed(2)}</div>
+                                <div className="text-xs text-gray-500">{Math.round(week.energy)} kWh</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* 9. Realized Efficiency Metrics */}
+                      {primarySystem === "heatPump" && (
+                        <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-950 dark:to-cyan-950 rounded-lg p-4 border border-teal-200 dark:border-teal-800">
+                          <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                            📈 Realized Efficiency Metrics
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Realized COP</div>
+                              <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">{realizedCOP.toFixed(2)}</div>
+                              <div className="text-xs text-gray-500">Actual performance</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Rated COP</div>
+                              <div className="text-2xl font-bold">{ratedCOP.toFixed(2)}</div>
+                              <div className="text-xs text-gray-500">From HSPF2 {hspf2}</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Efficiency Ratio</div>
+                              <div className={`text-2xl font-bold ${realizedCOP / ratedCOP >= 0.8 ? 'text-green-600' : 'text-orange-600'}`}>
+                                {ratedCOP > 0 ? ((realizedCOP / ratedCOP) * 100).toFixed(0) : 0}%
+                              </div>
+                              <div className="text-xs text-gray-500">of rated</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 10. Optimization Opportunities */}
+                      <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 rounded-lg p-4 border border-amber-200 dark:border-amber-800">
+                        <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                          💰 Optimization Opportunities
+                        </h4>
+                        <div className="space-y-3">
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="font-semibold text-gray-700 dark:text-gray-300">Night Setback Optimization</span>
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialSetbackSavings.toFixed(2)}/mo</span>
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">
+                              Optimizing night setback timing could save ~15% of nighttime heating costs.
+                            </div>
+                          </div>
+                          {primarySystem === "heatPump" && useElectricAuxHeat && auxCost > 5 && (
+                            <div className="bg-white dark:bg-gray-900 rounded p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="font-semibold text-gray-700 dark:text-gray-300">Aux Heat Reduction</span>
+                                <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialAuxReduction.toFixed(2)}/mo</span>
+                              </div>
+                              <div className="text-xs text-gray-600 dark:text-gray-400">
+                                Pre-heating before cold snaps or adjusting setpoints could reduce aux heat usage.
+                              </div>
+                            </div>
+                          )}
+                          <div className="bg-white dark:bg-gray-900 rounded p-3">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="font-semibold text-gray-700 dark:text-gray-300">Rate Shopping Potential</span>
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${(totalForecastCost - costAtMinusTwenty).toFixed(2)}/mo</span>
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">
+                              If you could find a rate 20% lower, you'd save significantly. Check for time-of-use or off-peak rates.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Original Annual Example */}
+                    <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800 mt-6">
                     <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Heating Cost (Simplified Example)</h4>
                     <div className="text-xs text-gray-600 dark:text-gray-400 mb-3 italic">
                       This example just shows how degree-day scaling works for one month. The real annual estimate above uses all 12 months.
@@ -7401,6 +8131,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       </div>
                     </div>
                   </div>
+                  </>
                 );
               }
               
@@ -7425,6 +8156,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           </div>
         )}
       </div>
+      )}
       </div>
     </div>
   );

@@ -4,10 +4,10 @@ import { Zap, TrendingDown } from 'lucide-react';
 const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", compact = false }) => {
   const padding = compact ? "p-3" : "p-5";
   const rounded = compact ? "rounded-xl" : "rounded-2xl";
-  const titleSize = compact ? "text-xs" : "text-sm";
-  const costSize = compact ? "text-3xl" : "text-5xl";
-  const periodSize = compact ? "text-sm" : "text-lg";
-  const locationSize = compact ? "text-xs" : "text-sm";
+  const titleSize = compact ? "text-sm" : "text-sm";
+  const costSize = compact ? "text-4xl" : "text-5xl";
+  const periodSize = compact ? "text-base" : "text-lg";
+  const locationSize = compact ? "text-sm" : "text-sm";
   
   return (
     <div className={`relative overflow-hidden bg-gradient-to-br from-emerald-500/20 via-teal-500/20 to-sky-500/20 dark:from-emerald-900/40 dark:via-teal-900/40 dark:to-sky-900/40 border-2 border-emerald-400/50 dark:border-emerald-600/50 ${rounded} ${padding} shadow-2xl shadow-emerald-500/20 dark:shadow-emerald-900/30 backdrop-blur-sm`}>

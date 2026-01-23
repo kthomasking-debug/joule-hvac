@@ -105,6 +105,9 @@ const WeeklyForecast = () => {
     return localStorage.getItem('weeklyForecast_dismissedBanner') === 'true';
   });
   const [showFormula, setShowFormula] = useState(false);
+  const [showStatusPanel, setShowStatusPanel] = useState(false);
+  const [showCurrentValues, setShowCurrentValues] = useState(false);
+  const [showSchedulePanel, setShowSchedulePanel] = useState(false);
   
   const handleDismissBanner = () => {
     setDismissedInfoBanner(true);
@@ -558,50 +561,56 @@ const WeeklyForecast = () => {
           </div>
         )}
         
-        {/* Connection Status */}
-        <div className={`mb-3 glass-card p-3 ${
+        {/* Connection Status - Collapsible */}
+        <div className={`mb-2 glass-card ${
           isConnected 
             ? "border-emerald-500/30 bg-emerald-900/20" 
             : jouleBridge.bridgeAvailable
             ? "border-yellow-500/30 bg-yellow-900/20"
             : "border-red-500/30 bg-red-900/20"
         }`}>
-          <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowStatusPanel(!showStatusPanel)}
+            className="w-full p-2 flex items-center gap-2 hover:bg-white/5 transition-colors"
+          >
             {isConnected ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <AlertTriangle className="w-4 h-4 text-red-400" />
             )}
-            <div>
-              <div className="font-medium">
+            <div className="flex-1 text-left">
+              <div className="text-xs font-semibold text-high-contrast">
                 {isConnected 
                   ? "Connected to Joule Bridge" 
                   : bridgeAvailableButDeviceOffline
-                  ? "Bridge Available, Device Offline"
-                  : jouleBridge.bridgeAvailable
-                  ? "Bridge Available, Waiting for Device"
+                  ? "Using Default Settings (Device Offline)"
                   : "Joule Bridge Not Connected"}
               </div>
-              <div className="text-sm text-gray-400">
+            </div>
+            {jouleBridge.loading && (
+              <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" />
+            )}
+            <span className="text-xs text-gray-400">{showStatusPanel ? '▼' : '▶'}</span>
+          </button>
+          {showStatusPanel && (
+            <div className="px-3 pb-2 border-t border-gray-700/30 mt-1 pt-2">
+              <div className="text-xs text-gray-400">
                 {isConnected 
                   ? `Polling every 5 seconds • Last update: ${new Date().toLocaleTimeString()}`
                   : bridgeAvailableButDeviceOffline
                   ? (
-                    <div className="mt-2 space-y-2">
-                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                          Device is offline. The bridge will automatically try to reconnect within 30 seconds.
+                    <div className="space-y-2">
+                      <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+                        <p className="text-xs text-gray-700 dark:text-gray-300 mb-1">
+                          Device offline. Bridge will auto-reconnect within 30s.
                         </p>
                         <button
                           onClick={() => setShowPairingOnboarding(true)}
-                          className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
                         >
                           Re-pair Device
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                        Using default settings for forecast until device reconnects.
-                      </p>
                     </div>
                   )
                   : jouleBridge.bridgeAvailable
@@ -614,14 +623,21 @@ const WeeklyForecast = () => {
                 </div>
               )}
             </div>
-            {jouleBridge.loading && (
-              <RefreshCw className="w-4 h-4 text-blue-400 animate-spin ml-auto" />
-            )}
-          </div>
+          )}
         </div>
         
         {/* Current Values Panel */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div className="glass-card mb-2">
+          <button
+            onClick={() => setShowCurrentValues(!showCurrentValues)}
+            className="w-full p-2 flex items-center gap-2 hover:bg-white/5 transition-colors"
+          >
+            <Thermometer className="w-4 h-4 text-blue-400" />
+            <span className="text-xs font-semibold text-high-contrast flex-1 text-left">Current Conditions</span>
+            <span className="text-xs text-gray-400">{showCurrentValues ? '▼' : '▶'}</span>
+          </button>
+          {showCurrentValues && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3">
           {/* Ecobee Target Temp */}
           <div className="glass-card p-3">
             <div className="flex items-center gap-2 text-muted text-xs mb-1">
@@ -677,24 +693,26 @@ const WeeklyForecast = () => {
               {rateSource}
             </div>
           </div>
+          </div>
+          )}
         </div>
         
         {/* Hero Section: Weekly Totals */}
         {weeklyTotals && dailyCosts && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
             {/* Weekly Total Cost */}
-            <div className="glass-card-gradient glass-card p-4 border-2 border-green-500/40 bg-green-900/20 shadow-lg">
-              <div className="text-sm text-green-200 mb-2 font-medium">7-DAY TOTAL COST</div>
-              <div className="text-4xl font-bold text-white mb-2">${weeklyTotals.cost}</div>
-              <div className="text-sm text-green-300">
+            <div className="glass-card-gradient glass-card p-3 border-2 border-green-500/40 bg-green-900/20 shadow-lg">
+              <div className="text-xs text-green-200 mb-1 font-medium">7-DAY TOTAL COST</div>
+              <div className="text-3xl font-bold text-white mb-1">${weeklyTotals.cost}</div>
+              <div className="text-xs text-green-300">
                 {formatEnergyFromKwh(parseFloat(weeklyTotals.kWh), effectiveUnitSystem, { decimals: 1 })}
               </div>
             </div>
             
             {/* Daily Average */}
-            <div className="glass-card-gradient glass-card p-4 border-2 border-blue-500/40 bg-blue-900/20 shadow-lg">
-              <div className="text-sm text-blue-200 mb-2 font-medium">DAILY AVERAGE</div>
-              <div className="text-3xl font-bold text-white mb-2">${(parseFloat(weeklyTotals.cost) / 7).toFixed(2)}</div>
+            <div className="glass-card-gradient glass-card p-3 border-2 border-blue-500/40 bg-blue-900/20 shadow-lg">
+              <div className="text-xs text-blue-200 mb-1 font-medium">DAILY AVERAGE</div>
+              <div className="text-2xl font-bold text-white mb-1">${(parseFloat(weeklyTotals.cost) / 7).toFixed(2)}</div>
               <div className="text-xs text-blue-300">
                 {formatEnergyFromKwh(parseFloat(weeklyTotals.kWh) / 7, effectiveUnitSystem, { decimals: 1 })} per day
               </div>
@@ -702,9 +720,9 @@ const WeeklyForecast = () => {
             
             {/* Backup Heat */}
             {parseFloat(weeklyTotals.auxKwh) > 0 && (
-              <div className="glass-card-gradient glass-card p-4 border-2 border-orange-500/40 bg-orange-900/20 shadow-lg">
-                <div className="text-sm text-orange-200 mb-2 font-medium">BACKUP HEAT</div>
-                <div className="text-3xl font-bold text-white mb-2">{formatEnergyFromKwh(parseFloat(weeklyTotals.auxKwh), effectiveUnitSystem, { decimals: 1 })}</div>
+              <div className="glass-card-gradient glass-card p-3 border-2 border-orange-500/40 bg-orange-900/20 shadow-lg">
+                <div className="text-xs text-orange-200 mb-1 font-medium">BACKUP HEAT</div>
+                <div className="text-2xl font-bold text-white mb-1">{formatEnergyFromKwh(parseFloat(weeklyTotals.auxKwh), effectiveUnitSystem, { decimals: 1 })}</div>
                 <div className="text-xs text-orange-300">
                   ${(parseFloat(weeklyTotals.auxKwh) * electricityRate).toFixed(2)} this week
                 </div>
@@ -848,6 +866,311 @@ const WeeklyForecast = () => {
                       )}
                     </table>
                   </div>
+                  
+                  {/* Show me the math section */}
+                  <details className="mt-6 glass-card">
+                    <summary className="p-4 cursor-pointer text-lg font-semibold text-white hover:bg-white/5 rounded-lg flex items-center gap-2">
+                      <span>📐</span> Show me the math
+                    </summary>
+                    <div className="p-4 pt-0 space-y-6">
+                      
+                      {/* Building Characteristics */}
+                      <div className="border-t border-gray-700/50 pt-4">
+                        <h4 className="text-md font-semibold text-gray-200 mb-3">Building Characteristics</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Heat Loss Factor:</span>
+                              <span className="text-white font-mono">{formatHeatLossFactor(heatLossFactor, effectiveUnitSystem)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Design Heat Loss @ 70°F ΔT:</span>
+                              <span className="text-white font-mono">{(heatLossFactor * 70 / 1000).toFixed(1)}k BTU/hr</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">System Capacity:</span>
+                              <span className="text-white font-mono">{capacity}k BTU ({tons.toFixed(1)} tons)</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">HSPF2:</span>
+                              <span className="text-white font-mono">{hspf2}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* System Configuration */}
+                      <div className="border-t border-gray-700/50 pt-4">
+                        <h4 className="text-md font-semibold text-gray-200 mb-3">System Configuration</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Electricity Rate:</span>
+                              <span className="text-white font-mono">${electricityRate.toFixed(3)}/kWh</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Rate Source:</span>
+                              <span className="text-white font-mono">{rateSource}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Target Temperature:</span>
+                              <span className="text-orange-400 font-mono">{ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}</span>
+                            </div>
+                            {balancePoint !== null && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Balance Point:</span>
+                                <span className="text-white font-mono">{formatTemperatureFromF(balancePoint, effectiveUnitSystem, { decimals: 1 })}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Weekly Summary */}
+                      {weeklyTotals && (
+                        <div className="border-t border-gray-700/50 pt-4">
+                          <h4 className="text-md font-semibold text-gray-200 mb-3">📊 Weekly Summary</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="glass-card p-3 text-center">
+                              <div className="text-2xl font-bold text-green-400">${weeklyTotals.cost}</div>
+                              <div className="text-xs text-gray-400">Total Cost</div>
+                            </div>
+                            <div className="glass-card p-3 text-center">
+                              <div className="text-2xl font-bold text-blue-400">{formatEnergy(weeklyTotals.kWh)}</div>
+                              <div className="text-xs text-gray-400">Total Energy</div>
+                            </div>
+                            <div className="glass-card p-3 text-center">
+                              <div className="text-2xl font-bold text-cyan-400">{formatEnergy(weeklyTotals.heatPumpKwh)}</div>
+                              <div className="text-xs text-gray-400">Heat Pump</div>
+                            </div>
+                            <div className="glass-card p-3 text-center">
+                              <div className="text-2xl font-bold text-orange-400">{formatEnergy(weeklyTotals.auxKwh)}</div>
+                              <div className="text-xs text-gray-400">Aux Heat</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Auxiliary Heat Analysis */}
+                      {dailyCosts && (() => {
+                        const totalAux = dailyCosts.reduce((sum, d) => sum + parseFloat(d.auxKwh), 0);
+                        const totalEnergy = dailyCosts.reduce((sum, d) => sum + parseFloat(d.kWh), 0);
+                        const auxPercent = totalEnergy > 0 ? (totalAux / totalEnergy * 100) : 0;
+                        const daysWithAux = dailyCosts.filter(d => parseFloat(d.auxKwh) > 0).length;
+                        const auxCost = totalAux * electricityRate;
+                        const hpCost = (totalEnergy - totalAux) * electricityRate;
+                        
+                        return (
+                          <div className="border-t border-gray-700/50 pt-4">
+                            <h4 className="text-md font-semibold text-gray-200 mb-3">⚡ Auxiliary Heat Analysis</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-orange-400">{auxPercent.toFixed(1)}%</div>
+                                <div className="text-xs text-gray-400">Aux Heat Usage</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-white">{daysWithAux}</div>
+                                <div className="text-xs text-gray-400">Days Using Aux</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-orange-400">${auxCost.toFixed(2)}</div>
+                                <div className="text-xs text-gray-400">Aux Heat Cost</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-blue-400">${hpCost.toFixed(2)}</div>
+                                <div className="text-xs text-gray-400">HP Cost</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* Peak Days */}
+                      {dailyCosts && dailyCosts.length > 0 && (
+                        <div className="border-t border-gray-700/50 pt-4">
+                          <h4 className="text-md font-semibold text-gray-200 mb-3">🔥 Peak Cost Days</h4>
+                          <div className="space-y-2">
+                            {[...dailyCosts]
+                              .sort((a, b) => parseFloat(b.cost) - parseFloat(a.cost))
+                              .slice(0, 3)
+                              .map((day, idx) => (
+                                <div key={day.date} className="flex items-center justify-between glass-card p-3">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-lg">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}</span>
+                                    <div>
+                                      <div className="font-medium text-white">{day.dayName}</div>
+                                      <div className="text-xs text-gray-400">
+                                        Avg: {formatTemperatureFromF(day.avgTemp, effectiveUnitSystem, { decimals: 0 })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-bold text-green-400">${day.cost}</div>
+                                    <div className="text-xs text-gray-400">{formatEnergy(day.kWh)}</div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Weather Analysis */}
+                      {dailyCosts && dailyCosts.length > 0 && (() => {
+                        const avgTemp = dailyCosts.reduce((sum, d) => sum + d.avgTemp, 0) / dailyCosts.length;
+                        const minTemp = Math.min(...dailyCosts.map(d => d.minTemp));
+                        const maxTemp = Math.max(...dailyCosts.map(d => d.maxTemp));
+                        const coldDays = dailyCosts.filter(d => d.avgTemp < 32).length;
+                        const heatingDays = dailyCosts.filter(d => d.avgTemp < (ecobeeTargetTemp || 70)).length;
+                        
+                        return (
+                          <div className="border-t border-gray-700/50 pt-4">
+                            <h4 className="text-md font-semibold text-gray-200 mb-3">🌡️ Weather Analysis</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-cyan-400">{formatTemperatureFromF(avgTemp, effectiveUnitSystem, { decimals: 1 })}</div>
+                                <div className="text-xs text-gray-400">Avg Temp</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-blue-400">{formatTemperatureFromF(minTemp, effectiveUnitSystem, { decimals: 0 })}</div>
+                                <div className="text-xs text-gray-400">Coldest Low</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-orange-400">{formatTemperatureFromF(maxTemp, effectiveUnitSystem, { decimals: 0 })}</div>
+                                <div className="text-xs text-gray-400">Warmest High</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-white">{heatingDays}</div>
+                                <div className="text-xs text-gray-400">Heating Days</div>
+                              </div>
+                            </div>
+                            {coldDays > 0 && (
+                              <div className="mt-3 text-sm text-yellow-400">
+                                ⚠️ {coldDays} day{coldDays > 1 ? 's' : ''} with freezing temperatures expected
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* Efficiency Metrics */}
+                      {dailyCosts && dailyCosts.length > 0 && (() => {
+                        const totalBtuLoad = dailyCosts.reduce((sum, d) => sum + (d.totalDailyBtuLoad || 0), 0);
+                        const totalHpDelivered = dailyCosts.reduce((sum, d) => sum + (d.totalHpDeliveredBtu || 0), 0);
+                        const totalHpKwh = dailyCosts.reduce((sum, d) => sum + parseFloat(d.heatPumpKwh), 0);
+                        const realizedCop = totalHpKwh > 0 ? totalHpDelivered / (totalHpKwh * 3412.14) : 0;
+                        const ratedCop = (hspf2 * 1000) / 3412.14;
+                        const copRatio = ratedCop > 0 ? (realizedCop / ratedCop * 100) : 0;
+                        
+                        return (
+                          <div className="border-t border-gray-700/50 pt-4">
+                            <h4 className="text-md font-semibold text-gray-200 mb-3">📈 Efficiency Metrics</h4>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-green-400">{realizedCop.toFixed(2)}</div>
+                                <div className="text-xs text-gray-400">Realized COP</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-blue-400">{ratedCop.toFixed(2)}</div>
+                                <div className="text-xs text-gray-400">Rated COP</div>
+                              </div>
+                              <div className="glass-card p-3 text-center">
+                                <div className="text-xl font-bold text-cyan-400">{copRatio.toFixed(0)}%</div>
+                                <div className="text-xs text-gray-400">of Rated</div>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs text-gray-500">
+                              Realized COP = Total HP BTU Delivered ÷ (Total HP kWh × 3412.14 BTU/kWh)
+                            </p>
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* Rate Sensitivity */}
+                      {weeklyTotals && (
+                        <div className="border-t border-gray-700/50 pt-4">
+                          <h4 className="text-md font-semibold text-gray-200 mb-3">💡 Electricity Rate Sensitivity (±20%)</h4>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="glass-card p-3 text-center border-green-500/30">
+                              <div className="text-xs text-gray-400 mb-1">At ${(electricityRate * 0.8).toFixed(3)}/kWh (-20%)</div>
+                              <div className="text-xl font-bold text-green-400">
+                                ${(parseFloat(weeklyTotals.kWh) * electricityRate * 0.8).toFixed(2)}
+                              </div>
+                              <div className="text-xs text-green-400">
+                                Save ${(parseFloat(weeklyTotals.kWh) * electricityRate * 0.2).toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="glass-card p-3 text-center border-blue-500/30">
+                              <div className="text-xs text-gray-400 mb-1">Current Rate ${electricityRate.toFixed(3)}/kWh</div>
+                              <div className="text-xl font-bold text-white">${weeklyTotals.cost}</div>
+                            </div>
+                            <div className="glass-card p-3 text-center border-red-500/30">
+                              <div className="text-xs text-gray-400 mb-1">At ${(electricityRate * 1.2).toFixed(3)}/kWh (+20%)</div>
+                              <div className="text-xl font-bold text-red-400">
+                                ${(parseFloat(weeklyTotals.kWh) * electricityRate * 1.2).toFixed(2)}
+                              </div>
+                              <div className="text-xs text-red-400">
+                                +${(parseFloat(weeklyTotals.kWh) * electricityRate * 0.2).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Example Day Calculation */}
+                      {dailyCosts && dailyCosts.length > 0 && (() => {
+                        // Pick the coldest day as the example
+                        const exampleDay = [...dailyCosts].sort((a, b) => a.avgTemp - b.avgTemp)[0];
+                        const deltaT = ecobeeTargetTemp ? (ecobeeTargetTemp - exampleDay.avgTemp).toFixed(1) : "—";
+                        const heatLossBtuHr = heatLossFactor * (ecobeeTargetTemp - exampleDay.avgTemp);
+                        
+                        return (
+                          <div className="border-t border-gray-700/50 pt-4">
+                            <h4 className="text-md font-semibold text-gray-200 mb-3">🧮 Example Day Calculation ({exampleDay.dayName} - coldest day)</h4>
+                            <div className="bg-gray-900/50 rounded-lg p-4 text-sm space-y-2 font-mono">
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Avg Outdoor Temp:</span>
+                                <span className="text-cyan-400">{formatTemperatureFromF(exampleDay.avgTemp, effectiveUnitSystem, { decimals: 1 })}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Target Indoor Temp:</span>
+                                <span className="text-orange-400">{ecobeeTargetTemp !== null ? formatTemperatureFromF(ecobeeTargetTemp, effectiveUnitSystem, { decimals: 1 }) : "—"}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Temperature Difference (ΔT):</span>
+                                <span className="text-white">{deltaT}°F</span>
+                              </div>
+                              <div className="h-px bg-gray-700 my-2"></div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Heat Loss Rate:</span>
+                                <span className="text-white">{(heatLossBtuHr / 1000).toFixed(1)}k BTU/hr</span>
+                              </div>
+                              <div className="text-xs text-gray-500 ml-4">
+                                = {heatLossFactor.toFixed(1)} BTU/hr/°F × {deltaT}°F
+                              </div>
+                              <div className="h-px bg-gray-700 my-2"></div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Daily Energy:</span>
+                                <span className="text-blue-400">{formatEnergy(exampleDay.kWh)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Daily Cost:</span>
+                                <span className="text-green-400 font-bold">${exampleDay.cost}</span>
+                              </div>
+                              <div className="text-xs text-gray-500 ml-4">
+                                = {exampleDay.kWh} kWh × ${electricityRate.toFixed(3)}/kWh
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      
+                    </div>
+                  </details>
+                  
                 </div>
               )}
               

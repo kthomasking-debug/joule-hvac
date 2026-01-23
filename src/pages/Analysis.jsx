@@ -124,9 +124,9 @@ const Analysis = () => {
         ) : (
           <>
             {/* Page Header - Always visible */}
-            <header className="mb-3">
-              <div className="flex items-center justify-between mb-1">
-                <h1 className="text-xl font-semibold text-white">Forecaster</h1>
+            <header className="mb-2">
+              <div className="flex items-center justify-between mb-0.5">
+                <h1 className="text-lg font-semibold text-white">Forecaster</h1>
                 <Link
                   to="/analysis/annual"
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
@@ -141,7 +141,7 @@ const Analysis = () => {
             </header>
 
             {/* Tab Navigation - Always visible */}
-            <div className="mb-3">
+            <div className="mb-2">
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;

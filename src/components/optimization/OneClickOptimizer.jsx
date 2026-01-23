@@ -21,6 +21,7 @@ export default function OneClickOptimizer({
   heatLossFactor = 200,
   hspf2 = 9,
   onApplySchedule,
+  onScheduleOptimized,
   compact = false,
 }) {
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -361,6 +362,13 @@ export default function OneClickOptimizer({
                               (!optimization.coolingOptimization || 
                                (!optimization.coolingOptimization.hasSavingsOpportunity && 
                                 !optimization.coolingOptimization.canOptimize));
+  
+  // Notify parent when schedule is optimized
+  React.useEffect(() => {
+    if (onScheduleOptimized) {
+      onScheduleOptimized(shouldShowOptimized);
+    }
+  }, [shouldShowOptimized, onScheduleOptimized]);
   
   if (shouldShowOptimized) {
     return (

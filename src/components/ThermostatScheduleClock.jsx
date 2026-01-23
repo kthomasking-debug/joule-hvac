@@ -42,7 +42,7 @@ function TimeSelector({ value, onChange, color = "yellow" }) {
   const focusColor = color === "yellow" ? "focus:ring-yellow-500/50" : "focus:ring-blue-500/50";
   const bgColor = "bg-slate-800/80";
 
-  const selectClass = `${bgColor} ${borderColor} ${focusColor} text-slate-100 text-center font-bold rounded-lg px-2 py-2 focus:outline-none focus:ring-2 cursor-pointer appearance-none`;
+  const selectClass = `${bgColor} ${borderColor} ${focusColor} text-slate-100 text-2xl font-bold rounded-lg px-3 py-3 focus:outline-none focus:ring-2 cursor-pointer appearance-none`;
 
   return (
     <div className="flex items-center justify-center gap-1">
@@ -50,18 +50,18 @@ function TimeSelector({ value, onChange, color = "yellow" }) {
       <select
         value={hour}
         onChange={(e) => handleHourChange(e.target.value)}
-        className={`${selectClass} w-14`}
+        className={`${selectClass} w-20`}
       >
         {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((h) => (
           <option key={h} value={h}>{h}</option>
         ))}
       </select>
-      <span className="text-slate-400 font-bold text-lg">:</span>
+      <span className="text-slate-400 font-bold text-3xl">:</span>
       {/* Minute */}
       <select
         value={minute}
         onChange={(e) => handleMinuteChange(e.target.value)}
-        className={`${selectClass} w-16`}
+        className={`${selectClass} w-24`}
       >
         {[0, 15, 30, 45].map((m) => (
           <option key={m} value={m}>{m.toString().padStart(2, "0")}</option>
@@ -71,7 +71,7 @@ function TimeSelector({ value, onChange, color = "yellow" }) {
       <select
         value={ampm}
         onChange={(e) => handleAmpmChange(e.target.value)}
-        className={`${selectClass} w-16`}
+        className={`${selectClass} w-20`}
       >
         <option value="AM">AM</option>
         <option value="PM">PM</option>
@@ -94,9 +94,9 @@ export default function ThermostatScheduleClock({
         <div className="grid grid-cols-2 gap-6">
           {/* Daytime Start */}
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-              <span className="text-sm font-semibold text-slate-300">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-4 h-4 rounded-full bg-yellow-400"></div>
+              <span className="text-lg font-semibold text-slate-300">
                 Daytime Start
               </span>
             </div>
@@ -109,14 +109,14 @@ export default function ThermostatScheduleClock({
               }}
               color="yellow"
             />
-            <p className="text-xs text-slate-400 mt-2">When warmer temp starts</p>
+            <p className="text-sm text-slate-400 mt-2">When warmer temp starts</p>
           </div>
 
           {/* Setback Start */}
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-              <span className="text-sm font-semibold text-slate-300">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-4 h-4 rounded-full bg-blue-400"></div>
+              <span className="text-lg font-semibold text-slate-300">
                 Setback Start
               </span>
             </div>
@@ -129,7 +129,7 @@ export default function ThermostatScheduleClock({
               }}
               color="blue"
             />
-            <p className="text-xs text-slate-400 mt-2">When cooler temp starts</p>
+            <p className="text-sm text-slate-400 mt-2">When cooler temp starts</p>
           </div>
         </div>
       </div>

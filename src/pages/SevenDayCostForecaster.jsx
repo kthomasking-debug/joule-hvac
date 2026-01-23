@@ -411,28 +411,6 @@ const SevenDayCostForecaster = () => {
     }
   });
 
-  // Away mode state: tracks which days are in away mode (keyed by date string)
-  const [awayModeDays, setAwayModeDays] = useState(() => {
-    try {
-      const stored = localStorage.getItem("forecastAwayModeDays");
-      if (stored) {
-        return new Set(JSON.parse(stored));
-      }
-    } catch {
-      // Ignore errors
-    }
-    return new Set();
-  });
-
-  // Save away mode days to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("forecastAwayModeDays", JSON.stringify(Array.from(awayModeDays)));
-    } catch {
-      // Ignore errors
-    }
-  }, [awayModeDays]);
-
   // Sync times and temperatures from localStorage when component mounts or settings change
   useEffect(() => {
     try {
@@ -505,23 +483,9 @@ const SevenDayCostForecaster = () => {
 
   // Get schedule-aware indoor temperature for a given hour
   // Uses dual-period logic: daytime starts at daytimeTime, nighttime starts at nighttimeTime
-  // Also checks away mode: if the day is in away mode, uses away temperatures
   const getIndoorTempForHour = useCallback((hourDate) => {
     try {
       const thermostatSettings = loadThermostatSettings();
-      
-      // Check if this day is in away mode
-      const dayString = hourDate.toLocaleDateString();
-      const isAwayMode = awayModeDays.has(dayString);
-      
-      if (isAwayMode) {
-        // Use away mode temperatures
-        if (energyMode === "heating") {
-          return thermostatSettings?.comfortSettings?.away?.heatSetPoint || 62;
-        } else {
-          return thermostatSettings?.comfortSettings?.away?.coolSetPoint || 85;
-        }
-      }
       
       // Get current time in minutes
       const currentHour = hourDate.getHours();
@@ -557,7 +521,7 @@ const SevenDayCostForecaster = () => {
       // Fallback to daytime temp if schedule can't be loaded
       return indoorTemp;
     }
-  }, [daytimeTime, nighttimeTime, indoorTemp, nighttimeTemp, timeToMinutes, awayModeDays, energyMode]);
+  }, [daytimeTime, nighttimeTime, indoorTemp, nighttimeTemp, timeToMinutes, energyMode]);
   const squareFeet = Number(userSettings?.squareFeet) || 800;
   const insulationLevel = Number(userSettings?.insulationLevel) || 1.0;
   const homeShape = Number(userSettings?.homeShape) || 1.0; // geometry factor (1.0 default)
@@ -1874,6 +1838,9 @@ const SevenDayCostForecaster = () => {
     // Use season context
     const { seasonMode, setSeasonMode, isHeatingView, isCoolingView, autoDetectedMode } = useSeason();
 
+    // Track if schedule is optimized to hide the display section
+    const [scheduleOptimized, setScheduleOptimized] = useState(false);
+
     // Sync season mode with energyMode (one-way: seasonMode → energyMode)
     // Only sync when seasonMode changes from the toggle, not from button clicks
     const prevSeasonModeRef = useRef(seasonMode);
@@ -1906,10 +1873,10 @@ const SevenDayCostForecaster = () => {
     return (
       <div className="space-y-2">
         {/* Top Row: Weather Alerts and Quick Answer Side-by-Side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-          {/* Enhanced Weather Alerts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 auto-rows-fr">
+          {/* Enhanced Weather Alerts - Always Visible, Compact */}
           {forecastData && forecastData.length > 0 && (
-            <div>
+            <div className="h-full">
               <WeatherAlerts
                 forecast={forecastData}
                 mode={energyMode}
@@ -1922,7 +1889,7 @@ const SevenDayCostForecaster = () => {
 
           {/* Quick Answer Section */}
           {showAnswerCard && (
-            <div>
+            <div className="h-full">
               <AnswerCard
                 loading={forecastLoading}
                 location={foundLocationName}
@@ -1956,25 +1923,20 @@ const SevenDayCostForecaster = () => {
           )}
         </div>
 
-        {/* Modeled Schedule Section */}
+        {/* Modeled Schedule Section - Compact, Always Visible */}
         <div id="schedule">
-          <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
-            {/* Subtle animated background */}
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 backdrop-blur-sm">
             <div className="relative z-10">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                   Modeled Schedule (What-If)
                 </h2>
-                <p className="text-[10px] text-slate-400 flex items-center gap-1 px-1 py-0.5 bg-slate-800/50 rounded border border-slate-700/50">
+                <p className="text-xs text-slate-400 flex items-center gap-0.5 px-1.5 py-1 bg-slate-800/50 rounded border border-slate-700/50">
                   <span>🔒</span>
-                  <span>Safe to experiment</span>
+                  <span>Safe</span>
                 </p>
               </div>
-              <p className="text-[10px] text-slate-400 hidden sm:block">
-                <strong className="text-blue-400">Hypothetical</strong> schedule
-              </p>
             </div>
             
             {/* Simple Temperature and Time Controls - Grid Layout */}
@@ -1982,11 +1944,11 @@ const SevenDayCostForecaster = () => {
               {/* Daytime Temperature */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-lg blur-xl group-hover:blur-2xl transition-all duration-300" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-2 hover:border-yellow-500/40 transition-all duration-300">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1.5">
-                    <Sun className="w-3.5 h-3.5 text-yellow-400" />
+                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 hover:border-yellow-500/40 transition-all duration-300">
+                  <label className="flex items-center gap-2 text-base font-semibold text-slate-200 mb-3">
+                    <Sun className="w-5 h-5 text-yellow-400" />
                     <span>Daytime</span>
-                    <span className="ml-auto text-base font-bold bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">{indoorTemp}°F</span>
+                    <span className="ml-auto text-3xl font-bold bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">{indoorTemp}°F</span>
                   </label>
                   <input
                     type="range"
@@ -1998,12 +1960,12 @@ const SevenDayCostForecaster = () => {
                       setIndoorTemp(value);
                       setUserSetting("indoorTemp", value);
                     }}
-                    className="w-full h-1.5 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400 transition-all"
+                    className="w-full h-2 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400 transition-all"
                     style={{
                       background: `linear-gradient(to right, #fbbf24 0%, #fbbf24 ${((indoorTemp - 50) / 35) * 100}%, #374151 ${((indoorTemp - 50) / 35) * 100}%, #374151 100%)`
                     }}
                   />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                  <div className="flex justify-between text-sm text-slate-400 mt-1">
                     <span>50°F</span>
                     <span>85°F</span>
                   </div>
@@ -2014,7 +1976,7 @@ const SevenDayCostForecaster = () => {
               <div className="md:col-span-2 relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-yellow-500/10 to-orange-500/10 rounded-xl blur-xl group-hover:blur-2xl transition-all duration-300" />
                 <div className="relative bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 hover:border-slate-600/50 transition-all duration-300">
-                  <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-200 mb-2">
+                  <label className="flex items-center gap-1.5 text-base font-semibold text-slate-200 mb-2">
                     <Clock className="w-4 h-4 text-slate-400" />
                     <span>Schedule Times</span>
                   </label>
@@ -2047,11 +2009,11 @@ const SevenDayCostForecaster = () => {
               {/* Nighttime Temperature */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg blur-xl group-hover:blur-2xl transition-all duration-300" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-lg p-2 hover:border-blue-500/40 transition-all duration-300">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1.5">
-                    <Moon className="w-3.5 h-3.5 text-blue-400" />
+                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-lg p-4 hover:border-blue-500/40 transition-all duration-300">
+                  <label className="flex items-center gap-2 text-base font-semibold text-slate-200 mb-3">
+                    <Moon className="w-5 h-5 text-blue-400" />
                     <span>Nighttime</span>
-                    <span className="ml-auto text-base font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{nighttimeTemp}°F</span>
+                    <span className="ml-auto text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{nighttimeTemp}°F</span>
                   </label>
                   <input
                     type="range"
@@ -2063,12 +2025,12 @@ const SevenDayCostForecaster = () => {
                       setNighttimeTemp(value);
                       setUserSetting("nighttimeTemp", value);
                     }}
-                    className="w-full h-1.5 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
+                    className="w-full h-2 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((nighttimeTemp - 50) / 35) * 100}%, #374151 ${((nighttimeTemp - 50) / 35) * 100}%, #374151 100%)`
                     }}
                   />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                  <div className="flex justify-between text-sm text-slate-400 mt-1">
                     <span>50°F</span>
                     <span>85°F</span>
                   </div>
@@ -2076,7 +2038,8 @@ const SevenDayCostForecaster = () => {
               </div>
             </div>
             
-            {/* Single Schedule Summary - No Duplication */}
+            {/* Single Schedule Summary - Hidden when Already Optimized */}
+            {!scheduleOptimized && (
             <div className="mt-2 pt-2 border-t border-slate-700/50">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -2148,6 +2111,7 @@ const SevenDayCostForecaster = () => {
                         electricRate={utilityCost}
                         heatLossFactor={effectiveHeatLoss / 70}
                         hspf2={hspf2 || efficiency}
+                        onScheduleOptimized={(isOptimized) => setScheduleOptimized(isOptimized)}
                         onApplySchedule={(schedule) => {
                           setIndoorTemp(schedule.dayTemp);
                           setNighttimeTemp(schedule.nightTemp);
@@ -2173,139 +2137,360 @@ const SevenDayCostForecaster = () => {
                 <span><em>Tip:</em> Big night setbacks can trigger strip heat in the morning.</span>
               </p>
             </div>
+            )}
             </div>
           </div>
         </div>
 
-        {/* Bottom Row: Weekly Forecast Table and Comfort Settings Side-by-Side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-          {/* Weekly Forecast - Daily Breakdown Table */}
-          {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
-            <div>
-              <div className="bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl shadow-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <BarChart2 className="w-5 h-5 text-blue-400" />
-                    Weekly Forecast
-                  </h3>
-                </div>
-                <div className="max-h-[400px] overflow-y-auto">
+        {/* Weekly Forecast Table */}
+        {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
+          <div>
+            <div className="bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl shadow-xl p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <BarChart2 className="w-6 h-6 text-blue-400" />
+                  Weekly Forecast
+                </h3>
+              </div>
+              
+              {/* Weekly Forecast Table Dropdown */}
+              <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => setShowDailyBreakdown(!showDailyBreakdown)}
+                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg">
+                      <BarChart2 size={24} className="text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Daily Breakdown</h3>
+                  </div>
+                  {showDailyBreakdown ? (
+                    <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                  )}
+                </button>
+                {showDailyBreakdown && (
+                <div className="p-6 pt-0 border-t border-gray-200 dark:border-gray-700">
                   <DailyBreakdownTable
                     summary={weeklyMetrics.summary}
                     indoorTemp={indoorTemp}
                     viewMode={breakdownView === "withAux" ? "withAux" : "noAux"}
-                    awayModeDays={awayModeDays}
-                    onToggleAwayMode={(dayDateString) => {
-                      setAwayModeDays(prev => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(dayDateString)) {
-                          newSet.delete(dayDateString);
-                        } else {
-                          newSet.add(dayDateString);
-                        }
-                        return newSet;
-                      });
-                    }}
                     unitSystem={unitSystem}
                   />
                 </div>
+                )}
               </div>
-            </div>
-          )}
-
-          {/* Comfort Settings (Home/Away/Sleep) */}
-          <div>
-            <div className="bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl shadow-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Thermometer className="w-5 h-5 text-blue-400" />
-                  Comfort Settings
-                </h3>
-                <Link
-                  to="/settings#comfort-settings"
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-xs font-medium"
+              
+              {/* Show me the math section */}
+              <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => setShowCalculations(!showCalculations)}
+                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
                 >
-                  <Settings className="w-3 h-3" />
-                  Configure
-                </Link>
-              </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Home className="w-4 h-4 text-green-400" />
-                  <span className="font-semibold text-white">Home Mode</span>
-                </div>
-                <div className="text-sm text-slate-300">
-                  {(() => {
-                    try {
-                      const thermostatSettings = loadThermostatSettings();
-                      const homeHeat = thermostatSettings?.comfortSettings?.home?.heatSetPoint;
-                      const homeCool = thermostatSettings?.comfortSettings?.home?.coolSetPoint;
-                      if (energyMode === "heating") {
-                        return `Heating: ${homeHeat ? formatTemperatureFromF(homeHeat, unitSystem, { decimals: 0 }) : "Not set"}`;
-                      } else {
-                        return `Cooling: ${homeCool ? formatTemperatureFromF(homeCool, unitSystem, { decimals: 0 }) : "Not set"}`;
-                      }
-                    } catch {
-                      return "Not configured";
-                    }
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
+                      <Calculator size={24} className="text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Show me the math</h3>
+                  </div>
+                  {showCalculations ? (
+                    <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                  )}
+                </button>
+                {showCalculations && (
+                <div className="p-6 pt-0 space-y-6 border-t border-gray-200 dark:border-gray-700">
+                  
+                  {/* Building Characteristics */}
+                  <div className="border-t border-slate-700/50 pt-4">
+                    <h4 className="text-md font-semibold text-gray-200 mb-3">Building Characteristics</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Square Feet:</span>
+                          <span className="text-white font-mono">{squareFeet.toLocaleString()} sq ft</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Insulation Level:</span>
+                          <span className="text-white font-mono">{insulationLevel.toFixed(2)}x</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Heat Loss Factor:</span>
+                          <span className="text-white font-mono">{formatHeatLossFactor(effectiveHeatLoss / 70, unitSystem)}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Design Heat Loss @ 70°F ΔT:</span>
+                          <span className="text-white font-mono">{(effectiveHeatLoss / 1000).toFixed(1)}k BTU/hr</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">BTU Loss per °F:</span>
+                          <span className="text-white font-mono">{(effectiveHeatLoss / 70).toFixed(1)} BTU/hr/°F</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* System Configuration */}
+                  <div className="border-t border-slate-700/50 pt-4">
+                    <h4 className="text-md font-semibold text-gray-200 mb-3">System Configuration</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Primary System:</span>
+                          <span className="text-white font-mono">{primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "gasFurnace" ? "Gas Furnace" : "Resistance"}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Capacity:</span>
+                          <span className="text-white font-mono">{capacity}k BTU ({(capacity / 12).toFixed(1)} tons)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">HSPF2:</span>
+                          <span className="text-white font-mono">{hspf2}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Electricity Rate:</span>
+                          <span className="text-white font-mono">${utilityCost.toFixed(3)}/kWh</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Target Temperature:</span>
+                          <span className="text-orange-400 font-mono">{formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Night Setback:</span>
+                          <span className="text-white font-mono">{formatTemperatureFromF(nighttimeTemp, unitSystem, { decimals: 0 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Weekly Summary */}
+                  {weeklyMetrics && (
+                    <div className="border-t border-slate-700/50 pt-4">
+                      <h4 className="text-md font-semibold text-gray-200 mb-3">📊 Weekly Summary</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-lg p-3 text-center border border-green-700/50">
+                          <div className="text-2xl font-bold text-green-400">${weeklyMetrics.totalCost.toFixed(2)}</div>
+                          <div className="text-xs text-gray-400">Total Cost</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-blue-900/30 to-indigo-900/30 rounded-lg p-3 text-center border border-blue-700/50">
+                          <div className="text-2xl font-bold text-blue-400">{formatEnergyFromKwh(weeklyMetrics.totalEnergy, unitSystem, { decimals: 1 })}</div>
+                          <div className="text-xs text-gray-400">Total Energy</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-cyan-900/30 to-teal-900/30 rounded-lg p-3 text-center border border-cyan-700/50">
+                          <div className="text-2xl font-bold text-cyan-400">{formatEnergyFromKwh(weeklyMetrics.totalHPEnergy || 0, unitSystem, { decimals: 1 })}</div>
+                          <div className="text-xs text-gray-400">Heat Pump</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 rounded-lg p-3 text-center border border-orange-700/50">
+                          <div className="text-2xl font-bold text-orange-400">{formatEnergyFromKwh(weeklyMetrics.totalAuxEnergy || 0, unitSystem, { decimals: 1 })}</div>
+                          <div className="text-xs text-gray-400">Aux Heat</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Auxiliary Heat Analysis */}
+                  {weeklyMetrics && weeklyMetrics.summary && (() => {
+                    const totalAux = weeklyMetrics.totalAuxEnergy || 0;
+                    const totalEnergy = weeklyMetrics.totalEnergy || 0;
+                    const auxPercent = totalEnergy > 0 ? (totalAux / totalEnergy * 100) : 0;
+                    const daysWithAux = weeklyMetrics.summary.filter(d => (d.auxKwh || 0) > 0.1).length;
+                    const auxCost = totalAux * utilityCost;
+                    const hpCost = (totalEnergy - totalAux) * utilityCost;
+                    
+                    return (
+                      <div className="border-t border-slate-700/50 pt-4">
+                        <h4 className="text-md font-semibold text-gray-200 mb-3">⚡ Auxiliary Heat Analysis</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-orange-400">{auxPercent.toFixed(1)}%</div>
+                            <div className="text-xs text-gray-400">Aux Heat Usage</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-white">{daysWithAux}</div>
+                            <div className="text-xs text-gray-400">Days Using Aux</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-orange-400">${auxCost.toFixed(2)}</div>
+                            <div className="text-xs text-gray-400">Aux Heat Cost</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-blue-400">${hpCost.toFixed(2)}</div>
+                            <div className="text-xs text-gray-400">HP Cost</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
                   })()}
-                </div>
-                <p className="text-xs text-slate-400 mt-2">Daytime/active periods</p>
-              </div>
-              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Moon className="w-4 h-4 text-blue-400" />
-                  <span className="font-semibold text-white">Sleep Mode</span>
-                </div>
-                <div className="text-sm text-slate-300">
-                  {(() => {
-                    try {
-                      const thermostatSettings = loadThermostatSettings();
-                      const sleepHeat = thermostatSettings?.comfortSettings?.sleep?.heatSetPoint;
-                      const sleepCool = thermostatSettings?.comfortSettings?.sleep?.coolSetPoint;
-                      if (energyMode === "heating") {
-                        return `Heating: ${sleepHeat ? formatTemperatureFromF(sleepHeat, unitSystem, { decimals: 0 }) : "66°F (default)"}`;
-                      } else {
-                        return `Cooling: ${sleepCool ? formatTemperatureFromF(sleepCool, unitSystem, { decimals: 0 }) : "72°F (default)"}`;
-                      }
-                    } catch {
-                      return energyMode === "heating" ? "66°F (default)" : "72°F (default)";
-                    }
+                  
+                  {/* Peak Days */}
+                  {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (
+                    <div className="border-t border-slate-700/50 pt-4">
+                      <h4 className="text-md font-semibold text-gray-200 mb-3">🔥 Peak Cost Days</h4>
+                      <div className="space-y-2">
+                        {[...weeklyMetrics.summary]
+                          .sort((a, b) => (b.costWithAux || b.dailyCost || 0) - (a.costWithAux || a.dailyCost || 0))
+                          .slice(0, 3)
+                          .map((day, idx) => (
+                            <div key={day.day || idx} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-3 border border-slate-600/50">
+                              <div className="flex items-center gap-3">
+                                <span className="text-lg">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}</span>
+                                <div>
+                                  <div className="font-medium text-white">{day.day}</div>
+                                  <div className="text-xs text-gray-400">
+                                    {day.minTemp !== undefined && day.maxTemp !== undefined 
+                                      ? `${formatTemperatureFromF(day.minTemp, unitSystem, { decimals: 0, withUnit: false })} - ${formatTemperatureFromF(day.maxTemp, unitSystem, { decimals: 0 })}`
+                                      : `Avg: ${formatTemperatureFromF(day.avgTemp || 35, unitSystem, { decimals: 0 })}`
+                                    }
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-green-400">${(day.costWithAux || day.dailyCost || 0).toFixed(2)}</div>
+                                <div className="text-xs text-gray-400">{formatEnergyFromKwh(day.totalKwh || day.hpKwh || 0, unitSystem, { decimals: 1 })}</div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Weather Analysis */}
+                  {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (() => {
+                    const temps = weeklyMetrics.summary.map(d => d.avgTemp || ((d.minTemp + d.maxTemp) / 2) || 40);
+                    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+                    const minTemps = weeklyMetrics.summary.map(d => d.minTemp || d.avgTemp || 40);
+                    const maxTemps = weeklyMetrics.summary.map(d => d.maxTemp || d.avgTemp || 40);
+                    const coldestLow = Math.min(...minTemps);
+                    const warmestHigh = Math.max(...maxTemps);
+                    const coldDays = temps.filter(t => t < 32).length;
+                    const heatingDays = temps.filter(t => t < indoorTemp).length;
+                    
+                    return (
+                      <div className="border-t border-slate-700/50 pt-4">
+                        <h4 className="text-md font-semibold text-gray-200 mb-3">🌡️ Weather Analysis</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-cyan-400">{formatTemperatureFromF(avgTemp, unitSystem, { decimals: 1 })}</div>
+                            <div className="text-xs text-gray-400">Avg Temp</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-blue-400">{formatTemperatureFromF(coldestLow, unitSystem, { decimals: 0 })}</div>
+                            <div className="text-xs text-gray-400">Coldest Low</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-orange-400">{formatTemperatureFromF(warmestHigh, unitSystem, { decimals: 0 })}</div>
+                            <div className="text-xs text-gray-400">Warmest High</div>
+                          </div>
+                          <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-600/50">
+                            <div className="text-xl font-bold text-white">{heatingDays}</div>
+                            <div className="text-xs text-gray-400">Heating Days</div>
+                          </div>
+                        </div>
+                        {coldDays > 0 && (
+                          <div className="mt-3 text-sm text-yellow-400">
+                            ⚠️ {coldDays} day{coldDays > 1 ? 's' : ''} with freezing temperatures expected
+                          </div>
+                        )}
+                      </div>
+                    );
                   })()}
-                </div>
-                <p className="text-xs text-slate-400 mt-2">Nighttime/sleep periods</p>
-              </div>
-              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-orange-400" />
-                  <span className="font-semibold text-white">Away Mode</span>
-                </div>
-                <div className="text-sm text-slate-300">
-                  {(() => {
-                    try {
-                      const thermostatSettings = loadThermostatSettings();
-                      const awayHeat = thermostatSettings?.comfortSettings?.away?.heatSetPoint;
-                      const awayCool = thermostatSettings?.comfortSettings?.away?.coolSetPoint;
-                      if (energyMode === "heating") {
-                        return `Heating: ${awayHeat ? formatTemperatureFromF(awayHeat, unitSystem, { decimals: 0 }) : "62°F (default)"}`;
-                      } else {
-                        return `Cooling: ${awayCool ? formatTemperatureFromF(awayCool, unitSystem, { decimals: 0 }) : "85°F (default)"}`;
-                      }
-                    } catch {
-                      return energyMode === "heating" ? "62°F (default)" : "85°F (default)";
-                    }
+                  
+                  {/* Rate Sensitivity */}
+                  {weeklyMetrics && (
+                    <div className="border-t border-slate-700/50 pt-4">
+                      <h4 className="text-md font-semibold text-gray-200 mb-3">💡 Electricity Rate Sensitivity (±20%)</h4>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-green-900/20 rounded-lg p-3 text-center border border-green-700/50">
+                          <div className="text-xs text-gray-400 mb-1">At ${(utilityCost * 0.8).toFixed(3)}/kWh (-20%)</div>
+                          <div className="text-xl font-bold text-green-400">
+                            ${(weeklyMetrics.totalEnergy * utilityCost * 0.8).toFixed(2)}
+                          </div>
+                          <div className="text-xs text-green-400">
+                            Save ${(weeklyMetrics.totalEnergy * utilityCost * 0.2).toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="bg-blue-900/20 rounded-lg p-3 text-center border border-blue-700/50">
+                          <div className="text-xs text-gray-400 mb-1">Current Rate ${utilityCost.toFixed(3)}/kWh</div>
+                          <div className="text-xl font-bold text-white">${weeklyMetrics.totalCost.toFixed(2)}</div>
+                        </div>
+                        <div className="bg-red-900/20 rounded-lg p-3 text-center border border-red-700/50">
+                          <div className="text-xs text-gray-400 mb-1">At ${(utilityCost * 1.2).toFixed(3)}/kWh (+20%)</div>
+                          <div className="text-xl font-bold text-red-400">
+                            ${(weeklyMetrics.totalEnergy * utilityCost * 1.2).toFixed(2)}
+                          </div>
+                          <div className="text-xs text-red-400">
+                            +${(weeklyMetrics.totalEnergy * utilityCost * 0.2).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Example Day Calculation */}
+                  {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (() => {
+                    // Pick the coldest day as the example
+                    const temps = weeklyMetrics.summary.map(d => d.avgTemp || ((d.minTemp + d.maxTemp) / 2) || 40);
+                    const coldestIdx = temps.indexOf(Math.min(...temps));
+                    const exampleDay = weeklyMetrics.summary[coldestIdx];
+                    const exampleAvgTemp = exampleDay.avgTemp || ((exampleDay.minTemp + exampleDay.maxTemp) / 2) || 35;
+                    const deltaT = indoorTemp - exampleAvgTemp;
+                    const heatLossBtuHr = (effectiveHeatLoss / 70) * deltaT;
+                    
+                    return (
+                      <div className="border-t border-slate-700/50 pt-4">
+                        <h4 className="text-md font-semibold text-gray-200 mb-3">🧮 Example Day Calculation ({exampleDay.day} - coldest day)</h4>
+                        <div className="bg-slate-900/50 rounded-lg p-4 text-sm space-y-2 font-mono">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Avg Outdoor Temp:</span>
+                            <span className="text-cyan-400">{formatTemperatureFromF(exampleAvgTemp, unitSystem, { decimals: 1 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Target Indoor Temp:</span>
+                            <span className="text-orange-400">{formatTemperatureFromF(indoorTemp, unitSystem, { decimals: 0 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Temperature Difference (ΔT):</span>
+                            <span className="text-white">{deltaT.toFixed(1)}°F</span>
+                          </div>
+                          <div className="h-px bg-slate-700 my-2"></div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Heat Loss Rate:</span>
+                            <span className="text-white">{(heatLossBtuHr / 1000).toFixed(1)}k BTU/hr</span>
+                          </div>
+                          <div className="text-xs text-gray-500 ml-4">
+                            = {(effectiveHeatLoss / 70).toFixed(1)} BTU/hr/°F × {deltaT.toFixed(1)}°F
+                          </div>
+                          <div className="h-px bg-slate-700 my-2"></div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Daily Energy:</span>
+                            <span className="text-blue-400">{formatEnergyFromKwh(exampleDay.totalKwh || exampleDay.hpKwh || 0, unitSystem, { decimals: 1 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Daily Cost:</span>
+                            <span className="text-green-400 font-bold">${(exampleDay.costWithAux || exampleDay.dailyCost || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-gray-500 ml-4">
+                            = {(exampleDay.totalKwh || exampleDay.hpKwh || 0).toFixed(1)} kWh × ${utilityCost.toFixed(3)}/kWh
+                          </div>
+                        </div>
+                      </div>
+                    );
                   })()}
+                  
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Used when days are marked "Away"</p>
+                )}
               </div>
-            </div>
-              <p className="text-xs text-slate-400 mt-3">
-                <strong className="text-white">Home</strong> = Daytime/active periods • <strong className="text-white">Sleep</strong> = Nighttime periods (used for the schedule above) • <strong className="text-white">Away</strong> = Used when days are marked as "Away" in the weekly forecast. Click the button above to change these settings.
-              </p>
+              
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };

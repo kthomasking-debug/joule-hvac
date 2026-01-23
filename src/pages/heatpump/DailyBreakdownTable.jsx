@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronUp, ChevronDown, HelpCircle, Home, Plane } from 'lucide-react';
 import { formatTemperatureFromF, formatEnergyFromKwh, UNIT_SYSTEMS } from '../../lib/units';
 
-const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux', awayModeDays = new Set(), onToggleAwayMode = null, unitSystem = UNIT_SYSTEMS.US }) => {
+const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAux', unitSystem = UNIT_SYSTEMS.US }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [tooltip, setTooltip] = useState(null);
@@ -145,61 +145,42 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                     const displayIndoor = viewMode === 'withAux' ? (day.minIndoorTemp ?? indoorTemp) : (day.minNoAuxIndoorTemp ?? indoorTemp);
                     const isBelowSetpoint = displayIndoor < indoorTemp;
                     const displayCost = viewMode === 'withAux' ? (day.costWithAux ?? day.cost) : day.cost;
-                    
-                    // Use dayDateString from summary if available
-                    const dayDateString = day.dayDateString || null;
-                    const isAwayMode = dayDateString && awayModeDays.has(dayDateString);
 
                     return (
-                        <div key={day.day} className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 ${isAwayMode ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}`}>
+                        <div key={day.day} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
                             <div className="flex items-center justify-between mb-3 pb-2 border-b dark:border-gray-700">
-                                <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{day.day}</span>
-                                <div className="flex items-center gap-2">
-                                    {onToggleAwayMode && (
-                                        <button
-                                            onClick={() => dayDateString && onToggleAwayMode(dayDateString)}
-                                            className={`px-2 py-1 rounded-md font-semibold text-xs transition-all ${
-                                                isAwayMode
-                                                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                                                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                                            }`}
-                                            title={isAwayMode ? 'Click to disable away mode' : 'Click to enable away mode'}
-                                        >
-                                            {isAwayMode ? <Plane size={12} /> : <Home size={12} />}
-                                        </button>
-                                    )}
-                                    <span className="text-xl font-bold text-green-600 dark:text-green-400">${displayCost.toFixed(2)}</span>
-                                </div>
+                                <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">{day.day}</span>
+                                <span className="text-3xl font-bold text-green-600 dark:text-green-400">${displayCost.toFixed(2)}</span>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">Temp Range</span>
+                                    <span className="text-base text-gray-600 dark:text-gray-400">Temp Range</span>
                                     <div className="flex items-center gap-2">
                                         <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-12"></div>
-                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                        <span className="text-base font-medium text-gray-900 dark:text-gray-100">
                                             {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })} - {formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
                                         </span>
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">Indoor Temp</span>
-                                    <span className={`text-sm font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                    <span className="text-base text-gray-600 dark:text-gray-400">Indoor Temp</span>
+                                    <span className={`text-base font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
                                         {formatTemperatureFromF(displayIndoor, unitSystem, { decimals: 1 })}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">Avg Humidity</span>
-                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{day.avgHumidity.toFixed(0)}%</span>
+                                    <span className="text-base text-gray-600 dark:text-gray-400">Avg Humidity</span>
+                                    <span className="text-base font-medium text-gray-900 dark:text-gray-100">{day.avgHumidity.toFixed(0)}%</span>
                                 </div>
                                 <div className="pt-2 border-t dark:border-gray-700">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-sm text-gray-600 dark:text-gray-400">HP Energy</span>
+                                        <span className="text-base text-gray-600 dark:text-gray-400">HP Energy</span>
                                     </div>
                                     <InlineBar value={day.energy} maxValue={maxEnergy} color="blue" />
                                 </div>
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-sm text-gray-600 dark:text-gray-400">Aux Energy</span>
+                                        <span className="text-base text-gray-600 dark:text-gray-400">Aux Energy</span>
                                     </div>
                                     <InlineBar value={day.auxEnergy} maxValue={maxAuxEnergy} color="orange" />
                                 </div>
@@ -218,7 +199,7 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                 <thead>
                     <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-700 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600">
                         <th
-                            className="p-3 font-semibold text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            className="p-4 font-bold text-base text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                             onClick={() => handleSort('day')}
                         >
                             <div className="flex items-center gap-1">
@@ -227,7 +208,7 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                             </div>
                         </th>
                         <th
-                            className="p-3 font-semibold text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            className="p-4 font-bold text-base text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                             onClick={() => handleSort('tempRange')}
                         >
                             <div className="flex items-center gap-1">
@@ -236,7 +217,7 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                             </div>
                         </th>
                         <th
-                            className="p-3 font-semibold text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group relative"
+                            className="p-4 font-bold text-base text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group relative"
                             onClick={() => handleSort('indoorTemp')}
                         >
                             <div className="flex items-center gap-1">
@@ -335,24 +316,6 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                                 </div>
                             )}
                         </th>
-                        {onToggleAwayMode && (
-                            <th className="p-3 font-semibold text-gray-900 dark:text-gray-100 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                    Away Mode
-                                    <HelpCircle
-                                        size={14}
-                                        className="text-gray-400 hover:text-blue-600 cursor-help"
-                                        onMouseEnter={() => setTooltip('awayMode')}
-                                        onMouseLeave={() => setTooltip(null)}
-                                    />
-                                </div>
-                                {tooltip === 'awayMode' && (
-                                    <div className="absolute z-10 bg-gray-900 text-white text-xs rounded p-2 shadow-lg w-56 top-full right-0 mt-1">
-                                        Click to toggle away mode for this day. Away mode uses energy-saving temperatures ({formatTemperatureFromF(62, unitSystem, { decimals: 0 })} heating, {formatTemperatureFromF(85, unitSystem, { decimals: 0 })} cooling).
-                                    </div>
-                                )}
-                            </th>
-                        )}
                     </tr>
                 </thead>
                 <tbody>
@@ -360,66 +323,37 @@ const DailyBreakdownTable = ({ summary = [], indoorTemp = 70, viewMode = 'withAu
                         const displayIndoor = viewMode === 'withAux' ? (day.minIndoorTemp ?? indoorTemp) : (day.minNoAuxIndoorTemp ?? indoorTemp);
                         const isBelowSetpoint = displayIndoor < indoorTemp;
                         const displayCost = viewMode === 'withAux' ? (day.costWithAux ?? day.cost) : day.cost;
-                        
-                        // Use dayDateString from summary if available, otherwise parse from day string
-                        const dayDateString = day.dayDateString || null;
-                        const isAwayMode = dayDateString && awayModeDays.has(dayDateString);
 
                         return (
                             <tr
                                 key={day.day}
-                                className={`even:bg-white odd:bg-gray-50 dark:even:bg-gray-800 dark:odd:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors ${isAwayMode ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
+                                className="even:bg-white odd:bg-gray-50 dark:even:bg-gray-800 dark:odd:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors"
                             >
-                                <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">{day.day}</td>
-                                <td className="p-3">
+                                <td className="p-4 font-bold text-base text-gray-900 dark:text-gray-100">{day.day}</td>
+                                <td className="p-4">
                                     <div className="flex items-center gap-2">
                                         <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-16"></div>
-                                        <span className="text-sm text-gray-900 dark:text-gray-100">
+                                        <span className="text-base text-gray-900 dark:text-gray-100">
                                             {formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })} - {formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}
                                         </span>
                                     </div>
                                 </td>
-                                <td className={`p-3 font-bold ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                <td className={`p-4 font-bold text-base ${isBelowSetpoint ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
                                     {formatTemperatureFromF(displayIndoor, unitSystem, { decimals: 1 })}
                                 </td>
-                                <td className="p-3 text-gray-900 dark:text-gray-100">{day.avgHumidity.toFixed(0)}%</td>
-                                <td className="p-3">
+                                <td className="p-4 text-base text-gray-900 dark:text-gray-100">{day.avgHumidity.toFixed(0)}%</td>
+                                <td className="p-4">
                                     <InlineBar value={day.energy} maxValue={maxEnergy} color="blue" />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-4">
                                     <InlineBar value={day.auxEnergy} maxValue={maxAuxEnergy} color="orange" />
                                 </td>
                                 <td
-                                    className="p-3 transition-colors"
+                                    className="p-4 transition-colors"
                                     style={{ backgroundColor: getHeatMapColor(displayCost) }}
                                 >
-                                    <span className="text-lg font-bold text-green-700 dark:text-green-400">${displayCost.toFixed(2)}</span>
+                                    <span className="text-2xl font-bold text-green-700 dark:text-green-400">${displayCost.toFixed(2)}</span>
                                 </td>
-                                {onToggleAwayMode && (
-                                    <td className="p-3 text-center">
-                                        <button
-                                            onClick={() => dayDateString && onToggleAwayMode(dayDateString)}
-                                            className={`px-3 py-1.5 rounded-md font-semibold text-sm transition-all ${
-                                                isAwayMode
-                                                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                                                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                                            }`}
-                                            title={isAwayMode ? 'Click to disable away mode' : 'Click to enable away mode'}
-                                        >
-                                            {isAwayMode ? (
-                                                <div className="flex items-center gap-1">
-                                                    <Plane size={14} />
-                                                    <span>Away</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-1">
-                                                    <Home size={14} />
-                                                    <span>Home</span>
-                                                </div>
-                                            )}
-                                        </button>
-                                    </td>
-                                )}
                             </tr>
                         );
                     })}
