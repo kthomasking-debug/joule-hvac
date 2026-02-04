@@ -41,12 +41,14 @@ Set environment variables to point at your bridge/service providing status and a
 export HMI_API_BASE="http://127.0.0.1:8080"
 # Optional: poll interval seconds
 export HMI_POLL_SECS="15"
+# Optional: e-paper refresh interval seconds (default 900 = 15 min; avoids blinking)
+export HMI_DISPLAY_REFRESH_SECS="900"
 ```
 
-Expected endpoints (customize in `app.py` as needed):
-- GET `$HMI_API_BASE/status` -> `{ mode: "heat|cool|off", temp: 68.5, humidity: 45 }`
-- POST `$HMI_API_BASE/mode` body `{ mode: "heat|cool|off" }`
-- POST `$HMI_API_BASE/setpoint` body `{ delta: +1 | -1 }`
+Expected bridge API (Joule Bridge / prostat-bridge on same Pi):
+- GET `$HMI_API_BASE/api/status` -> `{ devices: [{ device_id, temperature (C), target_temperature, mode, ... }] }`
+- POST `$HMI_API_BASE/api/set-mode` body `{ device_id, mode: "heat|cool|off" }`
+- POST `$HMI_API_BASE/api/setpoint` body `{ delta: +1 | -1 }` (uses primary device)
 
 ## Run
 
@@ -106,5 +108,6 @@ sudo systemctl start pi-hmi.service
 ```
 
 ## Notes
-- If touch doesn’t work, verify `/dev/input/event*` devices and permissions, and controller (Goodix, FT6236). Fallback GPIO buttons can be wired to physical inputs.
-- For different Waveshare models, adjust the imported driver (`epd2in13_V2`, `epd2in13_V3`, or 2.13 touch driver).
+- **Touch**: Add your user to the `input` group so the HMI can read touch without root: `sudo usermod -aG input pi` (then log out and back in). If touch still doesn’t work, run `touch_calibrate.py` to generate `touch_config.json`; the app also tries the first ABS-capable event device as a fallback.
+- **EPD driver**: The app looks for the Waveshare library under `~/git/e-Paper`, `~/e-Paper`, or `/home/pi/e-Paper` (RaspberryPi_JetsonNano/python/lib). Clone the repo there if the display stays blank.
+- For different Waveshare models, adjust the imported driver in `app.py` (`epd2in13_V2`, `epd2in13_V3`, etc.).

@@ -109,6 +109,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     insulationLevel = 1.0,
     homeShape = 1.0,
     ceilingHeight = 8,
+    wallHeight = null,
+    hasLoft = false,
     capacity = 36,
     efficiency = 15.0,
     utilityCost = 0.15,
@@ -575,14 +577,123 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       } catch (err) {
         console.warn('Cache write error for estimate:', err);
       }
+      
+      // Sync is now handled by the useEffect below to ensure fixed fees are included
+      // (the useEffect watches monthlyEstimate changes and syncs with proper totals)
     }
-  }, [locationData?.latitude, locationData?.longitude, primarySystem, energyMode, selectedMonth, indoorTemp, nighttimeTemp, utilityCost]);
+  }, [locationData?.latitude, locationData?.longitude, locationData?.city, locationData?.state, primarySystem, energyMode, selectedMonth, indoorTemp, nighttimeTemp, utilityCost]);
   
   // Wrapper for fetchHistoricalData that uses cached setter for Location A
   const setMonthlyEstimateForHistorical = useCallback((estimate) => {
     // Use cached version for Location A
     setMonthlyEstimateCached(estimate);
   }, [setMonthlyEstimateCached]);
+  
+  // Sync monthly estimate to bridge whenever it changes (including from cache)
+  useEffect(() => {
+    if (!monthlyEstimate?.cost || !locationData?.city) return;
+    
+    const syncToBridge = async () => {
+      try {
+        const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+        if (!bridgeUrl) return;
+        
+        // Include fixed fees in total (monthlyEstimate.cost is variable only)
+        const fixedFees = monthlyEstimate.fixedCost || fixedElectricCost || 0;
+        const totalWithFees = (monthlyEstimate.cost || 0) + fixedFees;
+        
+        // Energy breakdown (kWh)
+        const totalEnergy = monthlyEstimate.energy || 0;
+        const auxEnergy = monthlyEstimate.excludedAuxEnergy || 0; // Only when aux is excluded
+        const electricityRate = monthlyEstimate.electricityRate || utilityCost || 0.10;
+        
+        const payload = {
+          location: `${locationData.city}, ${locationData.state}`,
+          totalMonthlyCost: totalWithFees,
+          variableCost: monthlyEstimate.cost,
+          fixedCost: fixedFees,
+          totalHPCost: totalWithFees / 4.33,
+          totalHPCostWithAux: totalWithFees / 4.33,
+          timestamp: Date.now(),
+          source: 'monthly_forecast',
+          month: selectedMonth,
+          targetTemp: indoorTemp,
+          nightTemp: nighttimeTemp,
+          mode: energyMode,
+          // Energy data for HMI display
+          totalEnergyKwh: totalEnergy,
+          auxEnergyKwh: auxEnergy,
+          hpEnergyKwh: totalEnergy - auxEnergy,
+          electricityRate: electricityRate,
+        };
+        
+        // Save to localStorage for other components
+        localStorage.setItem("last_forecast_summary", JSON.stringify(payload));
+        
+        // Sync to bridge
+        await fetch(`${bridgeUrl}/api/settings/last_forecast_summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: payload }),
+        });
+        
+        if (import.meta.env.DEV) {
+          console.log(`📡 Synced to bridge: $${totalWithFees.toFixed(2)}/month @ ${indoorTemp}°F (variable: $${monthlyEstimate.cost.toFixed(2)} + fixed: $${fixedFees.toFixed(2)})`);
+        }
+      } catch {
+        // Ignore sync errors
+      }
+    };
+    
+    syncToBridge();
+  }, [monthlyEstimate?.cost, monthlyEstimate?.fixedCost, monthlyEstimate?.energy, monthlyEstimate?.electricityRate, fixedElectricCost, utilityCost, locationData?.city, locationData?.state, selectedMonth, indoorTemp, nighttimeTemp, energyMode]);
+  
+  // Periodic sync to bridge every 5 minutes (keeps HMI up to date even when page is idle)
+  useEffect(() => {
+    const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+    if (!bridgeUrl) return;
+    
+    const syncInterval = setInterval(() => {
+      if (!monthlyEstimate?.cost || !locationData?.city) return;
+      
+      const fixedFees = monthlyEstimate.fixedCost || fixedElectricCost || 0;
+      const totalWithFees = (monthlyEstimate.cost || 0) + fixedFees;
+      const totalEnergy = monthlyEstimate.energy || 0;
+      const auxEnergy = monthlyEstimate.excludedAuxEnergy || 0;
+      const electricityRate = monthlyEstimate.electricityRate || utilityCost || 0.10;
+      
+      const payload = {
+        location: `${locationData.city}, ${locationData.state}`,
+        totalMonthlyCost: totalWithFees,
+        variableCost: monthlyEstimate.cost,
+        fixedCost: fixedFees,
+        totalHPCost: totalWithFees / 4.33,
+        totalHPCostWithAux: totalWithFees / 4.33,
+        timestamp: Date.now(),
+        source: 'monthly_forecast',
+        month: selectedMonth,
+        targetTemp: indoorTemp,
+        nightTemp: nighttimeTemp,
+        mode: energyMode,
+        totalEnergyKwh: totalEnergy,
+        auxEnergyKwh: auxEnergy,
+        hpEnergyKwh: totalEnergy - auxEnergy,
+        electricityRate: electricityRate,
+      };
+      
+      fetch(`${bridgeUrl}/api/settings/last_forecast_summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: payload }),
+      }).catch(() => {});
+      
+      if (import.meta.env.DEV) {
+        console.log(`🔄 Auto-synced to bridge: $${totalWithFees.toFixed(2)}/month`);
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
+    
+    return () => clearInterval(syncInterval);
+  }, [monthlyEstimate, locationData, fixedElectricCost, utilityCost, selectedMonth, indoorTemp, nighttimeTemp, energyMode]);
   
   // Year selection for aux heat calculation
   const [auxHeatYear, setAuxHeatYear] = useState(() => new Date().getFullYear() - 1); // Default to previous year
@@ -604,7 +715,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       setShowAnnualPlanner(true);
     }
   }, [mode]);
-  const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default - less important
+  const [showDailyForecast, setShowDailyForecast] = useState(true); // Expanded by default to show full month like /analysis/monthly
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
   const [showHeatingCosts, setShowHeatingCosts] = useState(false); // Collapsed by default
@@ -660,6 +771,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       insulationLevel,
       homeShape,
       ceilingHeight,
+      wallHeight,
+      hasLoft,
     });
     const heatLossBtu = estimatedDesignHeatLoss / 70; // BTU/hr per °F
     const avgWinterIndoorTemp = ((userSettings?.winterThermostatDay ?? 70) * 16 + (userSettings?.winterThermostatNight ?? 68) * 8) / 24;
@@ -691,7 +804,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }
     
     return null; // No balance point found (system can handle all temps)
-  }, [primarySystem, energyMode, capacity, squareFeet, insulationLevel, homeShape, ceilingHeight, userSettings?.winterThermostatDay, userSettings?.winterThermostatNight]);
+  }, [primarySystem, energyMode, capacity, squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft, userSettings?.winterThermostatDay, userSettings?.winterThermostatNight]);
   
   // Calculate potential savings from recommended schedule (70°F day / 68°F night)
   const potentialSavings = useMemo(() => {
@@ -908,10 +1021,12 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       insulationLevel,
       homeShape,
       ceilingHeight,
+      wallHeight,
+      hasLoft,
     });
     // Convert to BTU/hr/°F (divide by 70°F design temp difference)
     return estimatedDesignHeatLoss / 70;
-  }, [userSettings?.analyzerHeatLoss, squareFeet, insulationLevel, homeShape, ceilingHeight]);
+  }, [userSettings?.analyzerHeatLoss, squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft]);
 
   /**
    * Get location-aware baseline temperature for heating calculations
@@ -1117,16 +1232,35 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           insulationLevel,
           homeShape,
           ceilingHeight,
+          wallHeight,
+          hasLoft,
         });
         const btuLossPerDegF = estimatedDesignHeatLoss / 70;
         let totalTherms = 0,
           totalCost = 0;
+        
+        // Use sinusoidal hourly temperatures for accurate calculations (consistent with heat pump)
         temps.forEach((day) => {
-          const tempDiff = Math.max(0, effectiveIndoorTemp - day.avg);
-          const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
-          const thermsPerDay = (buildingHeatLossBtu * 24) / (btuPerTherm * eff);
-          totalTherms += thermsPerDay;
-          totalCost += thermsPerDay * gasCost;
+          const lowTemp = day.low;
+          const highTemp = day.high;
+          const tempRange = highTemp - lowTemp;
+          const avgTemp = (highTemp + lowTemp) / 2;
+          
+          let dailyTherms = 0;
+          // Generate hourly temperatures using sinusoidal pattern (low at 6 AM, high at 2 PM)
+          for (let hour = 0; hour < 24; hour++) {
+            const phase = ((hour - 6) / 12) * Math.PI;
+            const tempOffset = Math.cos(phase - Math.PI) * (tempRange / 2);
+            const hourlyTemp = avgTemp + tempOffset;
+            
+            const tempDiff = Math.max(0, effectiveIndoorTemp - hourlyTemp);
+            const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
+            const thermsPerHour = buildingHeatLossBtu / (btuPerTherm * eff);
+            dailyTherms += thermsPerHour;
+          }
+          
+          totalTherms += dailyTherms;
+          totalCost += dailyTherms * gasCost;
         });
         totalCost += monthlyFixedCharge; // Add fixed charge to total
         
@@ -1654,6 +1788,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         insulationLevel,
         homeShape,
         ceilingHeight,
+        wallHeight,
+        hasLoft,
       });
       const btuLossPerDegF = estimatedDesignHeatLoss / 70;
 
@@ -1688,6 +1824,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         insulationLevel,
         homeShape,
         ceilingHeight,
+        wallHeight,
+        hasLoft,
       });
       const btuLossPerDegF = estimatedDesignHeatLoss / 70;
       const baseHspf = hspf2 || efficiency;
@@ -1983,7 +2121,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       decemberDifferenceAbs: Math.abs(decemberDifference),
       locationBCity: locationDataB.city,
     };
-  }, [mode, locationData, locationDataB, squareFeet, insulationLevel, homeShape, ceilingHeight, hspf2, efficiency, utilityCost, coolingCapacity, capacity, solarExposure]);
+  }, [mode, locationData, locationDataB, squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft, hspf2, efficiency, utilityCost, coolingCapacity, capacity, solarExposure]);
 
   // Calculate comprehensive annual costs for both cities using auto-mode logic with sinusoidal patterns
   const annualComparisonCosts = useMemo(() => {
@@ -2098,6 +2236,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           insulationLevel,
           homeShape,
           ceilingHeight,
+          wallHeight,
+          hasLoft,
         });
         const btuLossPerDegF = estimatedDesignHeatLoss / 70;
         const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
@@ -2269,7 +2409,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       return null;
     }
   }, [
-    mode, locationData, locationDataB, squareFeet, insulationLevel, homeShape, ceilingHeight,
+    mode, locationData, locationDataB, squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft,
     capacity, efficiency, hspf2, coolingCapacity, primarySystem, afue, useElectricAuxHeat,
     utilityCost, fixedElectricCost, fixedGasCost, solarExposure, monthlyEstimate, monthlyEstimateB,
     userSettings?.winterThermostatDay, userSettings?.winterThermostatNight,
@@ -2979,11 +3119,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                             };
                             const tons = tonsMap[capacity] || 3.0;
                             const designHeatLoss = heatUtils.calculateHeatLoss({
-                              squareFeet,
-                              insulationLevel,
-                              homeShape,
-                              ceilingHeight,
-                            });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
                             const heatLossPerDegF = designHeatLoss / 70;
 
                             // At 5°F outdoor, heat pump provides ~40% capacity (typical cold climate HP)
@@ -3220,11 +3362,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             };
             const tons = tonsMap[capacity] || 3.0;
             const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
-              squareFeet,
-              insulationLevel,
-              homeShape,
-              ceilingHeight,
-            });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
             const btuLossPerDegF = estimatedDesignHeatLoss / 70;
             const compressorPower = tons * 1.0 * (15 / efficiency);
             
@@ -3304,11 +3448,29 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                     dailyCost += hourlyEnergy * utilityCost;
                   }
                 } else if (dayMode === "heating" && primarySystem === "gasFurnace") {
-                  const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
+                  // Use sinusoidal hourly temperatures for accurate calculations (consistent with heat pump)
                   const eff = Math.min(0.99, Math.max(0.6, afue));
-                  const thermsPerDay = (buildingHeatLossBtu * 24) / (100000 * eff);
-                  dailyCost = thermsPerDay * gasCost;
-                  dailyEnergy = thermsPerDay * 29.3; // Convert therms to kWh for display
+                  const btuPerTherm = 100000;
+                  const lowTemp = day.low;
+                  const highTemp = day.high;
+                  const tempRange = highTemp - lowTemp;
+                  const avgTemp = day.avg;
+                  
+                  let dailyTherms = 0;
+                  // Generate hourly temperatures using sinusoidal pattern (low at 6 AM, high at 2 PM)
+                  for (let hour = 0; hour < 24; hour++) {
+                    const phase = ((hour - 6) / 12) * Math.PI;
+                    const tempOffset = Math.cos(phase - Math.PI) * (tempRange / 2);
+                    const hourlyTemp = avgTemp + tempOffset;
+                    
+                    const hourlyTempDiff = Math.max(0, dayEffectiveTemp - hourlyTemp);
+                    const buildingHeatLossBtu = btuLossPerDegF * hourlyTempDiff;
+                    const thermsPerHour = buildingHeatLossBtu / (btuPerTherm * eff);
+                    dailyTherms += thermsPerHour;
+                  }
+                  
+                  dailyCost = dailyTherms * gasCost;
+                  dailyEnergy = dailyTherms * 29.3; // Convert therms to kWh for display
                 } else if (dayMode === "cooling") {
                   const coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : coolingCapacity;
                   const seer2 = efficiency;
@@ -4015,11 +4177,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                     const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
                     const tons = tonsMap[capacity] || 3.0;
                     const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
-                      squareFeet,
-                      insulationLevel,
-                      homeShape,
-                      ceilingHeight,
-                    });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
                     
                     // Calculate aux heat hour-by-hour
                     let totalHeatPumpKwh = 0;
@@ -4114,11 +4278,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                       const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
                       const tons = tonsMap[capacity] || 3.0;
                       const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
-                        squareFeet,
-                        insulationLevel,
-                        homeShape,
-                        ceilingHeight,
-                      });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
                       
                       let totalHeatPumpKwh = 0;
                       let totalAuxKwh = 0;
@@ -4716,11 +4882,11 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Design Heat Loss @ 70°F ΔT:</span>
-                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight }) / 1000).toFixed(1)}k BTU/hr</span>
+                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft }) / 1000).toFixed(1)}k BTU/hr</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">BTU Loss per °F:</span>
-                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight }) / 70).toFixed(1)} BTU/hr/°F</span>
+                              <span className="font-bold">{(heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft }) / 70).toFixed(1)} BTU/hr/°F</span>
                             </div>
                           </div>
                         </div>
@@ -5348,11 +5514,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                           const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
                           const tons = tonsMap[capacity] || 3.0;
                           const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
-                            squareFeet,
-                            insulationLevel,
-                            homeShape,
-                            ceilingHeight,
-                          });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
                           
                           // Calculate aux heat hour-by-hour
                           let totalHeatPumpKwh = 0;
@@ -7298,11 +7466,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                           })()}</p>
                           <p><strong>Building Heat Loss</strong> = {(() => {
                             const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
-                              squareFeet,
-                              insulationLevel,
-                              homeShape,
-                              ceilingHeight,
-                            });
+            squareFeet,
+            insulationLevel,
+            homeShape,
+            ceilingHeight,
+            wallHeight,
+            hasLoft,
+          });
                             const heatLossBtu = estimatedDesignHeatLoss / 70;
                             const avgWinterIndoorTemp = ((userSettings?.winterThermostatDay ?? 70) * 16 + (userSettings?.winterThermostatNight ?? 68) * 8) / 24;
                             return `${heatLossBtu.toFixed(0)} BTU/hr/°F × (${avgWinterIndoorTemp.toFixed(1)}°F - outdoor temp)`;
@@ -7786,7 +7956,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
                 const avgOutdoorTemp = dailyMetrics.reduce((sum, d) => sum + d.avg, 0) / dailyMetrics.length;
                 const avgIndoorTemp = indoorTemp;
                 const avgTempDiff = avgIndoorTemp - avgOutdoorTemp;
-                const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight });
+                const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft });
                 const btuLossPerDegF = estimatedDesignHeatLoss / 70;
                 const totalHours = dailyMetrics.length * 24;
                 const totalBtuDelivered = totalForecastEnergy * 3412.14; // Convert kWh to BTU

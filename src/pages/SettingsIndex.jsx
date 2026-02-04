@@ -92,41 +92,27 @@ export default function SettingsIndex() {
           {settingsSections.map((section) => {
             const Icon = section.icon;
             const colorClass = colorClasses[section.color];
-            const isComingSoon = section.id === 'bridge-ai';
             
             return (
               <Link
                 key={section.id}
-                to={isComingSoon ? "#" : section.path}
-                onClick={(e) => {
-                  if (isComingSoon) {
-                    e.preventDefault();
-                  }
-                }}
-                className={`group bg-[#0C1118] border border-slate-800 rounded-xl p-6 transition-all ${
-                  isComingSoon
-                    ? "opacity-50 cursor-not-allowed"
-                    : "hover:border-slate-700 hover:bg-slate-900/50"
-                }`}
-                title={isComingSoon ? "Coming Soon" : section.description}
+                to={section.path}
+                className="group bg-[#0C1118] border border-slate-800 rounded-xl p-6 transition-all hover:border-slate-700 hover:bg-slate-900/50"
+                title={section.description}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl ${colorClass} flex items-center justify-center border ${isComingSoon ? "opacity-50" : ""}`}>
+                    <div className={`w-12 h-12 rounded-xl ${colorClass} flex items-center justify-center border`}>
                       <Icon className="w-6 h-6" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-bold ${isComingSoon ? "text-[#7C8894]" : "text-[#A7B0BA]"}`}>{section.number}</span>
-                        <h2 className={`text-xl font-bold transition-colors ${
-                          isComingSoon
-                            ? "text-[#7C8894]"
-                            : "text-[#E8EDF3] group-hover:text-white"
-                        }`}>
+                        <span className="text-xs font-bold text-[#A7B0BA]">{section.number}</span>
+                        <h2 className="text-xl font-bold transition-colors text-[#E8EDF3] group-hover:text-white">
                           {section.label}
                         </h2>
                       </div>
-                      <p className={`text-sm ${isComingSoon ? "text-[#7C8894]" : "text-[#A7B0BA]"}`}>
+                      <p className="text-sm text-[#A7B0BA]">
                         {section.description}
                       </p>
                       {section.note && (
@@ -136,9 +122,7 @@ export default function SettingsIndex() {
                       )}
                     </div>
                   </div>
-                  {!isComingSoon && (
-                    <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" />
-                  )}
+                  <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" />
                 </div>
               </Link>
             );

@@ -131,6 +131,50 @@ function AppInner() {
     });
   }, []);
   
+  // Background sync: keep bridge HMI updated with forecast data every 5 minutes
+  React.useEffect(() => {
+    const syncToBridge = () => {
+      const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+      if (!bridgeUrl) return;
+      
+      // Get cached forecast from localStorage (set by Monthly/Weekly Forecaster)
+      const cached = localStorage.getItem('last_forecast_summary');
+      if (!cached) return;
+      
+      try {
+        const payload = JSON.parse(cached);
+        // Only sync if we have valid cost data
+        if (!payload.totalMonthlyCost && !payload.totalHPCost) return;
+        
+        // Update timestamp for this sync
+        payload.timestamp = Date.now();
+        
+        fetch(`${bridgeUrl}/api/settings/last_forecast_summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: payload }),
+        }).catch(() => {});
+        
+        if (import.meta.env.DEV) {
+          console.log(`🔄 Background sync to bridge: $${(payload.totalMonthlyCost || payload.totalHPCost * 4.33).toFixed(2)}/month`);
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    };
+    
+    // Sync on app load
+    const initialTimer = setTimeout(syncToBridge, 5000);
+    
+    // Then sync every 5 minutes
+    const interval = setInterval(syncToBridge, 5 * 60 * 1000);
+    
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, []);
+  
   // Enable swipe navigation on touch devices
   useSwipeNavigation();
   

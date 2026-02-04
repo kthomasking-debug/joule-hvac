@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   useState,
   useMemo,
   useEffect,
@@ -894,6 +894,58 @@ const SevenDayCostForecaster = () => {
     }
   }, []); // Run once on mount
 
+  // Check for HMI-updated target temp from bridge on mount
+  useEffect(() => {
+    const checkHMIUpdates = async () => {
+      try {
+        const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+        if (!bridgeUrl) return;
+        
+        const response = await fetch(`${bridgeUrl}/api/settings`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+        if (!response.ok) return;
+        
+        const settings = await response.json();
+        const forecast = settings?.last_forecast_summary;
+        
+        // Check if this was updated from HMI and has a newer target temp
+        if (forecast?.updatedFromHMI && forecast?.targetTemp) {
+          const hmiTargetTemp = Number(forecast.targetTemp);
+          const currentTargetTemp = Number(userSettings?.indoorTemp) || 70;
+          
+          // Only update if HMI value is different
+          if (hmiTargetTemp !== currentTargetTemp && hmiTargetTemp >= 60 && hmiTargetTemp <= 80) {
+            console.log(`🌡️ Applying HMI target temp: ${hmiTargetTemp}°F (was ${currentTargetTemp}°F)`);
+            setUserSetting("indoorTemp", hmiTargetTemp);
+            // Clear the flag so we don't keep applying it
+            forecast.updatedFromHMI = false;
+            fetch(`${bridgeUrl}/api/settings/last_forecast_summary`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ value: forecast }),
+            }).catch(() => {});
+          }
+        }
+        
+        // Also check for direct hmiTargetTemp setting
+        const hmiDirect = settings?.userSettings?.hmiTargetTemp;
+        if (hmiDirect && typeof hmiDirect === 'number') {
+          const currentTargetTemp = Number(userSettings?.indoorTemp) || 70;
+          if (hmiDirect !== currentTargetTemp && hmiDirect >= 60 && hmiDirect <= 80) {
+            console.log(`🌡️ Applying direct HMI target temp: ${hmiDirect}°F`);
+            setUserSetting("indoorTemp", hmiDirect);
+          }
+        }
+      } catch {
+        // Ignore errors - bridge might not be available
+      }
+    };
+    
+    checkHMIUpdates();
+  }, []); // Run once on mount
+
   // Debug logging for elevation changes (moved after locHomeElevation is defined)
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1427,8 +1479,26 @@ const SevenDayCostForecaster = () => {
           timestamp: Date.now(),
           // Include daily summary for Ask Joule access
           dailySummary: weeklyMetrics.summary || [],
+          // Include temperature settings for HMI display
+          targetTemp: indoorTemp,
+          nightTemp: nighttimeTemp,
+          mode: energyMode,
         };
         localStorage.setItem("last_forecast_summary", JSON.stringify(payload));
+        
+        // Sync to bridge for Pi HMI display
+        try {
+          const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
+          if (bridgeUrl) {
+            fetch(`${bridgeUrl}/api/settings/last_forecast_summary`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ value: payload }),
+            }).catch(() => {/* ignore sync errors */});
+          }
+        } catch {
+          /* ignore sync errors */
+        }
       } catch {
         /* ignore persistence errors */
       }

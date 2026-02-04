@@ -2509,16 +2509,11 @@ const SettingsPage = () => {
                 const Icon = section.icon;
                 const isActive = activeSection === section.id;
                 const isExpanded = expandedSections[section.id];
-                const isComingSoon = section.id === "bridge-ai";
                 return (
                   <Link
                     key={section.id}
-                    to={isComingSoon ? "#" : `/settings/${section.id}`}
+                    to={`/settings/${section.id}`}
                     onClick={(e) => {
-                      if (isComingSoon) {
-                        e.preventDefault();
-                        return;
-                      }
                       // If already on that section, toggle expand/collapse
                       if (sectionFromRoute === section.id) {
                         e.preventDefault();
@@ -2526,18 +2521,16 @@ const SettingsPage = () => {
                       }
                     }}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                      isComingSoon
-                        ? "bg-[#0C1118] text-[#7C8894] border border-slate-800 opacity-50 cursor-not-allowed"
-                        : isActive
+                      isActive
                         ? "bg-[#1E4CFF] text-white shadow-lg shadow-blue-500/20"
                         : "bg-[#0C1118] text-[#A7B0BA] hover:text-white hover:bg-slate-900 border border-slate-800"
                     }`}
-                    title={isComingSoon ? "Coming Soon" : section.description}
+                    title={section.description}
                   >
-                    <Icon className={`w-4 h-4 ${isComingSoon ? "text-slate-600" : isActive ? "text-white" : "text-slate-400"}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400"}`} />
                     <span className="text-xs font-bold">{section.number}</span>
                     <span>{section.label}</span>
-                    {!isComingSoon && (isExpanded ? (
+                    {(isExpanded ? (
                       <ChevronUp className="w-3 h-3 ml-1" />
                     ) : (
                       <ChevronDown className="w-3 h-3 ml-1" />
@@ -2580,16 +2573,11 @@ const SettingsPage = () => {
               </div>
               {sections.map((section) => {
                 const Icon = section.icon;
-                const isComingSoon = section.id === "bridge-ai";
                 return (
                   <a
                     key={section.id}
-                    href={isComingSoon ? "#" : `#${section.id}`}
+                    href={`#${section.id}`}
                     onClick={(e) => {
-                      if (isComingSoon) {
-                        e.preventDefault();
-                        return;
-                      }
                       e.preventDefault();
                       const element = document.getElementById(section.id);
                       if (element) {
@@ -2611,15 +2599,13 @@ const SettingsPage = () => {
                       }
                     }}
                     className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all ${
-                      isComingSoon
-                        ? "text-[#7C8894] opacity-50 cursor-not-allowed"
-                        : activeSection === section.id
+                      activeSection === section.id
                         ? "bg-[#1E4CFF] text-white shadow-lg shadow-blue-500/20"
                         : "text-[#A7B0BA] hover:text-white hover:bg-slate-900"
                     }`}
-                    title={isComingSoon ? "Coming Soon" : section.description}
+                    title={section.description}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${isComingSoon ? "text-slate-600" : activeSection === section.id ? "text-white" : "text-slate-400"}`} />
+                    <Icon className={`w-3.5 h-3.5 ${activeSection === section.id ? "text-white" : "text-slate-400"}`} />
                     <span className="font-medium">{section.label}</span>
                   </a>
                 );
