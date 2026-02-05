@@ -91,6 +91,7 @@ const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
 const GeneratorCalculator = lazy(() => import("./pages/GeneratorCalculator"));
 const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
+const BridgePerformance = lazy(() => import("./pages/BridgePerformance"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfUse = lazy(() => import("./legal/TermsOfUse"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
@@ -380,6 +381,17 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Gas vs Heat Pump comparison",
+  },
+  {
+    path: "/analysis/performance",
+    name: "Bridge Performance",
+    label: "Bridge Performance",
+    icon: Activity,
+    Component: BridgePerformance,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Real-time data from your paired Ecobee thermostat",
   },
   {
     path: "/control",

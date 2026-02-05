@@ -867,16 +867,16 @@ const HomeDashboard = () => {
             <p className="text-sm text-[#A7B0BA]">Full month breakdown and spending</p>
           </button>
 
-          {/* Tertiary: Optimizer */}
+          {/* Tertiary: Bridge Performance */}
           <button
-            onClick={(e) => handleFeatureClick("/optimize", e)}
-            className="bg-gradient-to-br from-purple-600/20 to-violet-700/20 border-2 border-purple-500/40 rounded-xl p-6 hover:border-purple-400/60 transition-colors text-left w-full"
+            onClick={(e) => handleFeatureClick("/analysis/performance", e)}
+            className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-6 hover:border-orange-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
-              <Sparkles className="w-6 h-6 text-purple-400" />
-              <h3 className="text-lg font-semibold text-white">Optimizer</h3>
+              <Zap className="w-6 h-6 text-orange-400" />
+              <h3 className="text-lg font-semibold text-white">Your Bridge</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">One-click optimizations to save money</p>
+            <p className="text-sm text-[#A7B0BA]">Real-time data from your thermostat</p>
           </button>
         </div>
 
