@@ -97,6 +97,7 @@ class Status:
     # Bridge/Ecobee connection status: 'connected', 'no_ecobee', 'offline', 'error'
     bridge_status: str = 'offline'
     bridge_ip: str = ''  # Bridge's LAN IP (e.g., 192.168.0.103)
+    device_id: str = ''  # Paired Ecobee device ID (e.g., a7:9f:60:3c:8a:b9)
     # Pairing status from wizard: 'idle', 'wizard_started', 'discovered', 'pairing', 'success', 'error', 'healthy', 'unhealthy'
     pairing_mode: str = 'idle'
     pairing_code: str = ''  # Partial code for display (e.g., "123-XX-XXX")
@@ -286,6 +287,7 @@ class EInkHMI:
                     if devices:
                         d = devices[0]
                         self._device_id = d.get('device_id')
+                        self.status.device_id = d.get('device_id', '')
                         self.status.mode = d.get('mode', 'off')
                         temp_c = d.get('temperature')
                         if temp_c is not None:
@@ -804,27 +806,40 @@ class EInkHMI:
             # Get text width for centering (approximate)
             cost_width = len(cost_str) * 18  # ~18px per char for big font
             cost_x = (SCREEN_W - cost_width) // 2
-            self.draw.text((cost_x, content_y + 8), cost_str, font=FONT_BIG, fill=0)
+            self.draw.text((cost_x, content_y + 5), cost_str, font=FONT_BIG, fill=0)
             
             # "per month" label - centered below
-            self.draw.text((SCREEN_W // 2 - 28, content_y + 44), "per month", font=FONT_MED, fill=0)
+            self.draw.text((SCREEN_W // 2 - 28, content_y + 38), "per month", font=FONT_MED, fill=0)
             
-            # Bottom info row
-            info_y = content_y + 64
-            # Weekly cost on left (show actual weekly if available, otherwise derive from monthly)
+            # Weekly cost on left, below "per month"
             weekly = self.status.weekly_cost if self.status.weekly_cost else (monthly / 4.33)
-            self.draw.text((4, info_y), f"${weekly:.2f}/wk", font=FONT_SMALL, fill=0)
+            self.draw.text((4, content_y + 54), f"${weekly:.2f}/wk", font=FONT_SMALL, fill=0)
             
-            # Indoor temp in center (if available)
+            # Temps on right side: "In: 67° → 70°  Out: 33°"
+            temp_str = ""
             if self.status.last_ok and self.status.temp > 0:
-                self.draw.text((90, info_y), f"In: {self.status.temp:.0f}°", font=FONT_SMALL, fill=0)
-            
-            # Outdoor on right
+                temp_str = f"In:{self.status.temp:.0f}°"
+                if self.status.target_temp > 0:
+                    temp_str += f"→{self.status.target_temp:.0f}°"
             if self.status.weather_ok:
-                self.draw.text((160, info_y), f"Out: {self.status.outdoor_temp:.0f}° {self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
-            # Bridge IP on second row if available
+                if temp_str:
+                    temp_str += "  "
+                temp_str += f"Out:{self.status.outdoor_temp:.0f}°"
+            if temp_str:
+                # Right-align temperature info
+                self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
+            
+            # Bridge IP and device ID at very bottom
             if self.status.bridge_ip:
-                self.draw.text((4, info_y + 14), f"Bridge IP: {self.status.bridge_ip}", font=FONT_SMALL, fill=0)
+                ip_str = f"IP: {self.status.bridge_ip}"
+                self.draw.text((4, content_y + 68), ip_str, font=FONT_SMALL, fill=0)
+                # Show device ID (last 8 chars) on right, or humidity if no device
+                if self.status.device_id:
+                    # Show short device ID (last 8 chars: e.g., "3c:8a:b9")
+                    short_id = self.status.device_id[-8:] if len(self.status.device_id) > 8 else self.status.device_id
+                    self.draw.text((155, content_y + 68), f"ID:{short_id}", font=FONT_SMALL, fill=0)
+                elif self.status.weather_ok and self.status.outdoor_humidity:
+                    self.draw.text((200, content_y + 68), f"{self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
         else:
             # No cost data - show status info
             self.draw.text((10, content_y + 10), 'Joule Status', font=FONT_MED, fill=0)

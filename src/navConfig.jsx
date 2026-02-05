@@ -1105,7 +1105,7 @@ export const routes = [
     name: "Monthly Forecast",
     label: "Monthly Forecast",
     icon: Calendar,
-    Component: MonthlyBudget,
+    Component: MonthlyBudgetPlanner,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,

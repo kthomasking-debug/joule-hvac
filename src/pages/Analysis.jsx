@@ -86,7 +86,7 @@ const Analysis = () => {
   const AnnualForecast = () => <MonthlyBudgetPlanner initialMode="annual" />;
 
   const tabs = [
-    { id: 'forecast', label: 'Weekly Forecast', icon: Calendar, component: SevenDayCostForecaster },
+    { id: 'forecast', label: 'Weekly Simulator', icon: Calendar, component: SevenDayCostForecaster },
     { id: 'budget', label: 'Monthly Forecast', icon: TrendingUp, component: MonthlyBudgetPlanner },
     { id: 'annual', label: 'Annual Forecast', icon: TrendingUp, component: AnnualForecast },
   ];
@@ -101,8 +101,8 @@ const Analysis = () => {
 
   // Tab descriptions for context
   const tabDescriptions = {
-    forecast: "See what you'll spend this week based on your schedule and weather.",
-    budget: "Plan your monthly energy budget and explore how different strategies affect your costs.",
+    forecast: "Simulate your weekly costs using target temps — not connected to Ecobee.",
+    budget: "Track your monthly energy spending with a full daily breakdown.",
     annual: "View your annual heating and cooling cost breakdown by month.",
   };
 
@@ -126,7 +126,7 @@ const Analysis = () => {
             {/* Page Header - Always visible */}
             <header className="mb-2">
               <div className="flex items-center justify-between mb-0.5">
-                <h1 className="text-lg font-semibold text-white">Forecaster</h1>
+                <h1 className="text-lg font-semibold text-white">Cost Simulator</h1>
                 <Link
                   to="/analysis/annual"
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
@@ -136,7 +136,7 @@ const Analysis = () => {
                 </Link>
               </div>
               <p className="text-xs text-[#A7B0BA] italic">
-                Forecast costs, compare systems, and explore what your thermostat data reveals — all in one place.
+                Simulate costs, track monthly spending, and explore what your thermostat data reveals — all in one place.
               </p>
             </header>
 

@@ -843,28 +843,28 @@ const HomeDashboard = () => {
 
         {/* Quick Links - Simplified to 3 main actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Primary: Cost Forecaster */}
+          {/* Primary: Cost Simulator */}
           <button
             onClick={(e) => handleFeatureClick("/analysis/forecast", e)}
             className="bg-gradient-to-br from-green-600/20 to-emerald-700/20 border-2 border-green-500/40 rounded-xl p-6 hover:border-green-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-green-400" />
-              <h3 className="text-lg font-semibold text-white">Cost Forecaster</h3>
+              <h3 className="text-lg font-semibold text-white">Cost Simulator</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">See your 7-day energy cost prediction</p>
+            <p className="text-sm text-[#A7B0BA]">7-day forecast using your target temp</p>
           </button>
 
-          {/* Secondary: Monthly Budget */}
+          {/* Secondary: Monthly Forecast */}
           <button
             onClick={(e) => handleFeatureClick("/analysis/monthly-budget", e)}
             className="bg-gradient-to-br from-blue-600/20 to-indigo-700/20 border-2 border-blue-500/40 rounded-xl p-6 hover:border-blue-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <TrendingUp className="w-6 h-6 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Monthly Budget</h3>
+              <h3 className="text-lg font-semibold text-white">Monthly Forecast</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">Track spending and daily breakdown</p>
+            <p className="text-sm text-[#A7B0BA]">Full month breakdown and spending</p>
           </button>
 
           {/* Tertiary: Optimizer */}
