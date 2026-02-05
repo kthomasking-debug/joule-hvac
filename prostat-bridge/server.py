@@ -4757,8 +4757,19 @@ async def init_app():
     
     # Serve static files from the web app build directory
     # This allows the Pi to serve the full web UI at http://joule-bridge.local
-    web_app_dir = Path(__file__).parent.parent / 'dist'
-    if web_app_dir.exists():
+    # Try multiple possible locations
+    possible_paths = [
+        Path('/home/pi/git/joule-hvac/dist'),  # Pi deployment path
+        Path(__file__).parent.parent / 'dist',  # Development path
+        Path('/home/pi/dist'),  # Fallback
+    ]
+    web_app_dir = None
+    for path in possible_paths:
+        if path.exists():
+            web_app_dir = path
+            break
+    
+    if web_app_dir:
         logger.info(f"Serving web app from {web_app_dir}")
         app.router.add_static('/assets', web_app_dir / 'assets', name='assets')
         
