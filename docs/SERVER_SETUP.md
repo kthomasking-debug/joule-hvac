@@ -1,8 +1,25 @@
-# Server Setup & Deployment
+# Local Development Server
 
-> **Important:** This app runs on a standalone Node.js server that's **independent of any IDE or development tool**. You don't need Cursor, VS Code, or any dev server running.
+> ⚠️ **This guide is for developers only.** End users should visit `https://joule.netlify.app` or their Pi's local URL.
 
-## Quick Start
+This document explains how to run the app locally for development and testing. It's **not** required for end users.
+
+## For End Users
+
+Simply visit one of these URLs - no setup needed:
+
+| Scenario | URL |
+|----------|-----|
+| **From anywhere (Internet)** | `https://joule.netlify.app` |
+| **On home WiFi (Pi installed)** | `http://192.168.0.103:8080` |
+
+That's it. No servers to start, no building required.
+
+---
+
+## For Developers: Local Testing
+
+If you're developing or testing locally, you can run a standalone server on your machine.
 
 ### Build the App
 
@@ -41,11 +58,11 @@ The `server.js` file is a simple Express.js server that:
 
 | Device | URL |
 |--------|-----|
-| Local computer | `http://localhost:5173` |
+| Your computer | `http://localhost:5173` |
 | Other computers on WiFi | `http://192.168.0.108:5173` |
 | Mobile phone on WiFi | `http://192.168.0.108:5173` |
 
-## Workflow for Development
+## Development Workflow
 
 1. **Make code changes** in your editor
 2. **Build**: `npm run build`

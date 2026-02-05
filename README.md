@@ -2,6 +2,21 @@
 
 A React + Vite web app for smart thermostat control, energy forecasting, and HomeKit integration.
 
+## Using Joule
+
+### End Users
+
+Just visit one of these - no setup required:
+
+- **From anywhere (Internet)**: https://joule.netlify.app
+- **On your home WiFi (if Pi installed)**: http://192.168.0.103:8080
+
+That's it. See [User Manual](docs/USER_MANUAL.md) for setup and pairing.
+
+### Developers
+
+For local development, see [Local Dev Server](docs/SERVER_SETUP.md).
+
 ## System Architecture
 
 ```

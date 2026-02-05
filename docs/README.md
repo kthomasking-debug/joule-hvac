@@ -1,15 +1,26 @@
 # Documentation
 
+## For End Users
+
+Just visit one of these - no setup needed:
+- **From Internet**: https://joule.netlify.app
+- **On home WiFi**: http://192.168.0.103:8080
+
 ## Quick Start
 
 | I want to... | Read this |
 |--------------|-----------|
-| Run the app on my machine | [Server Setup](SERVER_SETUP.md) |
-| Set up my thermostat | [User Manual](USER_MANUAL.md) |
 | Understand the system | [Architecture](ARCHITECTURE.md) |
+| Set up my thermostat | [User Manual](USER_MANUAL.md) |
 | Install the bridge | [Bridge Installation](BRIDGE-INSTALLATION-GUIDE.md) |
 | Set up the Pi HMI | [Pi E-Ink Guide](PI_EINK_DEPLOYMENT_GUIDE.md) |
 | Troubleshoot issues | [Admin Manual](ADMIN_MANUAL.md) |
+
+## For Developers Only
+
+| I want to... | Read this |
+|--------------|-----------|
+| Run the app locally for development | [Local Dev Server](SERVER_SETUP.md) |
 
 ## Documentation Structure
 
