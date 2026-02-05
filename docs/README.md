@@ -1,39 +1,64 @@
-# Documentation Structure
+# Documentation
 
-This folder contains all documentation for the Joule HVAC project.
+## Quick Start
 
-## Manuals
+| I want to... | Read this |
+|--------------|-----------|
+| Run the app on my machine | [Server Setup](SERVER_SETUP.md) |
+| Set up my thermostat | [User Manual](USER_MANUAL.md) |
+| Understand the system | [Architecture](ARCHITECTURE.md) |
+| Install the bridge | [Bridge Installation](BRIDGE-INSTALLATION-GUIDE.md) |
+| Set up the Pi HMI | [Pi E-Ink Guide](PI_EINK_DEPLOYMENT_GUIDE.md) |
+| Troubleshoot issues | [Admin Manual](ADMIN_MANUAL.md) |
 
-- **`USER_MANUAL.md`** - Complete guide for end users (setup, pairing, troubleshooting, voice commands)
-- **`ADMIN_MANUAL.md`** - Guide for support staff and administrators (remote support, troubleshooting, Tailscale)
+## Documentation Structure
 
-## Why Two Docs Folders?
+```
+docs/
+├── SERVER_SETUP.md          # Running the standalone app server
+├── USER_MANUAL.md           # End-user setup guide
+├── ADMIN_MANUAL.md          # Support & troubleshooting
+├── ARCHITECTURE.md          # System architecture
+├── BRIDGE-INSTALLATION-GUIDE.md  # Technical setup
+├── QUICK_START_GUIDE.md     # Voice commands cheat sheet
+│
+├── api/                     # API documentation
+├── development/             # Developer guides
+├── installation/            # Platform-specific install guides
+├── optional-features/       # Optional integrations
+│   ├── hardware/           # Relay, sensors, tablets
+│   ├── integrations/       # IFTTT, HomeKit, Blueair
+│   └── troubleshooting/    # Debug guides
+│
+└── archive/                 # Old implementation notes
+```
 
-- **`docs/`** (this folder) - Main documentation repository
-  - Source of truth for all documentation
-  - Used by developers and support staff
-  - Includes both user and support documentation
+## Key Documents
 
-- **`public/docs/`** - Public-facing documentation
-  - Served on the website (if applicable)
-  - May be a subset of main docs
-  - User-facing guides only
+### Getting Started
+- [Server Setup](SERVER_SETUP.md) - How to run the app standalone (without Cursor/VS Code)
 
-## Quick Reference
+### For Users
+- [User Manual](USER_MANUAL.md) - Complete setup, pairing, voice commands
+- [Quick Start Guide](QUICK_START_GUIDE.md) - Voice command reference
+- [Thermostat User Manual](THERMOSTAT_USER_MANUAL.md) - Physical controls
 
-| Document | Audience | Purpose |
-|----------|----------|---------|
-| `USER_MANUAL.md` | End Users | Complete setup and usage guide |
-| `ADMIN_MANUAL.md` | Support Staff | Remote support and troubleshooting |
-| `BRIDGE-INSTALLATION-GUIDE.md` | Developers | Technical installation details |
-| `ECOBEE-PAIRING-GUIDE.md` | End Users | Step-by-step pairing instructions |
-| `QUICK_START_GUIDE.md` | End Users | Quick start for voice commands |
+### For Support Staff
+- [Admin Manual](ADMIN_MANUAL.md) - Remote support, Tailscale
+- [Bridge Troubleshooting](BRIDGE-TROUBLESHOOTING-MAINTENANCE.md) - Common issues
 
-## Contributing
+### For Developers
+- [Architecture](ARCHITECTURE.md) - System overview, network topology
+- [Bridge Installation](BRIDGE-INSTALLATION-GUIDE.md) - Technical setup
+- [API Documentation](api/BRIDGE_ENDPOINTS_COMPLETE.md) - REST endpoints
 
-When updating documentation:
-1. Update files in `docs/` (main repository)
-2. If needed, sync relevant files to `public/docs/` for web serving
-3. Keep ASCII diagrams for visual clarity
-4. Test all links and instructions
+## Hardware Reference
+
+| Component | IP | Services |
+|-----------|-----|----------|
+| Raspberry Pi | 192.168.0.103 | prostat-bridge (8080), pi-hmi |
+
+## Archive
+
+Implementation notes and completed task documentation are in [archive/](archive/). These are kept for historical reference but are not maintained.
 

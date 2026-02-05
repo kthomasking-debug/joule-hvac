@@ -113,19 +113,23 @@ Run the build to check for any errors:
 npm run build
 ```
 
-### 4.2 Start Development Server
+### 4.2 Start the Server
 
-Start the dev server to test the new page:
+Start the server to test the new page:
 
 ```bash
-npm run dev
+node server.js
 ```
+
+Then open `http://localhost:5173`
 
 ### 4.3 Verify Functionality
 
 1. Navigate to `/tools` to see your new tool in the list
 2. Click on your tool to navigate to the new page
 3. Verify the page loads correctly and functions as expected
+
+For details on running the app, see [SERVER_SETUP.md](SERVER_SETUP.md).
 
 ## Common Issues and Solutions
 

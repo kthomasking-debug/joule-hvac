@@ -149,16 +149,9 @@ export async function pairDevice(deviceId, pairingCode) {
       });
       clearTimeout(timeoutId);
 
-      // Store paired device
-      const pairedDevices = await getPairedDevices();
-      if (!pairedDevices.includes(deviceId)) {
-        pairedDevices.push(deviceId);
-        localStorage.setItem(
-          "joulePairedDevices",
-          JSON.stringify(pairedDevices)
-        );
-      }
-
+      // Don't immediately fetch paired devices - the caller will do that
+      // Just return the response from the successful pairing
+      console.log(`✅ Pairing request successful for ${deviceId}`);
       return data;
     } catch (innerError) {
       clearTimeout(timeoutId);
@@ -209,15 +202,17 @@ export async function getPairedDevices() {
       // Always update localStorage with the current state from API
       // This ensures cache is cleared when devices are unpaired
       const deviceIds = pairedData.devices ? pairedData.devices.map(d => d.device_id) : [];
+      console.log('📡 API /api/paired returned:', deviceIds);
       localStorage.setItem("joulePairedDevices", JSON.stringify(deviceIds));
       return deviceIds;
     } catch (e) {
       // API call failed, fall back to localStorage cache
-      console.debug("Could not fetch paired devices from API, using cache:", e);
+      console.warn("Could not fetch paired devices from API, using cache:", e);
     }
     
     // Fallback to localStorage cache
     const stored = localStorage.getItem("joulePairedDevices");
+    console.log('💾 Using localStorage cache:', stored);
     return stored ? JSON.parse(stored) : [];
   } catch {
     return [];

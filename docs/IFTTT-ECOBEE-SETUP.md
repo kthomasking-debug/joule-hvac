@@ -221,10 +221,11 @@ http://localhost:3001/api/health
 
 ## Step 5: View in React App
 
-1. Start your React app:
+1. Build and start the app server:
 
-   ```powershell
-   npm run dev
+   ```bash
+   npm run build
+   node server.js
    ```
 
 2. Navigate to http://localhost:5173

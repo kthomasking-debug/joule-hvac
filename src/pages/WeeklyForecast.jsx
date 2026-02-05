@@ -517,7 +517,7 @@ const WeeklyForecast = () => {
   );
   
   return (
-    <div className="page-gradient-overlay min-h-screen">
+    <div className="page-gradient-overlay pb-8">
       <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-2 lg:py-2 bg-slate-800/40 dark:bg-slate-800/20 rounded-2xl">
         {/* Header */}
         <div className="mb-2 animate-fade-in-up pt-1 pb-1">

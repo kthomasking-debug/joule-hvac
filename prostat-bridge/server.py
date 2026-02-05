@@ -388,6 +388,22 @@ async def discover_devices():
         # The device ID is typically in device.id or device.description.id
         device_id = getattr(device, 'id', None) or getattr(device.description, 'id', None) or str(device.description.get('id', 'Unknown'))
         
+        # DEBUG: Log all discovered attributes and alternative IDs
+        logger.info(f"=== RAW DEVICE DATA ===")
+        logger.info(f"  device type: {type(device)}")
+        logger.info(f"  device.id: {getattr(device, 'id', 'N/A')}")
+        logger.info(f"  device.__dict__: {getattr(device, '__dict__', 'N/A')}")
+        
+        if hasattr(device, 'description'):
+            logger.info(f"  description type: {type(device.description)}")
+            if isinstance(device.description, dict):
+                logger.info(f"  description keys: {list(device.description.keys())}")
+                logger.info(f"  description: {device.description}")
+            else:
+                logger.info(f"  description.__dict__: {getattr(device.description, '__dict__', 'N/A')}")
+        
+        logger.info(f"Final device_id being used: {device_id}")
+        
         # Skip duplicates (same device ID)
         if device_id in seen_device_ids:
             logger.debug(f"Skipping duplicate device: {device_id}")
@@ -1104,6 +1120,9 @@ async def handle_discover(request):
     """GET /api/discover - Discover HomeKit devices"""
     try:
         devices = await discover_devices()
+        logger.info(f"✓ Discovery complete - returning {len(devices)} device(s)")
+        for d in devices:
+            logger.info(f"  - {d.get('name')} (device_id={d.get('device_id')})")
         return web.json_response({'devices': devices})
     except Exception as e:
         logger.error(f"Discovery error: {e}")
@@ -1123,23 +1142,24 @@ async def handle_pair(request):
                 status=400
             )
         
-        # IMPROVEMENT: Always do fresh discovery before pairing to avoid stale device IDs
-        logger.info(f"Performing fresh discovery before pairing attempt...")
-        discovered_devices.clear()  # Clear stale cache
-        fresh_devices = await discover_devices()
-        
-        # Check if requested device_id is still valid
+        # Check if we already have the device in cache (from recent discovery)
         if device_id not in discovered_devices:
-            # Provide helpful error with current device IDs
-            current_ids = [d['device_id'] for d in fresh_devices] if fresh_devices else []
-            error_msg = f"Device {device_id} not found in fresh discovery. "
-            if current_ids:
-                error_msg += f"Available devices: {current_ids}. "
-                error_msg += "The device ID may have changed after a HomeKit reset. Use the new device ID."
-            else:
-                error_msg += "No HomeKit devices found on the network."
-            return web.json_response({'error': error_msg}, status=400)
+            # Device not in cache - do a fresh discovery to find it
+            logger.info(f"Device {device_id} not in cache. Performing fresh discovery...")
+            fresh_devices = await discover_devices()
+            
+            # Check if device is now in cache after fresh discovery
+            if device_id not in discovered_devices:
+                # Still not found - provide helpful error
+                current_ids = [d.get('device_id') for d in fresh_devices] if fresh_devices else []
+                error_msg = f"Device {device_id} not found. "
+                if current_ids:
+                    error_msg += f"Available devices: {', '.join(current_ids)}. "
+                error_msg += "Make sure the Ecobee is in HomeKit pairing mode and visible on the network."
+                logger.warning(f"Pairing error: {error_msg}")
+                return web.json_response({'error': error_msg}, status=400)
         
+        logger.info(f"Device {device_id} found in cache. Starting pairing...")
         await pair_device(device_id, pairing_code)
         return web.json_response({'success': True, 'device_id': device_id})
     except Exception as e:

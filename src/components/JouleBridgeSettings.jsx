@@ -199,8 +199,10 @@ export default function JouleBridgeSettings() {
     
     try {
       const paired = await getPairedDevices();
+      console.log('🔄 Loaded paired devices:', paired);
       setPairedDevices(paired);
       const primaryId = await getPrimaryDeviceId();
+      console.log('🔄 Primary device ID:', primaryId);
       setPrimaryDeviceIdState(primaryId);
       
       // Check reachability of each paired device
@@ -455,7 +457,13 @@ export default function JouleBridgeSettings() {
       console.log(`Pairing device ${deviceId} on bridge: ${pairingBridgeUrl}`);
       
       await pairDevice(deviceId, pairingCode);
-      loadState();
+      
+      // Wait a moment for backend to fully save the pairing
+      console.log('⏳ Waiting for backend to save pairing...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      console.log('🔄 Reloading state after pairing...');
+      await loadState();
       setPairingCode('');
       setSelectedDevice(null);
       alert(`✅ Successfully paired on ${pairingBridgeUrl}!`);

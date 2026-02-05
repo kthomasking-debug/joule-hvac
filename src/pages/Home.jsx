@@ -841,33 +841,21 @@ const HomeDashboard = () => {
           </div>
         ) : null}
 
-        {/* Quick Links - Simplified to 3 main actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Quick Links - Simplified to 2 main actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Primary: Cost Simulator */}
           <button
-            onClick={(e) => handleFeatureClick("/analysis/forecast", e)}
+            onClick={(e) => handleFeatureClick("/analysis", e)}
             className="bg-gradient-to-br from-green-600/20 to-emerald-700/20 border-2 border-green-500/40 rounded-xl p-6 hover:border-green-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-green-400" />
               <h3 className="text-lg font-semibold text-white">Cost Simulator</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">7-day forecast using your target temp</p>
+            <p className="text-sm text-[#A7B0BA]">Weekly, monthly, and annual forecasts</p>
           </button>
 
-          {/* Secondary: Monthly Forecast */}
-          <button
-            onClick={(e) => handleFeatureClick("/analysis/monthly-budget", e)}
-            className="bg-gradient-to-br from-blue-600/20 to-indigo-700/20 border-2 border-blue-500/40 rounded-xl p-6 hover:border-blue-400/60 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <TrendingUp className="w-6 h-6 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Monthly Forecast</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">Full month breakdown and spending</p>
-          </button>
-
-          {/* Tertiary: Bridge Performance */}
+          {/* Secondary: Bridge Performance */}
           <button
             onClick={(e) => handleFeatureClick("/analysis/performance", e)}
             className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-6 hover:border-orange-400/60 transition-colors text-left w-full"

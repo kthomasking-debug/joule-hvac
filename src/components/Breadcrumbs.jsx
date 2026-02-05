@@ -73,7 +73,7 @@ export default function Breadcrumbs() {
 
   return (
     <nav 
-      className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
+      className="hidden md:flex mb-4 items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
       aria-label="Breadcrumb"
     >
       <ol className="flex items-center gap-2">

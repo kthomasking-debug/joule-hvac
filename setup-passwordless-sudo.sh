@@ -2,8 +2,8 @@
 # Setup passwordless sudo for bridge service restart
 # Usage: ./setup-passwordless-sudo.sh [bridge-ip] [username] [password]
 
-BRIDGE_IP="${1:-192.168.0.106}"
-BRIDGE_USER="${2:-tom-pc}"
+BRIDGE_IP="${1:-192.168.0.103}"
+BRIDGE_USER="${2:-pi}"
 PASSWORD="${3:-}"
 
 echo "🔧 Setting up passwordless sudo for bridge service restart..."

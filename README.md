@@ -1,66 +1,121 @@
-# Engineering Tools
+# Joule HVAC
 
-This workspace contains a React + Vite app and supporting scripts for HVAC/energy tools, including optional hardware integration for development.
+A React + Vite web app for smart thermostat control, energy forecasting, and HomeKit integration.
 
-- **User Manual**: See `docs/USER_MANUAL.md` for complete end-user setup guide (includes setup, pairing, troubleshooting, and voice commands)
-- **Admin Manual**: See `docs/ADMIN_MANUAL.md` for support staff and administrators (remote support, troubleshooting, Tailscale setup)
-- **Technical Installation**: See `docs/BRIDGE-INSTALLATION-GUIDE.md` for developers/advanced users
-- **Relay Setup & Safety**: See `docs/relay-setup.md`
+## System Architecture
 
-## Development
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Raspberry Pi Zero 2W                        │
+│                      (192.168.0.103)                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  prostat-bridge (port 8080)                              │   │
+│  │  - HomeKit thermostat control                            │   │
+│  │  - REST API for web app                                  │   │
+│  │  - Ecobee pairing via HomeKit                            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  pi-hmi (e-paper HAT display)                            │   │
+│  │  - Touch screen interface                                │   │
+│  │  - Status display, QR code for setup                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              ▲
+                              │ HTTP API
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Web App (joule.netlify.app or localhost:5173)                  │
+│  - Energy forecasting & budgeting                               │
+│  - Ask Joule natural language interface                         │
+│  - Thermostat control via bridge                                │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-- Start app: `npm run dev`
-- Run tests: `npm test`
-- Build: `npm run build`
+## Quick Links
 
-## Joule Bridge (HomeKit Integration)
+| Document | Audience | Purpose |
+|----------|----------|---------|
+| [User Manual](docs/USER_MANUAL.md) | End Users | Setup, pairing, voice commands |
+| [Admin Manual](docs/ADMIN_MANUAL.md) | Support Staff | Remote support, Tailscale |
+| [Bridge Installation](docs/BRIDGE-INSTALLATION-GUIDE.md) | Developers | Technical setup |
+| [Relay Setup](docs/relay-setup.md) | Installers | Safety & wiring |
+| [Pi HMI Guide](pi-hmi/README.md) | Developers | E-paper display setup |
 
-The Joule Bridge enables local-only thermostat control via HomeKit. The bridge server runs on **port 8080** by default.
+## Development & Running the App
 
-### Quick Start
+### Quick Start (Standalone Server)
 
-1. **Install Dependencies:**
-   ```bash
-   cd prostat-bridge
-   pip3 install -r requirements.txt
-   # Or use virtual environment:
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
+The app runs on a **standalone Node.js server** that works independently of any IDE:
 
-2. **Start the Bridge:**
-   ```bash
-   cd prostat-bridge
-   source venv/bin/activate  # if using venv
-   python3 server.py
-   ```
+```bash
+# Build the production app
+npm run build
 
-3. **Pair Your Ecobee:**
-   - Enable HomeKit pairing on your Ecobee (Menu → Settings → Installation Settings → HomeKit)
-   - Use the web app's Settings page → Joule Bridge Settings → Discover → Pair
-   - Or use the API (see `prostat-bridge/README.md`)
+# Start the server (keeps running even after closing terminal/IDE)
+node server.js
+```
 
-### Documentation
+Then open:
+- **Local**: `http://localhost:5173`
+- **Network**: `http://192.168.0.108:5173` (access from phone/tablet on same WiFi)
 
-- **Complete Setup Guide**: See `prostat-bridge/README.md` for detailed installation, pairing, and troubleshooting
-- **API Documentation**: See `prostat-bridge/README.md` for all API endpoints
-- **Bridge URL**: Must be configured explicitly (e.g., `http://192.168.0.106:8080`)
-- **Health Check**: `curl http://YOUR_BRIDGE_IP:8080/health`
+For more details, see [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md).
 
-### Configuration
+### Development Workflow
 
-**⚠️ Important:** The web app requires an explicit bridge URL configuration. It will **never** use localhost as a fallback.
+```bash
+npm install        # Install dependencies
+npm run build      # Production build (required for server.js)
+node server.js     # Run the standalone server
 
-1. **Find your bridge IP address** (e.g., `192.168.0.106`)
-2. **Configure in Settings**: Go to Settings → Joule Bridge Settings → Enter bridge URL (e.g., `http://192.168.0.106:8080`)
-3. **Click Save** and verify connection status
+# For rapid development with auto-rebuild:
+npm run build -- --watch  # In one terminal
+node server.js            # In another terminal
+```
 
-Alternatively, set the `VITE_JOULE_BRIDGE_URL` environment variable during build.
+### Testing
 
-### Troubleshooting
+```bash
+npm test           # Run tests with Vitest
+```
 
-If you encounter pairing issues, connection problems, or the device becomes unpaired after restart, see the comprehensive troubleshooting section in `prostat-bridge/README.md`.
+## Pi Services
+
+The Raspberry Pi runs two systemd services:
+
+| Service | Port | Purpose | Start/Stop |
+|---------|------|---------|------------|
+| `prostat-bridge` | 8080 | HomeKit bridge & API | `sudo systemctl start prostat-bridge` |
+| `pi-hmi` | - | E-paper touch display | `sudo systemctl start pi-hmi` |
+
+**Check status:**
+```bash
+ssh pi@192.168.0.103 "systemctl status prostat-bridge pi-hmi"
+```
+
+**Health check:**
+```bash
+curl http://192.168.0.103:8080/health
+```
+
+## Connecting the Web App
+
+1. Go to **Settings → Joule Bridge Settings**
+2. Enter bridge URL: `http://192.168.0.103:8080`
+3. Click **Save** and verify connection
+
+Or set `VITE_JOULE_BRIDGE_URL=http://192.168.0.103:8080` in `.env`.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| E-paper not responding to touch | `sudo systemctl restart pi-hmi` |
+| Bridge not connecting | `sudo systemctl restart prostat-bridge` |
+| Web app can't reach bridge | Check Pi IP, ensure on same network |
+| Ecobee unpaired | Re-pair via Settings → Bridge → Discover |
+
+For detailed troubleshooting, see `prostat-bridge/README.md`.
 
 ## Building for Android on Windows
 

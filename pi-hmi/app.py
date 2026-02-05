@@ -10,6 +10,14 @@ import json
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+# QR code generation
+try:
+    import qrcode
+    HAS_QRCODE = True
+except ImportError:
+    HAS_QRCODE = False
+    print('[WARN] qrcode module not installed. QR display unavailable. Install with: pip install qrcode[pil]')
+
 # Try to import Waveshare Touch e-Paper HAT library
 # Expecting you cloned https://github.com/waveshare/Touch_e-Paper_HAT
 try:
@@ -154,7 +162,7 @@ DEFAULT_LON = float(os.environ.get('HMI_LON', '-83.958'))
 class EInkHMI:
     def __init__(self):
         self.status = Status()
-        self.current_page = 'status'  # 'status'|'actions'|'guide'
+        self.current_page = 'status'  # 'status'|'actions'|'guide'|'qr'
         self.touch_x = None
         self.touch_y = None
         self._device_id = None  # primary thermostat device_id for set-mode/setpoint
@@ -651,8 +659,8 @@ class EInkHMI:
                 self.current_page = 'actions'  # Energy page
                 print(f'[NAV] -> Energy')
             else:
-                self.current_page = 'guide'
-                print(f'[NAV] -> 3-Day Forecast')
+                self.current_page = 'qr'
+                print(f'[NAV] -> QR Code')
 
     def _send_mode(self, mode: str):
         if not self._device_id:
@@ -753,6 +761,8 @@ class EInkHMI:
             self._render_status()
         elif self.current_page == 'actions':
             self._render_actions()
+        elif self.current_page == 'qr':
+            self._render_qr()
         else:
             self._render_guide()
         # Bottom nav
@@ -1004,12 +1014,63 @@ class EInkHMI:
                 self.draw.text((10, row_y + 16), 'Run 7-Day Forecaster', font=FONT_SMALL, fill=0)
                 self.draw.text((10, row_y + 32), 'in the Joule app', font=FONT_SMALL, fill=0)
 
+    def _render_qr(self):
+        """Render QR code to bridge URL"""
+        if not HAS_QRCODE:
+            self.draw.text((10, 20), "QR code library", font=FONT_SMALL, fill=0)
+            self.draw.text((10, 30), "not installed", font=FONT_SMALL, fill=0)
+            self.draw.text((10, 50), "Run: pip install", font=FONT_SMALL, fill=0)
+            self.draw.text((10, 60), "qrcode[pil]", font=FONT_SMALL, fill=0)
+            return
+        
+        try:
+            # Generate QR code for the bridge URL
+            bridge_url = f"http://{self.status.bridge_ip}:8080/home" if self.status.bridge_ip else "http://192.168.0.103:8080/home"
+            
+            qr = qrcode.QRCode(
+                version=1,  # Controls the size of the QR code
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=2,  # Size of each box in pixels
+                border=1,    # Minimum border (quiet zone)
+            )
+            qr.add_data(bridge_url)
+            qr.make(fit=True)
+            
+            # Create QR image
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Scale QR code to fit in the content area (y=14 to y=98, ~84 pixels height)
+            # Leave some margin: 20px margins, so ~210px width available
+            target_size = min(SCREEN_W - 40, SCREEN_H - 34)  # Content area minus margins
+            target_size = (target_size // 2) * 2  # Make even number
+            qr_img = qr_img.resize((target_size, target_size), Image.Resampling.NEAREST)
+            
+            # Convert to 1-bit (black/white) for e-ink
+            qr_bw = qr_img.convert('1')
+            
+            # Paste QR code centered on display
+            qr_x = (SCREEN_W - target_size) // 2
+            qr_y = (SCREEN_H - 34 - target_size) // 2 + 14  # Center vertically in content area
+            self.canvas.paste(qr_bw, (qr_x, qr_y))
+            
+            # Add URL label below QR code
+            label_y = qr_y + target_size + 2
+            if label_y + 8 < SCREEN_H - 20:
+                # Truncate URL for display if needed
+                display_url = bridge_url[:20] + "..." if len(bridge_url) > 20 else bridge_url
+                text_x = (SCREEN_W - len(display_url) * 5) // 2
+                self.draw.text((text_x, label_y), display_url, font=FONT_SMALL, fill=0)
+        except Exception as e:
+            print(f'[WARN] QR code generation failed: {e}')
+            self.draw.text((10, 20), "QR Code Error", font=FONT_MED, fill=0)
+            self.draw.text((10, 40), str(e)[:30], font=FONT_SMALL, fill=0)
+
     def _render_nav(self):
         nav_h = 20
         y = SCREEN_H - nav_h
         self.draw.rectangle((0, y, SCREEN_W, SCREEN_H), fill=0)
         
-        labels = ['Status', 'Energy', '3-Day']
+        labels = ['Status', 'Energy', 'QR Code']
         btn_w = SCREEN_W // 3
         
         for i, lab in enumerate(labels):

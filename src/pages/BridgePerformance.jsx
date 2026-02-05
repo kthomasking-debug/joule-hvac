@@ -20,15 +20,66 @@ const BridgePerformance = () => {
     setError(null);
     try {
       const response = await fetch('/api/status');
-      if (!response.ok) throw new Error('Failed to fetch bridge data');
-      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('BRIDGE_NOT_FOUND');
+        }
+        throw new Error('BRIDGE_ERROR');
+      }
+      const text = await response.text();
+      // Check if response is HTML (error page) instead of JSON
+      if (text.startsWith('<!') || text.startsWith('<html')) {
+        throw new Error('BRIDGE_NOT_RUNNING');
+      }
+      const data = JSON.parse(text);
       setBridgeData(data);
       setLastUpdate(new Date());
     } catch (err) {
-      setError(err.message);
+      // Convert technical errors to user-friendly codes
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('NETWORK_ERROR');
+      } else if (err.message.includes('JSON') || err.message.includes('Unexpected token')) {
+        setError('BRIDGE_NOT_RUNNING');
+      } else if (err.message.startsWith('BRIDGE_')) {
+        setError(err.message);
+      } else {
+        setError('UNKNOWN_ERROR');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // User-friendly error messages
+  const getErrorDisplay = (errorCode) => {
+    const errors = {
+      NETWORK_ERROR: {
+        title: "Can't Reach Bridge",
+        message: "Unable to connect to the bridge. Make sure you're on the same WiFi network as your Pi.",
+        hint: "Try: Check your WiFi connection or refresh the page."
+      },
+      BRIDGE_NOT_RUNNING: {
+        title: "Bridge Not Running",
+        message: "The bridge service isn't responding. It may need to be restarted on your Pi.",
+        hint: "SSH into your Pi and run: sudo systemctl restart prostat-bridge"
+      },
+      BRIDGE_NOT_FOUND: {
+        title: "Bridge Endpoint Missing",
+        message: "The /api/status endpoint wasn't found. The bridge may be outdated.",
+        hint: "Try updating and redeploying the bridge to your Pi."
+      },
+      BRIDGE_ERROR: {
+        title: "Bridge Error",
+        message: "The bridge returned an error. Check the bridge logs for details.",
+        hint: "SSH into your Pi and run: sudo journalctl -u prostat-bridge -n 50"
+      },
+      UNKNOWN_ERROR: {
+        title: "Something Went Wrong",
+        message: "An unexpected error occurred while fetching bridge data.",
+        hint: "Try refreshing the page or check the browser console for details."
+      }
+    };
+    return errors[errorCode] || errors.UNKNOWN_ERROR;
   };
 
   useEffect(() => {
@@ -67,10 +118,10 @@ const BridgePerformance = () => {
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-red-400 font-semibold">Connection Error</p>
-              <p className="text-red-300/80 text-sm">{error}</p>
-              <p className="text-red-300/60 text-xs mt-1">
-                Make sure your bridge is running and you're on the same network.
+              <p className="text-red-400 font-semibold">{getErrorDisplay(error).title}</p>
+              <p className="text-red-300/80 text-sm">{getErrorDisplay(error).message}</p>
+              <p className="text-red-300/60 text-xs mt-2 font-mono bg-red-900/20 px-2 py-1 rounded">
+                💡 {getErrorDisplay(error).hint}
               </p>
             </div>
           </div>

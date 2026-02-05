@@ -423,7 +423,7 @@ export default function Onboarding() {
       // If pairing code was entered, go to monthly budget (needs bridge connection)
       // Otherwise, go to weekly forecast (works without bridge)
       const hasPairingCode = localStorage.getItem('pairingCode');
-      navigate(hasPairingCode ? "/analysis/monthly-budget" : "/analysis/weekly");
+      navigate(hasPairingCode ? "/analysis/monthly" : "/analysis/weekly");
     }
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 

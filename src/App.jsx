@@ -915,7 +915,7 @@ function AppInner() {
   };
 
   return (
-    <div className="app-scale-wrapper flex h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
+    <div className="app-scale-wrapper flex min-h-screen md:h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
       {/* Skip Links for Accessibility */}
       <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:z-50 focus-within:top-0 focus-within:left-0 focus-within:right-0">
         <a
@@ -1071,20 +1071,9 @@ function AppInner() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header (Mobile only, or simplified for desktop) */}
-        <header className="md:hidden flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700">
-          <NavLink to="/" className="flex items-center">
-            <img 
-              src="/Logo.svg" 
-              alt="Joule Logo" 
-              className="h-10 w-auto dark:invert transition-all" 
-            />
-          </NavLink>
-        </header>
-
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Main Content */}
-        <main id="main-content" className="flex-1 overflow-y-auto p-4" tabIndex={-1}>
+        <main id="main-content" className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4" tabIndex={-1}>
         {mode === "ai" ? (
           <AIMode />
         ) : (
@@ -1143,7 +1132,7 @@ function AppInner() {
 
       {/* Bottom Navigation for Mobile */}
       {navLinks && navLinks.length > 0 && (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around z-30">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around z-30 pb-safe" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           {navLinks.slice(0, 4).map((route) => (
             <NavLink
               key={route.path}
@@ -1226,7 +1215,7 @@ function AppInner() {
             data-testid="ask-joule-fab"
             aria-label="Open Ask Joule"
             title="Ask Joule"
-            className={`fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full shadow-2xl bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all ${
+            className={`fixed right-4 z-50 inline-flex items-center justify-center rounded-full shadow-2xl bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all bottom-20 md:bottom-6 md:right-6 ${
               location.pathname === "/upgrades"
                 ? "px-6 py-4 w-20 h-20 text-base font-bold"
                 : "w-12 h-12"

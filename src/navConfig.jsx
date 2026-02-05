@@ -1114,14 +1114,14 @@ export const routes = [
   },
   {
     path: "/analysis/monthly-budget",
-    name: "Monthly Forecast",
-    label: "Monthly Forecast",
+    name: "Monthly Forecast (Redirect)",
+    label: "Monthly Forecast (Redirect)",
     icon: Calendar,
-    Component: MonthlyBudgetPlanner,
+    Component: () => { return <Navigate to="/analysis/monthly" replace />; },
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "Current month budget with daily breakdown",
+    description: "Redirects to /analysis/monthly",
   },
   {
     path: "/analysis/city-comparison",

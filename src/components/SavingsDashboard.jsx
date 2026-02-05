@@ -590,7 +590,7 @@ export function BillTrackingCard({ className = "" }) {
       ) : null}
       
       <Link
-        to="/analysis/monthly-budget"
+        to="/analysis/monthly"
         className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
       >
         <Calendar className="w-4 h-4" />

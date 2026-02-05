@@ -2,8 +2,8 @@
 # Update the remote bridge with latest code from GitHub
 # Usage: ./update-remote-bridge.sh [bridge-ip] [username]
 
-BRIDGE_IP="${1:-192.168.0.106}"
-BRIDGE_USER="${2:-tom-pc}"
+BRIDGE_IP="${1:-192.168.0.103}"
+BRIDGE_USER="${2:-pi}"
 
 echo "🔄 Updating remote bridge at $BRIDGE_USER@$BRIDGE_IP..."
 
