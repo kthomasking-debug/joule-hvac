@@ -124,9 +124,11 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
       const forecastDays = (forecastData.daily?.time || [])
         .map((date, idx) => {
           const humidity = dailyHumidity.find((h) => h.date === date);
+          // Parse YYYY-MM-DD dates as local time (add T12:00 to avoid timezone issues)
+          const localDate = new Date(date + 'T12:00:00');
           return {
-            date: new Date(date),
-            dayOfMonth: new Date(date).getDate(),
+            date: localDate,
+            dayOfMonth: localDate.getDate(),
             high: forecastData.daily.temperature_2m_max[idx],
             low: forecastData.daily.temperature_2m_min[idx],
             avg:
@@ -213,7 +215,8 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
 
               // Extract temperatures for this day across all years
               archiveData.daily.time.forEach((dateStr, idx) => {
-                const date = new Date(dateStr);
+                // Parse YYYY-MM-DD as local time to avoid timezone issues
+                const date = new Date(dateStr + 'T12:00:00');
                 // Check if this date matches the day of month we're looking for
                 if (
                   date.getDate() === day &&
