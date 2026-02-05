@@ -57,6 +57,52 @@ export function SavingsTrackerWidget({ className = "" }) {
     return { totalSavings: 0, monthSavings: 0, streakDays: 0 };
   });
 
+  // Calculate savings from forecast data
+  useEffect(() => {
+    try {
+      const forecastSummary = localStorage.getItem("last_forecast_summary");
+      if (forecastSummary) {
+        const data = JSON.parse(forecastSummary);
+        // Savings = what gas would cost - what heat pump costs
+        // Gas cost is typically ~30-50% higher than heat pump for same heating
+        const hpCost = data.totalHPCostWithAux || data.totalHPCost || data.weeklyCost || 0;
+        const gasCost = data.totalGasCost || (hpCost * 1.4); // Assume 40% more if not provided
+        const weeklyDiff = gasCost - hpCost;
+        
+        // Scale to monthly (4.33 weeks per month)
+        const monthSavings = Math.max(0, weeklyDiff * 4.33);
+        
+        // Get stored total or start at monthly savings
+        const stored = localStorage.getItem("savingsAccount");
+        const prev = stored ? JSON.parse(stored) : {};
+        const totalSavings = (prev.totalSavings || 0) + (monthSavings > 0 ? monthSavings / 30 : 0); // Add daily increment
+        
+        // Calculate streak (consecutive days with savings)
+        const now = new Date();
+        const lastUpdate = prev.lastUpdated ? new Date(prev.lastUpdated) : null;
+        const isNewDay = !lastUpdate || now.toDateString() !== lastUpdate.toDateString();
+        const streakDays = isNewDay && monthSavings > 0 
+          ? (prev.streakDays || 0) + 1 
+          : (prev.streakDays || 0);
+        
+        const newSavings = {
+          totalSavings: Math.round(totalSavings * 100) / 100,
+          monthSavings: Math.round(monthSavings * 100) / 100,
+          lastUpdated: now.toISOString(),
+          streakDays: isNewDay ? streakDays : prev.streakDays || 0,
+        };
+        
+        // Only update if values changed
+        if (newSavings.monthSavings !== savings.monthSavings) {
+          setSavings(newSavings);
+          localStorage.setItem("savingsAccount", JSON.stringify(newSavings));
+        }
+      }
+    } catch (e) {
+      console.log("Error calculating savings:", e);
+    }
+  }, []); // Run once on mount
+
   const monthlyGoal = 50; // $50/month savings goal
   const progress = Math.min(100, (savings.monthSavings / monthlyGoal) * 100);
 

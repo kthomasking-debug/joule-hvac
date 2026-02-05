@@ -176,6 +176,8 @@ export default function Onboarding() {
   const [bridgeError, setBridgeError] = useState(null);
   const [bridgeConnected, setBridgeConnected] = useState(false);
   const [bridgeDeviceId, setBridgeDeviceId] = useState(localStorage.getItem('bridgeDeviceId') || '');
+  const [ecobeeAlreadyPaired, setEcobeeAlreadyPaired] = useState(false);
+  const [pairedEcobeeInfo, setPairedEcobeeInfo] = useState(null);
 
   // Load saved location on mount
   useEffect(() => {
@@ -535,6 +537,35 @@ export default function Onboarding() {
       if (bridgeInfo.device_id) {
         setBridgeDeviceId(bridgeInfo.device_id);
         localStorage.setItem('bridgeDeviceId', bridgeInfo.device_id);
+      }
+      
+      // Check if Ecobee is already paired by checking /api/status
+      try {
+        const statusRes = await fetch(`${bridgeUrl}/api/status`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        });
+        if (statusRes.ok) {
+          const status = await statusRes.json();
+          // If we have thermostat data, Ecobee is already paired
+          if (status.current_temperature !== undefined && status.target_temperature !== undefined) {
+            setEcobeeAlreadyPaired(true);
+            setPairedEcobeeInfo({
+              currentTemp: status.current_temperature,
+              targetTemp: status.target_temperature,
+              mode: status.mode,
+              humidity: status.humidity
+            });
+            // Mark as connected since Ecobee is working
+            setBridgeConnected(true);
+            localStorage.setItem('bridgeIp', bridgeIp.trim());
+            localStorage.setItem('jouleBridgeUrl', bridgeUrl);
+            setBridgeConnecting(false);
+            return; // Skip the pairing flow since already paired
+          }
+        }
+      } catch {
+        // Status check failed - continue with normal pairing flow
       }
       
       // If pairing code provided, do the actual Ecobee pairing
@@ -1203,29 +1234,46 @@ export default function Onboarding() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Find this on your Pi bridge device or router (shows as &quot;Joule-Bridge&quot;)</p>
               </div>
 
-              {/* Pairing Code Input - from Ecobee */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
-                  <Lock size={16} /> Ecobee Pairing Code
-                </label>
-                <input
-                  type="text"
-                  placeholder="XXX-XX-XXX"
-                  value={pairingCode}
-                  onChange={(e) => {
-                    let value = e.target.value.replace(/[^\d]/g, '');
-                    if (value.length > 8) value = value.slice(0, 8);
-                    if (value.length > 5) {
-                      value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
-                    } else if (value.length > 3) {
-                      value = value.slice(0, 3) + '-' + value.slice(3);
-                    }
-                    setPairingCode(value);
-                  }}
-                  className={fullInputClasses}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Enter the 8-digit code from your Ecobee (Menu → Settings → Installation Settings → HomeKit)</p>
-              </div>
+              {/* Pairing Code Input - from Ecobee (hidden if already paired) */}
+              {!ecobeeAlreadyPaired ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
+                    <Lock size={16} /> Ecobee Pairing Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="XXX-XX-XXX"
+                    value={pairingCode}
+                    onChange={(e) => {
+                      let value = e.target.value.replace(/[^\d]/g, '');
+                      if (value.length > 8) value = value.slice(0, 8);
+                      if (value.length > 5) {
+                        value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
+                      } else if (value.length > 3) {
+                        value = value.slice(0, 3) + '-' + value.slice(3);
+                      }
+                      setPairingCode(value);
+                    }}
+                    className={fullInputClasses}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Enter the 8-digit code from your Ecobee (Menu → Settings → Installation Settings → HomeKit)</p>
+                </div>
+              ) : (
+                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-green-700 dark:text-green-200 font-semibold">
+                    <CheckCircle2 size={18} />
+                    Ecobee Already Paired
+                  </div>
+                  {pairedEcobeeInfo && (
+                    <div className="mt-2 text-sm text-green-600 dark:text-green-300 space-y-1">
+                      <div>🌡️ Current: {pairedEcobeeInfo.currentTemp?.toFixed(1)}°C → Target: {pairedEcobeeInfo.targetTemp?.toFixed(1)}°C</div>
+                      <div>📍 Mode: {pairedEcobeeInfo.mode || 'Unknown'}</div>
+                      {pairedEcobeeInfo.humidity && <div>💧 Humidity: {pairedEcobeeInfo.humidity}%</div>}
+                    </div>
+                  )}
+                  <p className="text-xs text-green-600/70 dark:text-green-400/70 mt-2">Your Ecobee is connected and streaming live data.</p>
+                </div>
+              )}
 
               {/* Error Message */}
               {bridgeError && (
@@ -1278,7 +1326,7 @@ export default function Onboarding() {
               </button>
             </div>
 
-            {!pairingCode?.replace(/-/g, '') && !dismissedPairingNotice && (
+            {!pairingCode?.replace(/-/g, '') && !dismissedPairingNotice && !ecobeeAlreadyPaired && (
               <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-3">
                 <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
