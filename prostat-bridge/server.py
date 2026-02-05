@@ -4755,6 +4755,27 @@ async def init_app():
     for route in list(app.router.routes()):
         cors.add(route)
     
+    # Serve static files from the web app build directory
+    # This allows the Pi to serve the full web UI at http://joule-bridge.local
+    web_app_dir = Path(__file__).parent.parent / 'dist'
+    if web_app_dir.exists():
+        logger.info(f"Serving web app from {web_app_dir}")
+        app.router.add_static('/assets', web_app_dir / 'assets', name='assets')
+        
+        # Serve index.html for all non-API routes (SPA fallback)
+        async def serve_spa(request):
+            """Serve index.html for client-side routing"""
+            index_file = web_app_dir / 'index.html'
+            if index_file.exists():
+                return web.FileResponse(index_file)
+            return web.Response(text='Web app not built. Run: npm run build', status=404)
+        
+        # Add SPA fallback route (must be last)
+        app.router.add_get('/{path:.*}', serve_spa)
+    else:
+        logger.warning(f"Web app directory not found: {web_app_dir}")
+        logger.warning("Run 'npm run build' to build the web app")
+    
     return app
 
 
