@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, Link } from "react-router-dom";
 import {
   Calendar,
   AlertTriangle,
@@ -346,10 +346,11 @@ const MonthlyBudget = () => {
     fetchHistorical();
   }, [userLocation?.latitude, userLocation?.longitude, currentMonthIndex, currentYear]);
   
-  // Merge historical and forecast data
+  // Merge historical and forecast data, plus extend with typical year data
   const allHourlyData = useMemo(() => {
     const combined = [];
     const now = new Date();
+    const endOfMonth = new Date(currentYear, currentMonthIndex + 1, 0, 23, 59, 59);
     
     // Add historical data (only past days)
     if (historicalData) {
@@ -366,8 +367,8 @@ const MonthlyBudget = () => {
     if (extendedForecast) {
       extendedForecast.forEach(hour => {
         const hourTime = new Date(hour.time);
-        // Only include hours from now onwards
-        if (hourTime >= now) {
+        // Only include hours from now onwards and within current month
+        if (hourTime >= now && hourTime <= endOfMonth) {
           combined.push(hour);
         }
       });
@@ -376,8 +377,56 @@ const MonthlyBudget = () => {
     // Sort by time
     combined.sort((a, b) => new Date(a.time) - new Date(b.time));
     
+    // Find the last day with actual data
+    let lastDataDate = null;
+    if (combined.length > 0) {
+      lastDataDate = new Date(combined[combined.length - 1].time);
+    }
+    
+    // If forecast doesn't cover full month, extend with typical year estimates
+    if (lastDataDate && lastDataDate < endOfMonth) {
+      const lastDayOfData = lastDataDate.getDate();
+      const remainingDays = daysInCurrentMonth - lastDayOfData;
+      
+      if (remainingDays > 0) {
+        // Get typical temps from recent data to estimate
+        const recentTemps = combined.slice(-48).map(h => h.temp).filter(t => t != null);
+        const avgRecentTemp = recentTemps.length > 0 
+          ? recentTemps.reduce((a, b) => a + b, 0) / recentTemps.length 
+          : 40; // Default fallback
+        const minRecentTemp = recentTemps.length > 0 ? Math.min(...recentTemps) : avgRecentTemp - 15;
+        const maxRecentTemp = recentTemps.length > 0 ? Math.max(...recentTemps) : avgRecentTemp + 15;
+        
+        // Generate typical year hours for remaining days
+        for (let dayOffset = 1; dayOffset <= remainingDays; dayOffset++) {
+          const dayDate = new Date(currentYear, currentMonthIndex, lastDayOfData + dayOffset);
+          
+          // Generate 24 hours for this day using sinusoidal pattern
+          for (let hour = 0; hour < 24; hour++) {
+            const hourTime = new Date(dayDate);
+            hourTime.setHours(hour, 0, 0, 0);
+            
+            // Simple sinusoidal temp variation: coldest at 6am, warmest at 3pm
+            const hourAngle = ((hour - 6 + 24) % 24) * (Math.PI / 12);
+            const tempRange = maxRecentTemp - minRecentTemp;
+            const hourTemp = avgRecentTemp + (tempRange / 2) * Math.sin(hourAngle - Math.PI / 2);
+            
+            // Add some daily variation (warmer towards end of Feb)
+            const dayVariation = (dayOffset / remainingDays) * 3; // Slight warming trend
+            
+            combined.push({
+              time: hourTime,
+              temp: hourTemp + dayVariation,
+              humidity: 70, // Default humidity
+              isEstimate: true, // Flag as estimated data
+            });
+          }
+        }
+      }
+    }
+    
     return combined;
-  }, [historicalData, extendedForecast]);
+  }, [historicalData, extendedForecast, currentYear, currentMonthIndex, daysInCurrentMonth]);
   
   // Calculate daily breakdown from merged data
   const dailyBreakdown = useMemo(() => {
@@ -412,11 +461,14 @@ const MonthlyBudget = () => {
       let dayMinTemp = Infinity;
       let dayMaxTemp = -Infinity;
       let daySumTemp = 0;
+      let hasEstimatedHours = false;
       
       hours.forEach((hour) => {
         const temp = hour.temp;
         const humidity = hour.humidity ?? 70; // Default humidity if not provided
         const dtHours = hour.dtHours ?? 1.0; // Use dtHours if available, default to 1.0
+        
+        if (hour.isEstimate) hasEstimatedHours = true;
         
         if (temp == null) return; // Skip null temps
         
@@ -477,6 +529,7 @@ const MonthlyBudget = () => {
       
       return {
         date: date,
+        dateKey: dateKey,
         dayOfMonth: date.getDate(),
         dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
         avgTemp: dayAvgTemp,
@@ -492,6 +545,7 @@ const MonthlyBudget = () => {
         energyCost: dayEnergyCost,
         fixedCost: dayFixedCharge,
         totalCost: dayTotalCost,
+        isEstimate: hasEstimatedHours,
       };
     });
     
@@ -511,6 +565,66 @@ const MonthlyBudget = () => {
       totalCost: acc.totalCost + day.totalCost,
     }), { heatingKwh: 0, coolingKwh: 0, totalKwh: 0, heatingCost: 0, coolingCost: 0, totalCost: 0 });
   }, [dailyBreakdown]);
+
+  // Push forecast data to bridge for e-ink display
+  useEffect(() => {
+    if (!monthlyTotals || !dailyBreakdown || dailyBreakdown.length === 0) return;
+    
+    // Get bridge URL from various sources
+    const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || 
+                      (localStorage.getItem('bridgeIp') ? `http://${localStorage.getItem('bridgeIp')}:8080` : null);
+    if (!bridgeUrl) {
+      console.log('No bridge URL configured - skipping forecast push');
+      return;
+    }
+    
+    // Calculate weekly equivalent for bridge display
+    const daysWithData = dailyBreakdown.length;
+    const avgDailyCost = monthlyTotals.totalCost / daysWithData;
+    const weeklyCost = avgDailyCost * 7;
+    
+    const forecastSummary = {
+      location: userLocation?.city ? `${userLocation.city}, ${userLocation.state}` : 'Unknown',
+      totalHPCost: weeklyCost,
+      totalHPCostWithAux: weeklyCost,
+      totalWeeklyCost: weeklyCost,
+      weeklyCost: weeklyCost,
+      monthlyCost: monthlyTotals.totalCost,
+      totalKwh: monthlyTotals.totalKwh,
+      heatingKwh: monthlyTotals.heatingKwh,
+      coolingKwh: monthlyTotals.coolingKwh,
+      daysInMonth: daysInCurrentMonth,
+      daysCalculated: daysWithData,
+      timestamp: Date.now(),
+      source: 'monthly-budget',
+      // Include daily breakdown for detailed display
+      dailySummary: dailyBreakdown.map(day => ({
+        date: day.date.toISOString(),
+        cost: day.totalCost,
+        kwh: day.totalKwh,
+        avgTemp: day.avgTemp,
+        isEstimate: day.isEstimate,
+      })),
+    };
+    
+    // Save to localStorage for other components
+    localStorage.setItem('last_forecast_summary', JSON.stringify(forecastSummary));
+    
+    // Push to bridge
+    fetch(`${bridgeUrl}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        settings: { last_forecast_summary: forecastSummary }
+      }),
+    }).then(response => {
+      if (response.ok) {
+        console.log('✓ Monthly budget forecast pushed to bridge');
+      }
+    }).catch(err => {
+      console.log('Bridge forecast push failed (non-critical):', err.message);
+    });
+  }, [monthlyTotals, dailyBreakdown, userLocation, daysInCurrentMonth]);
   
   const [dismissedInfoBanner, setDismissedInfoBanner] = useState(() => {
     return localStorage.getItem('monthlyBudget_dismissedBanner') === 'true';
@@ -530,13 +644,23 @@ const MonthlyBudget = () => {
     <div className="min-h-screen bg-[#0C0F14] text-white">
       <div className="mx-auto max-w-7xl px-4 py-6">
         <header className="mb-6">
-          <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-            <Calendar className="w-7 h-7 text-blue-400" />
-            Monthly Forecast
-          </h1>
-          <p className="text-base text-gray-300 mt-2 max-w-3xl">
-            See your daily heating and cooling costs for {MONTH_NAMES[currentMonthIndex]}, including historical data from the start of the month plus a 14-day forecast.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white flex items-center gap-2">
+                <Calendar className="w-7 h-7 text-blue-400" />
+                Monthly Forecast
+              </h1>
+              <p className="text-base text-gray-300 mt-2 max-w-3xl">
+                See your daily heating and cooling costs for {MONTH_NAMES[currentMonthIndex]}. Uses historical data, 14-day NWS forecast, and estimates for the rest of the month.
+              </p>
+            </div>
+            <Link
+              to="/onboarding?rerun=true"
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors"
+            >
+              Run Onboarding
+            </Link>
+          </div>
         </header>
         
         {!dismissedInfoBanner && (
@@ -589,11 +713,14 @@ const MonthlyBudget = () => {
         </div>
         
         {!ecobeeTargetTemp ? (
-          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6 text-center">
+          <Link
+            to="/onboarding?rerun=true"
+            className="block bg-yellow-900/20 border border-yellow-700 rounded-lg p-6 text-center hover:border-yellow-500 hover:bg-yellow-900/30 transition-colors"
+          >
             <AlertTriangle className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-yellow-200 mb-2">Connect to Joule Bridge</h3>
             <p className="text-yellow-300">Connect to Joule Bridge to see your 14-day forecast budget.</p>
-          </div>
+          </Link>
         ) : forecastLoading ? (
           <div className="bg-[#151A21] border border-[#222A35] rounded-lg p-6 text-center">
             <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto mb-3" />
@@ -665,12 +792,17 @@ const MonthlyBudget = () => {
                           idx % 2 === 0 ? "bg-[#151A21]" : "bg-[#1A1F27]"
                         } ${
                           isToday ? "ring-2 ring-blue-500" : ""
+                        } ${
+                          day.isEstimate ? "opacity-70" : ""
                         }`}
                       >
                         <td className="px-4 py-3 font-medium">
                           {day.dayName}, {day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           {isToday && (
                             <span className="ml-1 text-xs text-blue-400">←</span>
+                          )}
+                          {day.isEstimate && (
+                            <span className="ml-1 text-xs text-yellow-500" title="Estimated based on recent weather patterns">~</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-cyan-400">

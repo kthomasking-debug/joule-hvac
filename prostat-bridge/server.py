@@ -3568,8 +3568,22 @@ async def handle_bridge_info(request):
             pass
         
         lan_ip = get_lan_ip()
+        
+        # Get MAC address (device ID) from wlan0 or eth0
+        device_id = None
+        try:
+            for iface in ['wlan0', 'eth0']:
+                mac_path = f'/sys/class/net/{iface}/address'
+                if os.path.exists(mac_path):
+                    with open(mac_path, 'r') as f:
+                        device_id = f.read().strip().upper().replace(':', '-')
+                        break
+        except Exception:
+            pass
+        
         info = {
             "hostname": socket.gethostname(),
+            "device_id": device_id,
             "username": username,
             "platform": platform.platform(),
             "python_version": sys.version,

@@ -91,6 +91,9 @@ const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
 const GeneratorCalculator = lazy(() => import("./pages/GeneratorCalculator"));
 const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfUse = lazy(() => import("./legal/TermsOfUse"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 
 import {
   Home as HomeIcon,
@@ -126,6 +129,10 @@ import {
   Gauge,
   Monitor,
   Droplets,
+  Wifi,
+  Shield,
+  Scale,
+  ReceiptText,
 } from "lucide-react";
 
 export const routes = [
@@ -1202,6 +1209,40 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "App settings",
+  },
+  // ===== LEGAL PAGES =====
+  {
+    path: "/privacy",
+    name: "Privacy Policy",
+    label: "Privacy",
+    icon: Shield,
+    Component: PrivacyPolicy,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Privacy policy - how we handle your data",
+  },
+  {
+    path: "/terms",
+    name: "Terms of Use",
+    label: "Terms",
+    icon: Scale,
+    Component: TermsOfUse,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Terms of use and service agreement",
+  },
+  {
+    path: "/refund-policy",
+    name: "Refund Policy",
+    label: "Refunds",
+    icon: ReceiptText,
+    Component: RefundPolicy,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Refund and return policy for hardware purchases",
   },
 ];
 

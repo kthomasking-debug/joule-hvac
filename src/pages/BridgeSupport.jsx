@@ -1436,23 +1436,35 @@ export default function BridgeSupport() {
                     Once Tailscale is installed and the customer signs in, the remote URL will appear here — no need for the customer to find or share an IP.
                   </p>
                   
-                  {status.systemInfo.tailscale?.installed === false && (
-                    <button
-                      type="button"
-                      onClick={installTailscale}
-                      disabled={tailscaleInstalling}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 rounded-lg transition-colors text-sm font-medium cursor-pointer flex items-center gap-2"
+                  <div className="flex gap-2">
+                    {status.systemInfo.tailscale?.installed === false && (
+                      <button
+                        type="button"
+                        onClick={installTailscale}
+                        disabled={tailscaleInstalling}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 rounded-lg transition-colors text-sm font-medium cursor-pointer flex items-center gap-2"
+                      >
+                        {tailscaleInstalling ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Installing…
+                          </>
+                        ) : (
+                          'Install Tailscale on bridge'
+                        )}
+                      </button>
+                    )}
+                    
+                    <a
+                      href="https://tailscale.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors text-sm font-medium cursor-pointer flex items-center gap-2"
                     >
-                      {tailscaleInstalling ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Installing…
-                        </>
-                      ) : (
-                        'Install Tailscale on bridge'
-                      )}
-                    </button>
-                  )}
+                      <ExternalLink className="w-4 h-4" />
+                      Learn About Tailscale
+                    </a>
+                  </div>
                   
                   {tailscaleInstallMessage && (
                     <div className={`mt-4 p-3 rounded-lg text-sm ${tailscaleInstallMessage.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>

@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Data Privacy Commitment</h2>
           </div>
           <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-            ProStat (Joule) is designed with privacy as a core principle. We believe your energy data belongs to you, 
+            Joule Bridge is designed with privacy as a core principle. We believe your energy data belongs to you, 
             and we've built this application to process everything locally in your browser. No data is sent to external 
             servers unless you explicitly choose to share it.
           </p>

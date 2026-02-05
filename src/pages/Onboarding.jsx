@@ -14,8 +14,14 @@ import {
   Network,
   Lock,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Search,
+  Edit3,
+  Clock,
+  HelpCircle,
+  Cloud,
+  Check,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -44,6 +50,16 @@ const STEPS = {
   BUILDING: 2,
   BRIDGE: 3,
   CONFIRMATION: 4,
+};
+
+// Step labels for progress bar
+const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Bridge', 'Done'];
+
+// Step benefits - what each step unlocks
+const STEP_BENEFITS = {
+  [STEPS.LOCATION]: 'Enables local weather data and utility rates',
+  [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
+  [STEPS.BRIDGE]: 'Streams real-time data from your Ecobee thermostat',
 };
 
 export default function Onboarding() {
@@ -153,11 +169,13 @@ export default function Onboarding() {
   
   // Bridge Setup State
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
-  const [pairingCode, setPairingCode] = useState('');
+  const [pairingCode, setPairingCode] = useState(localStorage.getItem('pairingCode') || '');
+  const [dismissedPairingNotice, setDismissedPairingNotice] = useState(false);
   const [bridgeConnecting, setBridgeConnecting] = useState(false);
   const [searchingBridge, setSearchingBridge] = useState(false);
   const [bridgeError, setBridgeError] = useState(null);
   const [bridgeConnected, setBridgeConnected] = useState(false);
+  const [bridgeDeviceId, setBridgeDeviceId] = useState(localStorage.getItem('bridgeDeviceId') || '');
 
   // Load saved location on mount
   useEffect(() => {
@@ -171,10 +189,20 @@ export default function Onboarding() {
           if (loc.elevation) setLocationElevation(loc.elevation);
         }
       }
+      
+      // For rerun, skip to bridge step if location and building are already set
+      if (isRerun) {
+        const hasLocation = savedLocation && JSON.parse(savedLocation).city;
+        const settings = getAllSettings();
+        const hasBuilding = settings.squareFeet && settings.squareFeet > 0;
+        if (hasLocation && hasBuilding) {
+          setStep(STEPS.BRIDGE);
+        }
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [isRerun]);
 
   // Geocode location
   const searchLocation = useCallback(async () => {
@@ -390,7 +418,10 @@ export default function Onboarding() {
       sessionStorage.removeItem("onboardingRedirectPath");
       navigate(redirectPath);
     } else {
-      navigate("/home");
+      // If pairing code was entered, go to monthly budget (needs bridge connection)
+      // Otherwise, go to weekly forecast (works without bridge)
+      const hasPairingCode = localStorage.getItem('pairingCode');
+      navigate(hasPairingCode ? "/analysis/monthly-budget" : "/analysis/weekly");
     }
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
 
@@ -489,39 +520,86 @@ export default function Onboarding() {
     
     try {
       const code = pairingCode?.replace(/-/g, '').length === 8 ? pairingCode : null;
-      const bridgeUrl = `http://${bridgeIp.trim()}:8090`;
+      const bridgeUrl = `http://${bridgeIp.trim()}:8080`;
       
-      // Test connectivity
-      const testRes = await fetch(`${bridgeUrl}/status`, { 
+      // Test connectivity and get bridge info (including device ID)
+      const testRes = await fetch(`${bridgeUrl}/api/bridge/info`, { 
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
       
       if (!testRes.ok) throw new Error('Bridge not responding');
       
-      // Send forecast data to bridge
-      const forecastData = localStorage.getItem('last_forecast_summary');
-      const configPayload = {
-        ...(code && { pairingCode: code }),
-        timestamp: new Date().toISOString(),
-        forecast_summary: forecastData ? JSON.parse(forecastData) : null,
-        location: foundLocation ? {
-          city: foundLocation.city,
-          state: foundLocation.state,
-          latitude: foundLocation.latitude,
-          longitude: foundLocation.longitude,
-          elevation: locationElevation,
-        } : null,
-      };
+      // Extract device ID from bridge info
+      const bridgeInfo = await testRes.json().catch(() => ({}));
+      if (bridgeInfo.device_id) {
+        setBridgeDeviceId(bridgeInfo.device_id);
+        localStorage.setItem('bridgeDeviceId', bridgeInfo.device_id);
+      }
       
-      const configRes = await fetch(`${bridgeUrl}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(configPayload),
-        signal: AbortSignal.timeout(5000)
-      });
+      // If pairing code provided, do the actual Ecobee pairing
+      if (code) {
+        // First discover devices to get the Ecobee device_id
+        const discoverRes = await fetch(`${bridgeUrl}/api/discover`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(15000) // Discovery can take a while
+        });
+        
+        if (!discoverRes.ok) {
+          throw new Error('Failed to discover Ecobee devices. Make sure your Ecobee is on the same network.');
+        }
+        
+        const discovered = await discoverRes.json();
+        if (!discovered.devices || discovered.devices.length === 0) {
+          throw new Error('No Ecobee devices found. Make sure HomeKit is enabled on your Ecobee (Menu → Settings → Installation Settings → HomeKit).');
+        }
+        
+        // Use the first discovered device (usually there's only one Ecobee)
+        const ecobeeDevice = discovered.devices[0];
+        
+        // Now pair with the Ecobee
+        const pairRes = await fetch(`${bridgeUrl}/api/pair`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: ecobeeDevice.device_id,
+            pairing_code: code
+          }),
+          signal: AbortSignal.timeout(30000) // Pairing can take up to 30 seconds
+        });
+        
+        if (!pairRes.ok) {
+          const pairError = await pairRes.json().catch(() => ({}));
+          throw new Error(pairError.error || 'Failed to pair with Ecobee. Check that the pairing code is correct and try again.');
+        }
+      }
       
-      if (!configRes.ok) throw new Error('Failed to send configuration');
+      // Send location and forecast data to bridge settings (optional, won't fail if it doesn't work)
+      try {
+        const forecastData = localStorage.getItem('last_forecast_summary');
+        const configPayload = {
+          settings: {
+            timestamp: new Date().toISOString(),
+            forecast_summary: forecastData ? JSON.parse(forecastData) : null,
+            location: foundLocation ? {
+              city: foundLocation.city,
+              state: foundLocation.state,
+              latitude: foundLocation.latitude,
+              longitude: foundLocation.longitude,
+              elevation: locationElevation,
+            } : null,
+          }
+        };
+        
+        await fetch(`${bridgeUrl}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(configPayload),
+          signal: AbortSignal.timeout(5000)
+        });
+      } catch (settingsErr) {
+        console.log('Settings sync skipped:', settingsErr.message);
+      }
       
       // Store bridge settings
       setBridgeBase(bridgeUrl);
@@ -530,37 +608,120 @@ export default function Onboarding() {
       
       setBridgeConnected(true);
     } catch (err) {
-      setBridgeError(err.message || 'Failed to connect to bridge');
+      // Provide helpful error messages
+      let errorMessage = err.message || 'Failed to connect to bridge';
+      if (errorMessage === 'Failed to fetch' || errorMessage.includes('NetworkError') || errorMessage.includes('fetch')) {
+        errorMessage = `Cannot reach bridge at ${bridgeIp}:8080. Check that:\n• The bridge is powered on\n• You're on the same WiFi network\n• The IP address is correct`;
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        errorMessage = `Bridge at ${bridgeIp} is not responding. It may be offline or the IP has changed.`;
+      }
+      setBridgeError(errorMessage);
       setBridgeConnected(false);
     } finally {
       setBridgeConnecting(false);
     }
   }, [bridgeIp, pairingCode, foundLocation, locationElevation]);
 
+  // Auto-connect when bridge IP and pairing code are both entered
+  useEffect(() => {
+    if (step === STEPS.BRIDGE && bridgeIp.trim() && pairingCode?.replace(/-/g, '').length === 8 && !bridgeConnected && !bridgeConnecting && !bridgeError) {
+      // Debounce to avoid spamming while typing
+      const timer = setTimeout(() => {
+        testBridgeConnection();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [step, bridgeIp, pairingCode, bridgeConnected, bridgeConnecting, bridgeError, testBridgeConnection]);
+
   // Search for Joule-Bridge on the network (mDNS: joule-bridge.local)
   const handleSearchBridge = useCallback(async () => {
     setSearchingBridge(true);
     setBridgeError(null);
+    console.log('[Bridge Search] Starting search...');
+    
+    // Try mDNS first
     try {
       const url = 'http://joule-bridge.local:8080/api/bridge/info';
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error('Bridge not responding');
-      const info = await res.json();
-      const ip = info?.lan_ip || info?.local_ip;
-      if (ip && typeof ip === 'string') {
-        setBridgeIp(ip.trim());
-      } else {
-        throw new Error('Could not get IP from bridge');
+      console.log('[Bridge Search] Trying mDNS:', url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const info = await res.json();
+        console.log('[Bridge Search] mDNS response:', info);
+        // Prioritize lan_ip over local_ip (lan_ip is the actual local network IP, not Tailscale)
+        const ip = info?.lan_ip || info?.local_ip;
+        if (ip && typeof ip === 'string') {
+          // Skip Tailscale IPs (10.x.x.x range used by Tailscale)
+          if (!ip.startsWith('10.') && !ip.startsWith('100.')) {
+            console.log('[Bridge Search] Found via mDNS:', ip);
+            setBridgeIp(ip.trim());
+            setSearchingBridge(false);
+            return;
+          } else {
+            console.log('[Bridge Search] Skipping Tailscale IP:', ip);
+            // If we got a Tailscale IP, try to use the actual local IP from the response
+            if (info?.local_ip && !info.local_ip.startsWith('10.') && !info.local_ip.startsWith('100.')) {
+              console.log('[Bridge Search] Using alternate local IP:', info.local_ip);
+              setBridgeIp(info.local_ip.trim());
+              setSearchingBridge(false);
+              return;
+            }
+          }
+        }
       }
     } catch (err) {
-      const msg = err.message || 'Bridge not found';
+      console.log('[Bridge Search] mDNS failed:', err.message);
+    }
+    
+    // If mDNS fails, try scanning common subnets and IPs
+    try {
+      // Try multiple common subnets
+      const subnets = ['192.168.0', '192.168.1', '10.0.0', '10.0.1'];
+      const commonLastOctets = [103, 100, 101, 102, 104, 105, 110, 150, 200];
+      
+      console.log('[Bridge Search] Scanning subnets:', subnets);
+      
+      for (const subnet of subnets) {
+        for (const octet of commonLastOctets) {
+          const ip = `${subnet}.${octet}`;
+          const testUrl = `http://${ip}:8080/api/bridge/info`;
+          
+          try {
+            console.log('[Bridge Search] Trying:', ip);
+            const res = await fetch(testUrl, { 
+              signal: AbortSignal.timeout(800),
+              mode: 'cors'
+            });
+            
+            if (res.ok) {
+              const info = await res.json();
+              console.log('[Bridge Search] Response from', ip, ':', info);
+              
+              // Verify it's actually a Joule bridge
+              if (info?.device_name?.toLowerCase().includes('joule') || 
+                  info?.hostname?.toLowerCase().includes('joule') ||
+                  info?.lan_ip || info?.local_ip) {
+                console.log('[Bridge Search] ✓ Found bridge at:', ip);
+                setBridgeIp(ip);
+                setSearchingBridge(false);
+                return;
+              }
+            }
+          } catch (err) {
+            // Silent continue for failed IPs
+            continue;
+          }
+        }
+      }
+      
+      throw new Error('Bridge not found on network');
+    } catch (err) {
+      console.log('[Bridge Search] Scan failed:', err.message);
       setBridgeError(
-        msg.includes('Bridge not found') || msg.includes('Failed to fetch') || msg.includes('network')
-          ? 'Joule-Bridge not found. Make sure it\'s on the same network and shows as "Joule-Bridge" in your router.'
-          : msg
+        'Joule-Bridge not found. Check your router for a device named "Joule-Bridge" or manually enter the IP address (typically 192.168.0.103).'
       );
     } finally {
       setSearchingBridge(false);
+      console.log('[Bridge Search] Search complete');
     }
   }, []);
 
@@ -590,21 +751,55 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 relative dark:border dark:border-gray-700"
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl min-h-[80vh] overflow-y-auto p-8 md:p-12 relative dark:border dark:border-gray-700 transition-all duration-300"
+        key={step}
+        style={{ animation: 'fadeSlideIn 0.3s ease-out' }}
       >
+        <style>{`
+          @keyframes fadeSlideIn {
+            from {
+              opacity: 0.7;
+              transform: translateX(10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateX(0);
+            }
+          }
+        `}</style>
         {/* Skip button - Removed: Building details are required for Ask Joule to function */}
         {/* Users must complete onboarding to ensure Ask Joule has necessary data */}
 
-        {/* Progress indicator */}
-        <div className="flex items-center justify-center gap-2 mb-6">
-          {Array.from({ length: totalSteps }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-2 w-16 rounded-full transition-all ${
-                i <= step ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-700"
-              }`}
-            />
-          ))}
+        {/* Progress indicator with step labels */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between gap-1 mb-2">
+            {STEP_LABELS.map((label, i) => (
+              <div
+                key={i}
+                className={`flex-1 text-center text-xs font-medium transition-colors ${
+                  i <= step ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-600"
+                }`}
+              >
+                {i === step && <span className="hidden sm:inline">{label}</span>}
+                {i !== step && <span className="hidden sm:inline text-[10px]">{label}</span>}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-2 flex-1 rounded-full transition-all duration-300 ${
+                  i < step ? "bg-green-500" : i === step ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-700"
+                }`}
+              />
+            ))}
+          </div>
+          {step > 0 && step < STEPS.CONFIRMATION && STEP_BENEFITS[step] && (
+            <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2 italic">
+              {STEP_BENEFITS[step]}
+            </p>
+          )}
         </div>
 
         {/* Step 0: Welcome */}
@@ -631,10 +826,15 @@ export default function Onboarding() {
             <p className="text-lg text-gray-500 dark:text-gray-400 mb-4">
               to the Energy Cost Forecaster
             </p>
-            <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6 max-w-xl mx-auto">
+            <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-4 max-w-xl mx-auto">
               We'll guide you step by step. No rush, no jargon—just a simple path
               to understanding your energy costs.
             </p>
+            
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <Clock size={16} />
+              <span>Takes about 2 minutes</span>
+            </div>
 
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
               Uses sensible defaults. You'll still confirm your home details for accurate estimates.
@@ -687,10 +887,11 @@ export default function Onboarding() {
 
               {foundLocation && !locationLoading && (
                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-900/30 dark:border-green-700">
-                  <p className="text-green-800 text-sm dark:text-green-400">
-                    ✓ Found: {foundLocation}
+                  <p className="text-green-800 text-sm dark:text-green-400 flex items-center justify-center gap-2">
+                    <Check size={16} className="text-green-600" />
+                    Found: <strong>{foundLocation}</strong>
                     {locationElevation !== null && (
-                      <span className="ml-2 text-xs">({Math.round(locationElevation)} ft elevation)</span>
+                      <span className="text-xs">({Math.round(locationElevation)} ft elevation)</span>
                     )}
                   </p>
                 </div>
@@ -729,17 +930,17 @@ export default function Onboarding() {
         {/* Step 2: Building (Required for all modes - needed for Ask Joule) */}
         {step === STEPS.BUILDING && (
           <div className="text-center">
-            <div className="mb-4">
-              <Home size={48} className="mx-auto text-blue-600 dark:text-blue-400" />
+            <div className="mb-2">
+              <Home size={36} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
               STEP {step + 1} OF {totalSteps}
             </p>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
               Tell us about your home
             </h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mb-4">
-              This helps us estimate your energy usage accurately and enables Ask Joule to provide personalized answers.
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              This helps estimate your energy usage and enables personalized answers.
             </p>
             
             {/* Validation error display */}
@@ -749,11 +950,14 @@ export default function Onboarding() {
               </div>
             )}
 
-            <div className="space-y-6 text-left max-w-md mx-auto">
+            <div className="space-y-3 text-left max-w-md mx-auto">
               {/* Square Feet */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Home Size (sq ft)
+                  {squareFeet >= 100 && squareFeet <= 20000 && (
+                    <Check size={14} className="text-green-500" />
+                  )}
                 </label>
                 <input
                   type="number"
@@ -767,8 +971,9 @@ export default function Onboarding() {
 
               {/* Insulation */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Insulation Quality
+                  {insulationLevel > 0 && <Check size={14} className="text-green-500" />}
                 </label>
                 <select
                   value={insulationLevel}
@@ -783,7 +988,7 @@ export default function Onboarding() {
 
               {/* Building Shape */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Building Shape
                 </label>
                 <select
@@ -791,58 +996,47 @@ export default function Onboarding() {
                   onChange={(e) => setHomeShape(Number(e.target.value))}
                   className={selectClasses}
                 >
-                  <option value={0.9}>Two-Story (less exterior surface)</option>
-                  <option value={1.0}>Split-Level / Standard</option>
-                  <option value={1.1}>Ranch / Single-Story (more exterior surface)</option>
-                  <option value={1.15}>Manufactured Home</option>
+                  <option value={0.9}>Two-Story</option>
+                  <option value={1.0}>Split-Level</option>
+                  <option value={1.1}>Ranch</option>
+                  <option value={1.15}>Manufactured</option>
                   <option value={1.2}>Cabin</option>
                 </select>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Affects surface area exposure and heat loss.
-                </p>
                 {/* Loft toggle - only show for Cabin */}
                 {homeShape >= 1.2 && homeShape < 1.3 && (
-                  <div className="mt-3">
-                    <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasLoft}
-                        onChange={(e) => setHasLoft(e.target.checked)}
-                        className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-2"
-                      />
-                      Has Loft (reduces effective square footage for heat loss)
-                    </label>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
-                      For cabins with lofts, this adjusts the heat loss calculation to account for reduced exterior surface area, similar to a two-story home.
-                    </p>
-                  </div>
+                  <label className="flex items-center text-xs text-gray-700 dark:text-gray-300 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={hasLoft}
+                      onChange={(e) => setHasLoft(e.target.checked)}
+                      className="form-checkbox h-3 w-3 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-1.5"
+                    />
+                    Has loft (reduces heat loss)
+                  </label>
                 )}
               </div>
 
               {/* Ceiling Height */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Average Ceiling Height
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Ceiling Height
                 </label>
                 <select
                   value={ceilingHeight}
                   onChange={(e) => setCeilingHeight(Number(e.target.value))}
                   className={selectClasses}
                 >
-                  <option value={8}>8 feet (standard)</option>
-                  <option value={9}>9 feet</option>
-                  <option value={10}>10 feet</option>
-                  <option value={12}>12 feet (vaulted)</option>
-                  <option value={16}>16 feet</option>
+                  <option value={8}>8 ft</option>
+                  <option value={9}>9 ft</option>
+                  <option value={10}>10 ft</option>
+                  <option value={12}>12 ft (vaulted)</option>
+                  <option value={16}>16 ft</option>
                 </select>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Higher ceilings increase heating volume and energy needs.
-                </p>
               </div>
 
               {/* Primary System */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Primary Heating System
                 </label>
                 <select
@@ -858,145 +1052,81 @@ export default function Onboarding() {
               {/* Heat Pump Size (only show if heat pump is selected) */}
               {primarySystem === "heatPump" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Heat Pump Size (Tons)
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                    Heat Pump Size
+                    <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Check outdoor unit label for BTU. 12k BTU = 1 ton.">
+                      <HelpCircle size={12} />
+                    </span>
                   </label>
                   <select
                     value={heatPumpTons}
                     onChange={(e) => setHeatPumpTons(Number(e.target.value))}
                     className={selectClasses}
                   >
-                    <option value={1.5}>1.5 tons (18k BTU)</option>
-                    <option value={2.0}>2.0 tons (24k BTU)</option>
-                    <option value={2.5}>2.5 tons (30k BTU)</option>
-                    <option value={3.0}>3.0 tons (36k BTU)</option>
-                    <option value={3.5}>3.5 tons (42k BTU)</option>
-                    <option value={4.0}>4.0 tons (48k BTU)</option>
-                    <option value={5.0}>5.0 tons (60k BTU)</option>
+                    <option value={1.5}>1.5 ton (18k)</option>
+                    <option value={2.0}>2 ton (24k)</option>
+                    <option value={2.5}>2.5 ton (30k)</option>
+                    <option value={3.0}>3 ton (36k)</option>
+                    <option value={3.5}>3.5 ton (42k)</option>
+                    <option value={4.0}>4 ton (48k)</option>
+                    <option value={5.0}>5 ton (60k)</option>
                   </select>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Standard residential sizes. Check your unit's nameplate or manual.
-                  </p>
                 </div>
               )}
 
               {/* Number of Thermostats/Zones */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  How many thermostats do you have?
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Thermostats
                 </label>
                 <select
                   value={numberOfThermostats}
                   onChange={(e) => setNumberOfThermostats(Number(e.target.value))}
                   className={selectClasses}
                 >
-                  <option value={1}>1 thermostat (single zone)</option>
-                  <option value={2}>2 thermostats (multi-zone)</option>
-                  <option value={3}>3 thermostats (multi-zone)</option>
-                  <option value={4}>4+ thermostats (multi-zone)</option>
+                  <option value={1}>1 (single zone)</option>
+                  <option value={2}>2 (multi-zone)</option>
+                  <option value={3}>3 (multi-zone)</option>
+                  <option value={4}>4+ (multi-zone)</option>
                 </select>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {numberOfThermostats > 1 ? (
-                    <span>You can configure each zone separately in Settings. Each zone can have its own CSV data upload.</span>
-                  ) : (
-                    <span>If you have multiple thermostats, select the correct number to enable multi-zone analysis.</span>
-                  )}
-                </p>
               </div>
 
               {/* Heat Loss Source Selection Card */}
-              <div className="mt-6 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-sm">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              <div className="mt-3 p-3 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-xl border border-blue-200 dark:border-blue-800">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
                   Heat Loss Source
                 </h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-                  Select which method to use for heat loss calculations. Only one option can be active at a time.
-                </p>
-
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {/* Calculated Option */}
-                  <label className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
-                    style={{ borderColor: heatLossSource === "calculated" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "calculated" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input
-                      type="radio"
-                      name="heatLossSource"
-                      value="calculated"
-                      checked={heatLossSource === "calculated"}
-                      onChange={(e) => setHeatLossSource(e.target.value)}
-                      className="mt-1"
-                    />
+                  <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
+                    style={{ borderColor: heatLossSource === "calculated" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "calculated" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input type="radio" name="heatLossSource" value="calculated" checked={heatLossSource === "calculated"} onChange={(e) => setHeatLossSource(e.target.value)} />
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          Calculated (DOE Data)
-                        </span>
-                        <span className="px-2 py-0.5 text-xs font-bold bg-emerald-500 text-white rounded uppercase">
-                          Recommended
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                        Most accurate for typical homes. Based on square footage, insulation, home shape, and ceiling height.
-                      </p>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">Calculated</span>
+                      <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-emerald-500 text-white rounded">REC</span>
                       {heatLossSource === "calculated" && calculatedHeatLoss > 0 && (
-                        <p className="text-xs font-mono text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
-                          Current value: {Math.round(calculatedHeatLoss / 70)} BTU/hr/°F ({calculatedHeatLoss.toLocaleString()} BTU/hr @ 70°F ΔT)
-                        </p>
+                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{Math.round(calculatedHeatLoss / 70)} BTU/hr/°F</span>
                       )}
                     </div>
                   </label>
 
                   {/* Manual Entry Option */}
-                  <label className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
-                    style={{ borderColor: heatLossSource === "manual" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "manual" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input
-                      type="radio"
-                      name="heatLossSource"
-                      value="manual"
-                      checked={heatLossSource === "manual"}
-                      onChange={(e) => setHeatLossSource(e.target.value)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white block mb-1">
-                        Manual Entry
-                      </span>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        For users with professional energy audits. Enter exact heat loss in BTU/hr/°F.
-                      </p>
-                    </div>
+                  <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
+                    style={{ borderColor: heatLossSource === "manual" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "manual" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input type="radio" name="heatLossSource" value="manual" checked={heatLossSource === "manual"} onChange={(e) => setHeatLossSource(e.target.value)} />
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">Manual Entry</span>
                   </label>
 
                   {/* CSV Analyzer Option */}
-                  <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all ${
-                    hasAnalyzerData 
-                      ? "cursor-pointer hover:bg-white/50 dark:hover:bg-white/5" 
-                      : "cursor-not-allowed opacity-60"
-                  }`}
-                    style={{ borderColor: heatLossSource === "analyzer" ? "#3b82f6" : "transparent", backgroundColor: heatLossSource === "analyzer" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input
-                      type="radio"
-                      name="heatLossSource"
-                      value="analyzer"
-                      checked={heatLossSource === "analyzer"}
-                      onChange={(e) => hasAnalyzerData && setHeatLossSource(e.target.value)}
-                      disabled={!hasAnalyzerData}
-                      className="mt-1"
-                    />
+                  <label className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${hasAnalyzerData ? "cursor-pointer hover:bg-white/50 dark:hover:bg-white/5" : "cursor-not-allowed opacity-50"}`}
+                    style={{ borderColor: heatLossSource === "analyzer" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "analyzer" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
+                    <input type="radio" name="heatLossSource" value="analyzer" checked={heatLossSource === "analyzer"} onChange={(e) => hasAnalyzerData && setHeatLossSource(e.target.value)} disabled={!hasAnalyzerData} />
                     <div className="flex-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white block mb-1">
-                        From CSV Analyzer
-                      </span>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                        Uses your uploaded thermostat data from System Performance Analyzer for data-driven accuracy.
-                      </p>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">From CSV Analyzer</span>
                       {hasAnalyzerData ? (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                          ✓ Using analyzer-based heat loss ({userSettings.analyzerHeatLoss?.toFixed(1) || "N/A"} BTU/hr/°F)
-                        </p>
+                        <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">✓ {userSettings.analyzerHeatLoss?.toFixed(0)} BTU/hr/°F</span>
                       ) : (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 italic">
-                          No analyzer data available. Upload CSV in <Link to="/performance-analyzer" className="underline font-semibold">System Performance Analyzer</Link> →
-                        </p>
+                        <span className="ml-2 text-xs text-gray-400">No data</span>
                       )}
                     </div>
                   </label>
@@ -1004,32 +1134,24 @@ export default function Onboarding() {
               </div>
 
               {/* Unit System Selection */}
-              <div className="mt-6 p-5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-800 shadow-sm">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-                  Display Preferences
-                </h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-                  Choose your preferred unit system for temperatures, energy, and capacity.
-                </p>
-                <div className="flex items-center justify-center">
+              <div className="mt-3 p-3 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Units</span>
                   <UnitSystemToggle />
                 </div>
-                <p className="mt-3 text-xs text-gray-600 dark:text-gray-400 text-center">
-                  US mode: °F, kBTU/h, BTU/hr/°F, kWh. International mode: °C, kW, W/K, Joules (with kWh in parentheses).
-                </p>
               </div>
             </div>
 
-            <div className="flex gap-3 justify-center mt-8">
+            <div className="flex gap-3 justify-center mt-4">
               <button
                 onClick={() => setStep(STEPS.LOCATION)}
-                className="btn btn-outline px-6 py-3"
+                className="btn btn-outline px-4 py-2"
               >
                 Back
               </button>
-              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+              <button onClick={handleNext} className="btn btn-primary px-6 py-2">
                 <span className="flex items-center gap-1">
-                  Continue <ChevronRight size={18} />
+                  Continue <ChevronRight size={16} />
                 </span>
               </button>
             </div>
@@ -1115,9 +1237,26 @@ export default function Onboarding() {
 
               {/* Connection Status */}
               {bridgeConnected && (
-                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4 flex gap-3 text-sm text-green-700 dark:text-green-200">
-                  <CheckCircle2 size={18} className="flex-shrink-0 mt-0.5" />
-                  <span>Bridge connected successfully! Configuration sent.</span>
+                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4 text-sm text-green-700 dark:text-green-200">
+                  <div className="flex gap-3 items-start">
+                    <CheckCircle2 size={18} className="flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold">Bridge connected successfully!</div>
+                      {bridgeDeviceId && (
+                        <div className="mt-2 text-xs font-mono bg-green-200/50 dark:bg-green-800/30 px-2 py-1 rounded inline-block">
+                          Device ID: {bridgeDeviceId}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Device ID display when known but not yet connected */}
+              {bridgeDeviceId && !bridgeConnected && !bridgeError && (
+                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 text-sm text-blue-700 dark:text-blue-200">
+                  <span className="font-medium">Device ID:</span>{' '}
+                  <span className="font-mono">{bridgeDeviceId}</span>
                 </div>
               )}
 
@@ -1139,6 +1278,23 @@ export default function Onboarding() {
               </button>
             </div>
 
+            {!pairingCode?.replace(/-/g, '') && !dismissedPairingNotice && (
+              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-3">
+                <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold">Pairing required for streamed data</div>
+                  <div className="mt-1">You can skip for now, but live Ecobee data won’t stream until a pairing code is entered.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedPairingNotice(true)}
+                  className="text-amber-700 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100 font-medium"
+                >
+                  Got it
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-3 justify-center mt-8">
               <button
                 onClick={() => setStep(STEPS.BUILDING)}
@@ -1148,7 +1304,7 @@ export default function Onboarding() {
               </button>
               <button onClick={handleNext} className="btn btn-primary px-8 py-3">
                 <span className="flex items-center gap-1">
-                  {bridgeConnected ? 'Continue' : 'Skip & Continue'} <ChevronRight size={18} />
+                  {(bridgeConnected || (bridgeIp.trim() && pairingCode?.replace(/-/g, '').length >= 8)) ? 'Continue' : 'Skip & Continue'} <ChevronRight size={18} />
                 </span>
               </button>
             </div>
@@ -1167,57 +1323,114 @@ export default function Onboarding() {
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
               You're all set!
             </h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-base text-gray-600 dark:text-gray-400 mb-2">
               Here's a summary of your setup:
             </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Click any row to edit
+            </p>
 
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 mb-6 text-left max-w-md mx-auto">
-              <div className="space-y-3">
-                <div className="flex justify-between">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
+              <div className="space-y-1">
+                <button
+                  onClick={() => setStep(STEPS.LOCATION)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Location</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{foundLocation}</span>
-                </div>
-                <div className="flex justify-between">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    {foundLocation}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Home Size</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{squareFeet.toLocaleString()} sq ft</span>
-                </div>
-                <div className="flex justify-between">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    {squareFeet.toLocaleString()} sq ft
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Insulation</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     {insulationLevel >= 1.2 ? "Poor" : insulationLevel >= 0.9 ? "Average" : insulationLevel >= 0.6 ? "Good" : "Excellent"}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
-                </div>
-                <div className="flex justify-between">
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Building Shape</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     {homeShape <= 0.9 ? "Two-Story" : homeShape <= 1.0 ? "Split-Level" : homeShape <= 1.1 ? "Ranch" : homeShape <= 1.15 ? "Manufactured" : "Cabin"}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
-                </div>
-                <div className="flex justify-between">
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Ceiling Height</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{ceilingHeight} ft</span>
-                </div>
-                <div className="flex justify-between">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    {ceilingHeight} ft
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Heating System</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     {primarySystem === "heatPump" ? "Heat Pump" : "Gas Furnace"}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
-                </div>
+                </button>
                 {primarySystem === "heatPump" && (
-                  <div className="flex justify-between">
+                  <button
+                    onClick={() => setStep(STEPS.BUILDING)}
+                    className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                  >
                     <span className="text-gray-600 dark:text-gray-400">Heat Pump Size</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                    <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                       {heatPumpTons} tons ({Math.round(heatPumpTons * 12)}k BTU)
+                      <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                     </span>
-                  </div>
+                  </button>
                 )}
-                <div className="flex justify-between">
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
                   <span className="text-gray-600 dark:text-gray-400">Thermostats/Zones</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     {numberOfThermostats} {numberOfThermostats === 1 ? "zone" : "zones"}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
-                </div>
-                <div className="flex justify-between">
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.BRIDGE)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
+                  <span className="text-gray-600 dark:text-gray-400">Bridge Connection</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    {bridgeConnected ? (
+                      <span className="text-green-600 dark:text-green-400">Connected</span>
+                    ) : bridgeIp ? (
+                      <span className="text-yellow-600 dark:text-yellow-400">Configured</span>
+                    ) : (
+                      <span className="text-gray-400">Not set up</span>
+                    )}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
+                <div className="flex justify-between items-center py-2 px-2">
                   <span className="text-gray-600 dark:text-gray-400">Unit System</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {unitSystem === UNIT_SYSTEMS.INTL ? "International" : "US"}
@@ -1232,14 +1445,14 @@ export default function Onboarding() {
 
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => setStep(STEPS.BUILDING)}
+                onClick={() => setStep(STEPS.BRIDGE)}
                 className="btn btn-outline px-6 py-3"
               >
                 Back
               </button>
               <button onClick={handleNext} className="btn btn-primary px-8 py-3">
                 <span className="flex items-center gap-1">
-                  Start Exploring <Zap size={18} />
+                  {localStorage.getItem('pairingCode') ? 'Start Monthly Forecast' : 'Start Weekly Forecast'} <Zap size={18} />
                 </span>
               </button>
             </div>

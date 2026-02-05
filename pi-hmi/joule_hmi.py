@@ -26,7 +26,7 @@ except ImportError:
     gt1151 = None
 
 # Configuration
-BRIDGE_URL = os.getenv('BRIDGE_URL', 'http://localhost:3002')
+BRIDGE_URL = os.getenv('BRIDGE_URL', 'http://localhost:8080')
 REFRESH_INTERVAL = 900  # 15 minutes in seconds
 FULL_REFRESH_EVERY = 10  # Full refresh every N partial refreshes
 DISPLAY_WIDTH = 250
@@ -98,8 +98,8 @@ def save_cost_cache(weekly_cost, monthly_cost):
 class JouleHMI:
     def __init__(self):
         self.epd = None
-        self.current_page = 0  # 0=Status, 1=Actions, 2=Guide
-        self.page_names = ['Status', 'Actions', 'Guide']
+        self.current_page = 0  # 0=Status, 1=Energy, 2=3-day
+        self.page_names = ['Status', 'Energy', '3-day']
         self.refresh_counter = 0
         self.partial_flash = True
         
@@ -218,8 +218,8 @@ class JouleHMI:
             self.wifi_signal = 0
     
     def fetch_weekly_cost(self):
-        """Fetch weekly HVAC cost estimate"""
-        # First try to read from Forecaster's localStorage data (via bridge)
+        """Fetch weekly HVAC cost estimate from monthly budget data"""
+        # First try to read from MonthlyBudget's forecast data (via bridge)
         try:
             response = requests.get(f'{BRIDGE_URL}/api/settings', timeout=5)
             if response.status_code == 200:
@@ -227,8 +227,18 @@ class JouleHMI:
                 # Try to get forecast summary from localStorage
                 if 'last_forecast_summary' in settings:
                     forecast_data = settings['last_forecast_summary']
-                    # Use with-aux cost if available (matches Quick Answer display logic)
-                    # Fall back to base HP cost if with-aux not available
+                    
+                    # Check for monthly budget source (preferred)
+                    if forecast_data.get('source') == 'monthly-budget':
+                        weekly_cost = forecast_data.get('weeklyCost')
+                        monthly_cost = forecast_data.get('monthlyCost')
+                        if weekly_cost and monthly_cost:
+                            self.weekly_cost = f"${weekly_cost:.2f}/wk"
+                            self.monthly_cost = f"${monthly_cost:.2f}/mo"
+                            print(f"✓ Using Monthly Budget data: ${weekly_cost:.2f}/wk, ${monthly_cost:.2f}/mo")
+                            return
+                    
+                    # Fallback to weekly forecaster data
                     cost = (forecast_data.get('totalHPCostWithAux') or 
                            forecast_data.get('totalHPCost') or 
                            forecast_data.get('totalWeeklyCost') or 
@@ -240,7 +250,7 @@ class JouleHMI:
                         self.monthly_cost = f"${cost * 4.33:.2f}/mo"
                         return
         except Exception as e:
-            print(f"localStorage forecast fetch error: {e}")
+            print(f"Forecast data fetch error: {e}")
         
         # Try new bridge cost-estimate API endpoint
         try:
@@ -497,11 +507,11 @@ class JouleHMI:
         weekly_cost = self.weekly_cost or '—'
         monthly_cost = self.monthly_cost or '—'
         
-        line_y = y1 + 4
+        line_y = y1 + 3
         
         # Mode
         draw.text((x1 + 4, line_y), f"Mode: {mode}", font=self.fonts['small'], fill=BLACK)
-        line_y += 11
+        line_y += 10
         
         # Temperature line: Show both if connected, otherwise just target
         has_temp = self.bridge_data['connected'] and temp != '—'
@@ -519,7 +529,7 @@ class JouleHMI:
             # Only show target when not connected
             draw.text((x1 + 4, line_y), f"Tgt: {target}", font=self.fonts['small'], fill=BLACK)
         
-        line_y += 11
+        line_y += 10
         
         # Weekly and Monthly costs on same line
         draw.text((x1 + 4, line_y), f"Wk: {weekly_cost}", font=self.fonts['small'], fill=BLACK)
@@ -528,9 +538,16 @@ class JouleHMI:
         mo_bbox = draw.textbbox((0, 0), f"Mo: {monthly_cost}", font=self.fonts['small'])
         mo_width = mo_bbox[2] - mo_bbox[0]
         draw.text((x2 - mo_width - 4, line_y), f"Mo: {monthly_cost}", font=self.fonts['small'], fill=BLACK)
+        
+        line_y += 10
+        
+        # IP Address on its own line
+        ip_addr = self.get_local_ip()
+        if ip_addr:
+            draw.text((x1 + 4, line_y), f"IP: {ip_addr}", font=self.fonts['small'], fill=BLACK)
     
-    def draw_actions_page(self, draw):
-        """Draw Actions page content"""
+    def draw_energy_page(self, draw):
+        """Draw Energy page content"""
         x1, y1, x2, y2 = CONTENT_RECT
         
         # Clear content area
@@ -573,25 +590,38 @@ class JouleHMI:
             draw.text((x1 + 4, msg_y), "Bridge offline", 
                      font=self.fonts['small'], fill=BLACK)
     
-    def draw_guide_page(self, draw):
-        """Draw Guide page content"""
+    def get_local_ip(self):
+        """Get local IP address"""
+        try:
+            result = subprocess.check_output(['hostname', '-I'], text=True).strip()
+            # Return first IP (usually the LAN IP)
+            return result.split()[0] if result else None
+        except:
+            return None
+    
+    def draw_3day_page(self, draw):
+        """Draw 3-day forecast page content"""
         x1, y1, x2, y2 = CONTENT_RECT
         
         # Clear content area
         draw.rectangle([(x1, y1), (x2, y2)], fill=WHITE)
         
-        # Guide tips
-        tips = [
-            "Status: Current state",
-            "Actions: Temp/mode",
-            "Bridge: Local server",
-            "15min auto-refresh"
+        line_y = y1 + 4
+        
+        # 3-day forecast header
+        draw.text((x1 + 4, line_y), "3-Day Forecast", font=self.fonts['small'], fill=BLACK)
+        line_y += 12
+        
+        # Placeholder for 3-day forecast data
+        forecast_items = [
+            "Today: 45-65°F",
+            "Tomorrow: 48-68°F", 
+            "Day 3: 50-70°F"
         ]
         
-        line_y = y1 + 4
-        for tip in tips:
-            draw.text((x1 + 4, line_y), tip, font=self.fonts['small'], fill=BLACK)
-            line_y += 12
+        for item in forecast_items:
+            draw.text((x1 + 4, line_y), item, font=self.fonts['small'], fill=BLACK)
+            line_y += 11
     
     def render_frame(self):
         """Render complete frame to display"""
@@ -605,9 +635,9 @@ class JouleHMI:
         if self.current_page == 0:
             self.draw_status_page(draw)
         elif self.current_page == 1:
-            self.draw_actions_page(draw)
+            self.draw_energy_page(draw)
         elif self.current_page == 2:
-            self.draw_guide_page(draw)
+            self.draw_3day_page(draw)
         
         self.draw_footer(draw)
         self.draw_nav_bar(draw)

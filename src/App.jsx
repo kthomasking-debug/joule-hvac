@@ -13,6 +13,10 @@ import {
   Moon,
   Sun,
   Printer,
+  Activity,
+  BarChart3,
+  DollarSign,
+  MapPin,
 } from "lucide-react";
 import { routes } from "./navConfig";
 import "./App.css"; // Retain any legacy specifics (can prune later)
@@ -58,6 +62,8 @@ function AppInner() {
   const [isJouleModalOpen, setIsJouleModalOpen] = useState(false);
   // State for search bar
   const [showSearch, setShowSearch] = useState(false);
+  // State for collapsible Analysis submenu in sidebar
+  const [analysisMenuOpen, setAnalysisMenuOpen] = useState(false);
 
   // Terms acceptance state - auto-accept for Reddit demo
   const { termsAccepted, markTermsAccepted, isLoaded } = useTermsAcceptance();
@@ -968,15 +974,99 @@ function AppInner() {
                   <span>{route.name}</span>
                 </NavLink>
               ))}
+              
+              {/* Collapsible Analysis Section */}
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setAnalysisMenuOpen(!analysisMenuOpen)}
+                  className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <BarChart3 className="w-5 h-5 flex-shrink-0" />
+                    <span>Analysis</span>
+                  </div>
+                  {analysisMenuOpen ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                
+                {analysisMenuOpen && (
+                  <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 dark:border-gray-600 pl-3">
+                    <NavLink
+                      to="/analysis/energy-flow"
+                      onClick={() => mode === "ai" && setMode("traditional")}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`
+                      }
+                    >
+                      <Activity className="w-4 h-4 flex-shrink-0" />
+                      <span>Performance</span>
+                    </NavLink>
+                    <NavLink
+                      to="/analysis/analyzer"
+                      onClick={() => mode === "ai" && setMode("traditional")}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`
+                      }
+                    >
+                      <BarChart3 className="w-4 h-4 flex-shrink-0" />
+                      <span>Analyze System</span>
+                    </NavLink>
+                    <NavLink
+                      to="/tools/heat-pump-vs-gas-furnace"
+                      onClick={() => mode === "ai" && setMode("traditional")}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`
+                      }
+                    >
+                      <DollarSign className="w-4 h-4 flex-shrink-0" />
+                      <span>System Costs</span>
+                    </NavLink>
+                    <NavLink
+                      to="/tools/city-cost-comparison"
+                      onClick={() => mode === "ai" && setMode("traditional")}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`
+                      }
+                    >
+                      <MapPin className="w-4 h-4 flex-shrink-0" />
+                      <span>Location Costs</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="text-xs text-gray-500 p-3">Loading menu...</div>
           )}
         </nav>
 
-        {/* Bottom Actions */}
+        {/* Bottom Actions - Legal Links */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          {/* Search and Light Mode removed */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            <NavLink to="/privacy" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Privacy</NavLink>
+            <NavLink to="/terms" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Terms</NavLink>
+            <NavLink to="/refund-policy" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Refunds</NavLink>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">© 2026 Joule Bridge</p>
         </div>
       </aside>
 

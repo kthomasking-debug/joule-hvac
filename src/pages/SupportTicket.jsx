@@ -88,7 +88,7 @@ export default function SupportTicket() {
   };
 
   // Support email address
-  const SUPPORT_EMAIL = 'kthomasking@gmail.com';
+  const SUPPORT_EMAIL = 'support@joule-bridge.com';
   
   // Handle form submission - opens email client with ticket
   const handleSubmit = (e) => {

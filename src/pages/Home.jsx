@@ -34,6 +34,7 @@ import AskJoule from "../components/AskJoule";
 import HomeTopSection from "../components/HomeTopSection";
 import DemoModeBanner from "../components/DemoModeBanner";
 import SystemHealthAlerts from "../components/SystemHealthAlerts";
+import SavingsDashboard from "../components/SavingsDashboard";
 import { useDemoMode } from "../hooks/useDemoMode";
 import { useJouleBridgeContext } from "../contexts/JouleBridgeContext";
 import { QuickActionsBar, OneClickOptimizer, SavingsTracker, SystemHealthCard, WasteDetector } from "../components/optimization";
@@ -840,86 +841,49 @@ const HomeDashboard = () => {
           </div>
         ) : null}
 
-        {/* Quick Links */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Top Row: Performance, Cost Forecaster, Analyze System */}
-          <button
-            onClick={(e) => handleFeatureClick("/analysis/energy-flow", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <Activity className="w-6 h-6 text-green-400" />
-              <h3 className="text-lg font-semibold text-white">Performance</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">View heat pump performance and efficiency</p>
-          </button>
-
+        {/* Quick Links - Simplified to 3 main actions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Primary: Cost Forecaster */}
           <button
             onClick={(e) => handleFeatureClick("/analysis/forecast", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
+            className="bg-gradient-to-br from-green-600/20 to-emerald-700/20 border-2 border-green-500/40 rounded-xl p-6 hover:border-green-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-green-400" />
               <h3 className="text-lg font-semibold text-white">Cost Forecaster</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">Forecast weekly costs and optimize schedule</p>
+            <p className="text-sm text-[#A7B0BA]">See your 7-day energy cost prediction</p>
           </button>
 
-          <button
-            onClick={(e) => handleFeatureClick("/analysis/analyzer", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-green-500/50 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <BarChart3 className="w-6 h-6 text-green-400" />
-              <h3 className="text-lg font-semibold text-white">Analyze System</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">Deep dive into system performance</p>
-          </button>
-
-          {/* Bottom Row: Monthly Forecast, Optimizer, System Costs, Location Costs */}
+          {/* Secondary: Monthly Budget */}
           <button
             onClick={(e) => handleFeatureClick("/analysis/monthly-budget", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors text-left w-full"
+            className="bg-gradient-to-br from-blue-600/20 to-indigo-700/20 border-2 border-blue-500/40 rounded-xl p-6 hover:border-blue-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
               <TrendingUp className="w-6 h-6 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Monthly Forecast</h3>
+              <h3 className="text-lg font-semibold text-white">Monthly Budget</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">View monthly budget and daily breakdown</p>
+            <p className="text-sm text-[#A7B0BA]">Track spending and daily breakdown</p>
           </button>
 
+          {/* Tertiary: Optimizer */}
           <button
             onClick={(e) => handleFeatureClick("/optimize", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors text-left w-full"
+            className="bg-gradient-to-br from-purple-600/20 to-violet-700/20 border-2 border-purple-500/40 rounded-xl p-6 hover:border-purple-400/60 transition-colors text-left w-full"
           >
             <div className="flex items-center gap-3 mb-2">
-              <Sparkles className="w-6 h-6 text-blue-400" />
+              <Sparkles className="w-6 h-6 text-purple-400" />
               <h3 className="text-lg font-semibold text-white">Optimizer</h3>
             </div>
             <p className="text-sm text-[#A7B0BA]">One-click optimizations to save money</p>
           </button>
+        </div>
 
-          <button
-            onClick={(e) => handleFeatureClick("/tools/heat-pump-vs-gas-furnace", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <DollarSign className="w-6 h-6 text-amber-400" />
-              <h3 className="text-lg font-semibold text-white">System Costs</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">Compare heat pump vs gas furnace savings for your climate</p>
-          </button>
-
-          <button
-            onClick={(e) => handleFeatureClick("/tools/city-cost-comparison", e)}
-            className="bg-[#0C1118] border border-slate-800 rounded-xl p-6 hover:border-amber-500/50 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <MapPin className="w-6 h-6 text-amber-400" />
-              <h3 className="text-lg font-semibold text-white">Location Costs</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">See how your utility rates compare to other cities</p>
-          </button>
+        {/* Savings Dashboard - Money-saving widgets */}
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-white mb-4">💰 Save Money</h2>
+          <SavingsDashboard />
         </div>
       </div>
     </div>
