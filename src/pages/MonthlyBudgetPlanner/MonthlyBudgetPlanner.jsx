@@ -3379,6 +3379,11 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
             const btuLossPerDegF = estimatedDesignHeatLoss / 70;
             const compressorPower = tons * 1.0 * (15 / efficiency);
             
+            // Debug: log how many days we're processing
+            if (import.meta?.env?.DEV) {
+              console.log(`📆 Processing ${adjustedForecast.length} days for daily metrics table`);
+            }
+            
             const dailyMetrics = adjustedForecast.map((day) => {
               // In auto mode, determine which mode to use based on outdoor temperature
               const dayEffectiveTemp = isAutoMode ? getEffectiveTempForDay(day.avg) : effectiveIndoorTemp;
