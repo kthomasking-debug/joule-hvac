@@ -220,6 +220,42 @@ def get_local_ip():
         return None
 
 
+def get_lan_ip():
+    """
+    Get the LAN IP address, preferring 192.168.x.x and 172.16-31.x.x over 10.x.x.x.
+    Avoids returning Tailscale (100.x), Docker (172.17/18), or overlay VPN IPs
+    when the user needs the local network address for router setup.
+    """
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['hostname', '-I'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0 and result.stdout:
+            ips = result.stdout.strip().split()
+            # Prefer typical home LAN ranges: 192.168.x.x, then 172.16-31.x.x
+            for ip in ips:
+                if ip.startswith('192.168.'):
+                    return ip
+            for ip in ips:
+                if ip.startswith('172.') and len(ip) >= 7:
+                    second = ip.split('.')[1]
+                    if second.isdigit() and 16 <= int(second) <= 31:
+                        return ip
+            # Fallback: use first non-loopback, non-Tailscale IP
+            for ip in ips:
+                if not ip.startswith('127.') and not ip.startswith('100.'):
+                    return ip
+            return ips[0] if ips else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        pass
+    # Fallback to get_local_ip()
+    return get_local_ip()
+
+
 def get_data_directory():
     """
     Get the data directory path for storing pairings and other persistent data.
@@ -1227,6 +1263,38 @@ async def handle_clear_stale_pairings(request):
         })
     except Exception as e:
         logger.error(f"Clear stale pairings error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+# Global pairing status for HMI display
+pairing_status = {
+    'mode': 'idle',  # idle, wizard_started, discovered, pairing, success, error
+    'code': None,    # Partial pairing code for display (e.g., "123-XX-XXX")
+    'device_count': 0,
+    'error': None,
+    'timestamp': None
+}
+
+async def handle_pairing_status_get(request):
+    """GET /api/pairing/status - Get current pairing status for HMI display"""
+    global pairing_status
+    return web.json_response(pairing_status)
+
+async def handle_pairing_status_post(request):
+    """POST /api/pairing/status - Update pairing status (called by web wizard)"""
+    global pairing_status
+    try:
+        data = await request.json()
+        pairing_status['mode'] = data.get('mode', 'idle')
+        pairing_status['code'] = data.get('code')
+        pairing_status['device_count'] = data.get('device_count', 0)
+        pairing_status['error'] = data.get('error')
+        pairing_status['timestamp'] = datetime.now().isoformat()
+        
+        logger.info(f"Pairing status updated: {pairing_status['mode']}")
+        return web.json_response({'success': True})
+    except Exception as e:
+        logger.error(f"Pairing status update error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
 
@@ -3499,12 +3567,14 @@ async def handle_bridge_info(request):
         except Exception:
             pass
         
+        lan_ip = get_lan_ip()
         info = {
             "hostname": socket.gethostname(),
             "username": username,
             "platform": platform.platform(),
             "python_version": sys.version,
-            "local_ip": get_local_ip(),
+            "local_ip": lan_ip or get_local_ip(),
+            "lan_ip": lan_ip,
             "tailscale_ip": tailscale_ip,
             "tailscale": tailscale_status,
             "uptime": None,
@@ -3564,6 +3634,252 @@ async def handle_bridge_info(request):
         return web.json_response({
             "success": False,
             "error": str(e)
+        }, status=500)
+
+
+# Tailscale install (for remote support)
+async def handle_tailscale_install(request):
+    """POST /api/bridge/tailscale/install - Install Tailscale on the bridge (requires sudo)"""
+    try:
+        import subprocess
+        # Check if already installed
+        result = subprocess.run(['which', 'tailscale'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            return web.json_response({
+                'success': True,
+                'message': 'Tailscale is already installed. Run "sudo tailscale up" on the bridge to sign in.',
+                'already_installed': True
+            })
+        # Run official Tailscale install script (requires sudo for apt)
+        result = subprocess.run(
+            ['sudo', 'sh', '-c', 'curl -fsSL https://tailscale.com/install.sh | sh'],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if result.returncode == 0:
+            return web.json_response({
+                'success': True,
+                'message': 'Tailscale installed. Have the customer run "sudo tailscale up" on the bridge and open the link to sign in. The remote URL will then appear here.'
+            })
+        return web.json_response({
+            'success': False,
+            'error': result.stderr or result.stdout or 'Install failed',
+            'hint': 'If sudo requires a password, the customer can install manually: curl -fsSL https://tailscale.com/install.sh | sh'
+        }, status=500)
+    except subprocess.TimeoutExpired:
+        return web.json_response({
+            'success': False,
+            'error': 'Install timed out (2 min). Try running manually on the bridge: curl -fsSL https://tailscale.com/install.sh | sh'
+        }, status=500)
+    except Exception as e:
+        logger.exception("Tailscale install failed")
+        return web.json_response({
+            'success': False,
+            'error': str(e),
+            'hint': 'Customer can install manually: curl -fsSL https://tailscale.com/install.sh | sh'
+        }, status=500)
+
+
+# ngrok tunnel management
+ngrok_process = None
+ngrok_public_url = None
+
+async def handle_ngrok_start(request):
+    """POST /api/bridge/ngrok/start - Start an ngrok tunnel for remote support"""
+    global ngrok_process, ngrok_public_url
+    
+    try:
+        import subprocess
+        import json as json_module
+        
+        # Check if ngrok is installed
+        try:
+            result = subprocess.run(['which', 'ngrok'], capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return web.json_response({
+                    'success': False,
+                    'error': 'ngrok is not installed. Install with: curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok'
+                }, status=400)
+        except Exception as e:
+            return web.json_response({
+                'success': False,
+                'error': f'Failed to check ngrok installation: {e}'
+            }, status=500)
+        
+        # Kill any existing ngrok process
+        if ngrok_process:
+            try:
+                ngrok_process.terminate()
+                ngrok_process.wait(timeout=5)
+            except Exception:
+                pass
+            ngrok_process = None
+            ngrok_public_url = None
+        
+        # Also kill any stray ngrok processes
+        subprocess.run(['pkill', '-f', 'ngrok'], capture_output=True, timeout=5)
+        await asyncio.sleep(1)
+        
+        # Start ngrok tunnel
+        ngrok_process = subprocess.Popen(
+            ['ngrok', 'http', '8080', '--log=stdout', '--log-format=json'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # Wait for ngrok to start and get the public URL
+        await asyncio.sleep(3)
+        
+        # Query ngrok API for the public URL
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get('http://127.0.0.1:4040/api/tunnels', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        tunnels = data.get('tunnels', [])
+                        for tunnel in tunnels:
+                            if tunnel.get('proto') == 'https':
+                                ngrok_public_url = tunnel.get('public_url')
+                                break
+                        if not ngrok_public_url and tunnels:
+                            ngrok_public_url = tunnels[0].get('public_url')
+        except Exception as e:
+            logger.warning(f"Failed to get ngrok URL from API: {e}")
+        
+        if ngrok_public_url:
+            logger.info(f"ngrok tunnel started: {ngrok_public_url}")
+            return web.json_response({
+                'success': True,
+                'url': ngrok_public_url,
+                'message': 'ngrok tunnel started successfully'
+            })
+        else:
+            return web.json_response({
+                'success': False,
+                'error': 'ngrok started but could not get public URL. Check if ngrok is authenticated.'
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"Error starting ngrok: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_ngrok_stop(request):
+    """POST /api/bridge/ngrok/stop - Stop the ngrok tunnel"""
+    global ngrok_process, ngrok_public_url
+    
+    try:
+        import subprocess
+        
+        if ngrok_process:
+            try:
+                ngrok_process.terminate()
+                ngrok_process.wait(timeout=5)
+            except Exception:
+                ngrok_process.kill()
+            ngrok_process = None
+        
+        # Also kill any stray ngrok processes
+        subprocess.run(['pkill', '-f', 'ngrok'], capture_output=True, timeout=5)
+        
+        ngrok_public_url = None
+        logger.info("ngrok tunnel stopped")
+        
+        return web.json_response({
+            'success': True,
+            'message': 'ngrok tunnel stopped'
+        })
+    except Exception as e:
+        logger.error(f"Error stopping ngrok: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_ngrok_status(request):
+    """GET /api/bridge/ngrok/status - Get ngrok tunnel status"""
+    global ngrok_process, ngrok_public_url
+    
+    try:
+        import subprocess
+        
+        # Check if ngrok is installed
+        ngrok_installed = False
+        try:
+            result = subprocess.run(['which', 'ngrok'], capture_output=True, text=True, timeout=5)
+            ngrok_installed = result.returncode == 0
+        except Exception:
+            pass
+        
+        # Check if tunnel is running
+        tunnel_running = False
+        current_url = ngrok_public_url
+        
+        if ngrok_process and ngrok_process.poll() is None:
+            tunnel_running = True
+            # Try to get fresh URL from ngrok API
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://127.0.0.1:4040/api/tunnels', timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            tunnels = data.get('tunnels', [])
+                            for tunnel in tunnels:
+                                if tunnel.get('proto') == 'https':
+                                    current_url = tunnel.get('public_url')
+                                    ngrok_public_url = current_url
+                                    break
+                            if not current_url and tunnels:
+                                current_url = tunnels[0].get('public_url')
+                                ngrok_public_url = current_url
+            except Exception:
+                pass
+        else:
+            # Check if there's an ngrok process we didn't start
+            try:
+                result = subprocess.run(['pgrep', '-f', 'ngrok'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    tunnel_running = True
+                    # Try to get URL from API
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get('http://127.0.0.1:4040/api/tunnels', timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    tunnels = data.get('tunnels', [])
+                                    for tunnel in tunnels:
+                                        if tunnel.get('proto') == 'https':
+                                            current_url = tunnel.get('public_url')
+                                            break
+                                    if not current_url and tunnels:
+                                        current_url = tunnels[0].get('public_url')
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        return web.json_response({
+            'installed': ngrok_installed,
+            'running': tunnel_running,
+            'url': current_url,
+            'install_command': 'curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok'
+        })
+    except Exception as e:
+        logger.error(f"Error checking ngrok status: {e}")
+        return web.json_response({
+            'installed': False,
+            'running': False,
+            'url': None,
+            'error': str(e)
         }, status=500)
 
 
@@ -4344,6 +4660,8 @@ async def init_app():
     app.router.add_get('/api/diagnose', handle_pairing_diagnostics)  # Alias for frontend compatibility
     app.router.add_post('/api/pairing/clear-stale', handle_clear_stale_pairings)
     app.router.add_post('/api/auto-fix', handle_clear_stale_pairings)  # Alias for frontend compatibility
+    app.router.add_get('/api/pairing/status', handle_pairing_status_get)
+    app.router.add_post('/api/pairing/status', handle_pairing_status_post)
     app.router.add_get('/api/status', handle_status)
     app.router.add_post('/api/set-temperature', handle_set_temperature)
     app.router.add_post('/api/set-mode', handle_set_mode)
@@ -4387,6 +4705,10 @@ async def init_app():
     app.router.add_get('/api/bridge/logs', handle_bridge_logs)
     app.router.add_get('/api/bridge/info', handle_bridge_info)
     app.router.add_get('/api/bridge/service-status', handle_service_status)
+    app.router.add_post('/api/bridge/tailscale/install', handle_tailscale_install)
+    app.router.add_post('/api/bridge/ngrok/start', handle_ngrok_start)
+    app.router.add_post('/api/bridge/ngrok/stop', handle_ngrok_stop)
+    app.router.add_get('/api/bridge/ngrok/status', handle_ngrok_status)
     
     # EnergyPlus endpoints
     app.router.add_get('/api/energyplus/status', handle_energyplus_status)
@@ -4420,6 +4742,128 @@ async def init_app():
         cors.add(route)
     
     return app
+
+
+# Auto-reconnect background task
+auto_reconnect_running = False
+auto_reconnect_interval = 30  # Check every 30 seconds
+last_device_health = {}  # device_id -> {'reachable': bool, 'last_check': timestamp, 'reconnect_attempts': int}
+
+async def auto_reconnect_task():
+    """
+    Background task that periodically checks if paired devices are reachable.
+    If a device becomes unreachable, attempts to re-discover and reconnect.
+    """
+    global auto_reconnect_running, last_device_health
+    auto_reconnect_running = True
+    logger.info(f"Starting auto-reconnect background task (interval: {auto_reconnect_interval}s)")
+    
+    while auto_reconnect_running:
+        try:
+            await asyncio.sleep(auto_reconnect_interval)
+            
+            if not pairings:
+                continue
+            
+            for device_id, pairing in list(pairings.items()):
+                now = datetime.now()
+                
+                # Initialize health tracking for this device
+                if device_id not in last_device_health:
+                    last_device_health[device_id] = {
+                        'reachable': True, 
+                        'last_check': now,
+                        'reconnect_attempts': 0
+                    }
+                
+                try:
+                    # Try to get thermostat status to check if device is reachable
+                    data = await asyncio.wait_for(
+                        get_thermostat_data(device_id), 
+                        timeout=10  # 10 second timeout for health check
+                    )
+                    
+                    # Device is reachable
+                    if not last_device_health[device_id]['reachable']:
+                        logger.info(f"Device {device_id} is reachable again")
+                    
+                    last_device_health[device_id] = {
+                        'reachable': True,
+                        'last_check': now,
+                        'reconnect_attempts': 0
+                    }
+                    
+                except asyncio.TimeoutError:
+                    logger.warning(f"Health check timeout for device {device_id}")
+                    await attempt_reconnect(device_id)
+                    
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if 'not paired' in error_str or 'accessory not found' in error_str:
+                        logger.warning(f"Device {device_id} appears unreachable: {e}")
+                        await attempt_reconnect(device_id)
+                    else:
+                        # Log other errors but don't attempt reconnect for unexpected errors
+                        logger.debug(f"Health check error for {device_id}: {e}")
+                        
+        except asyncio.CancelledError:
+            logger.info("Auto-reconnect task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in auto-reconnect task: {e}")
+            # Continue running even if there's an error
+            await asyncio.sleep(5)
+    
+    logger.info("Auto-reconnect task stopped")
+
+async def attempt_reconnect(device_id: str):
+    """Attempt to reconnect to a device through re-discovery"""
+    global last_device_health
+    
+    if device_id not in last_device_health:
+        last_device_health[device_id] = {
+            'reachable': False,
+            'last_check': datetime.now(),
+            'reconnect_attempts': 0
+        }
+    
+    health = last_device_health[device_id]
+    health['reachable'] = False
+    health['reconnect_attempts'] += 1
+    health['last_check'] = datetime.now()
+    
+    # Limit reconnect attempts (max 3, then wait longer)
+    if health['reconnect_attempts'] > 3:
+        logger.info(f"Device {device_id} unreachable after 3 reconnect attempts, waiting longer before retry")
+        # Reset attempts counter after a longer wait (handled by the interval)
+        if health['reconnect_attempts'] > 6:
+            health['reconnect_attempts'] = 0  # Reset to try again
+        return
+    
+    logger.info(f"Attempting reconnect for device {device_id} (attempt {health['reconnect_attempts']})")
+    
+    try:
+        # Run discovery to find updated device info (IP may have changed)
+        logger.info(f"Running discovery to find {device_id}...")
+        await discover_devices()
+        await asyncio.sleep(2)
+        
+        # Try to reload the pairing
+        if controller and hasattr(controller, 'pairings') and device_id in controller.pairings:
+            pairing_data = controller.pairings[device_id]
+            try:
+                pairing = controller.load_pairing(device_id, pairing_data if isinstance(pairing_data, dict) else {})
+                pairings[device_id] = pairing
+                logger.info(f"Successfully reconnected to device {device_id}")
+                health['reachable'] = True
+                health['reconnect_attempts'] = 0
+            except Exception as e:
+                logger.warning(f"Failed to reload pairing for {device_id}: {e}")
+        else:
+            logger.debug(f"Device {device_id} not found in controller pairings")
+            
+    except Exception as e:
+        logger.warning(f"Reconnect attempt failed for {device_id}: {e}")
 
 
 async def main():
@@ -4505,6 +4949,37 @@ async def main():
                 logger.info("Continuing without loaded pairings - you may need to re-pair")
         else:
             logger.info(f"No pairing file found at {pairing_file}, starting fresh")
+    
+    # Pairing health check on startup
+    if pairings:
+        logger.info("Running pairing health check on startup...")
+        healthy_count = 0
+        unhealthy_devices = []
+        for device_id in list(pairings.keys()):
+            try:
+                data = await get_thermostat_data(device_id)
+                if data and 'current_temperature' in data:
+                    healthy_count += 1
+                    logger.info(f"  ✓ Device {device_id[:8]}... is healthy (temp: {data.get('current_temperature')}°)")
+                else:
+                    unhealthy_devices.append(device_id)
+                    logger.warning(f"  ✗ Device {device_id[:8]}... returned no data")
+            except Exception as e:
+                unhealthy_devices.append(device_id)
+                logger.warning(f"  ✗ Device {device_id[:8]}... is unreachable: {e}")
+        
+        if unhealthy_devices:
+            logger.warning(f"Pairing health check: {healthy_count} healthy, {len(unhealthy_devices)} unreachable")
+            logger.warning("Unreachable devices may need re-pairing if they persist.")
+            # Update global pairing status for HMI
+            global pairing_status
+            pairing_status['mode'] = 'unhealthy'
+            pairing_status['error'] = f"{len(unhealthy_devices)} device(s) unreachable"
+            pairing_status['timestamp'] = datetime.now().isoformat()
+        else:
+            logger.info(f"Pairing health check: All {healthy_count} device(s) healthy")
+            pairing_status['mode'] = 'healthy'
+            pairing_status['timestamp'] = datetime.now().isoformat()
     
     # Initialize relay (optional - service works without it)
     await init_relay()
@@ -4641,12 +5116,25 @@ async def main():
             logger.debug(f"mDNS registration traceback: {traceback.format_exc()}")
             logger.info("Bridge will still work, but must be accessed by IP address")
     
+    # Start auto-reconnect background task
+    reconnect_task = asyncio.create_task(auto_reconnect_task())
+    logger.info("Auto-reconnect background task started")
+    
     # Keep running
     try:
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
+        # Stop auto-reconnect task
+        global auto_reconnect_running
+        auto_reconnect_running = False
+        reconnect_task.cancel()
+        try:
+            await reconnect_task
+        except asyncio.CancelledError:
+            pass
+        
         # Unregister mDNS service
         if mdns_service and async_zeroconf:
             try:

@@ -84,6 +84,8 @@ const ImageToText = lazy(() => import("./pages/ImageToText"));
 const BlueairControl = lazy(() => import("./pages/BlueairControl"));
 const OptimizationHub = lazy(() => import("./pages/OptimizationHub"));
 const BridgeSupport = lazy(() => import("./pages/BridgeSupport"));
+const PairingWizard = lazy(() => import("./pages/PairingWizard"));
+const RemotePairingLink = lazy(() => import("./pages/RemotePairingLink"));
 const RemoteSettings = lazy(() => import("./pages/RemoteSettings"));
 const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
@@ -583,6 +585,28 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Self-service diagnostics and troubleshooting. Check status, view logs, and perform basic maintenance tasks.",
+  },
+  {
+    path: "/pairing-wizard",
+    name: "Pairing Wizard",
+    label: "Pairing Wizard",
+    icon: Zap,
+    Component: PairingWizard,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Step-by-step guided pairing flow for connecting Ecobee via HomeKit",
+  },
+  {
+    path: "/remote-pairing",
+    name: "Remote Pairing",
+    label: "Remote Pairing",
+    icon: Wifi,
+    Component: RemotePairingLink,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Customer-facing page for remote Ecobee pairing via support link",
   },
   {
     path: "/tools/eink-bridge-display",

@@ -167,6 +167,10 @@ export default function BridgeSupport() {
   
   const [copyFeedback, setCopyFeedback] = useState('');
   
+  // Tailscale install state
+  const [tailscaleInstalling, setTailscaleInstalling] = useState(false);
+  const [tailscaleInstallMessage, setTailscaleInstallMessage] = useState(null);
+  
   // Remote pairing state
   const [pairingCode, setPairingCode] = useState('');
   const [selectedDevice, setSelectedDevice] = useState('');
@@ -207,6 +211,15 @@ export default function BridgeSupport() {
     } catch {
       return false;
     }
+  });
+
+  // ngrok tunnel state for remote support
+  const [ngrokStatus, setNgrokStatus] = useState({
+    installed: false,
+    running: false,
+    url: null,
+    loading: false,
+    error: null,
   });
 
   // Fetch helper with timeout
@@ -341,11 +354,130 @@ export default function BridgeSupport() {
       } catch (e) {
         console.debug('Service status check failed:', e);
       }
+      
+      try {
+        // ngrok tunnel status
+        const ngrokRes = await fetchWithTimeout(`${bridgeUrl}/api/bridge/ngrok/status`);
+        if (ngrokRes.ok) {
+          const ngrokData = await ngrokRes.json();
+          setNgrokStatus(prev => ({ ...prev, ...ngrokData, error: null }));
+        }
+      } catch (e) {
+        console.debug('ngrok status check failed:', e);
+      }
     }
     
     setStatus(prev => ({ ...prev, ...results, checking: false }));
   }, [bridgeUrl, fetchWithTimeout]);
   
+  // ngrok tunnel management
+  const startNgrokTunnel = async () => {
+    if (!status.connected) return;
+    setNgrokStatus(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetchWithTimeout(
+        `${bridgeUrl}/api/bridge/ngrok/start`,
+        { method: 'POST' },
+        20000
+      );
+      const data = await res.json();
+      if (data.success) {
+        setNgrokStatus(prev => ({
+          ...prev,
+          running: true,
+          url: data.url,
+          loading: false,
+          error: null
+        }));
+      } else {
+        setNgrokStatus(prev => ({
+          ...prev,
+          loading: false,
+          error: data.error || 'Failed to start tunnel'
+        }));
+      }
+    } catch (e) {
+      setNgrokStatus(prev => ({
+        ...prev,
+        loading: false,
+        error: e.message || 'Failed to start ngrok tunnel'
+      }));
+    }
+  };
+
+  const stopNgrokTunnel = async () => {
+    if (!status.connected) return;
+    setNgrokStatus(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetchWithTimeout(
+        `${bridgeUrl}/api/bridge/ngrok/stop`,
+        { method: 'POST' },
+        10000
+      );
+      const data = await res.json();
+      if (data.success) {
+        setNgrokStatus(prev => ({
+          ...prev,
+          running: false,
+          url: null,
+          loading: false,
+          error: null
+        }));
+      } else {
+        setNgrokStatus(prev => ({
+          ...prev,
+          loading: false,
+          error: data.error || 'Failed to stop tunnel'
+        }));
+      }
+    } catch (e) {
+      setNgrokStatus(prev => ({
+        ...prev,
+        loading: false,
+        error: e.message || 'Failed to stop ngrok tunnel'
+      }));
+    }
+  };
+
+  const copyNgrokUrl = () => {
+    if (ngrokStatus.url) {
+      navigator.clipboard.writeText(ngrokStatus.url);
+      setCopyFeedback('URL copied!');
+      setTimeout(() => setCopyFeedback(''), 2000);
+    }
+  };
+
+  const installTailscale = async () => {
+    if (!status.connected) return;
+    setTailscaleInstalling(true);
+    setTailscaleInstallMessage(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${bridgeUrl}/api/bridge/tailscale/install`,
+        { method: 'POST' },
+        130000
+      );
+      const data = await res.json();
+      if (data.success) {
+        setTailscaleInstallMessage({ type: 'success', text: data.message });
+        setTimeout(() => checkStatus(), 2000);
+      } else {
+        setTailscaleInstallMessage({
+          type: 'error',
+          text: data.error || 'Install failed',
+          hint: data.hint
+        });
+      }
+    } catch (e) {
+      setTailscaleInstallMessage({
+        type: 'error',
+        text: e.message || 'Could not reach bridge'
+      });
+    } finally {
+      setTailscaleInstalling(false);
+    }
+  };
+
   // Scan for WiFi networks
   const scanWiFi = async () => {
     if (!status.connected) return;
@@ -391,7 +523,7 @@ export default function BridgeSupport() {
         setWifiPassword('');
         // Refresh WiFi status after connection
         setTimeout(() => {
-          loadStatus();
+          checkStatus();
         }, 2000);
       } else {
         setWifiError(data.error || 'Connection failed');
@@ -419,7 +551,7 @@ export default function BridgeSupport() {
         setBlueairPassword(''); // Clear password field
         // Refresh status
         setTimeout(() => {
-          loadStatus();
+          checkStatus();
         }, 1000);
       } else {
         setBlueairCredentialsStatus({
@@ -701,30 +833,176 @@ export default function BridgeSupport() {
           </button>
         </div>
 
-        {/* Connection URL */}
-        <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-          <label className="block text-sm text-slate-400 mb-2">Bridge URL</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={bridgeUrl}
-              onChange={(e) => setBridgeUrl(e.target.value)}
-              className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-              placeholder="http://joule-bridge.local:8080"
-            />
-            <button
-              onClick={() => {
-                localStorage.setItem('jouleBridgeUrl', bridgeUrl);
-                checkStatus();
-              }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
-            >
-              Save & Check
-            </button>
+        {/* Remote Access Wizard - Show when not connected or explicitly requested */}
+        <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-xl p-6 border border-purple-700/50">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Wifi className="w-5 h-5 text-purple-400" />
+            Remote Access Wizard
+            <span className="text-xs font-normal text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded">For Support</span>
+          </h2>
+          
+          <div className="space-y-4">
+            {/* Step 1: Where are you? */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <p className="text-sm font-medium text-slate-300 mb-3">Step 1: Where are you accessing from?</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const url = 'http://192.168.0.103:8080';
+                    setBridgeUrl(url);
+                    localStorage.setItem('jouleBridgeUrl', url);
+                    setCopyFeedback('Using local URL — checking...');
+                    setTimeout(() => setCopyFeedback(''), 3000);
+                    checkStatus();
+                  }}
+                  className="p-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-left transition-colors border border-slate-600 cursor-pointer"
+                >
+                  <span className="font-medium text-green-400 block">🏠 Same Network (Local)</span>
+                  <span className="text-xs text-slate-400 block mt-1">I'm on the same WiFi as the bridge</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (status.systemInfo?.tailscale_ip) {
+                      const url = `http://${status.systemInfo.tailscale_ip}:8080`;
+                      setBridgeUrl(url);
+                      localStorage.setItem('jouleBridgeUrl', url);
+                      setCopyFeedback('Using Tailscale URL — checking...');
+                      setTimeout(() => setCopyFeedback(''), 3000);
+                      checkStatus();
+                    } else if (ngrokStatus.url) {
+                      setBridgeUrl(ngrokStatus.url);
+                      localStorage.setItem('jouleBridgeUrl', ngrokStatus.url);
+                      setCopyFeedback('Using ngrok URL — checking...');
+                      setTimeout(() => setCopyFeedback(''), 3000);
+                      checkStatus();
+                    } else {
+                      setCopyFeedback('Paste the Tailscale or ngrok URL in the box above, then click Connect.');
+                      setTimeout(() => setCopyFeedback(''), 6000);
+                    }
+                  }}
+                  className="p-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-left transition-colors border border-slate-600 cursor-pointer"
+                >
+                  <span className="font-medium text-purple-400 block">🌐 Remote (Different Location)</span>
+                  <span className="text-xs text-slate-400 block mt-1">I'm helping someone remotely</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Step 2: Get Remote URL */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <p className="text-sm font-medium text-slate-300 mb-3">Step 2: Get the remote URL from the customer</p>
+              
+              {/* Option A: Tailscale */}
+              <div className="mb-4 p-3 bg-purple-900/20 rounded-lg border border-purple-700/50">
+                <p className="text-sm font-medium text-purple-300 mb-2">Option A: Tailscale (Recommended)</p>
+                {status.systemInfo?.tailscale_ip ? (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 bg-slate-900 rounded text-purple-200 font-mono text-sm">
+                      http://{status.systemInfo.tailscale_ip}:8080
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `http://${status.systemInfo.tailscale_ip}:8080`;
+                        setBridgeUrl(url);
+                        localStorage.setItem('jouleBridgeUrl', url);
+                        navigator.clipboard.writeText(url);
+                        setCopyFeedback('Copied & Set!');
+                        setTimeout(() => setCopyFeedback(''), 2000);
+                        checkStatus();
+                      }}
+                      className="px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded transition-colors text-sm cursor-pointer"
+                    >
+                      Use This
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    Install Tailscale using the <strong>Remote Support Access (Tailscale)</strong> section below and have the customer sign in. The remote URL will appear there and here automatically — no need to ask for an IP.
+                  </p>
+                )}
+              </div>
+              
+              {/* Option B: ngrok */}
+              <div className="p-3 bg-green-900/20 rounded-lg border border-green-700/50">
+                <p className="text-sm font-medium text-green-300 mb-2">Option B: ngrok (Quick One-Time)</p>
+                {ngrokStatus.running && ngrokStatus.url ? (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 bg-slate-900 rounded text-green-200 font-mono text-sm break-all">
+                      {ngrokStatus.url}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBridgeUrl(ngrokStatus.url);
+                        localStorage.setItem('jouleBridgeUrl', ngrokStatus.url);
+                        navigator.clipboard.writeText(ngrokStatus.url);
+                        setCopyFeedback('Copied & Set!');
+                        setTimeout(() => setCopyFeedback(''), 2000);
+                        checkStatus();
+                      }}
+                      className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded transition-colors text-sm cursor-pointer"
+                    >
+                      Use This
+                    </button>
+                  </div>
+                ) : status.connected && ngrokStatus.installed ? (
+                  <button
+                    type="button"
+                    onClick={startNgrokTunnel}
+                    disabled={ngrokStatus.loading}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:bg-slate-600 rounded transition-colors text-sm cursor-pointer"
+                  >
+                    {ngrokStatus.loading ? 'Starting...' : 'Start Tunnel Now'}
+                  </button>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {!status.connected 
+                      ? 'Connect to bridge first to start a tunnel'
+                      : 'ngrok not installed. Ask customer to share their Tailscale IP instead.'}
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            {/* Manual URL Entry */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <p className="text-sm font-medium text-slate-300 mb-2">Or enter URL manually:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={bridgeUrl}
+                  onChange={(e) => setBridgeUrl(e.target.value)}
+                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white text-sm"
+                  placeholder="http://joule-bridge.local:8080 or Tailscale/ngrok URL"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem('jouleBridgeUrl', bridgeUrl);
+                    setCopyFeedback('Connecting...');
+                    setTimeout(() => setCopyFeedback(''), 2000);
+                    checkStatus();
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-sm cursor-pointer"
+                >
+                  Connect
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Common URLs: <code className="bg-slate-700 px-1 rounded">http://192.168.0.103:8080</code> (local) • 
+                <code className="bg-slate-700 px-1 rounded ml-1">http://100.x.x.x:8080</code> (Tailscale)
+              </p>
+            </div>
+            
+            {copyFeedback && (
+              <p className="text-sm text-green-400 text-center">{copyFeedback}</p>
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-2">
-            Try: <code className="bg-slate-700 px-1 rounded">http://joule-bridge.local:8080</code> or the IP address
-          </p>
         </div>
 
         {/* Status Card */}
@@ -1154,20 +1432,181 @@ export default function BridgeSupport() {
                         ? '⏸️ Tailscale is installed but not running'
                         : '⚠️ Tailscale IP not available'}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    To enable remote support access, the user needs to install Tailscale on their bridge.
+                  <p className="text-xs text-slate-500 mb-4">
+                    Once Tailscale is installed and the customer signs in, the remote URL will appear here — no need for the customer to find or share an IP.
                   </p>
+                  
+                  {status.systemInfo.tailscale?.installed === false && (
+                    <button
+                      type="button"
+                      onClick={installTailscale}
+                      disabled={tailscaleInstalling}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 rounded-lg transition-colors text-sm font-medium cursor-pointer flex items-center gap-2"
+                    >
+                      {tailscaleInstalling ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Installing…
+                        </>
+                      ) : (
+                        'Install Tailscale on bridge'
+                      )}
+                    </button>
+                  )}
+                  
+                  {tailscaleInstallMessage && (
+                    <div className={`mt-4 p-3 rounded-lg text-sm ${tailscaleInstallMessage.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                      {tailscaleInstallMessage.text}
+                      {tailscaleInstallMessage.hint && (
+                        <p className="text-xs mt-2 opacity-90">{tailscaleInstallMessage.hint}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-700">
-                  <p className="text-blue-400 font-medium mb-2">📋 Setup Instructions for User:</p>
-                  <ol className="list-decimal list-inside text-xs text-blue-300 space-y-1">
-                    <li>SSH into bridge: <code className="bg-slate-900 px-1 rounded">ssh user@{status.systemInfo.local_ip}</code></li>
-                    <li>Install Tailscale: <code className="bg-slate-900 px-1 rounded">curl -fsSL https://tailscale.com/install.sh | sh</code></li>
-                    <li>Authenticate: <code className="bg-slate-900 px-1 rounded">sudo tailscale up</code></li>
-                    <li>Share the Tailscale IP with support</li>
+                  <p className="text-blue-400 font-medium mb-2">📋 What the customer does (simple):</p>
+                  <ol className="list-decimal list-inside text-xs text-blue-300 space-y-2">
+                    <li><strong>Install</strong> — Click &quot;Install Tailscale on bridge&quot; above (or they run on the bridge: <code className="bg-slate-900 px-1 rounded break-all">curl -fsSL https://tailscale.com/install.sh | sh</code>)</li>
+                    <li><strong>Sign in</strong> — On the bridge they run: <code className="bg-slate-900 px-1 rounded">sudo tailscale up</code>, then open the link shown in a browser and sign in</li>
+                    <li><strong>Done</strong> — The remote URL will show here automatically. Use it in the Bridge URL field at the top to connect from anywhere</li>
                   </ol>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ngrok Quick Support Tunnel */}
+        {status.connected && (
+          <div className={`rounded-xl p-6 border ${
+            ngrokStatus.running 
+              ? 'bg-green-900/20 border-green-700' 
+              : 'bg-slate-800/50 border-slate-700'
+          }`}>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              Quick Support Tunnel (ngrok)
+              <span className="text-xs font-normal text-green-400 bg-green-900/50 px-2 py-0.5 rounded">One-Click</span>
+            </h2>
+            
+            <p className="text-sm text-slate-400 mb-4">
+              Start a temporary public tunnel for quick one-time support. No user setup required - just click and share the URL.
+            </p>
+            
+            {ngrokStatus.running && ngrokStatus.url ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-900/30 rounded-lg border border-green-600">
+                  <p className="text-green-300 text-sm mb-2">🎉 Tunnel is active! Share this URL with the customer:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 bg-slate-900 rounded-lg text-green-200 font-mono text-sm break-all">
+                      {ngrokStatus.url}
+                    </code>
+                    <button
+                      onClick={copyNgrokUrl}
+                      className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded-lg transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="text-xs text-green-400 mt-2">
+                    This URL is temporary and will stop working when you click "Stop Tunnel".
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={stopNgrokTunnel}
+                    disabled={ngrokStatus.loading}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 rounded-lg transition-colors"
+                  >
+                    {ngrokStatus.loading ? 'Stopping...' : 'Stop Tunnel'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {!ngrokStatus.installed ? (
+                  <div className="p-4 bg-slate-900 rounded-lg">
+                    <p className="text-slate-400 text-sm mb-2">
+                      ❌ ngrok is not installed on this bridge
+                    </p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      To enable quick support tunnels, install ngrok on the bridge:
+                    </p>
+                    <code className="block px-3 py-2 bg-slate-800 rounded text-xs text-green-400 font-mono break-all">
+                      curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc && echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok && ngrok config add-authtoken YOUR_TOKEN
+                    </code>
+                  </div>
+                ) : (
+                  <button
+                    onClick={startNgrokTunnel}
+                    disabled={ngrokStatus.loading}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:bg-slate-600 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    {ngrokStatus.loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Starting Tunnel...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Start Support Tunnel
+                      </>
+                    )}
+                  </button>
+                )}
+                
+                {ngrokStatus.error && (
+                  <div className="p-4 bg-red-900/30 rounded-lg border border-red-600">
+                    <p className="text-red-300 text-sm">{ngrokStatus.error}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-700">
+              <p className="text-xs text-blue-300">
+                <strong>Tailscale vs ngrok:</strong> Use Tailscale for regular support (persistent, secure VPN). Use ngrok for quick one-time access when the customer can't set up Tailscale.
+              </p>
+            </div>
+            
+            {/* Send Remote Pairing Link - only show when ngrok is running */}
+            {ngrokStatus.running && ngrokStatus.url && (
+              <div className="mt-4 p-4 bg-purple-900/30 rounded-lg border border-purple-600">
+                <h3 className="font-medium text-purple-300 mb-2 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  Send Remote Pairing Link
+                </h3>
+                <p className="text-xs text-purple-200/80 mb-3">
+                  Send this link to the customer so they can enter their Ecobee pairing code themselves:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 bg-slate-900 rounded text-purple-200 font-mono text-xs break-all">
+                    {window.location.origin}/remote-pairing?bridge={encodeURIComponent(ngrokStatus.url)}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const link = `${window.location.origin}/remote-pairing?bridge=${encodeURIComponent(ngrokStatus.url)}`;
+                      navigator.clipboard.writeText(link);
+                      setCopyFeedback('Link copied!');
+                      setTimeout(() => setCopyFeedback(''), 2000);
+                    }}
+                    className="px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded transition-colors text-sm whitespace-nowrap"
+                  >
+                    Copy Link
+                  </button>
+                </div>
+                <p className="text-xs text-purple-400 mt-2">
+                  Customer opens this link, finds their Ecobee, and enters the pairing code.
+                </p>
               </div>
             )}
           </div>

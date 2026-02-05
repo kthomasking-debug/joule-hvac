@@ -62,6 +62,7 @@ export default function JouleBridgeSettings() {
   const [loadingHomekitInfo, setLoadingHomekitInfo] = useState(false);
   const [blueairExpanded, setBlueairExpanded] = useState(false);
   const [homekitExpanded, setHomekitExpanded] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     loadState();
@@ -496,52 +497,6 @@ export default function JouleBridgeSettings() {
         No cloud, no accounts, no remote access.
       </div>
       
-      {/* Demo Mode Override Toggle */}
-      <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 mb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Debug: Disable Demo Mode
-            </h4>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Manually disable demo mode to see raw data from your Ecobee via HomeKit. Useful for debugging.
-            </p>
-          </div>
-          <label className="inline-flex items-center gap-3">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={(() => {
-                try {
-                  return localStorage.getItem("demoModeDisabled") === "true";
-                } catch {
-                  return false;
-                }
-              })()}
-              onChange={(e) => {
-                try {
-                  if (e.target.checked) {
-                    localStorage.setItem("demoModeDisabled", "true");
-                  } else {
-                    localStorage.removeItem("demoModeDisabled");
-                  }
-                  // Trigger a re-check
-                  window.dispatchEvent(new Event("demo-mode-changed"));
-                  // Also trigger storage event for other tabs
-                  window.dispatchEvent(new StorageEvent("storage", {
-                    key: "demoModeDisabled",
-                    newValue: e.target.checked ? "true" : null,
-                  }));
-                  // Force page refresh to apply changes
-                  setTimeout(() => window.location.reload(), 500);
-                } catch (err) {
-                  console.error("Error toggling demo mode:", err);
-                }
-              }}
-            />
-          </label>
-        </div>
-      </div>
 
       {/* Bridge Status */}
       <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -559,13 +514,14 @@ export default function JouleBridgeSettings() {
                 Bridge Status: {checkingHealth ? 'Checking...' : bridgeAvailable ? 'Connected' : 'Not Available'}
               </span>
               {bridgeAvailable && bridgeInfo && (
-                <span className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  {bridgeInfo.hostname || 'Unknown'}
-                  {bridgeInfo.username && ` (${bridgeInfo.username})`}
-                  {' • '}
-                  {bridgeInfo.local_ip || 'Unknown IP'}
-                  {bridgeInfo.tailscale_ip && ` • Tailscale: ${bridgeInfo.tailscale_ip}`}
-                </span>
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">
+                  <div><strong>Bridge IP Address:</strong> {bridgeInfo.local_ip || 'Unknown'}</div>
+                  <div>
+                    {bridgeInfo.hostname || 'Unknown'}
+                    {bridgeInfo.username && ` (${bridgeInfo.username})`}
+                    {bridgeInfo.tailscale_ip && ` • Tailscale: ${bridgeInfo.tailscale_ip}`}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -898,8 +854,8 @@ export default function JouleBridgeSettings() {
         </div>
       )}
 
-      {/* Diagnostic & Auto-Fix */}
-      {bridgeAvailable && diagnostics && diagnostics.mismatch_detected && (
+      {/* Diagnostic & Auto-Fix - Show only if there's a mismatch AND advanced mode is on */}
+      {showAdvanced && bridgeAvailable && diagnostics && diagnostics.mismatch_detected && (
         <div className="p-4 rounded-lg border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 mb-4">
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -999,13 +955,94 @@ export default function JouleBridgeSettings() {
               <p>1. Click "Discover" to find your Ecobee</p>
               <p>2. Enable HomeKit pairing on your Ecobee (Menu → Settings → HomeKit)</p>
               <p>3. Enter the 8-digit pairing code and click "Pair"</p>
+              <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
+                <a
+                  href="/pairing-wizard"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Launch Pairing Wizard
+                </a>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                  Step-by-step guide with QR scanner
+                </p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Blueair Credentials Configuration - Collapsible */}
-      {bridgeAvailable && (
+      {/* Advanced Settings Toggle */}
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
+        >
+          {showAdvanced ? (
+            <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
+          <span>{showAdvanced ? 'Hide' : 'Show'} Advanced Settings</span>
+        </button>
+        
+        {showAdvanced && (
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Additional integrations and debugging options for power users.
+          </p>
+        )}
+      </div>
+
+      {/* Debug: Disable Demo Mode - Advanced */}
+      {showAdvanced && (
+        <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Debug: Disable Demo Mode
+              </h4>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Manually disable demo mode to see raw data from your Ecobee via HomeKit.
+              </p>
+            </div>
+            <label className="inline-flex items-center gap-3">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={(() => {
+                  try {
+                    return localStorage.getItem("demoModeDisabled") === "true";
+                  } catch {
+                    return false;
+                  }
+                })()}
+                onChange={(e) => {
+                  try {
+                    if (e.target.checked) {
+                      localStorage.setItem("demoModeDisabled", "true");
+                    } else {
+                      localStorage.removeItem("demoModeDisabled");
+                    }
+                    window.dispatchEvent(new Event("demo-mode-changed"));
+                    window.dispatchEvent(new StorageEvent("storage", {
+                      key: "demoModeDisabled",
+                      newValue: e.target.checked ? "true" : null,
+                    }));
+                    setTimeout(() => window.location.reload(), 500);
+                  } catch (err) {
+                    console.error("Error toggling demo mode:", err);
+                  }
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Blueair Credentials Configuration - Collapsible (Advanced) */}
+      {showAdvanced && bridgeAvailable && (
         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
           <button
             onClick={() => setBlueairExpanded(!blueairExpanded)}
@@ -1115,8 +1152,8 @@ export default function JouleBridgeSettings() {
         </div>
       )}
 
-      {/* HomeKit Bridge Pairing Info - Collapsible - Moved below Blueair */}
-      {bridgeAvailable && (
+      {/* HomeKit Bridge Pairing Info - Collapsible - Advanced */}
+      {showAdvanced && bridgeAvailable && (
         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
           <button
             onClick={() => setHomekitExpanded(!homekitExpanded)}

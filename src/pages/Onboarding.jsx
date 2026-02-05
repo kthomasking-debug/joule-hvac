@@ -15,6 +15,7 @@ import {
   Lock,
   AlertCircle,
   Loader2,
+  Search,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -154,6 +155,7 @@ export default function Onboarding() {
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
   const [pairingCode, setPairingCode] = useState('');
   const [bridgeConnecting, setBridgeConnecting] = useState(false);
+  const [searchingBridge, setSearchingBridge] = useState(false);
   const [bridgeError, setBridgeError] = useState(null);
   const [bridgeConnected, setBridgeConnected] = useState(false);
 
@@ -475,14 +477,6 @@ export default function Onboarding() {
 
   const themeData = getWelcomeTheme(welcomeTheme);
 
-  // Generate pairing code in format XXX-XX-XXX
-  const generatePairingCode = useCallback(() => {
-    const digits = Array.from({ length: 8 }, () => Math.floor(Math.random() * 10)).join('');
-    const code = `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 8)}`;
-    setPairingCode(code);
-    return code;
-  }, []);
-
   // Test bridge connection
   const testBridgeConnection = useCallback(async () => {
     if (!bridgeIp.trim()) {
@@ -494,7 +488,7 @@ export default function Onboarding() {
     setBridgeError(null);
     
     try {
-      const code = pairingCode || generatePairingCode();
+      const code = pairingCode?.replace(/-/g, '').length === 8 ? pairingCode : null;
       const bridgeUrl = `http://${bridgeIp.trim()}:8090`;
       
       // Test connectivity
@@ -508,7 +502,7 @@ export default function Onboarding() {
       // Send forecast data to bridge
       const forecastData = localStorage.getItem('last_forecast_summary');
       const configPayload = {
-        pairingCode: code,
+        ...(code && { pairingCode: code }),
         timestamp: new Date().toISOString(),
         forecast_summary: forecastData ? JSON.parse(forecastData) : null,
         location: foundLocation ? {
@@ -532,7 +526,7 @@ export default function Onboarding() {
       // Store bridge settings
       setBridgeBase(bridgeUrl);
       localStorage.setItem('bridgeIp', bridgeIp);
-      localStorage.setItem('pairingCode', code);
+      if (code) localStorage.setItem('pairingCode', code);
       
       setBridgeConnected(true);
     } catch (err) {
@@ -541,7 +535,34 @@ export default function Onboarding() {
     } finally {
       setBridgeConnecting(false);
     }
-  }, [bridgeIp, pairingCode, generatePairingCode, foundLocation, locationElevation]);
+  }, [bridgeIp, pairingCode, foundLocation, locationElevation]);
+
+  // Search for Joule-Bridge on the network (mDNS: joule-bridge.local)
+  const handleSearchBridge = useCallback(async () => {
+    setSearchingBridge(true);
+    setBridgeError(null);
+    try {
+      const url = 'http://joule-bridge.local:8080/api/bridge/info';
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error('Bridge not responding');
+      const info = await res.json();
+      const ip = info?.lan_ip || info?.local_ip;
+      if (ip && typeof ip === 'string') {
+        setBridgeIp(ip.trim());
+      } else {
+        throw new Error('Could not get IP from bridge');
+      }
+    } catch (err) {
+      const msg = err.message || 'Bridge not found';
+      setBridgeError(
+        msg.includes('Bridge not found') || msg.includes('Failed to fetch') || msg.includes('network')
+          ? 'Joule-Bridge not found. Make sure it\'s on the same network and shows as "Joule-Bridge" in your router.'
+          : msg
+      );
+    } finally {
+      setSearchingBridge(false);
+    }
+  }, []);
 
   // If already completed, show a quick redirect message
   if (hasCompletedOnboarding) {
@@ -1034,33 +1055,54 @@ export default function Onboarding() {
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
                   <Network size={16} /> Bridge IP Address
                 </label>
-                <input 
-                  type="text" 
-                  placeholder="192.168.1.100" 
-                  value={bridgeIp} 
-                  onChange={(e) => setBridgeIp(e.target.value)}
-                  className={fullInputClasses}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Find this on your Pi bridge device or router</p>
-              </div>
-
-              {/* Pairing Code Display */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
-                  <Lock size={16} /> Pairing Code
-                </label>
-                <div className="flex gap-3">
-                  <div className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg py-4 px-4 text-2xl font-black text-blue-600 dark:text-blue-400 font-mono text-center">
-                    {pairingCode || '---  --  ---'}
-                  </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="192.168.1.100"
+                    value={bridgeIp}
+                    onChange={(e) => setBridgeIp(e.target.value)}
+                    className={`${fullInputClasses} flex-1`}
+                  />
                   <button
-                    onClick={() => generatePairingCode()}
-                    className="btn btn-primary px-6"
+                    type="button"
+                    onClick={handleSearchBridge}
+                    disabled={searchingBridge}
+                    className="btn btn-outline px-4 flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Search for Joule-Bridge on your network (shows as Joule-Bridge in router)"
                   >
-                    Generate
+                    {searchingBridge ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
+                    Search
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Format: XXX-XX-XXX. Share this code with your bridge for verification</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Find this on your Pi bridge device or router (shows as &quot;Joule-Bridge&quot;)</p>
+              </div>
+
+              {/* Pairing Code Input - from Ecobee */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
+                  <Lock size={16} /> Ecobee Pairing Code
+                </label>
+                <input
+                  type="text"
+                  placeholder="XXX-XX-XXX"
+                  value={pairingCode}
+                  onChange={(e) => {
+                    let value = e.target.value.replace(/[^\d]/g, '');
+                    if (value.length > 8) value = value.slice(0, 8);
+                    if (value.length > 5) {
+                      value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
+                    } else if (value.length > 3) {
+                      value = value.slice(0, 3) + '-' + value.slice(3);
+                    }
+                    setPairingCode(value);
+                  }}
+                  className={fullInputClasses}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Enter the 8-digit code from your Ecobee (Menu → Settings → Installation Settings → HomeKit)</p>
               </div>
 
               {/* Error Message */}

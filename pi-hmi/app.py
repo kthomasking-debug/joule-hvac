@@ -94,6 +94,13 @@ class Status:
     night_temp: float = 0.0   # nighttime target °F
     humidity: int = 0
     last_ok: bool = False
+    # Bridge/Ecobee connection status: 'connected', 'no_ecobee', 'offline', 'error'
+    bridge_status: str = 'offline'
+    bridge_ip: str = ''  # Bridge's LAN IP (e.g., 192.168.0.103)
+    # Pairing status from wizard: 'idle', 'wizard_started', 'discovered', 'pairing', 'success', 'error', 'healthy', 'unhealthy'
+    pairing_mode: str = 'idle'
+    pairing_code: str = ''  # Partial code for display (e.g., "123-XX-XXX")
+    pairing_error: str = ''
     # Outdoor weather (fetched from OpenMeteo)
     outdoor_temp: float = 0.0
     outdoor_humidity: int = 0
@@ -292,12 +299,38 @@ class EInkHMI:
                             self.status.target_temp = 0.0
                         self.status.humidity = int(d.get('humidity', 0))
                         self.status.last_ok = True
+                        self.status.bridge_status = 'connected'
                     else:
                         self.status.last_ok = False
+                        self.status.bridge_status = 'no_ecobee'
                 else:
                     self.status.last_ok = False
+                    self.status.bridge_status = 'error'
+            except requests.exceptions.ConnectionError:
+                self.status.last_ok = False
+                self.status.bridge_status = 'offline'
             except Exception:
                 self.status.last_ok = False
+                self.status.bridge_status = 'error'
+            
+            # Fetch pairing status (for wizard display)
+            try:
+                pr = requests.get(f'{API_BASE.rstrip("/")}/api/pairing/status', timeout=3)
+                if pr.ok:
+                    ps = pr.json()
+                    new_mode = ps.get('mode', 'idle')
+                    new_code = ps.get('code', '')
+                    new_error = ps.get('error', '')
+                    # Trigger display update if pairing status changed
+                    if (new_mode != self.status.pairing_mode or 
+                        new_code != self.status.pairing_code):
+                        self.status.pairing_mode = new_mode
+                        self.status.pairing_code = new_code or ''
+                        self.status.pairing_error = new_error or ''
+                        if new_mode not in ('idle', 'healthy'):
+                            self._touch_pending_display = True  # Show pairing status
+            except Exception:
+                pass  # Pairing status is optional
             
             # Fetch settings/cost from bridge every ~60 seconds (4 polls at 15s each)
             settings_counter += 1
@@ -393,6 +426,17 @@ class EInkHMI:
                         if ts and isinstance(ts, (int, float)):
                             self.status.forecast_timestamp = int(ts)
                         print(f'[INFO] Got {len(self.status.daily_forecast)} day(s) of forecast data')
+                
+                # Fetch bridge IP from /api/bridge/info
+                try:
+                    br = requests.get(f'{API_BASE.rstrip("/")}/api/bridge/info', timeout=2)
+                    if br.ok:
+                        info = br.json()
+                        ip = info.get('local_ip')
+                        if ip and isinstance(ip, str):
+                            self.status.bridge_ip = ip
+                except Exception:
+                    pass
         except Exception as e:
             print(f'[WARN] Bridge settings fetch: {e}')
 
@@ -480,6 +524,17 @@ class EInkHMI:
                         if ts and isinstance(ts, (int, float)):
                             self.status.forecast_timestamp = int(ts)
                         print(f'[INFO] Got {len(self.status.daily_forecast)} day(s) of forecast')
+                
+                # Fetch bridge IP
+                try:
+                    br = requests.get(f'{API_BASE.rstrip("/")}/api/bridge/info', timeout=2)
+                    if br.ok:
+                        info = br.json()
+                        ip = info.get('local_ip')
+                        if ip and isinstance(ip, str):
+                            self.status.bridge_ip = ip
+                except Exception:
+                    pass
         except Exception as e:
             print(f'[WARN] Bridge settings fetch: {e}')
         
@@ -656,6 +711,12 @@ class EInkHMI:
     # --- Render ---
     def render(self):
         self.draw.rectangle((0,0,SCREEN_W,SCREEN_H), fill=255)
+        
+        # Check for active pairing mode - show special pairing screen
+        if self.status.pairing_mode not in ('idle', 'healthy', 'unhealthy', ''):
+            self._render_pairing_status()
+            return
+        
         # Header bar (14px tall) - show mode/temp info
         header_h = 14
         self.draw.rectangle((0, 0, SCREEN_W, header_h), fill=0)
@@ -672,11 +733,18 @@ class EInkHMI:
             # No thermostat: MODE | Day XX° Night XX°
             hdr = f"{mode_str} | Day {day_temp:.0f}° Night {night_temp:.0f}°"
         
-        # Connection status indicator
-        conn = "OK" if self.status.last_ok else ("WX" if self.status.weather_ok else "...")
+        # Bridge/Ecobee connection status indicator
+        status_map = {
+            'connected': 'OK',
+            'no_ecobee': 'NO ECO',
+            'offline': 'BRIDGE?',
+            'error': 'ERR'
+        }
+        conn = status_map.get(self.status.bridge_status, '...')
+        conn_width = len(conn) * 6  # Approximate width for small font
         
         self.draw.text((3, 2), hdr, font=FONT_HEADER, fill=255)
-        self.draw.text((SCREEN_W - 20, 2), conn, font=FONT_HEADER, fill=255)
+        self.draw.text((SCREEN_W - conn_width - 3, 2), conn, font=FONT_HEADER, fill=255)
         
         # Page content (between header and nav)
         if self.current_page == 'status':
@@ -687,6 +755,41 @@ class EInkHMI:
             self._render_guide()
         # Bottom nav
         self._render_nav()
+    
+    def _render_pairing_status(self):
+        """Render special pairing mode screen"""
+        # Full-screen pairing display
+        header_h = 14
+        self.draw.rectangle((0, 0, SCREEN_W, header_h), fill=0)
+        self.draw.text((3, 2), "PAIRING MODE", font=FONT_HEADER, fill=255)
+        
+        content_y = 20
+        mode = self.status.pairing_mode
+        
+        if mode == 'wizard_started':
+            self.draw.text((10, content_y), "Pairing wizard", font=FONT_MED, fill=0)
+            self.draw.text((10, content_y + 20), "started...", font=FONT_MED, fill=0)
+            self.draw.text((10, content_y + 50), "Follow steps on app", font=FONT_SMALL, fill=0)
+        elif mode == 'discovered':
+            self.draw.text((10, content_y), "Devices found!", font=FONT_MED, fill=0)
+            self.draw.text((10, content_y + 20), "Select device in app", font=FONT_SMALL, fill=0)
+        elif mode == 'pairing':
+            self.draw.text((10, content_y), "Pairing...", font=FONT_MED, fill=0)
+            if self.status.pairing_code:
+                self.draw.text((10, content_y + 25), f"Code: {self.status.pairing_code}", font=FONT_MED, fill=0)
+            self.draw.text((10, content_y + 55), "Please wait", font=FONT_SMALL, fill=0)
+        elif mode == 'success':
+            self.draw.text((10, content_y), "SUCCESS!", font=FONT_BIG, fill=0)
+            self.draw.text((10, content_y + 45), "Ecobee connected", font=FONT_MED, fill=0)
+        elif mode == 'error':
+            self.draw.text((10, content_y), "PAIRING FAILED", font=FONT_MED, fill=0)
+            if self.status.pairing_error:
+                # Truncate error for display
+                err = self.status.pairing_error[:30]
+                self.draw.text((10, content_y + 25), err, font=FONT_SMALL, fill=0)
+            self.draw.text((10, content_y + 55), "Check app for details", font=FONT_SMALL, fill=0)
+        else:
+            self.draw.text((10, content_y), f"Mode: {mode}", font=FONT_SMALL, fill=0)
 
     def _render_status(self):
         # Main content area: y=14 to y=98 (84px height)
@@ -719,6 +822,9 @@ class EInkHMI:
             # Outdoor on right
             if self.status.weather_ok:
                 self.draw.text((160, info_y), f"Out: {self.status.outdoor_temp:.0f}° {self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
+            # Bridge IP on second row if available
+            if self.status.bridge_ip:
+                self.draw.text((4, info_y + 14), f"Bridge IP: {self.status.bridge_ip}", font=FONT_SMALL, fill=0)
         else:
             # No cost data - show status info
             self.draw.text((10, content_y + 10), 'Joule Status', font=FONT_MED, fill=0)
@@ -727,6 +833,8 @@ class EInkHMI:
             
             if self.status.weather_ok:
                 self.draw.text((10, content_y + 60), f"Outside: {self.status.outdoor_temp:.0f}°F {self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
+            if self.status.bridge_ip:
+                self.draw.text((10, content_y + 74), f"Bridge IP: {self.status.bridge_ip}", font=FONT_SMALL, fill=0)
 
     def _render_actions(self):
         """Render Energy Breakdown page"""
