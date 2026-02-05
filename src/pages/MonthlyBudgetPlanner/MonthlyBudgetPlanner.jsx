@@ -740,6 +740,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const adjustedForecast = useMemo(() => {
     if (!dailyForecast || dailyForecast.length === 0) return null;
     
+    // Debug logging
+    if (import.meta?.env?.DEV) {
+      const forecastCount = dailyForecast.filter(d => d.source === 'forecast' || d.source === 'forecast-adjusted').length;
+      const historicalCount = dailyForecast.filter(d => d.source === 'historical' || d.source === 'historical-adjusted').length;
+      console.log(`📊 MonthlyBudgetPlanner received ${dailyForecast.length} days (${forecastCount} forecast, ${historicalCount} historical)`);
+    }
+    
     if (forecastModel === "typical") {
       // No adjustment - use as-is (TMY3 baseline)
       return dailyForecast;

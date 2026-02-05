@@ -184,11 +184,17 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
 
           // Build complete month: use forecast where available, historical for the rest
           const completeMonth = [];
+          
+          // Create midnight timestamp ONCE, outside the loop (setHours mutates the date object!)
+          const todayMidnight = new Date(today);
+          todayMidnight.setHours(0, 0, 0, 0);
+          const todayTimestamp = todayMidnight.getTime();
+          
           for (let day = 1; day <= daysInMonth; day++) {
             const dayDate = new Date(currentYear, targetMonth - 1, day);
-            const isPastDay = dayDate < today.setHours(0, 0, 0, 0);
+            const isPastDay = dayDate.getTime() < todayTimestamp;
             
-            // Use forecast only if the day has actual forecast data
+            // Use forecast only if the day has actual forecast data and is not a past day
             // For past days or days beyond forecast range, use historical
             if (forecastMap.has(day) && !isPastDay) {
               // Use forecast data
@@ -259,6 +265,12 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
                 });
               }
             }
+          }
+
+          if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+            const forecastCount = completeMonth.filter(d => d.source === 'forecast').length;
+            const historicalCount = completeMonth.filter(d => d.source === 'historical').length;
+            console.log(`📅 Monthly forecast complete: ${completeMonth.length} days (${forecastCount} forecast, ${historicalCount} historical)`);
           }
 
           return completeMonth;
