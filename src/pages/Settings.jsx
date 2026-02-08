@@ -28,6 +28,7 @@ import {
   Search,
   Info,
   AlertCircle,
+  Copy,
 } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
@@ -836,6 +837,30 @@ const GroqApiKeyInput = () => {
   const [localModels, setLocalModels] = useState([]);
   const [loadingLocalModels, setLoadingLocalModels] = useState(false);
   const [localModelsError, setLocalModelsError] = useState(null);
+  const [showWhatsThisFor, setShowWhatsThisFor] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const [ollamaStepModal, setOllamaStepModal] = useState(null); // 'download' | 'run-linux' | 'run-windows' | 'pull'
+  const [ollamaLocation, setOllamaLocation] = useState(() => {
+    try {
+      const url = localStorage.getItem("localAIBaseUrl") || "";
+      return url.includes("localhost") || url.includes("127.0.0.1") ? "this-device" : "other-device";
+    } catch {
+      return "other-device";
+    }
+  });
+
+  const copyToClipboard = (text, label, stepKey) => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => {
+          setCopyFeedback(label);
+          setTimeout(() => setCopyFeedback(""), 2000);
+          if (stepKey) setOllamaStepModal(stepKey);
+        },
+        () => setCopyFeedback("")
+      );
+    }
+  };
 
   // Listen for API key updates from Ask Joule or other components
   useEffect(() => {
@@ -1188,36 +1213,91 @@ const GroqApiKeyInput = () => {
 
       {aiProvider === AI_PROVIDERS.LOCAL && (
         <>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+        Do this once: install Ollama, start it, then download a model. Use the buttons below.
+      </p>
       <div>
         <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-          Local API Base URL
+          Where is Ollama running?
+        </label>
+        <div className="flex flex-wrap gap-4 mb-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="ollamaLocation"
+              checked={ollamaLocation === "this-device"}
+              onChange={() => {
+                setOllamaLocation("this-device");
+                const url = "http://localhost:11434/v1";
+                setLocalBaseUrl(url);
+                try {
+                  localStorage.setItem("localAIBaseUrl", url);
+                  persistAIConfigToBridge("localAIBaseUrl", url);
+                  window.dispatchEvent(new Event("storage"));
+                } catch {}
+              }}
+              className="rounded-full"
+            />
+            <span className="text-sm">On this device</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="ollamaLocation"
+              checked={ollamaLocation === "other-device"}
+              onChange={() => {
+                setOllamaLocation("other-device");
+                const url = localBaseUrl && !localBaseUrl.includes("localhost") && !localBaseUrl.includes("127.0.0.1") ? localBaseUrl : "http://192.168.0.108:11434/v1";
+                setLocalBaseUrl(url);
+                try {
+                  localStorage.setItem("localAIBaseUrl", url);
+                  persistAIConfigToBridge("localAIBaseUrl", url);
+                  window.dispatchEvent(new Event("storage"));
+                } catch {}
+              }}
+              className="rounded-full"
+            />
+            <span className="text-sm">On another device (e.g. my PC — I use the app on my phone)</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+          Address of the computer running Ollama
         </label>
         <input
           type="url"
           value={localBaseUrl}
           onChange={handleLocalBaseUrlChange}
-          placeholder="http://192.168.0.108:11434/v1"
+          placeholder={ollamaLocation === "this-device" ? "http://localhost:11434/v1" : "http://192.168.0.108:11434/v1"}
           className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
-          aria-label="Local AI Base URL"
+          aria-label="Address of computer running Ollama"
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Where Ollama runs. Use hostname or IP. Set OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=* on the Ollama host.
+          {ollamaLocation === "this-device"
+            ? "Usually leave as is when Ollama runs on this device."
+            : "Enter the other computer’s address so Joule can reach it. Same Wi‑Fi required."}
         </p>
+        {ollamaLocation === "other-device" && (
+          <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
+            To find the PC’s address: Windows — open Command Prompt, type <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code>, look for IPv4. Mac — System Settings → Network.
+          </p>
+        )}
       </div>
       <div>
         <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-          Local Model
+          Model to use
         </label>
         {loadingLocalModels ? (
           <div className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-500">
-            Connecting to Ollama...
+            Connecting…
           </div>
         ) : localModels.length > 0 ? (
           <select
             value={localModel}
             onChange={handleLocalModelChange}
             className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-            aria-label="Select Local Model"
+            aria-label="Select model"
           >
             {localModels.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
@@ -1225,9 +1305,11 @@ const GroqApiKeyInput = () => {
           </select>
         ) : (
           <div className="w-full p-3 rounded border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-200 space-y-2">
-            <p className="font-medium">Cannot reach Ollama.</p>
-            <p>Ensure OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=*, then ollama pull llama3:latest.</p>
-            {localModelsError && <p className="text-xs opacity-80">Error: {localModelsError}</p>}
+            <p className="font-medium">Can’t connect to Ollama.</p>
+            <p>Is it running on the computer you chose above? Use the three steps below: install Ollama, start it (so your phone can use it if needed), then download the model once.</p>
+            {localModelsError && (
+              <p className="text-xs opacity-90 mt-1">Details: {localModelsError}</p>
+            )}
           </div>
         )}
       </div>
@@ -1235,34 +1317,201 @@ const GroqApiKeyInput = () => {
       )}
 
       <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
-        <p className="font-semibold text-blue-700 dark:text-blue-300 mb-2">
+        <button
+          type="button"
+          onClick={() => setShowWhatsThisFor(!showWhatsThisFor)}
+          className="flex items-center gap-1 font-semibold text-blue-700 dark:text-blue-300 mb-2 hover:underline"
+          aria-expanded={showWhatsThisFor}
+        >
+          {showWhatsThisFor ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           ℹ️ What&apos;s this for?
-        </p>
-        <p className="mb-2">
-          Ask Joule uses an LLM for natural language understanding when built-in parsing can&apos;t handle complex questions.
-        </p>
+        </button>
+        {showWhatsThisFor && (
+          <p className="mb-3 pl-5">
+            Ask Joule uses an LLM for natural language understanding when built-in parsing can&apos;t handle complex questions.
+          </p>
+        )}
         {aiProvider === AI_PROVIDERS.GROQ && (
-          <p className="mb-2">
-            <strong>Get a free Groq key:</strong> Visit{" "}
+          <div className="flex flex-wrap gap-2 mb-2">
             <a
               href="https://console.groq.com/keys"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-blue-400 dark:border-blue-500 bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-700/50 text-sm font-medium"
             >
-              console.groq.com/keys
+              <ExternalLink size={14} />
+              Get Groq API key
             </a>
-          </p>
+          </div>
         )}
         {aiProvider === AI_PROVIDERS.LOCAL && (
-          <p className="mb-2">
-            <strong>Local (Ollama):</strong> Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline">Ollama</a>, run with OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=*, then ollama pull llama3:latest.
-          </p>
+          <div className="space-y-2 mb-2">
+            <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Setup (do in order):</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setOllamaStepModal("download")}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-blue-400 dark:border-blue-500 bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-700/50 text-sm font-medium"
+              >
+                <ExternalLink size={14} />
+                1. Install Ollama
+              </button>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(
+                  '$env:OLLAMA_HOST="0.0.0.0"; $env:OLLAMA_ORIGINS="*"; ollama serve',
+                  "Run command (Windows) copied",
+                  "run-windows"
+                )}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-700/50 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600/50 text-sm font-medium"
+              >
+                <Copy size={14} />
+                {copyFeedback === "Run command (Windows) copied" ? "Copied!" : "2. Start Ollama (Windows)"}
+              </button>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(
+                  "OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve",
+                  "Run command (Linux/Mac) copied",
+                  "run-linux"
+                )}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-700/50 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600/50 text-sm font-medium"
+              >
+                <Copy size={14} />
+                {copyFeedback === "Run command (Linux/Mac) copied" ? "Copied!" : "2. Start Ollama (Mac/Linux)"}
+              </button>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(
+                  "ollama pull llama3:latest",
+                  "Pull command copied",
+                  "pull"
+                )}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-700/50 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600/50 text-sm font-medium"
+              >
+                <Copy size={14} />
+                {copyFeedback === "Pull command copied" ? "Copied!" : "3. Download model (one time)"}
+              </button>
+            </div>
+          </div>
         )}
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
           🔒 All AI calls run from your browser. Groq keys stay local; local AI never leaves your machine.
         </p>
       </div>
+
+      {ollamaStepModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-labelledby="ollama-step-title"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-5 border border-slate-200 dark:border-slate-600">
+            {ollamaStepModal === "download" && (
+              <>
+                <h3 id="ollama-step-title" className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
+                  1. Install Ollama
+                </h3>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-4">
+                  On the computer that will run Ollama, go to ollama.com and install it. That’s it for this step.
+                </p>
+                <a
+                  href="https://ollama.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm"
+                >
+                  <ExternalLink size={14} />
+                  Go to ollama.com
+                </a>
+              </>
+            )}
+            {ollamaStepModal === "run-linux" && (
+              <>
+                <h3 id="ollama-step-title" className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
+                  2. Start Ollama (Mac / Linux)
+                </h3>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-4">
+                  The command is in your clipboard. On that computer, open Terminal, paste (Cmd+V or Ctrl+V), press Enter. Leave the window open so Ollama keeps running.
+                </p>
+              </>
+            )}
+            {ollamaStepModal === "run-windows" && (
+              <>
+                <h3 id="ollama-step-title" className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
+                  2. Start Ollama (Windows)
+                </h3>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+                  You need <strong>PowerShell</strong> (not Command Prompt). If you get a syntax error, you’re in the wrong window — use the option below or open PowerShell from the Start menu.
+                </p>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-3">
+                  <strong>Easiest:</strong> Press <strong>Win+R</strong>, paste the command below, press Enter. A PowerShell window will open and start Ollama. Leave it open.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap mb-3">
+                  <code className="flex-1 min-w-0 text-xs bg-slate-200 dark:bg-slate-600 rounded px-2 py-1.5 break-all">
+                    powershell -NoExit -Command &quot;$env:OLLAMA_HOST=&#39;0.0.0.0&#39;; $env:OLLAMA_ORIGINS=&#39;*&#39;; ollama serve&quot;
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard("powershell -NoExit -Command \"$env:OLLAMA_HOST='0.0.0.0'; $env:OLLAMA_ORIGINS='*'; ollama serve\"", "Open PowerShell + serve copied", null)}
+                    className="shrink-0 px-2 py-1.5 rounded border border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-800/50"
+                  >
+                    {copyFeedback === "Open PowerShell + serve copied" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Or in PowerShell: paste (Ctrl+V) the command you already copied, then Enter.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Using Command Prompt? Copy and run this there:</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="flex-1 min-w-0 text-xs bg-slate-200 dark:bg-slate-600 rounded px-2 py-1.5 break-all">
+                    set OLLAMA_HOST=0.0.0.0 &amp;&amp; set OLLAMA_ORIGINS=* &amp;&amp; ollama serve
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard("set OLLAMA_HOST=0.0.0.0 && set OLLAMA_ORIGINS=* && ollama serve", "Command Prompt command copied", null)}
+                    className="shrink-0 px-2 py-1.5 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    {copyFeedback === "Command Prompt command copied" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </>
+            )}
+            {ollamaStepModal === "pull" && (
+              <>
+                <h3 id="ollama-step-title" className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
+                  3. Download the model (one time)
+                </h3>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+                  The command is in your clipboard. On the <strong>same computer</strong> where Ollama is running, open a <strong>new</strong> PowerShell (or Terminal on Mac/Linux), paste (Ctrl+V), press Enter. Wait until it finishes.
+                </p>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+                  Or press <strong>Win+R</strong>, paste the command below, press Enter.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="flex-1 min-w-0 text-xs bg-slate-200 dark:bg-slate-600 rounded px-2 py-1.5 break-all">
+                    powershell -NoExit -Command &quot;ollama pull llama3:latest&quot;
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard("powershell -NoExit -Command \"ollama pull llama3:latest\"", "Open PowerShell + pull copied", null)}
+                    className="shrink-0 px-2 py-1.5 rounded border border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-800/50"
+                  >
+                    {copyFeedback === "Open PowerShell + pull copied" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setOllamaStepModal(null)}
+              className="mt-4 w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {isConfigured && (
         <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
           <CheckCircle2 size={16} />
