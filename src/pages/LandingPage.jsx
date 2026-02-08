@@ -177,6 +177,11 @@ const LandingPage = () => {
               Typical user saves <strong className="text-white">$180–$480/year</strong> vs. default ecobee schedule
             </p>
           </div>
+          <div className="mb-6 inline-block px-4 py-2 bg-emerald-500/30 backdrop-blur-sm rounded-full border border-emerald-400/50">
+            <p className="text-base font-medium">
+              Pi runs the app 24/7. <strong className="text-white">Gaming rig?</strong> Min: GTX 1650 / RX 6400 (4 GB). Rec: RTX 3060 / RX 6600 XT (8 GB).
+            </p>
+          </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <a
               href="#pricing"

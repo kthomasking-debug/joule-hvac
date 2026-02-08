@@ -169,11 +169,16 @@ export function useAskJouleController(props) {
     return { ...localUserSettings, ...userSettings };
   }, [localUserSettings, userSettings]);
 
-  // ===== API Keys =====
+  // ===== API Keys / AI availability =====
   const groqApiKey = useMemo(() => {
     if (typeof groqKeyProp === "string" && groqKeyProp) return groqKeyProp;
     if (typeof window === "undefined") return "";
-    return (localStorage.getItem("groqApiKey") || "").trim();
+    const key = (localStorage.getItem("groqApiKey") || "").trim();
+    if (key) return key;
+    const provider = localStorage.getItem("aiProvider");
+    const localUrl = (localStorage.getItem("localAIBaseUrl") || "").trim();
+    if (provider === "local" && localUrl) return "local"; // Truthy so AI features are enabled
+    return "";
   }, [groqKeyProp]);
 
   const groqModel = useMemo(() => {

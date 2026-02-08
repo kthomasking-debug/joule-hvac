@@ -940,6 +940,7 @@ const SevenDayCostForecaster = () => {
     const useManualHeatLoss = Boolean(userSettings?.useManualHeatLoss);
     const useCalculatedHeatLoss = userSettings?.useCalculatedHeatLoss !== false; // Default to true
     const useAnalyzerHeatLoss = Boolean(userSettings?.useAnalyzerHeatLoss);
+    const useLearnedHeatLoss = Boolean(userSettings?.useLearnedHeatLoss);
     
     // Priority 1: Manual Entry (if enabled)
     if (useManualHeatLoss) {
@@ -962,7 +963,13 @@ const SevenDayCostForecaster = () => {
       return analyzerHeatLossValue * 70;
     }
     
-    // Priority 3: Calculated from Building Characteristics (DoE data)
+    // Priority 3: Bill-learned heat loss (if enabled)
+    if (useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0) {
+      const learned = Number(userSettings.learnedHeatLoss);
+      if (Number.isFinite(learned)) return learned * 70; // BTU/hr at 70°F delta
+    }
+    
+    // Priority 4: Calculated from Building Characteristics (DoE data)
     if (useCalculatedHeatLoss) {
       try {
         const designHeatLoss = heatUtils.calculateHeatLoss({
@@ -1003,8 +1010,10 @@ const SevenDayCostForecaster = () => {
     userSettings?.useManualHeatLoss,
     userSettings?.useCalculatedHeatLoss,
     userSettings?.useAnalyzerHeatLoss,
+    userSettings?.useLearnedHeatLoss,
     userSettings?.manualHeatLoss,
-    userSettings?.analyzerHeatLoss, // Added: analyzer heat loss from userSettings
+    userSettings?.analyzerHeatLoss,
+    userSettings?.learnedHeatLoss,
     userSettings?.wallHeight,
     userSettings?.hasLoft,
     useCalculatedFactor,
@@ -1421,13 +1430,31 @@ const SevenDayCostForecaster = () => {
         const payload = {
           location: foundLocationName,
           totalHPCost: weeklyMetrics.totalCost,
+          totalHPCostWithAux: weeklyMetrics.totalCost,
+          totalMonthlyCost: weeklyMetrics.totalCost * 4.33,
           totalGasCost: null, // 7-Day Forecaster doesn't calculate gas cost
           totalSavings: null,
           estimatedAnnualSavings: null,
           timestamp: Date.now(),
+          source: 'weekly_forecast',
           // Include daily summary for Ask Joule access
           dailySummary: weeklyMetrics.summary || [],
         };
+        // Save to separate key so we don't overwrite the monthly forecast summary
+        // which the bridge uses for the e-ink HMI display
+        localStorage.setItem("last_weekly_forecast_summary", JSON.stringify(payload));
+        
+        // Only update last_forecast_summary if there isn't already a monthly forecast saved
+        const existing = localStorage.getItem("last_forecast_summary");
+        if (existing) {
+          try {
+            const parsed = JSON.parse(existing);
+            if (parsed.source === 'monthly_forecast') {
+              // Don't overwrite monthly forecast data - it's more accurate
+              return;
+            }
+          } catch { /* ignore */ }
+        }
         localStorage.setItem("last_forecast_summary", JSON.stringify(payload));
       } catch {
         /* ignore persistence errors */

@@ -30,6 +30,7 @@ Rules:
 • Max 250 words. Be concise.
 • Avoid filler phrases: "sure thing", "great question", "according to".
 • Never give wiring advice. Say "Follow the guide or call a pro."
+• FORMAT: Use single line breaks only. Do NOT add blank lines between paragraphs or sections. Keep output compact.
 
 Format: Start immediately with calculated results (annual costs, performance metrics), use numbers, short paragraphs, end with actionable recommendations.`;
 
@@ -37,7 +38,7 @@ Format: Start immediately with calculated results (annual costs, performance met
 export const MARKETING_SITE_SYSTEM_PROMPT = `You are Ask Joule on the marketing site (pre-sales). Calm, honest, no wiring instructions, no order access. Focus: compatibility, realistic savings ranges, local-first privacy, eBay checkout. Never pressure buy.`;
 
 /**
- * Answer user question using Groq LLM with RAG integration
+ * Answer user question using Groq or local (Ollama) LLM with RAG integration
  * @param {string} userQuestion - The user's question
  * @param {string} apiKey - Groq API key
  * @param {object} thermostatData - Optional thermostat data
@@ -58,10 +59,15 @@ export async function answerWithAgent(
 ) {
   const { systemPromptOverride = null, skipRAG = false } = options;
 
-  if (!apiKey || !apiKey.trim()) {
+  const { getAIConfig, callChatCompletions } = await import("./aiProvider.js");
+  const config = getAIConfig();
+  const effectiveApiKey = (apiKey || "").trim() || (config.provider === "groq" ? config.apiKey : null);
+  const useLocal = config.provider === "local" && config.baseUrl;
+
+  if (!useLocal && (!effectiveApiKey || !effectiveApiKey.trim())) {
     return {
       error: true,
-      message: "🔑 Groq API key missing",
+      message: "🔑 AI not configured. Add a Groq API key or enable local AI (Ollama) in Settings.",
       needsSetup: true,
     };
   }
@@ -262,37 +268,52 @@ export async function answerWithAgent(
   ];
 
   try {
-    const response = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: messages,
-          temperature: 0.1,
-          max_tokens: 300,
-        }),
+    let content;
+    if (useLocal) {
+      const url = config.baseUrl.replace(/\/$/, "") + "/chat/completions";
+      content = await callChatCompletions({
+        url,
+        apiKey: null,
+        model: config.model,
+        messages,
+        temperature: 0.1,
+        maxTokens: 300,
+      });
+    } else {
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${effectiveApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: config.model || "llama-3.3-70b-versatile",
+            messages: messages,
+            temperature: 0.1,
+            max_tokens: 300,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      const data = await response.json();
+      content = data.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error("No content in response");
+      }
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("No content in response");
-    }
-
+    // Collapse multiple newlines to single (compact output)
+    const compact = (typeof content === "string" ? content : "").replace(/\n{2,}/g, "\n").trim();
     return {
       success: true,
-      message: content,
+      message: compact,
     };
   } catch (error) {
     console.error("[groqAgent] Error:", error);
@@ -304,6 +325,161 @@ export async function answerWithAgent(
 }
 
 /**
+ * Same as answerWithAgent but streams response via onChunk callback.
+ * Call onChunk with each text chunk as it arrives for live display.
+ */
+export async function answerWithAgentStreaming(
+  userQuestion,
+  apiKey,
+  thermostatData = null,
+  userSettings = null,
+  userLocation = null,
+  conversationHistory = [],
+  options = {}
+) {
+  const { systemPromptOverride = null, skipRAG = false, onChunk = () => {} } = options;
+
+  const { getAIConfig, callLLMStreaming } = await import("./aiProvider.js");
+  const config = getAIConfig();
+  const effectiveApiKey = (apiKey || "").trim() || (config.provider === "groq" ? config.apiKey : null);
+  const useLocal = config.provider === "local" && config.baseUrl;
+
+  if (!useLocal && (!effectiveApiKey || !effectiveApiKey.trim())) {
+    return {
+      error: true,
+      message: "🔑 AI not configured. Add a Groq API key or enable local AI (Ollama) in Settings.",
+      needsSetup: true,
+    };
+  }
+
+  const result = await buildAgentMessages(userQuestion, apiKey, thermostatData, userSettings, userLocation, conversationHistory, {
+    systemPromptOverride,
+    skipRAG,
+  });
+  if (result.error) return result.error;
+  const { messages } = result;
+
+  try {
+    const content = await callLLMStreaming({
+      messages,
+      temperature: 0.1,
+      maxTokens: 300,
+      onChunk,
+    });
+    const compact = (typeof content === "string" ? content : "").replace(/\n{2,}/g, "\n").trim();
+    return { success: true, message: compact };
+  } catch (error) {
+    console.error("[groqAgent] Streaming error:", error);
+    return { error: true, message: `Error: ${error.message}` };
+  }
+}
+
+async function buildAgentMessages(
+  userQuestion,
+  apiKey,
+  thermostatData,
+  userSettings,
+  userLocation,
+  conversationHistory,
+  { systemPromptOverride, skipRAG }
+) {
+  const { getAIConfig } = await import("./aiProvider.js");
+  const config = getAIConfig();
+  const effectiveApiKey = (apiKey || "").trim() || (config.provider === "groq" ? config.apiKey : null);
+  const useLocal = config.provider === "local" && config.baseUrl;
+  if (!useLocal && (!effectiveApiKey || !effectiveApiKey.trim())) {
+    return { error: { error: true, message: "AI not configured." } };
+  }
+
+  let ragKnowledge = "";
+  if (!skipRAG) {
+    try {
+      const { queryHVACKnowledge } = await import("../utils/rag/ragQuery.js");
+      const ragResult = await queryHVACKnowledge(userQuestion);
+      if (ragResult.success && ragResult.content) ragKnowledge = ragResult.content;
+    } catch (e) {
+      console.warn("[groqAgent] RAG query failed:", e);
+    }
+  }
+
+  const systemPrompt = systemPromptOverride || JOULE_PROMPT;
+  const contextParts = [];
+  if (ragKnowledge) contextParts.push(`RELEVANT KNOWLEDGE FROM DOCUMENTATION:\n${ragKnowledge}`);
+  if (userSettings) {
+    const parts = ["USER SYSTEM SETTINGS:"];
+    if (userSettings.squareFeet) parts.push(`- Square footage: ${userSettings.squareFeet} sq ft`);
+    if (userSettings.ceilingHeight) parts.push(`- Ceiling height: ${userSettings.ceilingHeight} ft`);
+    if (userSettings.insulationLevel) parts.push(`- Insulation level: ${userSettings.insulationLevel}x`);
+    if (userSettings.homeShape) parts.push(`- Home shape factor: ${userSettings.homeShape}x`);
+    if (userSettings.primarySystem) parts.push(`- Primary system: ${userSettings.primarySystem}`);
+    if (userSettings.coolingSystem) parts.push(`- Cooling system: ${userSettings.coolingSystem}`);
+    if (userSettings.capacity) parts.push(`- System capacity: ${userSettings.capacity} BTU`);
+    if (userSettings.tons) parts.push(`- System size: ${userSettings.tons} tons`);
+    if (userSettings.hspf2) parts.push(`- HSPF2 rating: ${userSettings.hspf2}`);
+    if (userSettings.efficiency || userSettings.seer2) parts.push(`- SEER2 rating: ${userSettings.efficiency || userSettings.seer2}`);
+    if (userSettings.winterThermostatDay) parts.push(`- Winter daytime temp: ${userSettings.winterThermostatDay}°F`);
+    if (userSettings.winterThermostatNight) parts.push(`- Winter nighttime temp: ${userSettings.winterThermostatNight}°F`);
+    if (userSettings.summerThermostat) parts.push(`- Summer daytime temp: ${userSettings.summerThermostat}°F`);
+    if (userSettings.summerThermostatNight) parts.push(`- Summer nighttime temp: ${userSettings.summerThermostatNight}°F`);
+    if (userSettings.utilityCost !== undefined) parts.push(`- Electricity rate: $${userSettings.utilityCost}/kWh`);
+    if (userSettings.gasRate !== undefined) parts.push(`- Gas rate: $${userSettings.gasRate}/therm`);
+    if (userSettings.heatLossFactor) parts.push(`- Heat loss factor: ${userSettings.heatLossFactor} BTU/hr per °F`);
+    if (userSettings.analyzerBalancePoint) parts.push(`- Balance point: ${userSettings.analyzerBalancePoint}°F`);
+    if (parts.length > 1) contextParts.push(parts.join("\n"));
+  }
+  if (userLocation) {
+    const parts = ["USER LOCATION:"];
+    if (userLocation.city) parts.push(`- City: ${userLocation.city}`);
+    if (userLocation.state) parts.push(`- State: ${userLocation.state}`);
+    if (userLocation.latitude) parts.push(`- Latitude: ${userLocation.latitude}`);
+    if (userLocation.longitude) parts.push(`- Longitude: ${userLocation.longitude}`);
+    if (userLocation.elevation) parts.push(`- Elevation: ${userLocation.elevation} ft`);
+    if (parts.length > 1) contextParts.push(parts.join("\n"));
+  }
+  if (thermostatData) contextParts.push(`THERMOSTAT DATA:\n${JSON.stringify(thermostatData, null, 2)}`);
+  if (userLocation?.city && userLocation?.state) {
+    try {
+      const { getAnnualHDD, getAnnualCDD } = await import("../lib/hddData.js");
+      const annualHDD = getAnnualHDD(`${userLocation.city}, ${userLocation.state}`, userLocation.state);
+      const annualCDD = getAnnualCDD(`${userLocation.city}, ${userLocation.state}`, userLocation.state);
+      const parts = ["ANNUAL DEGREE-DAY DATA (for cost calculations):"];
+      if (annualHDD) parts.push(`- Annual HDD: ${annualHDD} (base 65°F)`);
+      else parts.push("- Annual HDD: Estimated from location");
+      if (annualCDD) parts.push(`- Annual CDD: ${annualCDD} (base 65°F)`);
+      else parts.push("- Annual CDD: Estimated from location");
+      parts.push("\nCALCULATION METHODS:", "• Annual heating cost = (HDD × heat loss factor × 24) ÷ (HSPF2 × 1000) × electricity rate",
+        "• Annual cooling cost = (CDD × heat gain factor × 24) ÷ (SEER2 × 1000) × electricity rate");
+      contextParts.push(parts.join("\n"));
+    } catch (e) {
+      contextParts.push("CALCULATION METHODS: Annual cost formulas from HDD/CDD. Use location data.");
+    }
+  }
+  if (userLocation?.latitude && userLocation?.longitude && typeof window !== "undefined") {
+    try {
+      const forecastSummary = localStorage.getItem("last_forecast_summary");
+      if (forecastSummary) {
+        const parsed = JSON.parse(forecastSummary);
+        if (parsed?.dailySummary?.length) {
+          const recentDays = parsed.dailySummary.slice(0, 7);
+          const lines = recentDays
+            .filter((d) => d.highTemp && d.lowTemp)
+            .map((d, i) => `Day ${i + 1}: High ${d.highTemp}°F, Low ${d.lowTemp}°F`);
+          contextParts.push("WEATHER FORECAST DATA:\n" + lines.join("\n"));
+        }
+      }
+    } catch (e) {}
+  }
+  const context = contextParts.join("\n\n");
+  const userContent = `${context}\n\nUser question: ${userQuestion}`;
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...conversationHistory,
+    { role: "user", content: userContent },
+  ];
+  return { messages };
+}
+
+/**
  * Legacy alias for answerWithAgent - maintained for backward compatibility
  * @param {string} userQuestion - The user's question
  * @param {string} apiKey - Groq API key
@@ -311,10 +487,12 @@ export async function answerWithAgent(
  * @returns {Promise<object>} Response object with success/error and message
  */
 export async function askJouleFallback(userQuestion, apiKey, model = null) {
-  if (!apiKey || !apiKey.trim()) {
+  const { isAIAvailable } = await import("./aiProvider.js");
+  const hasKey = (apiKey || "").trim().length > 0;
+  if (!hasKey && !isAIAvailable()) {
     return {
       error: true,
-      message: "Groq API key missing. Please add your API key in Settings.",
+      message: "AI not configured. Add a Groq API key or enable local AI (Ollama) in Settings.",
       needsSetup: true,
     };
   }

@@ -96,9 +96,12 @@ function AppInner() {
         const { prefetchMonthlyForecast } = await import('./utils/prefetchForecast.js');
         
         // Prefetch current and next month in parallel
+        // Use a separate cache key ('monthlyForecastPrefetch') so this simplified
+        // 15-day prefetch doesn't override the full month data (actual + historical)
+        // that useMonthlyForecast fetches with the 'monthlyForecast' key.
         await Promise.all([
           queryClient.prefetchQuery({
-            queryKey: ['monthlyForecast', location.latitude, location.longitude, currentMonth],
+            queryKey: ['monthlyForecastPrefetch', location.latitude, location.longitude, currentMonth],
             queryFn: ({ signal }) => prefetchMonthlyForecast({
               lat: location.latitude,
               lon: location.longitude,
@@ -108,7 +111,7 @@ function AppInner() {
             staleTime: 15 * 60 * 1000,
           }),
           queryClient.prefetchQuery({
-            queryKey: ['monthlyForecast', location.latitude, location.longitude, nextMonth],
+            queryKey: ['monthlyForecastPrefetch', location.latitude, location.longitude, nextMonth],
             queryFn: ({ signal }) => prefetchMonthlyForecast({
               lat: location.latitude,
               lon: location.longitude,
@@ -137,6 +140,30 @@ function AppInner() {
     });
   }, []);
   
+  // Hydrate AI config from bridge when app runs on bridge (localStorage is per-origin, so bridge origin starts empty)
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.userSettings) return;
+        const s = data.userSettings;
+        const keys = ["aiProvider", "localAIBaseUrl", "localAIModel", "groqApiKey", "groqModel"];
+        keys.forEach((key) => {
+          const v = s[key];
+          if (v != null && String(v).trim() !== "") {
+            try {
+              localStorage.setItem(key === "groqApiKey" ? "groqApiKey" : key, String(v));
+            } catch {}
+          }
+        });
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: s.groqApiKey || "" } }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   // Background sync: keep bridge HMI updated with forecast data every 5 minutes
   React.useEffect(() => {
     const syncToBridge = () => {
@@ -417,6 +444,7 @@ function AppInner() {
     const useManualHeatLoss = Boolean(settings?.useManualHeatLoss);
     const useCalculatedHeatLoss = settings?.useCalculatedHeatLoss !== false; // Default to true
     const useAnalyzerHeatLoss = Boolean(settings?.useAnalyzerHeatLoss);
+    const useLearnedHeatLoss = Boolean(settings?.useLearnedHeatLoss);
     let heatLossFactor;
 
     // Priority 1: Manual Entry (if enabled)
@@ -432,7 +460,12 @@ function AppInner() {
       heatLossFactor = latestAnalysis.heatLossFactor;
     }
 
-    // Priority 3: Calculated from Building Characteristics (DoE data)
+    // Priority 3: Bill-learned heat loss (if enabled and available)
+    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0) {
+      heatLossFactor = Number(settings.learnedHeatLoss);
+    }
+
+    // Priority 4: Calculated from Building Characteristics (DoE data)
     if (!heatLossFactor && useCalculatedHeatLoss) {
       const BASE_BTU_PER_SQFT_HEATING = 22.67;
       const ceilingMultiplier = 1 + ((settings.ceilingHeight || 8) - 8) * 0.1;
@@ -547,7 +580,9 @@ function AppInner() {
     mergedUserSettings.useManualHeatLoss,
     mergedUserSettings.useCalculatedHeatLoss,
     mergedUserSettings.useAnalyzerHeatLoss,
+    mergedUserSettings.useLearnedHeatLoss,
     mergedUserSettings.manualHeatLoss,
+    mergedUserSettings.learnedHeatLoss,
   ]);
 
   // On mount, if persisted userSettings are missing keys, merge default keys and persist them back.
@@ -1111,21 +1146,23 @@ function AppInner() {
       {/* Ask Joule Modal */}
       {isJouleModalOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
           onClick={() => setIsJouleModalOpen(false)}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-4xl mx-4"
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-[95vw] sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden mx-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <AskJoule
-              userSettings={mergedUserSettings}
-              userLocation={userLocation}
-              annualEstimate={annualEstimate}
-              recommendations={[]}
-              isModal={true}
-              onClose={() => setIsJouleModalOpen(false)}
-            />
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <AskJoule
+                userSettings={mergedUserSettings}
+                userLocation={userLocation}
+                annualEstimate={annualEstimate}
+                recommendations={[]}
+                isModal={true}
+                onClose={() => setIsJouleModalOpen(false)}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1248,8 +1285,8 @@ function AppInner() {
                 className="fixed inset-0 bg-black/50"
                 onClick={() => setShowAskModal(false)}
               />
-              <div className="relative z-10 w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-2">
+              <div className="relative z-10 w-full max-w-[95vw] sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-2 flex-shrink-0">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                     Ask Joule
                   </h2>
@@ -1261,7 +1298,9 @@ function AppInner() {
                     ✕
                   </button>
                 </div>
-                <AskJoule
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                  <AskJoule
+                  isModal={true}
                   hasLocation={!!userLocation}
                   userLocation={userLocation}
                   userSettings={mergedUserSettings}
@@ -1275,6 +1314,7 @@ function AppInner() {
                   onUndo={(id) => undoChange(id)}
                   pushAuditLog={pushAuditLog}
                 />
+                </div>
               </div>
             </div>
           )}

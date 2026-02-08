@@ -7,6 +7,7 @@ import { executeCommand } from "../../utils/nlp/commandExecutor";
 import { parseAskJoule } from "../../utils/askJouleParser";
 import {
   answerWithAgent,
+  answerWithAgentStreaming,
   MARKETING_SITE_SYSTEM_PROMPT,
 } from "../../lib/groqAgent";
 // EBAY_STORE_URL is now lazy loaded - access via salesFAQ module when needed
@@ -23,6 +24,7 @@ import {
   formatComparisonResponse,
 } from "../../utils/calculatorEngines";
 import { calculateBalancePoint } from "../../utils/balancePointCalculator";
+import { getCapacityFactor, getCOPFactor, BTU_PER_KWH } from "../../lib/heatUtils";
 import { getSystemHealthAlerts } from "../../utils/alertDetector";
 import {
   getWiringDiagramForQuery,
@@ -1505,72 +1507,172 @@ export function useAskJoule({
       const lowerInput = input.toLowerCase();
       let fallbackAnswer = null;
 
-      // Check for common question patterns and provide basic answers
-      if (
+      // Detect bill/cost/strip questions early — these get special handling
+      const _isBillQuestion = (
+        lowerInput.includes("bill") ||
+        lowerInput.includes("cost") ||
+        lowerInput.includes("expensive") ||
+        lowerInput.includes("save money") ||
+        lowerInput.includes("lower") ||
+        lowerInput.includes("high")
+      );
+      const _isStripQuestion = (
         lowerInput.includes("strips") ||
         lowerInput.includes("strip") ||
         lowerInput.includes("auxiliary") ||
         lowerInput.includes("aux heat")
+      );
+      const _isHVACBillQuestion = _isBillQuestion || _isStripQuestion;
+
+      // Build data-driven context from user's actual system
+      const _winterTemp = userSettings?.winterThermostat || userSettings?.winterThermostatDay || userSettings?.indoorTemp || 70;
+      const _nightTemp = userSettings?.nighttimeTemp || userSettings?.winterThermostatNight || _winterTemp;
+      const _setbackDeg = Math.abs(_winterTemp - _nightTemp);
+      const _capacity = Number(userSettings?.capacity) || 24000;
+      const _hspf2 = Number(userSettings?.hspf2) || 9.0;
+      const _rate = Number(userSettings?.utilityCost) || 0.15;
+      const _sqft = Number(userSettings?.squareFeet) || 1500;
+      const _insulation = Number(userSettings?.insulationLevel) || 1.0;
+      const _ceilingHt = Number(userSettings?.ceilingHeight) || 8;
+      const _ceilingMult = 1 + ((_ceilingHt - 8) * 0.1);
+      const _useAux = userSettings?.useElectricAuxHeat !== false;
+
+      // Compute heat loss factor from building characteristics
+      const BASE_BTU_PER_SQFT = 22.67;
+      const _designHeatLoss = _sqft * BASE_BTU_PER_SQFT * _insulation * (userSettings?.homeShape || 1.0) * _ceilingMult;
+      const _heatLossFactor = _designHeatLoss / 70; // BTU/hr per °F ΔT
+      
+      // Use analyzer-derived HLF if available (empirical > theoretical)
+      const _analyzerHLF = annualEstimate?.heatLossFactor || userSettings?.heatLossFactor || null;
+      const _effectiveHLF = _analyzerHLF || _heatLossFactor;
+
+      // Compute balance point (where capacity = building heat loss)
+      const _capacityAt47 = _capacity; // rated capacity
+      const _capacityAt17 = _capacity * 0.64;
+      // Balance point: capacity_at_temp = HLF * (indoor - outdoor)
+      // capacity_at_temp = capacity * getCapacityFactor(temp)
+      // Iterative solve
+      let _balancePoint = null;
+      for (let t = 47; t >= -10; t--) {
+        const capAtT = _capacity * getCapacityFactor(t);
+        const loadAtT = _effectiveHLF * (_winterTemp - t);
+        if (loadAtT >= capAtT) {
+          _balancePoint = t;
+          break;
+        }
+      }
+
+      // Strip heat cost per hour (COP=1 vs heat pump COP)
+      const _stripKw = _capacity / BTU_PER_KWH; // full strip draw in kW
+      const _stripCostPerHr = _stripKw * _rate;
+
+      // Setback recovery cost estimate
+      // Recovery from setback: need to heat thermal mass back up
+      // Rough: extra BTU = HLF * setbackDeg * recovery_hours * some factor
+      // Strip heat kicks in because load >> capacity during recovery
+      const _recoveryHours = _setbackDeg > 3 ? (_setbackDeg * 0.4) : (_setbackDeg * 0.25); // rough hours of strip heat
+      const _setbackRecoveryCost = _recoveryHours * _stripCostPerHr;
+
+      // Check for Groq API key early — bill/strip questions go to Groq with enhanced context if available
+      const _hasGroqKey = !!(
+        groqKeyProp ||
+        (typeof window !== "undefined" ? localStorage.getItem("groqApiKey") : null) ||
+        import.meta.env.VITE_GROQ_API_KEY
+      );
+
+      // For bill/strip questions with a Groq key, skip fallback — send to Groq with auditor prompt
+      // For bill/strip questions WITHOUT a Groq key, use the data-driven fallback below
+      // For other questions, use standard fallback patterns
+
+      // Check for common question patterns and provide basic answers (fallback when no API key)
+      if (
+        !_hasGroqKey && (
+        lowerInput.includes("strips") ||
+        lowerInput.includes("strip") ||
+        lowerInput.includes("auxiliary") ||
+        lowerInput.includes("aux heat"))
       ) {
-        // Questions about auxiliary/strip heat
-        const winterTemp =
-          userSettings?.winterThermostat || userSettings?.indoorTemp || 70;
-        const nighttimeTemp =
-          userSettings?.nighttimeTemp || userSettings?.winterThermostat || 70;
-        const outdoorTemp = userLocation
-          ? (() => {
-              // Try to get current outdoor temp from forecast or use a default
-              try {
-                const forecast = JSON.parse(
-                  localStorage.getItem("lastForecast") || "{}"
-                );
-                if (forecast.currentTemp) return forecast.currentTemp;
-              } catch {}
-              return null;
-            })()
-          : null;
+        // Data-driven auxiliary/strip heat answer
+        const copAt20 = getCOPFactor(20, _hspf2);
+        const capFactorAt20 = getCapacityFactor(20);
+        const loadAt20 = _effectiveHLF * (_winterTemp - 20);
+        const capAt20 = _capacity * capFactorAt20;
+        const shortfall20 = Math.max(0, loadAt20 - capAt20);
+        const shortfallKw = shortfall20 / BTU_PER_KWH;
 
         if (
           lowerInput.includes("why") ||
           lowerInput.includes("when") ||
           lowerInput.includes("last night")
         ) {
-          fallbackAnswer =
-            `Auxiliary heat (strips) typically runs when:\n\n` +
-            `• The outdoor temperature is very cold (usually below your heat pump's balance point, around 20-30°F)\n` +
-            `• Your heat pump can't keep up with the heating demand\n` +
-            `• You have a large temperature setback at night (your nighttime temp is ${nighttimeTemp}°F vs daytime ${winterTemp}°F)\n\n` +
-            `To reduce strip usage, try:\n` +
-            `• Reducing nighttime setbacks (smaller difference between day and night temps)\n` +
-            `• Setting your nighttime temp closer to your daytime temp\n` +
-            `• Checking your heat pump's balance point in Settings\n\n` +
-            `💡 For more detailed analysis, add a Groq API key in Settings to get AI-powered answers.`;
+          let msg = `🔥 **Your Strip Heat: The Real Numbers**\n\n`;
+          msg += `**Your system:** ${(_capacity/1000).toFixed(0)}k BTU heat pump, ${_sqft} sq ft, ${_insulation < 1 ? 'good' : _insulation > 1 ? 'poor' : 'average'} insulation\n\n`;
+          
+          if (_balancePoint !== null) {
+            msg += `**Balance point:** ~${_balancePoint}°F — below this, your heat pump can't keep up and strips kick in\n`;
+            msg += `• At 20°F: Your heat pump delivers ${(capAt20/1000).toFixed(1)}k BTU but your home needs ${(loadAt20/1000).toFixed(1)}k BTU — that's a ${(shortfall20/1000).toFixed(1)}k BTU shortfall\n`;
+            msg += `• Strips cover the gap at COP=1.0 (vs heat pump COP of ${copAt20.toFixed(1)} at 20°F) — **${(shortfallKw).toFixed(1)} kW of strip heat at $${(shortfallKw * _rate).toFixed(2)}/hr**\n\n`;
+          }
+
+          if (_setbackDeg >= 2) {
+            msg += `⚠️ **Your ${_setbackDeg}°F night setback (${_winterTemp}°F → ${_nightTemp}°F) is likely triggering strips every morning.** `;
+            msg += `Recovery costs ~$${_setbackRecoveryCost.toFixed(2)} per morning in strip heat. `;
+            msg += `Over a month, that's ~$${(_setbackRecoveryCost * 30).toFixed(0)}.\n\n`;
+            msg += `**Fix:** Set night to ${_winterTemp - 1}°F instead of ${_nightTemp}°F. The ${_setbackDeg - 1}°F you "save" overnight costs more to recover than you saved.`;
+          } else {
+            msg += `✅ Your setback is small (${_setbackDeg}°F), which is good for heat pump efficiency. Strips likely only run on the coldest nights below ${_balancePoint || 25}°F.`;
+          }
+          fallbackAnswer = msg;
         } else {
-          fallbackAnswer =
-            `Auxiliary heat (electric resistance strips) provides backup heating when your heat pump can't keep up. ` +
-            `It typically activates when outdoor temps drop below your system's balance point (usually 20-30°F) or during large temperature recoveries.`;
+          let msg = `Your ${(_capacity/1000).toFixed(0)}k BTU heat pump's strips are backup heat at COP=1.0 (vs COP ${getCOPFactor(35, _hspf2).toFixed(1)} at 35°F).\n\n`;
+          msg += `They draw ${_stripKw.toFixed(1)} kW ($${_stripCostPerHr.toFixed(2)}/hr) and activate when outdoor temp drops below ~${_balancePoint || 25}°F`;
+          if (_setbackDeg >= 3) {
+            msg += ` or during your ${_setbackDeg}°F morning recovery (${_nightTemp}°F → ${_winterTemp}°F)`;
+          }
+          msg += `. At 20°F, your heat pump only delivers ${(capFactorAt20 * 100).toFixed(0)}% of rated capacity.`;
+          fallbackAnswer = msg;
         }
       } else if (
+        !_hasGroqKey && (
         lowerInput.includes("bill") ||
         lowerInput.includes("cost") ||
+        lowerInput.includes("expensive") ||
         lowerInput.includes("save money") ||
-        lowerInput.includes("lower")
+        lowerInput.includes("lower") ||
+        lowerInput.includes("high"))
       ) {
-        // Questions about bills and savings
-        const winterTemp = userSettings?.winterThermostat || 70;
-        const nighttimeTemp = userSettings?.nighttimeTemp || winterTemp;
-        const tempDiff = Math.abs(winterTemp - nighttimeTemp);
+        // Data-driven bill/cost answer
+        let msg = `📊 **Your Bill — What's Actually Driving It**\n\n`;
+        msg += `**Your system:** ${(_capacity/1000).toFixed(0)}k BTU heat pump, ${_sqft} sq ft`;
+        if (_ceilingHt > 8) msg += `, ${_ceilingHt}ft ceilings (${_ceilingMult.toFixed(1)}x volume)`;
+        msg += `, $${_rate}/kWh\n`;
+        msg += `**Heat loss:** ${_effectiveHLF.toFixed(0)} BTU/hr per °F${_analyzerHLF ? ' (from your data)' : ' (estimated)'}\n\n`;
+        
+        // #1 culprit: strip heat from setbacks
+        if (_setbackDeg >= 2 && _useAux) {
+          msg += `🔴 **#1 Cost Driver: Your ${_setbackDeg}°F night setback**\n`;
+          msg += `• Every morning, your system recovers from ${_nightTemp}°F → ${_winterTemp}°F\n`;
+          msg += `• If it's below ${_balancePoint || 25}°F outside, strips run at ${_stripKw.toFixed(1)} kW ($${_stripCostPerHr.toFixed(2)}/hr)\n`;
+          msg += `• Estimated recovery cost: ~$${_setbackRecoveryCost.toFixed(2)}/morning × 30 = **$${(_setbackRecoveryCost * 30).toFixed(0)}/month** in strip heat alone\n`;
+          msg += `• **Fix:** Set night to ${_winterTemp - 1}°F. You'll save more than the setback saves.\n\n`;
+        }
+        
+        // #2: cold weather capacity derate
+        if (_balancePoint !== null && _balancePoint > 10) {
+          msg += `🟡 **#2: Capacity derate below ${_balancePoint}°F**\n`;
+          const capAt5 = getCapacityFactor(5);
+          msg += `• At 5°F, your heat pump only delivers ${(capAt5 * 100).toFixed(0)}% of rated capacity (${(capAt5 * _capacity / 1000).toFixed(1)}k of ${(_capacity/1000).toFixed(0)}k BTU)\n`;
+          msg += `• The gap is filled by strip heat at COP=1.0 instead of COP ${getCOPFactor(5, _hspf2).toFixed(1)}\n\n`;
+        }
 
-        fallbackAnswer =
-          `To lower your heating bill:\n\n` +
-          `• Reduce temperature setbacks: Your current settings show ${winterTemp}°F day / ${nighttimeTemp}°F night (${tempDiff}°F difference). ` +
-          `Smaller setbacks (1-2°F) use less energy than large ones.\n` +
-          `• Avoid large nighttime setbacks with heat pumps - they can trigger expensive auxiliary heat in the morning\n` +
-          `• Set your nighttime temp closer to your daytime temp (try ${
-            winterTemp - 1
-          }°F instead of ${nighttimeTemp}°F)\n` +
-          `• Check your insulation and air sealing - better insulation = lower bills\n\n` +
-          `💡 Use the Forecast page to see how different schedules affect your weekly costs.`;
+        // #3: annual estimate context
+        if (annualEstimate) {
+          const annualHeat = annualEstimate.heatingCost || annualEstimate.totalCost || 0;
+          msg += `📈 **Your annual heating estimate:** $${Math.round(annualHeat)}/year (~$${Math.round(annualHeat / 12)}/month average)\n\n`;
+        }
+
+        msg += `💡 **Go to Monthly Forecast → "Got Your Bill? Let's Compare"** to paste your actual bill and get a day-by-day breakdown of where every dollar went.`;
+        fallbackAnswer = msg;
       } else if (
         lowerInput.includes("nighttime") ||
         lowerInput.includes("night temp") ||
@@ -1609,16 +1711,17 @@ export function useAskJoule({
         return;
       }
 
-      // 4. Fallback to Groq Agent (automatic - no prompt needed)
-      // Check prop first, then localStorage, then env variable
+      // 4. Fallback to AI Agent (Groq or local Ollama)
+      const { isAIAvailable } = await import("../../lib/aiProvider.js");
       const groqApiKey =
         groqKeyProp ||
         (typeof window !== "undefined"
           ? localStorage.getItem("groqApiKey")
           : null) ||
         import.meta.env.VITE_GROQ_API_KEY;
+      const hasAI = (groqApiKey && groqApiKey.trim()) || isAIAvailable();
 
-      if (!groqApiKey || !groqApiKey.trim()) {
+      if (!hasAI) {
         const errorMsg =
           "API key not configured. Please add your Groq API key in Settings, or enable local backend.\n\n" +
           "💡 I can answer simple questions about your system without an API key. Try asking about:\n" +
@@ -1642,17 +1745,62 @@ export function useAskJoule({
       // Automatically call Groq Agent - no prompt needed
       // Continue with the existing Groq Agent call below
 
+      // Build utility-auditor system prompt for bill/strip questions
+      let _billAuditorPrompt = null;
+      if (_isHVACBillQuestion) {
+        const copAt35 = getCOPFactor(35, _hspf2).toFixed(1);
+        const copAt20 = getCOPFactor(20, _hspf2).toFixed(1);
+        const copAt5 = getCOPFactor(5, _hspf2).toFixed(1);
+        const capAt20pct = (getCapacityFactor(20) * 100).toFixed(0);
+        const capAt5pct = (getCapacityFactor(5) * 100).toFixed(0);
+        
+        _billAuditorPrompt = `You are Joule, the homeowner's advocate. You help people understand why their heating bill is high and give them facts to stand on. Be warm, validating, and on their side — not the utility's. Lead with validation: if their bill is high, say so plainly ("That's a lot" or "You're right to want to understand why"). Then explain. Be specific — use their actual numbers.
+
+THIS HOMEOWNER'S SYSTEM (pre-calculated):
+• ${(_capacity/1000).toFixed(0)}k BTU heat pump, ${_sqft} sq ft, ${_ceilingHt}ft ceilings (${_ceilingMult.toFixed(1)}x volume multiplier)
+• Insulation factor: ${_insulation}x (${_insulation < 0.8 ? 'good' : _insulation > 1.1 ? 'poor' : 'average'})
+• HSPF2: ${_hspf2}, SEER2: ${userSettings?.efficiency || userSettings?.seer2 || 15}
+• Rate: $${_rate}/kWh
+• Heat loss factor: ${_effectiveHLF.toFixed(0)} BTU/hr per °F ΔT${_analyzerHLF ? ' (empirical from CSV data)' : ' (estimated from building)'}
+• Day/night temps: ${_winterTemp}°F / ${_nightTemp}°F (${_setbackDeg}°F setback)
+• Aux heat: ${_useAux ? 'enabled' : 'disabled'}
+• Balance point: ~${_balancePoint || '25'}°F (below this, strips must run)
+
+CAPACITY DERATE CURVE (this system):
+• 47°F+: 100% (${(_capacity/1000).toFixed(0)}k BTU)
+• 35°F: ${(getCapacityFactor(35) * 100).toFixed(0)}% (${(getCapacityFactor(35) * _capacity / 1000).toFixed(1)}k BTU), COP=${copAt35}
+• 20°F: ${capAt20pct}% (${(getCapacityFactor(20) * _capacity / 1000).toFixed(1)}k BTU), COP=${copAt20}
+• 5°F: ${capAt5pct}% (${(getCapacityFactor(5) * _capacity / 1000).toFixed(1)}k BTU), COP=${copAt5}
+
+STRIP HEAT MATH (pre-calculated):
+• Strip draw: ${_stripKw.toFixed(1)} kW at COP=1.0 ($${_stripCostPerHr.toFixed(2)}/hr)
+• ${_setbackDeg >= 2 ? `Morning recovery from ${_setbackDeg}°F setback: ~${_recoveryHours.toFixed(1)} hrs strip heat = $${_setbackRecoveryCost.toFixed(2)}/morning (~$${(_setbackRecoveryCost * 30).toFixed(0)}/month)` : 'Small setback — strips mostly run only on coldest nights'}
+${annualEstimate ? `• Annual heating estimate: $${Math.round(annualEstimate.heatingCost || annualEstimate.totalCost || 0)}/year` : ''}
+
+RULES:
+1. VALIDATE FIRST: "Yeah, that is high" or "You're right to want answers." Then explain.
+2. HVAC FIRST: Strip heat and setback recovery cause >80% of bill shock. Lead with these.
+3. Use THIS system's numbers. Never say "typically" or "usually" — you have the data.
+4. Calculate dollar amounts. "$X/month" beats "it uses more energy."
+5. If setback ≥ 3°F, call it out as the #1 cost driver with specific recovery cost.
+6. Never blame toasters, space heaters, or appliances for 6kW peaks — that's strip heat.
+7. Point to Monthly Forecast → "Got Your Bill? Let's Compare" for day-by-day breakdown.
+8. Max 200 words. No filler phrases.`;
+      }
+
       // Format history for agent
       const historyForAgent = commandHistory
         .slice(0, 5)
         .map((cmd) => ({ role: "user", content: cmd }));
 
-      console.log("[AskJoule] Calling answerWithAgent with:", {
+      console.log("[AskJoule] Calling answerWithAgentStreaming with:", {
         input,
         hasApiKey: !!groqApiKey,
       });
 
-      const response = await answerWithAgent(
+      // Show response area immediately for streaming
+      setAgenticResponse({ success: true, message: "", source: "groq" });
+      const response = await answerWithAgentStreaming(
         input,
         groqApiKey,
         null, // thermostatData
@@ -1660,7 +1808,14 @@ export function useAskJoule({
         userLocation,
         historyForAgent,
         {
-          systemPromptOverride: salesMode ? MARKETING_SITE_SYSTEM_PROMPT : null,
+          systemPromptOverride: salesMode ? MARKETING_SITE_SYSTEM_PROMPT : (_billAuditorPrompt || null),
+          onChunk: (chunk) => {
+            setAgenticResponse((prev) =>
+              prev?.success
+                ? { ...prev, message: (prev.message || "") + chunk }
+                : prev
+            );
+          },
         }
       );
 

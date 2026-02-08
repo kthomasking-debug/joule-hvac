@@ -209,6 +209,37 @@ export function WhatIfSimulator({ className = "" }) {
 
 // ==================== 3. TOP SAVINGS TIPS ====================
 export function TopSavingsTips({ className = "" }) {
+  const [appliedTip, setAppliedTip] = useState(null);
+
+  const applyTip = useCallback((tipId) => {
+    const settings = getAllSettings();
+    const tipLabels = {
+      setback: "✓ Temperature set to 68°F",
+      night: "✓ Night setback applied",
+      aux: "✓ Auxiliary heat minimized"
+    };
+    
+    if (tipId === "setback") {
+      setSetting("winterThermostat", 68, { source: "TopSavingsTips" });
+      setAppliedTip(tipLabels.setback);
+      setTimeout(() => setAppliedTip(null), 3000);
+      return;
+    }
+    if (tipId === "night") {
+      const winterTemp = settings.winterThermostat || 70;
+      const nightTemp = Math.max(winterTemp - 3, 45);
+      setSetting("winterThermostatNight", nightTemp, { source: "TopSavingsTips" });
+      setAppliedTip(tipLabels.night);
+      setTimeout(() => setAppliedTip(null), 3000);
+      return;
+    }
+    if (tipId === "aux") {
+      setSetting("useElectricAuxHeat", false, { source: "TopSavingsTips" });
+      setAppliedTip(tipLabels.aux);
+      setTimeout(() => setAppliedTip(null), 3000);
+    }
+  }, []);
+
   const tips = useMemo(() => {
     const settings = getAllSettings();
     const allTips = [];
@@ -222,7 +253,7 @@ export function TopSavingsTips({ className = "" }) {
         title: `Lower temp to 68°F`,
         savings: `$${((winterTemp - 68) * 3 * 1.5).toFixed(0)}/mo`,
         color: "text-green-400",
-        action: "/settings",
+        onApply: () => applyTip("setback"),
       });
     }
     
@@ -235,7 +266,7 @@ export function TopSavingsTips({ className = "" }) {
         title: "Add 3°F night setback",
         savings: "$12-18/mo",
         color: "text-blue-400",
-        action: "/tools/thermostat-strategy",
+        onApply: () => applyTip("night"),
       });
     }
     
@@ -246,7 +277,7 @@ export function TopSavingsTips({ className = "" }) {
       title: "Minimize aux heat usage",
       savings: "$20-30/mo",
       color: "text-amber-400",
-      action: "/analysis/energy-flow",
+      onApply: () => applyTip("aux"),
     });
     
     // Tip 4: Pre-conditioning
@@ -256,11 +287,11 @@ export function TopSavingsTips({ className = "" }) {
       title: "Pre-cool before peak hours",
       savings: "$10-15/mo",
       color: "text-cyan-400",
-      action: "/analysis/forecast",
+      onApply: () => applyTip("precool"),
     });
     
     return allTips.slice(0, 3);
-  }, []);
+  }, [applyTip]);
 
   return (
     <div className={`bg-[#0C1118] border border-slate-800 rounded-xl p-5 ${className}`}>
@@ -272,12 +303,18 @@ export function TopSavingsTips({ className = "" }) {
         <span className="text-xs text-slate-500">Click to apply</span>
       </div>
       
+      {appliedTip && (
+        <div className="mb-4 p-3 bg-green-500/20 border border-green-500 rounded-lg text-sm text-green-300 font-medium">
+          {appliedTip}
+        </div>
+      )}
       <div className="space-y-2">
         {tips.map((tip) => (
-          <Link
+          <button
             key={tip.id}
-            to={tip.action}
-            className="flex items-center justify-between p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors group"
+            type="button"
+            onClick={tip.onApply}
+            className="flex w-full items-center justify-between p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors group"
           >
             <div className="flex items-center gap-3">
               <div className={`${tip.color}`}>{tip.icon}</div>
@@ -287,7 +324,7 @@ export function TopSavingsTips({ className = "" }) {
               <span className="text-sm font-semibold text-green-400">{tip.savings}</span>
               <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
             </div>
-          </Link>
+          </button>
         ))}
       </div>
     </div>
@@ -590,7 +627,7 @@ export function BillTrackingCard({ className = "" }) {
       ) : null}
       
       <Link
-        to="/analysis/monthly"
+        to="/analysis/monthly#bill-analysis"
         className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
       >
         <Calendar className="w-4 h-4" />

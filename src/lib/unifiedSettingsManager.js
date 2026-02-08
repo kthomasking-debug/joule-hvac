@@ -31,13 +31,14 @@ export const DEFAULT_SETTINGS = {
   insulationLevel: 0.65,
   homeShape: 0.9,
   ceilingHeight: 8,
-  wallHeight: 0, // Vertical wall height (only applies to cabins/A-frames, 0 = true A-frame/triangle)
+  wallHeight: 8, // Vertical wall height (only applies to cabins/A-frames, 8 = standard cabin)
   homeElevation: 0,
   solarExposure: 1.5, // Default to medium (typical home)
   hasLoft: false, // For cabins/A-frames with lofts - reduces heat loss per sqft
   useManualHeatLoss: false,
   useCalculatedHeatLoss: true, // Default to calculated
   useAnalyzerHeatLoss: false,
+  useLearnedHeatLoss: false,
   manualHeatLoss: 314, // BTU/hr/°F (heat loss factor)
   analyzerHeatLoss: null, // BTU/hr/°F (heat loss factor from System Performance Analyzer CSV)
 
@@ -320,6 +321,17 @@ export const SETTING_VALIDATORS = {
     }
     return { valid: true };
   },
+
+  useLearnedHeatLoss: (value) => {
+    if (typeof value !== "boolean") {
+      return {
+        valid: false,
+        error: "Use learned heat loss must be true or false",
+      };
+    }
+    return { valid: true };
+  },
+
   analyzerHeatLoss: (value) => {
     // Allow null (not set yet) or a positive number
     if (value === null || value === undefined) {

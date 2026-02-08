@@ -24,20 +24,6 @@ import {
 } from "../../../lib/uiClasses";
 import needsCommaBetweenCityAndState from "../../../utils/validateLocation";
 
-// Welcome themes configuration
-const WELCOME_THEMES = {
-  mountains: { file: "welcome/mountains.jpg", label: "Mountains" },
-  forest: { file: "welcome/forest.jpg", label: "Forest" },
-  ocean: { file: "welcome/ocean.jpg", label: "Ocean" },
-  cabin: { file: "welcome/cabin.jpg", label: "Cabin" },
-  custom: { file: null, label: "Custom" },
-};
-
-const buildPublicPath = (file) => {
-  const base = import.meta.env.BASE_URL || "/";
-  return `${base}${file}`;
-};
-
 const OnboardingWizard = ({
   // Visibility
   show,
@@ -89,9 +75,6 @@ const OnboardingWizard = ({
   // API Key
   groqApiKey,
   setGroqApiKey,
-  // Theme
-  welcomeTheme,
-  customHeroUrl,
   // Utility rates
   utilityCost,
   gasCost,
@@ -167,13 +150,7 @@ const OnboardingWizard = ({
           </div>
 
           {/* Step 0: Welcome */}
-          {currentStep === 0 && (
-            <WelcomeStep
-              welcomeTheme={welcomeTheme}
-              customHeroUrl={customHeroUrl}
-              onNext={onNext}
-            />
-          )}
+          {currentStep === 0 && <WelcomeStep onNext={onNext} />}
 
           {/* Step 1: Location */}
           {currentStep === 1 && (
@@ -262,32 +239,8 @@ const OnboardingWizard = ({
 };
 
 // Step 0: Welcome
-const WelcomeStep = ({ welcomeTheme, customHeroUrl, onNext }) => (
+const WelcomeStep = ({ onNext }) => (
   <div className="text-center">
-    <div className="rounded-2xl overflow-hidden mb-6 border dark:border-gray-800 h-48 md:h-56">
-      {welcomeTheme === "custom" ? (
-        customHeroUrl ? (
-          <img
-            src={customHeroUrl}
-            alt="Custom welcome background"
-            className="w-full h-full object-cover"
-            loading="eager"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-            Welcome
-          </div>
-        )
-      ) : (
-        <img
-          src={WELCOME_THEMES[welcomeTheme]?.file ? buildPublicPath(WELCOME_THEMES[welcomeTheme].file) : ""}
-          fetchpriority="high"
-          alt={`${WELCOME_THEMES[welcomeTheme]?.label} calming background`}
-          className="w-full h-full object-cover"
-          loading="eager"
-        />
-      )}
-    </div>
     <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
       Welcome — take a breath
     </h2>
@@ -301,16 +254,6 @@ const WelcomeStep = ({ welcomeTheme, customHeroUrl, onNext }) => (
 
     <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
       Uses sensible defaults. You'll still confirm your home details for accurate estimates.
-    </p>
-
-    <p className="text-xs text-gray-500 dark:text-gray-400 mt-6 mb-6">
-      Want to change this image later?{" "}
-      <Link
-        to="/settings#personalization"
-        className="underline text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-      >
-        Customize in Settings
-      </Link>
     </p>
 
     <button onClick={onNext} className="btn btn-primary px-8 py-3 text-lg">

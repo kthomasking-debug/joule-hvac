@@ -151,6 +151,34 @@ Everything in **Joule Monitor**, plus:
 
 ---
 
+## How Joule Runs: Pi + Optional Gaming Rig
+
+Joule uses a **split architecture** that lets you choose where the AI runs:
+
+### Raspberry Pi (24/7)
+- **Runs the app:** Forecasts, cost estimates, thermostat control, HMI, bill comparison
+- **Always on:** Low power, perfect for dashboards and control
+- **Pi Zero 2W** (Bridge tier) or **Pi 5** (wall display) — the app lives here
+
+### Gaming PC (When On)
+- **Optional local LLM:** When your gaming rig is on, Joule uses your GPU for Ask Joule, bill auditor, and voice — no cloud, no API costs
+- **Fallback:** When the PC is off, use Groq cloud (API key) or the forecasts and controls still work without AI
+
+#### Local LLM System Requirements (Video-Game Style)
+
+| | Minimum | Recommended |
+|---|---------|-------------|
+| **OS** | Windows 10 (build 1909+) / Linux | Windows 11 / Linux |
+| **Processor** | Intel Core i5-8400 / AMD Ryzen 5 2600 | Intel Core i5-12400 / AMD Ryzen 5 5600 |
+| **Memory** | 8 GB RAM | 16 GB RAM |
+| **Video Card** | NVIDIA GeForce GTX 1650 (4 GB VRAM) / AMD Radeon RX 6400 (4 GB VRAM) | NVIDIA GeForce RTX 3060 (8 GB VRAM) / AMD Radeon RX 6600 XT (8 GB VRAM) |
+| **Storage** | 8 GB free (for Ollama + model) | 16 GB SSD recommended |
+| **Notes** | Llama 3 8B Q4 (GGUF) via Ollama | Smoother inference; 13B models possible |
+
+**Marketing angle:** *Joule runs on your Pi. When your gaming rig is on, it uses your GPU for local AI. When it's off, use Groq or just use the forecasts.*
+
+---
+
 ## Comparison Table
 
 | Feature | Free (CSV Analyzer) | Monitor ($20) | Bridge ($129) |
@@ -211,6 +239,7 @@ Everything in **Joule Monitor**, plus:
 - WiFi network
 - Optional: USB microphone for wake word
 - Optional: USB relay for dehumidifier control
+- Optional: Gaming PC for local LLM — Min: GTX 1650 (4 GB) / RX 6400 (4 GB); Rec: RTX 3060 (8 GB) / RX 6600 XT (8 GB)
 
 ---
 
@@ -255,6 +284,12 @@ Yes! Bridge can work with other thermostats via HomeKit or direct control protoc
 
 ### Is there a subscription fee?
 No. All tiers are one-time purchases with lifetime software updates.
+
+### Can I run the AI on my gaming PC instead of the Pi?
+Yes! The app runs on the Pi 24/7 (forecasts, control, HMI). When your gaming rig is on, you can run Ollama or another local LLM and point Joule at it — Ask Joule and the bill auditor use your GPU, no Groq API key needed. A GTX 1650 (4GB) runs Llama 3 8B fine. When the PC is off, use Groq or just the non-AI features.
+
+### AI not working when I open the app from the bridge (e.g. http://192.168.0.103:8080)?
+Configure AI in Settings once while on the bridge URL — select Local (Ollama) and enter your gaming PC’s Ollama URL (e.g. `http://192.168.0.108:11434/v1`). Settings sync to the bridge so they persist across sessions. For local Ollama, run Ollama with `OLLAMA_HOST=0.0.0.0` and `OLLAMA_ORIGINS=*` so it accepts requests from the Pi’s origin.
 
 ---
 

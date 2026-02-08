@@ -1,6 +1,6 @@
 #!/bin/bash
-# Deploy web app to Raspberry Pi bridge
-# This builds the production app and copies it to the Pi
+# Deploy web app and Pi HMI to Raspberry Pi bridge
+# Builds the production app, copies dist + pi-hmi/app.py, restarts bridge and pi-hmi services
 
 set -e  # Exit on error
 
@@ -16,6 +16,10 @@ sshpass -p "$PI_PASSWORD" scp -r dist/* ${PI_USER}@${PI_HOST}:/home/pi/git/joule
 
 echo "🔄 Restarting bridge service..."
 sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "sudo systemctl restart prostat-bridge"
+
+echo "📺 Deploying Pi HMI..."
+sshpass -p "$PI_PASSWORD" scp pi-hmi/app.py ${PI_USER}@${PI_HOST}:/home/pi/git/joule-hvac/pi-hmi/
+sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "sudo systemctl restart pi-hmi.service"
 
 echo ""
 echo "✅ Deployment complete!"

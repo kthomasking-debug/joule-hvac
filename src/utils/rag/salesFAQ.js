@@ -159,6 +159,13 @@ export const SALES_FAQ = [
       "Local control means everything runs on your Joule Bridge hardware in your home. No data goes to the cloud, no internet required for operation, and you have complete privacy and sovereignty over your system. Schedules and automations run even if your internet goes down.",
     category: "features",
   },
+  {
+    keywords: ["gaming", "gaming rig", "gaming pc", "gpu", "gtx 1650", "nvidia", "local llm", "run on my pc"],
+    question: "Can I run the AI on my gaming PC?",
+    answer:
+      "Yes! The app runs on the Pi 24/7 — forecasts, thermostat control, dashboards. When your gaming rig is on, run Ollama and Joule uses your GPU for Ask Joule and the bill auditor. Minimum: GTX 1650 (4 GB) or RX 6400 (4 GB). Recommended: RTX 3060 (8 GB) or RX 6600 XT (8 GB). No Groq API key when the PC is on. When it's off, use Groq or just the forecasts.",
+    category: "features",
+  },
 
   // Trust & Scam-Worry Busters
   {
@@ -319,6 +326,10 @@ export function hasSalesIntent(query) {
     "how much",
     "box",
     "include",
+    "gaming",
+    "gaming pc",
+    "gpu",
+    "gtx",
   ];
 
   return salesTriggers.some((trigger) => q.includes(trigger));

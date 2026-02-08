@@ -37,6 +37,22 @@ import {
   getModelDescription,
   getBestModel,
 } from "../lib/groqModels";
+import { AI_PROVIDERS, fetchOllamaModels } from "../lib/aiProvider";
+
+/** Persist a setting to the bridge so it's available when app runs from bridge origin */
+function persistAIConfigToBridge(key, value) {
+  try {
+    const base = typeof window !== "undefined"
+      ? (localStorage.getItem("jouleBridgeUrl") || import.meta.env?.VITE_JOULE_BRIDGE_URL || (window.location?.port === "8080" ? window.location.origin : null) || "")
+      : "";
+    if (!base) return;
+    fetch(`${base}/api/settings/${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: value ?? "" }),
+    }).catch(() => {});
+  } catch {}
+}
 import { fullInputClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
 import { Toast } from "../components/Toast";
@@ -566,16 +582,23 @@ const ZoneManagementSection = ({ setToast }) => {
   });
   const [editingZone, setEditingZone] = useState(null);
 
+  // Read home settings from localStorage for zone defaults
+  const homeSettings = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("userSettings") || "{}");
+    } catch { return {}; }
+  }, []);
+
   // Initialize default zone if empty
   useEffect(() => {
     if (zones.length === 0) {
       const defaultZone = {
         id: "zone1",
         name: "Main Zone",
-        squareFeet: 1500,
-        insulationLevel: 1.0,
-        primarySystem: "heatPump",
-        capacity: 36,
+        squareFeet: homeSettings?.squareFeet || 800,
+        insulationLevel: homeSettings?.insulationLevel || 1.0,
+        primarySystem: homeSettings?.primarySystem || "heatPump",
+        capacity: homeSettings?.capacity || 36,
         hasCSV: false,
       };
       setZones([defaultZone]);
@@ -583,6 +606,15 @@ const ZoneManagementSection = ({ setToast }) => {
       localStorage.setItem("activeZoneId", defaultZone.id);
     }
   }, []);
+
+  // Keep single-zone squareFeet in sync with home size setting
+  useEffect(() => {
+    if (zones.length === 1 && homeSettings?.squareFeet && zones[0].squareFeet !== homeSettings.squareFeet) {
+      const updatedZone = { ...zones[0], squareFeet: homeSettings.squareFeet };
+      setZones([updatedZone]);
+      localStorage.setItem("zones", JSON.stringify([updatedZone]));
+    }
+  }, [homeSettings?.squareFeet]);
 
   const addZone = () => {
     const newZone = {
@@ -762,6 +794,13 @@ const ZoneManagementSection = ({ setToast }) => {
 };
 
 const GroqApiKeyInput = () => {
+  const [aiProvider, setAiProvider] = useState(() => {
+    try {
+      return localStorage.getItem("aiProvider") || AI_PROVIDERS.GROQ;
+    } catch {
+      return AI_PROVIDERS.GROQ;
+    }
+  });
   const [value, setValue] = useState(() => {
     try {
       return localStorage.getItem("groqApiKey") || "";
@@ -780,6 +819,23 @@ const GroqApiKeyInput = () => {
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState(null);
+  const [localBaseUrl, setLocalBaseUrl] = useState(() => {
+    try {
+      return localStorage.getItem("localAIBaseUrl") || "http://192.168.0.108:11434/v1";
+    } catch {
+      return "http://192.168.0.108:11434/v1";
+    }
+  });
+  const [localModel, setLocalModel] = useState(() => {
+    try {
+      return localStorage.getItem("localAIModel") || "llama3:latest";
+    } catch {
+      return "llama3:latest";
+    }
+  });
+  const [localModels, setLocalModels] = useState([]);
+  const [loadingLocalModels, setLoadingLocalModels] = useState(false);
+  const [localModelsError, setLocalModelsError] = useState(null);
 
   // Listen for API key updates from Ask Joule or other components
   useEffect(() => {
@@ -817,10 +873,79 @@ const GroqApiKeyInput = () => {
     };
   }, []); // Empty dependency array - only set up listeners once
 
-  // Fetch models from Groq API when API key is available
+  const handleProviderChange = (newProvider) => {
+    setAiProvider(newProvider);
+    try {
+      localStorage.setItem("aiProvider", newProvider);
+      persistAIConfigToBridge("aiProvider", newProvider);
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: "" } }));
+    } catch {}
+  };
+
+  const handleLocalBaseUrlChange = (e) => {
+    const v = e.target.value.trim();
+    const def = "http://192.168.0.108:11434/v1";
+    setLocalBaseUrl(v || def);
+    try {
+      const val = v || def;
+      localStorage.setItem("localAIBaseUrl", val);
+      persistAIConfigToBridge("localAIBaseUrl", val);
+      window.dispatchEvent(new Event("storage"));
+    } catch {}
+  };
+
+  const handleLocalModelChange = (e) => {
+    const v = e.target.value;
+    setLocalModel(v);
+    try {
+      localStorage.setItem("localAIModel", v);
+      persistAIConfigToBridge("localAIModel", v);
+      window.dispatchEvent(new Event("storage"));
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (aiProvider !== AI_PROVIDERS.LOCAL) return;
+    const base = (localBaseUrl || "http://192.168.0.108:11434/v1").trim();
+    if (!base) return;
+    let cancelled = false;
+    setLoadingLocalModels(true);
+    setLocalModels([]);
+    setLocalModelsError(null);
+    fetchOllamaModels(base)
+      .then((models) => {
+        if (!cancelled) {
+          setLocalModels(models);
+          setLocalModelsError(null);
+          const currentExists = models.some((m) => m.id === localModel);
+          if (models.length > 0 && !currentExists) {
+            const first = models[0].id;
+            setLocalModel(first);
+            try {
+              localStorage.setItem("localAIModel", first);
+              persistAIConfigToBridge("localAIModel", first);
+              window.dispatchEvent(new Event("storage"));
+            } catch {}
+          }
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLocalModels([]);
+          setLocalModelsError(err?.message || "Connection failed");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLocalModels(false);
+      });
+    return () => { cancelled = true; };
+  }, [aiProvider, localBaseUrl]);
+
+  // Fetch models from Groq API when API key is available and provider is Groq
   useEffect(() => {
     const fetchModels = async () => {
-      if (!value || !value.trim()) {
+      if (aiProvider !== AI_PROVIDERS.GROQ || !value?.trim()) {
         setAvailableModels([]);
         setModelError(null);
         return;
@@ -899,7 +1024,7 @@ const GroqApiKeyInput = () => {
 
     fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [aiProvider, value]);
 
   const handleChange = (e) => {
     const val = e.target.value.trim();
@@ -907,12 +1032,14 @@ const GroqApiKeyInput = () => {
     try {
       if (val) {
         localStorage.setItem("groqApiKey", val);
+        persistAIConfigToBridge("groqApiKey", val);
         // Dispatch custom event for same-tab sync (Ask Joule)
         window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { 
           detail: { apiKey: val } 
         }));
       } else {
         localStorage.removeItem("groqApiKey");
+        persistAIConfigToBridge("groqApiKey", "");
         // Dispatch custom event when key is cleared
         window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { 
           detail: { apiKey: "" } 
@@ -943,11 +1070,46 @@ const GroqApiKeyInput = () => {
     setModelError(null);
     try {
       localStorage.removeItem("groqApiKey");
+      persistAIConfigToBridge("groqApiKey", "");
     } catch {}
   };
 
+  const isConfigured = aiProvider === AI_PROVIDERS.GROQ
+    ? !!value?.trim()
+    : !!localBaseUrl?.trim() && localModels.length > 0;
+
   return (
     <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+          AI Provider
+        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="aiProvider"
+              checked={aiProvider === AI_PROVIDERS.GROQ}
+              onChange={() => handleProviderChange(AI_PROVIDERS.GROQ)}
+              className="rounded-full"
+            />
+            <span className="text-sm">Groq Cloud</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="aiProvider"
+              checked={aiProvider === AI_PROVIDERS.LOCAL}
+              onChange={() => handleProviderChange(AI_PROVIDERS.LOCAL)}
+              className="rounded-full"
+            />
+            <span className="text-sm">Local (Ollama)</span>
+          </label>
+        </div>
+      </div>
+
+      {aiProvider === AI_PROVIDERS.GROQ && (
+      <>
       <div>
         <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
           Groq API Key (Optional)
@@ -1021,39 +1183,99 @@ const GroqApiKeyInput = () => {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {aiProvider === AI_PROVIDERS.LOCAL && (
+        <>
+      <div>
+        <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+          Local API Base URL
+        </label>
+        <input
+          type="url"
+          value={localBaseUrl}
+          onChange={handleLocalBaseUrlChange}
+          placeholder="http://192.168.0.108:11434/v1"
+          className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
+          aria-label="Local AI Base URL"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Where Ollama runs. Use hostname or IP. Set OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=* on the Ollama host.
+        </p>
+      </div>
+      <div>
+        <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+          Local Model
+        </label>
+        {loadingLocalModels ? (
+          <div className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-500">
+            Connecting to Ollama...
+          </div>
+        ) : localModels.length > 0 ? (
+          <select
+            value={localModel}
+            onChange={handleLocalModelChange}
+            className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+            aria-label="Select Local Model"
+          >
+            {localModels.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        ) : (
+          <div className="w-full p-3 rounded border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-200 space-y-2">
+            <p className="font-medium">Cannot reach Ollama.</p>
+            <p>Ensure OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=*, then ollama pull llama3:latest.</p>
+            {localModelsError && <p className="text-xs opacity-80">Error: {localModelsError}</p>}
+          </div>
+        )}
+      </div>
+        </>
+      )}
 
       <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
         <p className="font-semibold text-blue-700 dark:text-blue-300 mb-2">
-          ℹ️ What's this for?
+          ℹ️ What&apos;s this for?
         </p>
         <p className="mb-2">
-          Ask Joule can optionally use Groq's LLM API for advanced natural
-          language understanding when built-in parsing can't handle complex
-          questions.
+          Ask Joule uses an LLM for natural language understanding when built-in parsing can&apos;t handle complex questions.
         </p>
-        <p className="mb-2">
-          <strong>Get a free key:</strong> Visit{" "}
-          <a
-            href="https://console.groq.com/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
-          >
-            console.groq.com/keys
-          </a>
-        </p>
+        {aiProvider === AI_PROVIDERS.GROQ && (
+          <p className="mb-2">
+            <strong>Get a free Groq key:</strong> Visit{" "}
+            <a
+              href="https://console.groq.com/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
+            >
+              console.groq.com/keys
+            </a>
+          </p>
+        )}
+        {aiProvider === AI_PROVIDERS.LOCAL && (
+          <p className="mb-2">
+            <strong>Local (Ollama):</strong> Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline">Ollama</a>, run with OLLAMA_HOST=0.0.0.0 and OLLAMA_ORIGINS=*, then ollama pull llama3:latest.
+          </p>
+        )}
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-          🔒 Your API key is stored locally in your browser and never sent to
-          our servers. All Groq API calls are made directly from your browser to
-          Groq.
+          🔒 All AI calls run from your browser. Groq keys stay local; local AI never leaves your machine.
         </p>
       </div>
-      {value && (
+      {isConfigured && (
         <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
           <CheckCircle2 size={16} />
           <span>
-            API key configured with {formatModelLabel(model)} ✓
+            {aiProvider === AI_PROVIDERS.GROQ
+              ? `Groq configured with ${formatModelLabel(model)} ✓`
+              : `Local AI connected — using ${localModel} ✓`}
           </span>
+        </div>
+      )}
+      {aiProvider === AI_PROVIDERS.LOCAL && localBaseUrl?.trim() && !isConfigured && !loadingLocalModels && (
+        <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+          ⚠️ Base URL set, but not connected. Fix the issues above.
         </div>
       )}
     </div>
@@ -1294,7 +1516,14 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
           </label>
           <select
             value={settings.homeShape ?? 1.0}
-            onChange={(e) => onSettingChange("homeShape", Number(e.target.value))}
+            onChange={(e) => {
+              const newShape = Number(e.target.value);
+              onSettingChange("homeShape", newShape);
+              // Auto-set sensible wall height default when switching to Cabin
+              if (newShape >= 1.2 && newShape < 1.3 && !settings.wallHeight) {
+                onSettingChange("wallHeight", 8);
+              }
+            }}
             className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={settings.useManualHeatLoss}
           >
@@ -1437,11 +1666,12 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                 type="radio"
                 name="heatLossSource"
                 className="h-4 w-4"
-                checked={!!settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss)}
+                checked={!!settings.useCalculatedHeatLoss || (!settings.useManualHeatLoss && !settings.useAnalyzerHeatLoss && !settings.useLearnedHeatLoss)}
                 onChange={(e) => {
                   if (e.target.checked) {
                     onSettingChange("useManualHeatLoss", false);
                     onSettingChange("useAnalyzerHeatLoss", false);
+                    onSettingChange("useLearnedHeatLoss", false);
                     onSettingChange("useCalculatedHeatLoss", true);
                     // Mark that user has made an explicit choice - never auto-select again
                     localStorage.setItem('heatLossMethodUserChoice', 'true');
@@ -1481,6 +1711,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                   if (e.target.checked) {
                     onSettingChange("useCalculatedHeatLoss", false);
                     onSettingChange("useAnalyzerHeatLoss", false);
+                    onSettingChange("useLearnedHeatLoss", false);
                     onSettingChange("useManualHeatLoss", true);
                     // Mark that user has made an explicit choice - never auto-select again
                     localStorage.setItem('heatLossMethodUserChoice', 'true');
@@ -1574,6 +1805,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                       if (e.target.checked && !isDisabled) {
                         onSettingChange("useManualHeatLoss", false);
                         onSettingChange("useCalculatedHeatLoss", false);
+                        onSettingChange("useLearnedHeatLoss", false);
                         onSettingChange("useAnalyzerHeatLoss", true);
                         // Mark that user has made an explicit choice - never auto-select again
                         localStorage.setItem('heatLossMethodUserChoice', 'true');
@@ -1620,6 +1852,61 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                   {!isDisabled && !settings.useAnalyzerHeatLoss && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
                       Measured CSV data available ({Number(outletContext?.heatLossFactor || settings.analyzerHeatLoss).toFixed(1)} BTU/hr/°F). Click to use it.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* From Bill Data (Auto-learned) Option */}
+          {(() => {
+            const hasLearnedData = settings.learnedHeatLoss && typeof settings.learnedHeatLoss === "number" && settings.learnedHeatLoss > 0;
+            const learnedDays = settings.learnedHeatLossDays || 0;
+            const learnedMonths = (settings.learnedHeatLossMonths || []).length;
+            return (
+              <div className={`flex items-start gap-3 ${!hasLearnedData ? "opacity-50" : ""}`}>
+                <label className="inline-flex items-center gap-2 mt-1">
+                  <input
+                    type="radio"
+                    name="heatLossSource"
+                    className="h-4 w-4"
+                    checked={!!settings.useLearnedHeatLoss && hasLearnedData}
+                    disabled={!hasLearnedData}
+                    onChange={(e) => {
+                      if (e.target.checked && hasLearnedData) {
+                        onSettingChange("useManualHeatLoss", false);
+                        onSettingChange("useCalculatedHeatLoss", false);
+                        onSettingChange("useAnalyzerHeatLoss", false);
+                        onSettingChange("useLearnedHeatLoss", true);
+                        localStorage.setItem("heatLossMethodUserChoice", "true");
+                      }
+                    }}
+                  />
+                </label>
+                <div className="flex-1">
+                  <label className={`block text-xs font-semibold ${!hasLearnedData ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}>
+                    ○ From Bill Data (Auto-learned)
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Back-calculated from pasted utility bill data vs. weather. Appears after you paste a bill with ≥7 heating days in Monthly Forecast.
+                  </p>
+                  {!hasLearnedData && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                      Paste your bill in Monthly Forecast → Compare with your forecast to enable.
+                    </p>
+                  )}
+                  {hasLearnedData && settings.useLearnedHeatLoss && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                      Current value: {Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F
+                      <span className="ml-2 text-emerald-500 dark:text-emerald-300">
+                        (from {learnedDays} days across {learnedMonths} month{learnedMonths !== 1 ? "s" : ""})
+                      </span>
+                    </p>
+                  )}
+                  {hasLearnedData && !settings.useLearnedHeatLoss && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                      Bill data available ({Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F). Click to use it.
                     </p>
                   )}
                 </div>
@@ -3027,6 +3314,9 @@ const SettingsPage = () => {
             <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
               <JouleBridgeSettings />
             </Section>
+            <Section title="AI Integration" icon={<Zap size={20} />} id="ai-integration">
+              <GroqApiKeyInput />
+            </Section>
             <Section title="Pro Access" icon={<Crown className="w-5 h-5 text-amber-500" />}>
               <ProCodeInput />
             </Section>
@@ -3061,10 +3351,6 @@ const SettingsPage = () => {
           <div className="p-6 border-t border-slate-800 space-y-6">
             <Section title="Joule Bridge URL" icon={<Server size={20} />}>
               <BridgeUrlConfig />
-            </Section>
-
-            <Section title="Groq AI Integration" icon={<Zap size={20} />}>
-              <GroqApiKeyInput />
             </Section>
 
             <ZoneManagementSection setToast={setToast} />

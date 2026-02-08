@@ -13,9 +13,10 @@ const AskJoule = (props) => {
   });
 
   return (
-    <div className="w-full">
-      {/* Response Section */}
-      <AskJouleResponse 
+    <div className={`w-full ${props.isModal ? "flex flex-col min-h-0 flex-1 overflow-hidden" : ""}`}>
+      {/* Response Section - scrollable when in modal */}
+      <div className={props.isModal ? "flex-1 min-h-0 overflow-y-auto" : ""}>
+        <AskJouleResponse 
         answer={state.answer}
         agenticResponse={state.agenticResponse}
         error={state.error}
@@ -35,9 +36,10 @@ const AskJoule = (props) => {
           state.setOutputStatus("");
         }}
       />
+      </div>
 
       {/* Ask Joule Container - Clean Chat Style */}
-      <div className="bg-[#151A21] border border-[#222A35] rounded-xl p-6 mb-8">
+      <div className={`bg-[#151A21] border border-[#222A35] rounded-xl p-6 ${props.isModal ? "flex-shrink-0 mb-0" : "mb-8"}`}>
         {/* Ask Joule Header - hidden if hideHeader prop is true */}
         {!props.hideHeader && (
           <div className="mb-6">

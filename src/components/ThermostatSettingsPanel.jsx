@@ -315,6 +315,7 @@ export default function ThermostatSettingsPanel() {
   const [showComparison, setShowComparison] = useState(false);
   const [pullingComfortSettings, setPullingComfortSettings] = useState(false);
   const [comfortSettingsError, setComfortSettingsError] = useState(null);
+  const [presetApplied, setPresetApplied] = useState(null);
   const [expandedSections, setExpandedSections] = useState({
     equipment: false,
     thresholds: false,
@@ -678,6 +679,12 @@ export default function ThermostatSettingsPanel() {
   // Apply preset
   const applyPreset = (presetName) => {
     let presetSettings = { ...settings };
+    const presetLabels = {
+      "energy-saver": "⚡ Energy Saver",
+      "comfort": "😌 Comfort",
+      "aggressive": "⚡ Aggressive Savings",
+      "default": "🔄 Default"
+    };
 
     switch (presetName) {
       case "energy-saver":
@@ -731,6 +738,10 @@ export default function ThermostatSettingsPanel() {
 
     saveThermostatSettings(presetSettings);
     setSettings(presetSettings);
+    
+    // Show feedback message
+    setPresetApplied(presetLabels[presetName] || presetName);
+    setTimeout(() => setPresetApplied(null), 3000);
   };
 
   return (
@@ -777,6 +788,12 @@ export default function ThermostatSettingsPanel() {
           <div className="mb-3 p-2 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded flex items-center gap-2 text-sm text-green-800 dark:text-green-200">
             <CheckCircle2 size={16} />
             Settings imported successfully!
+          </div>
+        )}
+        {presetApplied && (
+          <div className="mb-3 p-2 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+            <CheckCircle2 size={16} />
+            Applied: {presetApplied}
           </div>
         )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

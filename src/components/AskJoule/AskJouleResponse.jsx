@@ -116,7 +116,7 @@ export const AskJouleResponse = React.memo(({
 
   // Extract text from agentic response
   const responseText = extractResponseText(agenticResponse);
-  const hasContent = answer || responseText;
+  const hasContent = answer || responseText || (isLoadingGroq && agenticResponse?.success);
 
   return (
     <div className="space-y-3">
@@ -127,8 +127,8 @@ export const AskJouleResponse = React.memo(({
         </div>
       )}
 
-      {/* Loading State */}
-      {loadingMessage && (
+      {/* Loading State - hide when we have streaming content */}
+      {loadingMessage && !responseText && (
         <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg animate-pulse" data-testid="loading-indicator">
           <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-blue-700 dark:text-blue-300 font-medium">

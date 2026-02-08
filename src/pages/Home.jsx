@@ -502,6 +502,7 @@ const HomeDashboard = () => {
     const useManualHeatLoss = Boolean(settings?.useManualHeatLoss);
     const useCalculatedHeatLoss = settings?.useCalculatedHeatLoss !== false; // Default to true
     const useAnalyzerHeatLoss = Boolean(settings?.useAnalyzerHeatLoss);
+    const useLearnedHeatLoss = Boolean(settings?.useLearnedHeatLoss);
     let heatLossFactor;
     
     // Calculate ceiling multiplier once for use in both heating and cooling calculations
@@ -521,7 +522,12 @@ const HomeDashboard = () => {
       heatLossFactor = latestAnalysis.heatLossFactor;
     }
     
-    // Priority 3: Calculated from Building Characteristics (DoE data)
+    // Priority 3: Bill-learned heat loss (if enabled)
+    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0) {
+      heatLossFactor = Number(settings.learnedHeatLoss);
+    }
+    
+    // Priority 4: Calculated from Building Characteristics (DoE data)
     if (!heatLossFactor && useCalculatedHeatLoss) {
       const BASE_BTU_PER_SQFT_HEATING = 22.67;
       const effectiveSquareFeet = heatUtils.getEffectiveSquareFeet(

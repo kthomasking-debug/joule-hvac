@@ -57,6 +57,13 @@ if epdmod is None:
 
 # --- Config ---
 API_BASE = os.environ.get('HMI_API_BASE', 'http://127.0.0.1:8080')
+# Port for user to open app (from API_BASE, e.g. 8080)
+try:
+    from urllib.parse import urlparse
+    _parsed = urlparse(API_BASE)
+    BRIDGE_PORT = str(_parsed.port) if _parsed.port else '8080'
+except Exception:
+    BRIDGE_PORT = '8080'
 POLL_SECS = int(os.environ.get('HMI_POLL_SECS', '15'))
 # E-paper refresh: only update display at this interval (seconds) to avoid blinking
 DISPLAY_REFRESH_SECS = int(os.environ.get('HMI_DISPLAY_REFRESH_SECS', '900'))  # 15 min default
@@ -807,8 +814,11 @@ class EInkHMI:
         # Main content area: y=14 to y=98 (84px height)
         content_y = 16
         
-        # Use monthly_cost directly if available, otherwise calculate from weekly
-        monthly = self.status.monthly_cost if self.status.monthly_cost else (self.status.weekly_cost * 4.33 if self.status.weekly_cost else 0)
+        # Use monthly_cost only when explicitly from bridge (totalMonthlyCost).
+        # Do NOT use weekly*4.33 as monthly - that causes $43 to appear when bridge
+        # has totalHPCost (weekly) but no totalMonthlyCost (e.g. stale 7-Day data).
+        monthly = self.status.monthly_cost if self.status.monthly_cost else 0
+        weekly = self.status.weekly_cost if self.status.weekly_cost else 0
         
         if monthly > 0:
             # Large dollar amount - centered
@@ -822,8 +832,38 @@ class EInkHMI:
             self.draw.text((SCREEN_W // 2 - 28, content_y + 38), "per month", font=FONT_MED, fill=0)
             
             # Weekly cost on left, below "per month"
-            weekly = self.status.weekly_cost if self.status.weekly_cost else (monthly / 4.33)
-            self.draw.text((4, content_y + 54), f"${weekly:.2f}/wk", font=FONT_SMALL, fill=0)
+            wk_val = weekly if weekly else (monthly / 4.33)
+            self.draw.text((4, content_y + 54), f"${wk_val:.2f}/wk", font=FONT_SMALL, fill=0)
+            
+            # Temps on right side: "In: 67° → 70°  Out: 33°"
+            temp_str = ""
+            if self.status.last_ok and self.status.temp > 0:
+                temp_str = f"In:{self.status.temp:.0f}°"
+                if self.status.target_temp > 0:
+                    temp_str += f"→{self.status.target_temp:.0f}°"
+            if self.status.weather_ok:
+                if temp_str:
+                    temp_str += "  "
+                temp_str += f"Out:{self.status.outdoor_temp:.0f}°"
+            if temp_str:
+                self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
+            
+            # Bridge IP:PORT at very bottom (user needs both to open app)
+            if self.status.bridge_ip:
+                ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
+                self.draw.text((4, content_y + 68), ip_str, font=FONT_SMALL, fill=0)
+                if self.status.device_id:
+                    short_id = self.status.device_id[-8:] if len(self.status.device_id) > 8 else self.status.device_id
+                    self.draw.text((155, content_y + 68), f"ID:{short_id}", font=FONT_SMALL, fill=0)
+                elif self.status.weather_ok and self.status.outdoor_humidity:
+                    self.draw.text((200, content_y + 68), f"{self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
+        elif weekly > 0:
+            # Have weekly but no monthly - show weekly only (avoids wrong $43 from weekly*4.33)
+            cost_str = f"${weekly:.1f}/wk"
+            cost_width = len(cost_str) * 12
+            cost_x = (SCREEN_W - cost_width) // 2
+            self.draw.text((cost_x, content_y + 5), cost_str, font=FONT_BIG, fill=0)
+            self.draw.text((SCREEN_W // 2 - 42, content_y + 38), "weekly only — run Monthly in app", font=FONT_SMALL, fill=0)
             
             # Temps on right side: "In: 67° → 70°  Out: 33°"
             temp_str = ""
@@ -839,9 +879,9 @@ class EInkHMI:
                 # Right-align temperature info
                 self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
             
-            # Bridge IP and device ID at very bottom
+            # Bridge IP:PORT at very bottom (user needs both to open app)
             if self.status.bridge_ip:
-                ip_str = f"IP: {self.status.bridge_ip}"
+                ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
                 self.draw.text((4, content_y + 68), ip_str, font=FONT_SMALL, fill=0)
                 # Show device ID (last 8 chars) on right, or humidity if no device
                 if self.status.device_id:
@@ -851,15 +891,8 @@ class EInkHMI:
                 elif self.status.weather_ok and self.status.outdoor_humidity:
                     self.draw.text((200, content_y + 68), f"{self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
         else:
-            # No cost data - show status info
-            self.draw.text((10, content_y + 10), 'Joule Status', font=FONT_MED, fill=0)
-            self.draw.text((10, content_y + 30), 'Waiting for forecast data...', font=FONT_SMALL, fill=0)
-            self.draw.text((10, content_y + 44), 'Run Weekly Forecaster in app', font=FONT_SMALL, fill=0)
-            
-            if self.status.weather_ok:
-                self.draw.text((10, content_y + 60), f"Outside: {self.status.outdoor_temp:.0f}°F {self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
-            if self.status.bridge_ip:
-                self.draw.text((10, content_y + 74), f"Bridge IP: {self.status.bridge_ip}", font=FONT_SMALL, fill=0)
+            # No cost data - show QR code so user can open app to get data
+            self._draw_qr_in_content_area(label="Open to get data")
 
     def _render_actions(self):
         """Render Energy Breakdown page"""
@@ -1014,56 +1047,45 @@ class EInkHMI:
                 self.draw.text((10, row_y + 16), 'Run 7-Day Forecaster', font=FONT_SMALL, fill=0)
                 self.draw.text((10, row_y + 32), 'in the Joule app', font=FONT_SMALL, fill=0)
 
-    def _render_qr(self):
-        """Render QR code to bridge URL"""
+    def _draw_qr_in_content_area(self, label=None):
+        """Draw QR code centered in content area. label=None uses URL, else custom text (e.g. 'Open to get data')."""
         if not HAS_QRCODE:
             self.draw.text((10, 20), "QR code library", font=FONT_SMALL, fill=0)
             self.draw.text((10, 30), "not installed", font=FONT_SMALL, fill=0)
             self.draw.text((10, 50), "Run: pip install", font=FONT_SMALL, fill=0)
             self.draw.text((10, 60), "qrcode[pil]", font=FONT_SMALL, fill=0)
             return
-        
         try:
-            # Generate QR code for the bridge URL
-            bridge_url = f"http://{self.status.bridge_ip}:8080/home" if self.status.bridge_ip else "http://192.168.0.103:8080/home"
-            
+            bridge_url = f"http://{self.status.bridge_ip}:{BRIDGE_PORT}/home" if self.status.bridge_ip else f"http://192.168.0.103:{BRIDGE_PORT}/home"
             qr = qrcode.QRCode(
-                version=1,  # Controls the size of the QR code
+                version=1,
                 error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=2,  # Size of each box in pixels
-                border=1,    # Minimum border (quiet zone)
+                box_size=2,
+                border=1,
             )
             qr.add_data(bridge_url)
             qr.make(fit=True)
-            
-            # Create QR image
             qr_img = qr.make_image(fill_color="black", back_color="white")
-            
-            # Scale QR code to fit in the content area (y=14 to y=98, ~84 pixels height)
-            # Leave some margin: 20px margins, so ~210px width available
-            target_size = min(SCREEN_W - 40, SCREEN_H - 34)  # Content area minus margins
-            target_size = (target_size // 2) * 2  # Make even number
+            target_size = min(SCREEN_W - 40, SCREEN_H - 34)
+            target_size = (target_size // 2) * 2
             qr_img = qr_img.resize((target_size, target_size), Image.Resampling.NEAREST)
-            
-            # Convert to 1-bit (black/white) for e-ink
             qr_bw = qr_img.convert('1')
-            
-            # Paste QR code centered on display
             qr_x = (SCREEN_W - target_size) // 2
-            qr_y = (SCREEN_H - 34 - target_size) // 2 + 14  # Center vertically in content area
+            qr_y = (SCREEN_H - 34 - target_size) // 2 + 14
             self.canvas.paste(qr_bw, (qr_x, qr_y))
-            
-            # Add URL label below QR code
             label_y = qr_y + target_size + 2
             if label_y + 8 < SCREEN_H - 20:
-                # Truncate URL for display if needed
-                display_url = bridge_url[:20] + "..." if len(bridge_url) > 20 else bridge_url
-                text_x = (SCREEN_W - len(display_url) * 5) // 2
-                self.draw.text((text_x, label_y), display_url, font=FONT_SMALL, fill=0)
+                display_text = label if label else (bridge_url[:20] + "..." if len(bridge_url) > 20 else bridge_url)
+                text_x = (SCREEN_W - len(display_text) * 5) // 2
+                self.draw.text((text_x, label_y), display_text, font=FONT_SMALL, fill=0)
         except Exception as e:
             print(f'[WARN] QR code generation failed: {e}')
             self.draw.text((10, 20), "QR Code Error", font=FONT_MED, fill=0)
             self.draw.text((10, 40), str(e)[:30], font=FONT_SMALL, fill=0)
+
+    def _render_qr(self):
+        """Render QR code page"""
+        self._draw_qr_in_content_area()
 
     def _render_nav(self):
         nav_h = 20

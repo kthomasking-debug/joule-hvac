@@ -9,10 +9,11 @@ import { useQuery } from "@tanstack/react-query";
  * 1. Fetch 15-day forecast from Open-Meteo (supports up to 16 days)
  * 2. For days not covered by forecast, use historical averages from Open-Meteo archive API
  */
-async function fetchMonthlyForecast({ lat, lon, month, signal }) {
+async function fetchMonthlyForecast({ lat, lon, month, year, signal }) {
   const latitude = lat;
   const longitude = lon;
   const targetMonth = month;
+  const targetYear = year || new Date().getFullYear();
   if (!latitude || !longitude || !targetMonth) {
     throw new Error('Missing required parameters');
   }
@@ -118,8 +119,8 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
 
       // Process forecast days - filter to only include days in the target month
       const today = new Date();
-      const year = today.getFullYear();
-      const daysInMonth = new Date(year, targetMonth, 0).getDate();
+      const year = targetYear;
+      const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
 
       const forecastDays = (forecastData.daily?.time || [])
         .map((date, idx) => {
@@ -143,7 +144,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
           const dayDate = day.date;
           return (
             dayDate.getMonth() === targetMonth - 1 &&
-            dayDate.getFullYear() === year
+            dayDate.getFullYear() === targetYear
           );
         });
 
@@ -153,11 +154,74 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
         forecastMap.set(day.dayOfMonth, day);
       });
 
-      // Step 2: Fetch historical averages for the entire month
-      // Reduced from 10 years to 3 years for faster loading (still statistically significant)
+      // Step 2: Fetch actual weather data for past days
       const currentYear = today.getFullYear();
-      const startYear = currentYear - 3;
-      const endYear = currentYear - 1;
+      const currentMonth = today.getMonth() + 1; // getMonth() is 0-indexed
+      const isCurrentMonth = targetMonth === currentMonth && targetYear === currentYear;
+      const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+      
+      // Determine if this is a fully past month (all days are before today)
+      const lastDayOfTarget = new Date(targetYear, targetMonth - 1, daysInTargetMonth);
+      lastDayOfTarget.setHours(23, 59, 59, 999);
+      const isPastMonth = lastDayOfTarget < today && !isCurrentMonth;
+      
+      // For past months: fetch ALL days as actual data from archive
+      // For current month: fetch start-of-month to yesterday as actual
+      let actualWeatherData = null;
+      if (isPastMonth) {
+        const actualStartDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-01`;
+        const actualEndDate = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(daysInTargetMonth).padStart(2, "0")}`;
+        
+        const actualUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${actualStartDate}&end_date=${actualEndDate}&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit`;
+        
+        if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+          console.log("📊 Fetching ACTUAL weather for entire past month:", { url: actualUrl });
+        }
+        
+        try {
+          const actualResp = await fetch(actualUrl, { signal });
+          if (actualResp.ok) {
+            actualWeatherData = await actualResp.json();
+            console.log("✅ Past month actual weather fetched:", actualWeatherData?.daily?.time?.length || 0, "days");
+          } else {
+            console.warn("❌ Actual weather API returned:", actualResp.status);
+          }
+        } catch (err) {
+          console.warn("❌ Failed to fetch actual weather data:", err);
+        }
+      } else if (isCurrentMonth && today.getDate() > 1) {
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        const actualStartDate = `${currentYear}-${String(targetMonth).padStart(2, "0")}-01`;
+        const actualEndDate = `${currentYear}-${String(targetMonth).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+        
+        const actualUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${actualStartDate}&end_date=${actualEndDate}&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit`;
+        
+        if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+          console.log("📊 Fetching ACTUAL weather for past days:", {
+            url: actualUrl,
+          });
+        }
+        
+        try {
+          const actualResp = await fetch(actualUrl, { signal });
+          if (actualResp.ok) {
+            actualWeatherData = await actualResp.json();
+            console.log("✅ Actual weather data fetched:", actualWeatherData?.daily?.time?.length || 0, "days");
+          } else {
+            console.warn("❌ Actual weather API returned:", actualResp.status);
+          }
+        } catch (err) {
+          console.warn("❌ Failed to fetch actual weather data:", err);
+        }
+      }
+      
+      // Step 3: Fetch historical averages for the entire month (3-year average)
+      // For past months in a past year, shift the historical window accordingly
+      const histEndYear = Math.min(targetYear - 1, currentYear - 1);
+      const startYear = histEndYear - 2;
+      const endYear = histEndYear;
 
       // Fetch historical data for the entire month across multiple years
       const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${startYear}-${String(
@@ -193,24 +257,55 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
           const todayTimestamp = todayMidnight.getTime();
           
           for (let day = 1; day <= daysInMonth; day++) {
-            const dayDate = new Date(currentYear, targetMonth - 1, day);
-            const isPastDay = dayDate.getTime() < todayTimestamp;
+            const dayDate = new Date(targetYear, targetMonth - 1, day);
+            const isPastDay = dayDate.getTime() < todayTimestamp || isPastMonth;
             
-            // Use forecast only if the day has actual forecast data and is not a past day
-            // For past days or days beyond forecast range, use historical
-            if (forecastMap.has(day) && !isPastDay) {
-              // Use forecast data
+            // Priority order:
+            // 1. Actual weather data for past days (current month only)
+            // 2. Forecast data for today and future days (within forecast range)
+            // 3. Historical average for days beyond forecast range
+            
+            // Check if we have ACTUAL data for this past day
+            let hasActualData = false;
+            if (actualWeatherData && isPastDay) {
+              const actualDay = actualWeatherData.daily.time.find((dateStr) => {
+                const date = new Date(dateStr + 'T12:00:00');
+                return date.getDate() === day && date.getMonth() === targetMonth - 1;
+              });
+              
+              if (actualDay) {
+                const idx = actualWeatherData.daily.time.indexOf(actualDay);
+                const actualHigh = actualWeatherData.daily.temperature_2m_max[idx];
+                const actualLow = actualWeatherData.daily.temperature_2m_min[idx];
+                
+                if (Number.isFinite(actualHigh) && Number.isFinite(actualLow)) {
+                  completeMonth.push({
+                    date: new Date(targetYear, targetMonth - 1, day),
+                    high: actualHigh,
+                    low: actualLow,
+                    avg: (actualHigh + actualLow) / 2,
+                    humidity: 60, // Default humidity for actual data
+                    source: "actual",
+                  });
+                  hasActualData = true;
+                }
+              }
+            }
+            
+            // Use forecast only if the day has forecast data and is not a past day
+            if (!hasActualData && forecastMap.has(day) && !isPastDay) {
+              // Use forecast data for today and future days
               const forecastDay = forecastMap.get(day);
               completeMonth.push({
-                date: new Date(currentYear, targetMonth - 1, day),
+                date: new Date(targetYear, targetMonth - 1, day),
                 high: forecastDay.high,
                 low: forecastDay.low,
                 avg: forecastDay.avg,
                 humidity: forecastDay.humidity,
                 source: "forecast",
               });
-            } else {
-              // Use historical average for past days or days beyond forecast range
+            } else if (!hasActualData) {
+              // Use historical average for past days without actual data OR days beyond forecast range
               const tempsForThisDay = [];
 
               // Extract temperatures for this day across all years
@@ -238,13 +333,13 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
                   tempsForThisDay.reduce((sum, t) => sum + t.low, 0) /
                   tempsForThisDay.length;
 
-                completeMonth.push({
-                  date: new Date(currentYear, targetMonth - 1, day),
-                  high: avgHigh,
-                  low: avgLow,
-                  avg: (avgHigh + avgLow) / 2,
-                  humidity: 60, // Default humidity for historical data
-                  source: "historical",
+                  completeMonth.push({
+                    date: new Date(targetYear, targetMonth - 1, day),
+                    high: avgHigh,
+                    low: avgLow,
+                    avg: (avgHigh + avgLow) / 2,
+                    humidity: 60, // Default humidity for historical data
+                    source: "historical",
                 });
               } else {
                 // Fallback: use average of forecast days if no historical data
@@ -259,7 +354,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
                       forecastDays.length
                     : 40;
                 completeMonth.push({
-                  date: new Date(currentYear, targetMonth - 1, day),
+                  date: new Date(targetYear, targetMonth - 1, day),
                   high: avgForecastHigh,
                   low: avgForecastLow,
                   avg: (avgForecastHigh + avgForecastLow) / 2,
@@ -270,10 +365,11 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
             }
           }
 
-          if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+          if (typeof window !== "undefined") {
             const forecastCount = completeMonth.filter(d => d.source === 'forecast').length;
             const historicalCount = completeMonth.filter(d => d.source === 'historical').length;
-            console.log(`📅 Monthly forecast complete: ${completeMonth.length} days (${forecastCount} forecast, ${historicalCount} historical)`);
+            const actualCount = completeMonth.filter(d => d.source === 'actual').length;
+            console.log(`📅 Monthly forecast complete: ${completeMonth.length} days (${actualCount} actual, ${forecastCount} forecast, ${historicalCount} historical)`);
           }
 
           return completeMonth;
@@ -299,7 +395,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
             if (forecastMap.has(day)) {
               const forecastDay = forecastMap.get(day);
               completeMonth.push({
-                date: new Date(currentYear, targetMonth - 1, day),
+                date: new Date(targetYear, targetMonth - 1, day),
                 high: forecastDay.high,
                 low: forecastDay.low,
                 avg: forecastDay.avg,
@@ -308,7 +404,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
               });
             } else {
               completeMonth.push({
-                date: new Date(currentYear, targetMonth - 1, day),
+                date: new Date(targetYear, targetMonth - 1, day),
                 high: avgForecastHigh,
                 low: avgForecastLow,
                 avg: avgForecastAvg,
@@ -337,7 +433,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
           if (forecastMap.has(day)) {
             const forecastDay = forecastMap.get(day);
             fallbackMonth.push({
-              date: new Date(currentYear, targetMonth - 1, day),
+              date: new Date(targetYear, targetMonth - 1, day),
               high: forecastDay.high,
               low: forecastDay.low,
               avg: forecastDay.avg,
@@ -346,7 +442,7 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
             });
           } else {
             fallbackMonth.push({
-              date: new Date(currentYear, targetMonth - 1, day),
+              date: new Date(targetYear, targetMonth - 1, day),
               high: avgForecastHigh,
               low: avgForecastLow,
               avg: (avgForecastHigh + avgForecastLow) / 2,
@@ -368,11 +464,11 @@ async function fetchMonthlyForecast({ lat, lon, month, signal }) {
  * Automatically fetches in background and keeps data fresh
  */
 export default function useMonthlyForecast(lat, lon, month, options = {}) {
-  const { enabled = true } = options;
+  const { enabled = true, year = null } = options;
 
   const query = useQuery({
-    queryKey: ['monthlyForecast', lat, lon, month],
-    queryFn: ({ signal }) => fetchMonthlyForecast({ lat, lon, month, signal }),
+    queryKey: ['monthlyForecast', lat, lon, month, year],
+    queryFn: ({ signal }) => fetchMonthlyForecast({ lat, lon, month, year, signal }),
     enabled: enabled && !!lat && !!lon && !!month,
     staleTime: 15 * 60 * 1000, // 15 minutes
     cacheTime: 30 * 60 * 1000, // 30 minutes
