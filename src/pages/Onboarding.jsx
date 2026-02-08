@@ -32,6 +32,7 @@ import { calculateHeatLoss } from "../lib/heatUtils";
 import UnitSystemToggle from "../components/UnitSystemToggle";
 import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
 import { setBridgeBase } from "../lib/bridgeApi";
+import { GroqApiKeyInput } from "./Settings";
 
 // Build public path helper
 function buildPublicPath(path) {
@@ -49,17 +50,19 @@ const STEPS = {
   LOCATION: 1,
   BUILDING: 2,
   BRIDGE: 3,
-  CONFIRMATION: 4,
+  AI: 4,
+  CONFIRMATION: 5,
 };
 
 // Step labels for progress bar
-const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Bridge', 'Done'];
+const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Bridge', 'AI', 'Done'];
 
 // Step benefits - what each step unlocks
 const STEP_BENEFITS = {
   [STEPS.LOCATION]: 'Enables local weather data and utility rates',
   [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
   [STEPS.BRIDGE]: 'Streams real-time data from your Ecobee thermostat',
+  [STEPS.AI]: 'Optional: set up Ask Joule with Groq or local Ollama',
 };
 
 export default function Onboarding() {
@@ -165,7 +168,7 @@ export default function Onboarding() {
   }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
-  const totalSteps = 5; // Always 5 steps: Welcome, Location, Building, Bridge, Confirmation
+  const totalSteps = 6; // Welcome, Location, Building, Bridge, AI (optional), Confirmation
   
   // Bridge Setup State
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
@@ -500,6 +503,8 @@ export default function Onboarding() {
       setBuildingError(null); // Clear any errors
       setStep(STEPS.BRIDGE);
     } else if (step === STEPS.BRIDGE) {
+      setStep(STEPS.AI);
+    } else if (step === STEPS.AI) {
       setStep(STEPS.CONFIRMATION);
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
@@ -1359,7 +1364,42 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 5: Confirmation (Required for all modes) */}
+        {/* Step 5: AI Integration (Optional, skippable) */}
+        {step === STEPS.AI && (
+          <div className="text-left">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+              STEP {step + 1} OF {totalSteps}
+            </p>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+              AI Integration
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Optional — you can set this up later in Settings.
+            </p>
+            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 max-h-[60vh] overflow-y-auto">
+              <GroqApiKeyInput />
+            </div>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button
+                onClick={() => setStep(STEPS.BRIDGE)}
+                className="btn btn-outline px-6 py-3"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep(STEPS.CONFIRMATION)}
+                className="btn btn-outline px-6 py-3"
+              >
+                Skip for now
+              </button>
+              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+                Continue <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Confirmation (Required for all modes) */}
         {step === STEPS.CONFIRMATION && (
           <div className="text-center">
             <div className="mb-4">
@@ -1478,6 +1518,27 @@ export default function Onboarding() {
                     <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
                 </button>
+                <button
+                  onClick={() => setStep(STEPS.AI)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
+                  <span className="text-gray-600 dark:text-gray-400">AI (Ask Joule)</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    {(() => {
+                      try {
+                        const provider = localStorage.getItem("aiProvider") || "groq";
+                        const hasKey = !!localStorage.getItem("groqApiKey")?.trim();
+                        const hasLocal = !!localStorage.getItem("localAIBaseUrl")?.trim();
+                        if (provider === "local" && hasLocal) return <span className="text-green-600 dark:text-green-400">Local (Ollama)</span>;
+                        if (provider === "groq" && hasKey) return <span className="text-green-600 dark:text-green-400">Groq</span>;
+                        return <span className="text-gray-400">Not set up</span>;
+                      } catch {
+                        return <span className="text-gray-400">Not set up</span>;
+                      }
+                    })()}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
                 <div className="flex justify-between items-center py-2 px-2">
                   <span className="text-gray-600 dark:text-gray-400">Unit System</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
@@ -1493,7 +1554,7 @@ export default function Onboarding() {
 
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => setStep(STEPS.BRIDGE)}
+                onClick={() => setStep(STEPS.AI)}
                 className="btn btn-outline px-6 py-3"
               >
                 Back

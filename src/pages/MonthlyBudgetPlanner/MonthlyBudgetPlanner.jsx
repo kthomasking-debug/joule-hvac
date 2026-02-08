@@ -4584,6 +4584,10 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                                   `If I lower my thermostat to 66°F, how much would I save per month?`,
                                   `My bill peak was 6kW at 7AM. Is that my heat strips or appliances?`,
                                   `What insulation multiplier would make the model match my actual bill?`,
+                                  `Given my actual bill, solve for insulation multiplier that minimizes error.`,
+                                  `At what outdoor temp does aux heat activate based on morning spikes?`,
+                                  `What night setback minimizes cost without triggering strip heat?`,
+                                  `What variable has biggest impact on monthly bill?`,
                                 ].filter((q, i, arr) => arr.indexOf(q) === i).map((q, i) => (
                                   <button
                                     key={i}

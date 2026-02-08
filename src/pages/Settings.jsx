@@ -1280,7 +1280,7 @@ const GroqApiKeyInput = () => {
         </p>
         {ollamaLocation === "other-device" && (
           <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-            To find the PC’s address: Windows — open Command Prompt, type <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code>, look for IPv4. Mac — System Settings → Network.
+            To find that computer’s address: on the <strong>PC that runs Ollama</strong> (the one with the GPU), open Command Prompt and run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code>, then look for IPv4. On Mac, use System Settings → Network on that Mac.
           </p>
         )}
       </div>
@@ -3721,3 +3721,4 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+export { GroqApiKeyInput };
