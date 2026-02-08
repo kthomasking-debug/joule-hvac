@@ -40,7 +40,11 @@ export const AskJouleInput = React.memo(({
   isWakeWordListening,
   wakeWordError,
   salesMode = false,
-  showQuestionHelp = false
+  showQuestionHelp = false,
+  isLoadingGroq = false,
+  loadingMessage = "",
+  lastResponse = null,
+  isModal = false
 }) => {
   // Static placeholder text - use sales placeholders if in sales mode
   const displayPlaceholder = salesMode ? SALES_PLACEHOLDER_SUGGESTIONS[0] : PLACEHOLDER_SUGGESTIONS[0];
@@ -166,7 +170,25 @@ export const AskJouleInput = React.memo(({
             </>
           )}
         </div>
+
+        {/* Thinking indicator - in same panel as input so user always sees it (e.g. Joule Bridge) */}
+        {isLoadingGroq && loadingMessage && (
+          <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-200">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <span className="text-sm font-medium">{loadingMessage}</span>
+          </div>
+        )}
       </form>
+
+      {/* Last response in same panel when NOT in modal (in modal, response stays in scrollable section above) */}
+      {lastResponse && !isLoadingGroq && !isModal && (
+        <div className="ask-joule-modal-response mt-3 p-3 rounded-lg bg-[#222A35] border border-[#2d3748] text-[#E8EDF3] text-sm leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto overflow-x-hidden">
+          {lastResponse}
+          {!/[.!?]\s*$/.test(lastResponse.trim()) && (
+            <p className="mt-2 text-xs text-amber-400">Response may be incomplete (stream ended early).</p>
+          )}
+        </div>
+      )}
 
       {/* Helpful note - moved to less prominent position */}
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 opacity-60">

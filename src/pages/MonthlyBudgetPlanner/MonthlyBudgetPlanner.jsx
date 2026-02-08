@@ -4333,6 +4333,9 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   <p className="text-purple-200 text-xs mt-1">
                     Paste your utility bill and Joule will tell you exactly why it's different from the forecast — down to the dollar.
                   </p>
+                  <p className="text-purple-300/90 text-xs mt-1">
+                    For general questions about efficiency, settings, or savings, use <strong className="text-white">Ask Joule</strong>.
+                  </p>
                 </div>
                 {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
                   <button

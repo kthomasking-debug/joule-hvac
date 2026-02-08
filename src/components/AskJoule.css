@@ -79,3 +79,22 @@
     transform: scaleY(1);
   }
 }
+
+/* Modal response area: ensure scrollbar is visible when content overflows */
+.ask-joule-modal-response {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+.ask-joule-modal-response::-webkit-scrollbar {
+  width: 8px;
+}
+.ask-joule-modal-response::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ask-joule-modal-response::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 4px;
+}
+.ask-joule-modal-response::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.8);
+}

@@ -95,7 +95,7 @@ export default function BillUpload({ predictedMonthlyCost = 150 }) {
         Bill Upload & Verification
       </h2>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Paste your electric bill. Joule will compare it to the physics model and tell you if something doesn't add up.
+        Paste your electric bill. Joule will compare it to the physics model and tell you if something doesn't add up. For general questions about efficiency, settings, or savings, use <strong className="text-gray-800 dark:text-gray-200">Ask Joule</strong>.
       </p>
 
       <textarea

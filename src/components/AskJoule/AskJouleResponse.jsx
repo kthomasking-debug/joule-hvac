@@ -1,25 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Zap, ThumbsUp, ThumbsDown, X } from "lucide-react";
 
 // Extract text from agentic response - handle various formats
 function extractResponseText(response) {
   if (!response) return "";
-  
-  // Direct message
-  if (response.success && response.message) {
-    return response.message;
-  }
-  
+  // Direct message (success or error object with message)
+  if (response.message) return response.message;
   // Nested response object
-  if (response.response?.message) {
-    return response.response.message;
-  }
-  
-  // String response
-  if (typeof response.response === "string") {
-    return response.response;
-  }
-  
+  if (response.response?.message) return response.response.message;
+  if (typeof response.response === "string") return response.response;
   return "";
 }
 
@@ -44,6 +33,9 @@ export const AskJouleResponse = React.memo(({
   const [feedbackText, setFeedbackText] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const responseCardRef = useRef(null);
+  const responseSectionRef = useRef(null);
+  const hasScrolledToResponseRef = useRef(false);
 
   // Memoize stop handler to prevent re-creation on every render
   const handleStopSpeaking = React.useCallback((e) => {
@@ -106,20 +98,38 @@ export const AskJouleResponse = React.memo(({
       setSavingApiKey(false);
     }
   };
-  // Debug logging
-  React.useEffect(() => {
-    if (agenticResponse) {
-      console.log("[AskJouleResponse] agenticResponse:", agenticResponse);
-      console.log("[AskJouleResponse] extracted text:", extractResponseText(agenticResponse));
-    }
+  // Scroll response card into view when we first get streamed content (once per response)
+  useEffect(() => {
+    if (!agenticResponse?.success || !agenticResponse?.message || !responseCardRef.current) return;
+    if (hasScrolledToResponseRef.current) return;
+    const len = agenticResponse.message.length;
+    if (len < 80) return; // wait for a bit of content
+    hasScrolledToResponseRef.current = true;
+    responseCardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [agenticResponse?.success, agenticResponse?.message]);
+
+  // Reset scroll flag when agenticResponse is cleared (new question)
+  useEffect(() => {
+    if (!agenticResponse) hasScrolledToResponseRef.current = false;
   }, [agenticResponse]);
+
+  // Scroll response area into view when loading or when error appears (so user sees "Thinking..." and errors)
+  useEffect(() => {
+    if (!responseSectionRef.current) return;
+    if (loadingMessage || (error && error.trim())) {
+      responseSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loadingMessage, error]);
 
   // Extract text from agentic response
   const responseText = extractResponseText(agenticResponse);
-  const hasContent = answer || responseText || (isLoadingGroq && agenticResponse?.success);
+  const hasContent =
+    answer ||
+    (agenticResponse?.success && responseText) ||
+    (isLoadingGroq && agenticResponse?.success);
 
   return (
-    <div className="space-y-3">
+    <div ref={responseSectionRef} className="space-y-3">
       {/* Live Transcript */}
       {isListening && transcript && (
         <div className="text-xs text-blue-600 dark:text-blue-300 animate-pulse">
@@ -235,7 +245,7 @@ export const AskJouleResponse = React.memo(({
 
       {/* Main Answer - simplified to avoid nested cards */}
       {hasContent && !error && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden" data-testid="response-card">
+        <div ref={responseCardRef} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden" data-testid="response-card">
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-white fill-current" />
@@ -333,22 +343,6 @@ export const AskJouleResponse = React.memo(({
 
       {/* Removed: Groq Fallback Prompt - AI is now automatically called as fallback */}
     </div>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison function for better memoization
-  // Only re-render if these specific props change
-  return (
-    prevProps.answer === nextProps.answer &&
-    prevProps.agenticResponse === nextProps.agenticResponse &&
-    prevProps.error === nextProps.error &&
-    prevProps.outputStatus === nextProps.outputStatus &&
-    prevProps.loadingMessage === nextProps.loadingMessage &&
-    prevProps.showGroqPrompt === nextProps.showGroqPrompt &&
-    prevProps.isLoadingGroq === nextProps.isLoadingGroq &&
-    prevProps.transcript === nextProps.transcript &&
-    prevProps.isListening === nextProps.isListening &&
-    prevProps.isSpeaking === nextProps.isSpeaking &&
-    prevProps.stopSpeaking === nextProps.stopSpeaking
   );
 });
 

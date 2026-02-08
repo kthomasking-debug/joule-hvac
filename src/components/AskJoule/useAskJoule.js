@@ -116,6 +116,7 @@ export function useAskJoule({
   const speakerAutoEnabledRef = useRef(false); // Track if we auto-enabled speaker for this session
   const isProcessingResponseRef = useRef(false); // Prevent concurrent response processing
   const speechTimeoutRef = useRef(null); // Track speech timeout to prevent multiple calls
+  const agentSubmittingRef = useRef(false); // Prevent concurrent agent requests (avoids hung/overlapping responses)
 
   // --- Hooks ---
   // Wake word detection enabled state
@@ -1419,6 +1420,9 @@ export function useAskJoule({
     const input = textOverride || value.trim();
     if (!input) return;
 
+    // Block concurrent agent requests so one in-flight request isn't overwritten or left hung
+    if (agentSubmittingRef.current) return;
+
     // Auto-cancel any pending LLM prompt when a new command/question is submitted
     // This prevents the "Send to AI" prompt from blocking new commands
     if (showGroqPrompt && !isLoadingGroq) {
@@ -1442,7 +1446,10 @@ export function useAskJoule({
     setAgenticResponse(null);
     setError("");
     setOutputStatus("");
-    setLoadingMessage("Thinking...");
+    // Show hint for local AI (slow GPU can take 1–6 min)
+    const aiProvider = typeof window !== "undefined" ? localStorage.getItem("aiProvider") : "groq";
+    const isLocalAI = aiProvider === "local";
+    setLoadingMessage(isLocalAI ? "Thinking... (Local AI can take 1–6 min on slow GPUs)" : "Thinking...");
     setIsLoadingGroq(true);
     setShowGroqPrompt(true); // Show the response area
     // Don't clear input - keep it like questions do so user can see what they entered
@@ -1793,6 +1800,30 @@ RULES:
         .slice(0, 5)
         .map((cmd) => ({ role: "user", content: cmd }));
 
+      const runAgent = async (skipRAG = false) => {
+        return answerWithAgentStreaming(
+          input,
+          groqApiKey,
+          null, // thermostatData
+          userSettings,
+          userLocation,
+          historyForAgent,
+          {
+            systemPromptOverride: salesMode ? MARKETING_SITE_SYSTEM_PROMPT : (_billAuditorPrompt || null),
+            skipRAG,
+            onChunk: (chunk) => {
+              setAgenticResponse((prev) =>
+                prev?.success
+                  ? { ...prev, message: (prev.message || "") + chunk }
+                  : prev
+              );
+            },
+          }
+        );
+      };
+
+      agentSubmittingRef.current = true;
+
       console.log("[AskJoule] Calling answerWithAgentStreaming with:", {
         input,
         hasApiKey: !!groqApiKey,
@@ -1800,24 +1831,33 @@ RULES:
 
       // Show response area immediately for streaming
       setAgenticResponse({ success: true, message: "", source: "groq" });
-      const response = await answerWithAgentStreaming(
-        input,
-        groqApiKey,
-        null, // thermostatData
-        userSettings,
-        userLocation,
-        historyForAgent,
-        {
-          systemPromptOverride: salesMode ? MARKETING_SITE_SYSTEM_PROMPT : (_billAuditorPrompt || null),
-          onChunk: (chunk) => {
-            setAgenticResponse((prev) =>
-              prev?.success
-                ? { ...prev, message: (prev.message || "") + chunk }
-                : prev
-            );
-          },
+
+      // Timeout slightly longer than fetch timeout (6 min for local AI) so user sees a message if backend hangs
+      const isLocalAI = typeof window !== "undefined" && localStorage.getItem("aiProvider") === "local";
+      const agentTimeoutMs = isLocalAI ? 370000 : 65000; // 6m10s local, 65s Groq
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("AI is taking too long to respond. Check your connection or try again.")), agentTimeoutMs);
+      });
+
+      let response;
+      try {
+        response = await Promise.race([runAgent(false), timeoutPromise]);
+      } catch (raceErr) {
+        console.warn("[AskJoule] Agent call failed or timed out:", raceErr?.message || raceErr);
+        throw raceErr;
+      }
+
+      // If first attempt failed (e.g. RAG or streaming quirk on Windows), retry once without RAG
+      if (response?.error && !response.needsSetup) {
+        console.warn("[AskJoule] First attempt failed, retrying without RAG:", response.message);
+        setAgenticResponse({ success: true, message: "", source: "groq" });
+        try {
+          response = await Promise.race([runAgent(true), timeoutPromise]);
+        } catch (retryErr) {
+          console.warn("[AskJoule] Retry failed or timed out:", retryErr?.message || retryErr);
+          throw retryErr;
         }
-      );
+      }
 
       console.log("[AskJoule] Got response:", response);
 
@@ -1853,6 +1893,8 @@ RULES:
             }
           }
         } else if (response.success && response.message) {
+          setIsLoadingGroq(false);
+          setLoadingMessage("");
           console.log(
             "[AskJoule] Success! Message:",
             response.message?.slice(0, 100)
@@ -1942,6 +1984,7 @@ RULES:
         speak(errorMsg);
       }
     } finally {
+      agentSubmittingRef.current = false;
       setIsLoadingGroq(false);
       setLoadingMessage(""); // Always clear loading message
     }

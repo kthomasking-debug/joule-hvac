@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -1143,8 +1144,8 @@ function AppInner() {
         <SearchBar onClose={() => setShowSearch(false)} />
       )}
 
-      {/* Ask Joule Modal */}
-      {isJouleModalOpen && (
+      {/* Ask Joule Modal - portaled to body so it doesn't affect main layout / cause bottom cut-off */}
+      {isJouleModalOpen && createPortal(
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
           onClick={() => setIsJouleModalOpen(false)}
@@ -1164,7 +1165,8 @@ function AppInner() {
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Bottom Navigation for Mobile */}
@@ -1275,7 +1277,7 @@ function AppInner() {
               </svg>
             )}
           </button>
-          {showAskModal && (
+          {showAskModal && createPortal(
             <div
               aria-modal="true"
               role="dialog"
@@ -1316,7 +1318,8 @@ function AppInner() {
                 />
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </>
       )}

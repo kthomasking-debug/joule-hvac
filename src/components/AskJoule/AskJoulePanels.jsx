@@ -61,6 +61,10 @@ function SampleCommands({ onSelectCommand }) {
 function SampleQuestions({ onSelectQuestion }) {
   const location = useLocation();
   const questions = getSuggestedQuestions(location.pathname);
+  const aiProvider = typeof window !== "undefined" ? localStorage.getItem("aiProvider") : "groq";
+  const hasLocalAI = aiProvider === "local" && (localStorage.getItem("localAIBaseUrl") || "").trim();
+  const hasGroq = (localStorage.getItem("groqApiKey") || "").trim();
+  const hasAI = hasGroq || hasLocalAI;
 
   return (
     <div className="space-y-3">
@@ -69,7 +73,11 @@ function SampleQuestions({ onSelectQuestion }) {
           Suggested Questions
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Click any question to ask it. These require a Groq API key for AI-powered answers.
+          {hasAI
+            ? hasLocalAI
+              ? "Click any question to ask it. Local AI can take 1–6 minutes on slow GPUs."
+              : "Click any question to ask it. AI-powered answers use your Groq API key."
+            : "Click any question to ask it. These require a Groq API key or local AI (Ollama) in Settings for AI-powered answers."}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">

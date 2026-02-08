@@ -111,15 +111,41 @@ export async function callLLMStreaming({
     };
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  // Local Ollama (especially on slow GPU/remote) can take minutes for first token and full response
+  const timeoutMs = config.provider === AI_PROVIDERS.LOCAL ? 360000 : 60000; // 6 min local, 1 min Groq
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      throw new Error(
+        config.provider === AI_PROVIDERS.LOCAL
+          ? "Local AI didn't respond in time (6 min). Check that Ollama is running and the address in Settings is correct. Slow GPUs may need longer."
+          : "Request timed out. Try again."
+      );
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`LLM request failed: ${response.status} ${text}`);
+  }
+
+  if (!response.body) {
+    throw new Error(
+      "Streaming not supported (no response body). Try a different browser or disable streaming."
+    );
   }
 
   const reader = response.body.getReader();
@@ -127,28 +153,37 @@ export async function callLLMStreaming({
   let buffer = "";
   let fullText = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === "data: [DONE]") continue;
-      if (trimmed.startsWith("data: ")) {
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          const content = json.choices?.[0]?.delta?.content;
-          if (content) {
-            fullText += content;
-            onChunk(content);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === "data: [DONE]") continue;
+        if (trimmed.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            const content = json.choices?.[0]?.delta?.content;
+            if (content) {
+              fullText += content;
+              onChunk(content);
+            }
+          } catch {
+            // Skip malformed chunks
           }
-        } catch {
-          // Skip malformed chunks
         }
       }
     }
+  } catch (streamErr) {
+    if (import.meta.env?.DEV) {
+      console.error("[aiProvider] Streaming read error:", streamErr);
+    }
+    throw new Error(
+      `Reading stream failed: ${streamErr.message}. If this happens on Windows, try F12 → Console and report the error.`
+    );
   }
 
   return fullText;

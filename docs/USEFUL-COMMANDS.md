@@ -13,11 +13,15 @@ Quick reference for common Joule project commands.
 
 ## Deployment
 
+Run all deploy commands from the **project root** (the folder that contains `package.json`). On Windows, `cd` there first, e.g. `cd C:\Users\YourName\Documents\git\joule-hvac`.
+
 | Command | Description |
 |---------|-------------|
-| `./deploy-to-pi.sh` | Build app, copy to Pi, restart bridge + Pi HMI. One-command deploy. |
-| `npm run deploy:pi` | Alternative deploy via Node script. |
+| `./deploy-to-pi.sh` | **(Linux/Mac only)** Build app, copy to Pi, restart bridge + Pi HMI. Uses Bash + sshpass. |
+| `.\deploy-to-pi.ps1` | **(Windows)** Same as above: build, copy dist + pi-hmi/app.py, restart bridge + pi-hmi. Requires OpenSSH (scp/ssh); run from project root. |
+| `npm run deploy:pi` | Deploy via Node script (works on Windows). Default host: joule.local. |
 | `npm run deploy:pi:build` | Deploy with explicit build step. |
+| **Windows deploy to Pi (npm)** | From project root: `npm run deploy:pi:build -- --host=192.168.0.103 --user=pi --path=/home/pi/git/joule-hvac/dist` (alternative to script). |
 | `npm run build:netlify` | Build for Netlify deployment. |
 | `npm run deploy` | Deploy to GitHub Pages (gh-pages branch). |
 
@@ -53,6 +57,17 @@ Quick reference for common Joule project commands.
 | `ssh pi@192.168.0.103 "sudo systemctl restart prostat-bridge"` | Restart the bridge service. |
 | `ssh pi@192.168.0.103 "sudo systemctl restart pi-hmi.service"` | Restart the Pi HMI (e-ink display). |
 | `ssh pi@192.168.0.103 "sudo journalctl -u prostat-bridge -n 50"` | View bridge logs. |
+
+## Debugging Ask Joule on Windows
+
+If **Ask Joule** fails on Windows but works on Linux (and the "Got Your Bill? Let's Compare" AI works on both):
+
+1. **Retry behavior** – The app now retries once without RAG if the first attempt fails. If the second attempt succeeds, the issue was likely in the RAG or large-context path.
+2. **Check the browser console** – Press **F12** → **Console**. When you submit an Ask Joule question, look for:
+   - `[AskJoule] First attempt failed, retrying without RAG:` – retry ran; if you then get a response, RAG or message size was the cause.
+   - `[groqAgent] Streaming error:` or `[aiProvider] Streaming read error:` – streaming or network failed; note the message.
+3. **Check AI config** – In Console run: `({ provider: localStorage.getItem('aiProvider'), hasGroq: !!localStorage.getItem('groqApiKey'), localUrl: localStorage.getItem('localAIBaseUrl') })`. Ensure you have either a Groq key or local URL set the same way as on Linux.
+4. **Network** – If using local Ollama, ensure the URL (e.g. `http://other-pc:11434`) is reachable from Windows (firewall, same network). The bill feature uses the same AI backend; if bill analysis works, the backend is reachable and the difference is in the Ask Joule path (RAG/streaming/context).
 
 ## Access URLs
 

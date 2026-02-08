@@ -14,8 +14,8 @@ const AskJoule = (props) => {
 
   return (
     <div className={`w-full ${props.isModal ? "flex flex-col min-h-0 flex-1 overflow-hidden" : ""}`}>
-      {/* Response Section - scrollable when in modal */}
-      <div className={props.isModal ? "flex-1 min-h-0 overflow-y-auto" : ""}>
+      {/* Response Section - scrollable when in modal; reserve min height so it doesn't collapse when input panel has content */}
+      <div className={props.isModal ? "ask-joule-modal-response flex-1 min-h-0 min-h-[35vh] max-h-[55vh] overflow-y-auto overflow-x-hidden" : ""}>
         <AskJouleResponse 
         answer={state.answer}
         agenticResponse={state.agenticResponse}
@@ -66,6 +66,9 @@ const AskJoule = (props) => {
             <p className="text-sm text-[#A7B0BA] leading-relaxed">
               Ask about your home's efficiency, comfort, or costs. Get answers about your HVAC system based on your settings and usage data.
             </p>
+            <p className="text-xs text-[#7A8594] mt-1.5">
+              For comparing a specific bill to your forecast, use <strong className="text-[#A7B0BA]">Monthly Forecast → Got Your Bill? Let's Compare</strong>.
+            </p>
           </div>
         )}
 
@@ -94,6 +97,10 @@ const AskJoule = (props) => {
         wakeWordError={state.wakeWordError}
         salesMode={props.salesMode}
         showQuestionHelp={state.showQuestionHelp}
+        isLoadingGroq={state.isLoadingGroq}
+        loadingMessage={state.loadingMessage}
+        lastResponse={props.isModal ? null : (state.agenticResponse?.success ? state.agenticResponse?.message : null)}
+        isModal={props.isModal}
           />
 
           {/* Panels Section */}

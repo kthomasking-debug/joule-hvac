@@ -23,6 +23,7 @@ What You MUST Calculate (using provided formulas):
 
 Rules:
 • Use ONLY data from CONTEXT. NEVER ask for additional data.
+• IDENTITY: If the user asks "who are you", "what are you", or similar, answer in ONE short sentence only (e.g. "I am Joule, your HVAC analytics assistant—I help with efficiency, comfort, and cost questions using your home's data."). Do NOT start a full analysis or list capabilities.
 • If asked for "comprehensive analysis", calculate and present: annual costs, monthly breakdown, system performance metrics, balance point, and recommendations.
 • Monthly temperature averages can be inferred from HDD/CDD distribution - you don't need actual temperature data.
 • COP/EER can be calculated from HSPF2/SEER2 - you don't need performance curves.
@@ -363,7 +364,7 @@ export async function answerWithAgentStreaming(
     const content = await callLLMStreaming({
       messages,
       temperature: 0.1,
-      maxTokens: 300,
+      maxTokens: 2000,
       onChunk,
     });
     const compact = (typeof content === "string" ? content : "").replace(/\n{2,}/g, "\n").trim();
@@ -470,11 +471,18 @@ async function buildAgentMessages(
     } catch (e) {}
   }
   const context = contextParts.join("\n\n");
-  const userContent = `${context}\n\nUser question: ${userQuestion}`;
+  const questionSuffix = `\n\nUser question: ${userQuestion}`;
+  const userContent = context + questionSuffix;
+  // Cap context so small-context models (e.g. local Ollama 8k) have room for a full response
+  const MAX_CONTEXT_CHARS = 8500;
+  const trimmedUserContent =
+    context.length > MAX_CONTEXT_CHARS
+      ? context.slice(0, MAX_CONTEXT_CHARS) + "\n\n[Context truncated for length.]" + questionSuffix
+      : userContent;
   const messages = [
     { role: "system", content: systemPrompt },
     ...conversationHistory,
-    { role: "user", content: userContent },
+    { role: "user", content: trimmedUserContent },
   ];
   return { messages };
 }
