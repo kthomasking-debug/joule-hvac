@@ -6,7 +6,7 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
 3. PERFORM THE ANALYSIS IMMEDIATELY using the available data and calculation formulas provided.
 
 Available Data in Context:
-• USER SYSTEM SETTINGS: Building size, insulation (0.65x = good insulation), system capacity, efficiency ratings (HSPF2, SEER2), temperature settings, utility rates, heat loss factor
+• USER SYSTEM SETTINGS: Building size, insulation (0.65x = good insulation), system capacity, efficiency ratings (HSPF2, SEER2), temperature settings, electricity rate, gas rate ($/therm), AFUE (gas furnace efficiency), heat loss factor
 • USER LOCATION: City, state, coordinates, elevation (used for weather calculations)
 • ANNUAL DEGREE-DAY DATA: HDD and CDD values for the location (used for cost calculations)
 • CALCULATION METHODS: Formulas for annual costs, COP/EER calculations, monthly distributions
@@ -21,6 +21,12 @@ What You MUST Calculate (using provided formulas):
 • Balance point from system capacity and heat loss factor
 • Monthly cost distribution from HDD/CDD proportional allocation
 
+HEAT PUMP VS GAS FURNACE COMPARISON (use when asked "what if I had a gas furnace?", "how much would gas cost?", etc.):
+• Use the USER'S electricity rate AND gas rate ($/therm) from context—never assume gas is cheaper or more expensive.
+• Gas heating cost: therms = (heat loss BTU over period) ÷ (AFUE × 100,000 BTU/therm); cost = therms × gas rate. AFUE is in context (e.g. 95% = 0.95).
+• Heat pump cost: same heat loss, use (heat loss × hours) ÷ (HSPF2 × 1000) × electricity rate for the period.
+• Compare dollar-to-dollar using the same heat loss and the rates in context. If gas rate is high, gas can be more expensive than a heat pump.
+
 Rules:
 • Use ONLY data from CONTEXT. NEVER ask for additional data.
 • IDENTITY: If the user asks "who are you", "what are you", or similar, answer in ONE short sentence only (e.g. "I am Joule, your HVAC analytics assistant—I help with efficiency, comfort, and cost questions using your home's data."). Do NOT start a full analysis or list capabilities.
@@ -31,7 +37,18 @@ Rules:
 • Max 250 words. Be concise.
 • Avoid filler phrases: "sure thing", "great question", "according to".
 • Never give wiring advice. Say "Follow the guide or call a pro."
+• STRIP/AUX HEAT: Strip (auxiliary) heat kicks in below the balance point—the outdoor temperature where the heat pump can't meet the load. Balance point is typically 15-35°F. Never say strip heat kicks in at 54°F or above 40°F (that confuses capacity-percent with temperature).
 • FORMAT: Use single line breaks only. Do NOT add blank lines between paragraphs or sections. Keep output compact.
+
+AGENTIC ACTIONS: When the user asks you to apply your recommendation or "make the changes you recommend", you MUST output the exact setting changes at the end of your response (one per line). Use this format only when the user explicitly asks you to apply/set something:
+[JOULE_ACTION:winterThermostatNight=64]
+[JOULE_ACTION:winterThermostatDay=68]
+[JOULE_ACTION:summerThermostat=76]
+[JOULE_ACTION:summerThermostatNight=78]
+[JOULE_ACTION:insulationLevel=0.55]
+[JOULE_ACTION:homeShape=1.1]
+[JOULE_ACTION:heatLossSource=doe]
+Supported heatLossSource values: doe, bill, manual, analyzer. Temperatures in °F (e.g. 64, 68). Only output these lines when the user is asking you TO APPLY or SET the value you recommended; do not output them when you are only suggesting they could change it.
 
 Format: Start immediately with calculated results (annual costs, performance metrics), use numbers, short paragraphs, end with actionable recommendations.`;
 
@@ -127,7 +144,9 @@ export async function answerWithAgent(
     
     // Utility costs
     if (userSettings.utilityCost !== undefined) settingsParts.push(`- Electricity rate: $${userSettings.utilityCost}/kWh`);
-    if (userSettings.gasRate !== undefined) settingsParts.push(`- Gas rate: $${userSettings.gasRate}/therm`);
+    const gasRatePerTherm = userSettings.gasCost ?? userSettings.gasRate;
+    if (gasRatePerTherm !== undefined) settingsParts.push(`- Gas rate: $${gasRatePerTherm}/therm (use this for any gas furnace cost comparison)`);
+    if (userSettings.afue !== undefined) settingsParts.push(`- AFUE: ${Math.round(Number(userSettings.afue) * 100)}% (gas furnace efficiency; use for gas heating cost)`);
     
     // Heat loss
     if (userSettings.heatLossFactor) settingsParts.push(`- Heat loss factor: ${userSettings.heatLossFactor} BTU/hr per °F`);
@@ -188,13 +207,12 @@ export async function answerWithAgent(
       degreeDayParts.push("• EER ≈ SEER2 × 0.875 (e.g., SEER2=15 → EER ≈ 13.1)");
       degreeDayParts.push("• COP at specific temps: Can be estimated from HSPF2 using temperature adjustment");
       degreeDayParts.push("• Monthly temperature averages: Can be estimated from HDD/CDD distribution - higher HDD months are colder, higher CDD months are warmer");
-      degreeDayParts.push("\nBALANCE POINT CALCULATION:");
-      degreeDayParts.push("• Balance point is where system capacity equals building heat loss");
-      degreeDayParts.push("• System capacity decreases as outdoor temp drops (typically 50-60% at 5°F vs 47°F)");
-      degreeDayParts.push("• Building heat loss = heat loss factor × (indoor temp - outdoor temp)");
-      degreeDayParts.push("• For rough estimate: Balance point ≈ 47°F - ((capacity at 47°F - heat loss at 47°F) / heat loss factor)");
-      degreeDayParts.push("• More accurate: Find temp where capacity_at_temp = heat_loss_factor × (indoor_temp - outdoor_temp)");
-      degreeDayParts.push("• Typical balance points: 15-35°F for most systems");
+      degreeDayParts.push("\nBALANCE POINT AND STRIP/AUX HEAT:");
+      degreeDayParts.push("• Balance point = outdoor temperature where heat pump capacity equals building heat loss. Below this temp, strip/aux heat is needed.");
+      degreeDayParts.push("• System capacity decreases as outdoor temp drops: at 5°F outdoor, capacity is about 50-60% of rated (that is a PERCENTAGE, not a temperature).");
+      degreeDayParts.push("• Building heat loss = heat loss factor × (indoor temp - outdoor temp).");
+      degreeDayParts.push("• Strip/aux heat kicks in BELOW the balance point (colder outdoor temp). Typical balance points are 15-35°F—never 54°F or any temp above 40°F unless you calculated that specific user balance point and it is above 40°F. Do NOT confuse capacity-percent (e.g. 50-60%) with temperature.");
+      degreeDayParts.push("• For rough estimate: Balance point ≈ find T where capacity_at_T = heat_loss_factor × (indoor_temp - T). Typical result 15-35°F.");
       degreeDayParts.push("\nCRITICAL: You have ALL data needed. Calculate costs and performance NOW - do NOT ask for monthly temperatures, humidity data, COP/EER curves, or utility bills. Perform the comprehensive analysis immediately using the formulas above.");
       
       contextParts.push(degreeDayParts.join("\n"));
@@ -252,7 +270,7 @@ export async function answerWithAgent(
           contextParts.push("WEATHER FORECAST DATA (NWS):\nThe app has access to NWS weather forecasts for this location. You can calculate annual costs using degree-day methods (HDD/CDD) from the location coordinates. Utility bills are NOT required - all calculations can be done from weather data, system specs, and building characteristics.");
         }
       }
-    } catch (error) {
+    } catch (_ERROR) {
       // Even on error, note that weather data is available
       contextParts.push("WEATHER FORECAST DATA (NWS):\nThe app has access to NWS weather forecasts for this location. You can calculate annual costs using degree-day methods (HDD/CDD) from the location coordinates. Utility bills are NOT required.");
     }
@@ -423,7 +441,9 @@ async function buildAgentMessages(
     if (userSettings.summerThermostat) parts.push(`- Summer daytime temp: ${userSettings.summerThermostat}°F`);
     if (userSettings.summerThermostatNight) parts.push(`- Summer nighttime temp: ${userSettings.summerThermostatNight}°F`);
     if (userSettings.utilityCost !== undefined) parts.push(`- Electricity rate: $${userSettings.utilityCost}/kWh`);
-    if (userSettings.gasRate !== undefined) parts.push(`- Gas rate: $${userSettings.gasRate}/therm`);
+    const gasRatePerTherm = userSettings.gasCost ?? userSettings.gasRate;
+    if (gasRatePerTherm !== undefined) parts.push(`- Gas rate: $${gasRatePerTherm}/therm (use for gas furnace cost comparison)`);
+    if (userSettings.afue !== undefined) parts.push(`- AFUE: ${Math.round(Number(userSettings.afue) * 100)}% (gas furnace efficiency)`);
     if (userSettings.heatLossFactor) parts.push(`- Heat loss factor: ${userSettings.heatLossFactor} BTU/hr per °F`);
     if (userSettings.analyzerBalancePoint) parts.push(`- Balance point: ${userSettings.analyzerBalancePoint}°F`);
     if (parts.length > 1) contextParts.push(parts.join("\n"));
@@ -451,7 +471,7 @@ async function buildAgentMessages(
       parts.push("\nCALCULATION METHODS:", "• Annual heating cost = (HDD × heat loss factor × 24) ÷ (HSPF2 × 1000) × electricity rate",
         "• Annual cooling cost = (CDD × heat gain factor × 24) ÷ (SEER2 × 1000) × electricity rate");
       contextParts.push(parts.join("\n"));
-    } catch (e) {
+    } catch (_E) {
       contextParts.push("CALCULATION METHODS: Annual cost formulas from HDD/CDD. Use location data.");
     }
   }
@@ -468,7 +488,7 @@ async function buildAgentMessages(
           contextParts.push("WEATHER FORECAST DATA:\n" + lines.join("\n"));
         }
       }
-    } catch (e) {}
+    } catch { /* no forecast summary */ }
   }
   const context = contextParts.join("\n\n");
   const questionSuffix = `\n\nUser question: ${userQuestion}`;
@@ -494,7 +514,7 @@ async function buildAgentMessages(
  * @param {string} model - Optional model name (deprecated, uses llama-3.3-70b-versatile)
  * @returns {Promise<object>} Response object with success/error and message
  */
-export async function askJouleFallback(userQuestion, apiKey, model = null) {
+export async function askJouleFallback(userQuestion, apiKey, _MODEL = null) {
   const { isAIAvailable } = await import("./aiProvider.js");
   const hasKey = (apiKey || "").trim().length > 0;
   if (!hasKey && !isAIAvailable()) {

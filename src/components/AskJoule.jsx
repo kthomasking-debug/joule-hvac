@@ -30,7 +30,7 @@ const AskJoule = (props) => {
         isListening={state.isListening}
         isSpeaking={state.isSpeaking}
         stopSpeaking={state.stopSpeaking}
-        onApiKeySaved={(apiKey) => {
+        onApiKeySaved={() => {
           // Clear error - the next query will automatically use the new API key from localStorage
           state.setError("");
           state.setOutputStatus("");

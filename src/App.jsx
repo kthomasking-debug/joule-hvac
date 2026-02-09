@@ -47,6 +47,7 @@ import FeatureTour from "./components/FeatureTour";
 import { SeasonProvider } from "./features/forecaster/components";
 import { JouleBridgeProvider } from "./contexts/JouleBridgeContext";
 import { indexMarkdownDocs } from "./utils/rag/loadMarkdownDocs";
+import { shouldUseLearnedHeatLoss } from "./utils/billDataUtils";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -59,8 +60,8 @@ function AppInner() {
   });
   // State for the "More" menu
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
-  // State for Ask Joule modal
-  const [isJouleModalOpen, setIsJouleModalOpen] = useState(false);
+  // Single Ask Joule modal state — stays open across navigation so conversation persists
+  const [showAskJouleModal, setShowAskJouleModal] = useState(false);
   // State for search bar
   const [showSearch, setShowSearch] = useState(false);
   // State for collapsible Analysis submenu in sidebar
@@ -155,7 +156,7 @@ function AppInner() {
           if (v != null && String(v).trim() !== "") {
             try {
               localStorage.setItem(key === "groqApiKey" ? "groqApiKey" : key, String(v));
-            } catch {}
+            } catch { /* ignore */ }
           }
         });
         window.dispatchEvent(new Event("storage"));
@@ -260,18 +261,14 @@ function AppInner() {
     },
     'ctrl+shift+k': (e) => {
       e.preventDefault();
-      // Open Ask Joule if available
-      if (setIsJouleModalOpen) {
-        setIsJouleModalOpen(true);
-      }
+      setShowAskJouleModal(true);
     },
     'escape': () => {
-      // Close modals
-      setIsJouleModalOpen(false);
+      setShowAskJouleModal(false);
       setShowMoreMenu(false);
       setShowSearch(false);
     },
-  }, [setIsJouleModalOpen]);
+  }, []);
 
   // Use unified settings manager defaults
   const defaultSettings = useMemo(() => DEFAULT_SETTINGS, []);
@@ -320,7 +317,7 @@ function AppInner() {
     try {
       const raw = localStorage.getItem("userLocation");
       return raw ? JSON.parse(raw) : null;
-    } catch (_e) {
+    } catch {
       return null;
     }
   });
@@ -331,7 +328,7 @@ function AppInner() {
       const raw = localStorage.getItem("userLocation");
       const parsed = raw ? JSON.parse(raw) : null;
       setUserLocation(parsed);
-    } catch (_e) {
+    } catch {
       // ignore
     }
   }, [userSettings]);
@@ -345,7 +342,7 @@ function AppInner() {
         setUserLocation(parsed);
         // Also trigger settings refresh to pick up elevation changes
         setUserSettings(getAllSettings());
-      } catch (_e) {
+      } catch {
         // ignore
       }
     };
@@ -461,8 +458,8 @@ function AppInner() {
       heatLossFactor = latestAnalysis.heatLossFactor;
     }
 
-    // Priority 3: Bill-learned heat loss (if enabled and available)
-    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0) {
+    // Priority 3: Bill-learned heat loss (if enabled, available, and ≥30 days of bill data)
+    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss()) {
       heatLossFactor = Number(settings.learnedHeatLoss);
     }
 
@@ -614,7 +611,7 @@ function AppInner() {
     }
   });
 
-  const toggleDarkMode = () => {
+  const _toggleDarkMode = () => {
     setDarkMode((prevMode) => {
       const newMode = !prevMode;
       try {
@@ -645,7 +642,7 @@ function AppInner() {
     }
   });
 
-  const toggleMute = () => {
+  const _toggleMute = () => {
     setIsMuted((prev) => {
       const newMuted = !prev;
       try {
@@ -670,7 +667,7 @@ function AppInner() {
   }, [isMuted]);
 
   // Restore derived values (heatLoss, tons, compressorPower) after state initializers
-  const heatLoss = useMemo(() => {
+  const _heatLoss = useMemo(() => {
     const baseBtuPerSqFt = 22.67;
     const ceilingMultiplier = 1 + (userSettings.ceilingHeight - 8) * 0.1;
     return (
@@ -702,7 +699,7 @@ function AppInner() {
   // Backwards compatibility: prefer explicit userSettings.capacity, otherwise fall back to coolingCapacity
   const tons =
     capacities[userSettings.capacity ?? userSettings.coolingCapacity];
-  const compressorPower = useMemo(
+  const _compressorPower = useMemo(
     () => tons * 1.0 * (15 / userSettings.efficiency),
     [tons, userSettings.efficiency]
   );
@@ -712,8 +709,8 @@ function AppInner() {
     try {
       const raw = localStorage.getItem("askJouleAuditLog");
       return raw ? JSON.parse(raw) : [];
-    } catch (_e) {
-      console.warn("Failed to parse askJouleAuditLog", _e);
+    } catch (e) {
+      console.warn("Failed to parse askJouleAuditLog", e);
       return [];
     }
   });
@@ -721,7 +718,7 @@ function AppInner() {
   React.useEffect(() => {
     try {
       localStorage.setItem("askJouleAuditLog", JSON.stringify(auditLog));
-    } catch (_e) {
+    } catch {
       /* ignore write errors */
     }
   }, [auditLog]);
@@ -768,7 +765,7 @@ function AppInner() {
   };
 
   // Clear audit history
-  const clearAuditLog = () => setAuditLog([]);
+  const _clearAuditLog = () => setAuditLog([]);
 
   // Helper to update a single user setting
   // Accepts optional meta param: { source: 'AskJoule' | 'ui' | 'script', comment }
@@ -800,7 +797,7 @@ function AppInner() {
           parsed.city = value;
           localStorage.setItem("userLocation", JSON.stringify(parsed));
         }
-      } catch (err) {
+      } catch {
         /* ignore */
       }
       
@@ -857,7 +854,7 @@ function AppInner() {
   }, [userSettings.capacity, userSettings.coolingCapacity]);
 
   // Subscription / Pro flag (used to gate commercial features)
-  const isPro = useMemo(() => {
+  const _isPro = useMemo(() => {
     try {
       const stored = localStorage.getItem("userSubscription");
       if (stored) {
@@ -870,7 +867,7 @@ function AppInner() {
     return localStorage.getItem("isPro") === "true";
   }, []);
 
-  const isHome = location.pathname === "/" || location.pathname === "";
+  const _isHome = location.pathname === "/" || location.pathname === "";
   // Hide the persistent/global AskJoule instance on pages that provide their own AskJoule component
   const ASK_JOULE_DISABLED_PATHS = ["/", "/cost-forecaster", "/app"];
   const shouldShowGlobalAskJoule = !ASK_JOULE_DISABLED_PATHS.includes(
@@ -896,8 +893,6 @@ function AppInner() {
       }
     }
   }, [location.pathname]);
-  const [showAskModal, setShowAskModal] = React.useState(false);
-
   // Centralized onboarding redirect: When the terms are accepted and the app has loaded,
   // redirect first-time users (those who haven't completed onboarding) to /cost-forecaster.
   // Onboarding is now handled by the landing page - users see landing page first,
@@ -1127,6 +1122,7 @@ function AppInner() {
                 heatLossFactor,
                 setHeatLossFactor,
                 analyzerHeatLossSource: latestAnalysis?.heatLossSource || null,
+                onOpenAskJoule: () => setShowAskJouleModal(true),
               }}
             />
           </>
@@ -1134,39 +1130,14 @@ function AppInner() {
         </main>
       </div>
 
-      {/* Floating Action Button for Ask Joule - hidden when global button is shown or on checkout page */}
+      {/* Floating Action Button for Ask Joule - hidden when global launcher is shown or on checkout page */}
       {!shouldShowGlobalAskJoule && location.pathname !== "/" && (
-        <JouleFab onClick={() => setIsJouleModalOpen(true)} />
+        <JouleFab onClick={() => setShowAskJouleModal(true)} />
       )}
 
       {/* Search Bar */}
       {showSearch && (
         <SearchBar onClose={() => setShowSearch(false)} />
-      )}
-
-      {/* Ask Joule Modal - portaled to body so it doesn't affect main layout / cause bottom cut-off */}
-      {isJouleModalOpen && createPortal(
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4"
-          onClick={() => setIsJouleModalOpen(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-[95vw] sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden mx-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <AskJoule
-                userSettings={mergedUserSettings}
-                userLocation={userLocation}
-                annualEstimate={annualEstimate}
-                recommendations={[]}
-                isModal={true}
-                onClose={() => setIsJouleModalOpen(false)}
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
       )}
 
       {/* Bottom Navigation for Mobile */}
@@ -1249,79 +1220,78 @@ function AppInner() {
 
       {/* Floating Ask Joule Launcher - only in Traditional Mode */}
       {shouldShowGlobalAskJoule && mode === "traditional" && (
-        <>
-          <button
-            data-testid="ask-joule-fab"
-            aria-label="Open Ask Joule"
-            title="Ask Joule"
-            className={`fixed right-4 z-50 inline-flex items-center justify-center rounded-full shadow-2xl bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all bottom-20 md:bottom-6 md:right-6 ${
-              location.pathname === "/upgrades"
-                ? "px-6 py-4 w-20 h-20 text-base font-bold"
-                : "w-12 h-12"
-            }`}
-            onClick={() => setShowAskModal(true)}
-          >
-            {location.pathname === "/upgrades" ? (
-              <span className="text-base font-bold">chat</span>
-            ) : (
-              /* Icon - use lightning or chat */
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden
-              >
-                <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor" />
-              </svg>
-            )}
-          </button>
-          {showAskModal && createPortal(
-            <div
-              aria-modal="true"
-              role="dialog"
-              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+        <button
+          data-testid="ask-joule-fab"
+          aria-label="Open Ask Joule"
+          title="Ask Joule"
+          className={`fixed right-4 z-50 inline-flex items-center justify-center rounded-full shadow-2xl bg-blue-600 hover:bg-blue-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all bottom-20 md:bottom-6 md:right-6 ${
+            location.pathname === "/upgrades"
+              ? "px-6 py-4 w-20 h-20 text-base font-bold"
+              : "w-12 h-12"
+          }`}
+          onClick={() => setShowAskJouleModal(true)}
+        >
+          {location.pathname === "/upgrades" ? (
+            <span className="text-base font-bold">chat</span>
+          ) : (
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden
             >
-              <div
-                className="fixed inset-0 bg-black/50"
-                onClick={() => setShowAskModal(false)}
-              />
-              <div className="relative z-10 w-full max-w-[95vw] sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Ask Joule
-                  </h2>
-                  <button
-                    aria-label="Close"
-                    className="text-gray-600 dark:text-gray-300 hover:text-gray-900"
-                    onClick={() => setShowAskModal(false)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                  <AskJoule
-                  isModal={true}
-                  hasLocation={!!userLocation}
-                  userLocation={userLocation}
-                  userSettings={mergedUserSettings}
-                  annualEstimate={annualEstimate}
-                  recommendations={[]}
-                  onNavigate={(path) => navigate(path)}
-                  onSettingChange={(key, value, meta) =>
-                    setUserSetting(key, value, meta)
-                  }
-                  auditLog={auditLog}
-                  onUndo={(id) => undoChange(id)}
-                  pushAuditLog={pushAuditLog}
-                />
-                </div>
-              </div>
-            </div>,
-            document.body
+              <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor" />
+            </svg>
           )}
-        </>
+        </button>
+      )}
+
+      {/* Single Ask Joule modal — portaled to body, stays open across navigation so conversation is not cleared */}
+      {showAskJouleModal && createPortal(
+        <div
+          aria-modal="true"
+          role="dialog"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+        >
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => setShowAskJouleModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-[95vw] sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden bg-white dark:bg-gray-900 rounded-xl shadow-xl p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Ask Joule
+              </h2>
+              <button
+                aria-label="Close"
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900"
+                onClick={() => setShowAskJouleModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <AskJoule
+                isModal={true}
+                hasLocation={!!userLocation}
+                userLocation={userLocation}
+                userSettings={mergedUserSettings}
+                annualEstimate={annualEstimate}
+                recommendations={[]}
+                onNavigate={(path) => navigate(path)}
+                onSettingChange={(key, value, meta) =>
+                  setUserSetting(key, value, meta)
+                }
+                auditLog={auditLog}
+                onUndo={(id) => undoChange(id)}
+                pushAuditLog={pushAuditLog}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

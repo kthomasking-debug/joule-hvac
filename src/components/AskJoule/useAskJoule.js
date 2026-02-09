@@ -1,12 +1,10 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
 import { useWakeWord } from "../../hooks/useWakeWord";
-import { executeCommand } from "../../utils/nlp/commandExecutor";
 import { parseAskJoule } from "../../utils/askJouleParser";
 import {
-  answerWithAgent,
   answerWithAgentStreaming,
   MARKETING_SITE_SYSTEM_PROMPT,
 } from "../../lib/groqAgent";
@@ -44,10 +42,106 @@ import {
   SETTING_COMMANDS,
 } from "../../utils/askJouleCommandHandlers";
 
+/**
+ * Parse [JOULE_ACTION:key=value] lines from AI response, apply via onSettingChange, return cleaned message.
+ */
+function parseAndApplyJouleActions(rawMessage, onSettingChange) {
+  if (!rawMessage || typeof rawMessage !== "string" || !onSettingChange) {
+    return rawMessage || "";
+  }
+  const actionRegex = /\[JOULE_ACTION:\s*(\w+)\s*=\s*([^\]]+)\s*\]/gi;
+  const actions = [];
+  let m;
+  while ((m = actionRegex.exec(rawMessage)) !== null) {
+    actions.push({ key: m[1].toLowerCase(), value: m[2].trim() });
+  }
+  const cleanMessage = rawMessage.replace(/\n?\[JOULE_ACTION:\s*\w+\s*=\s*[^\]]+\s*\]\s*/gi, "").trim();
+
+  for (const { key, value } of actions) {
+    if (key === "heatlosssource") {
+      const v = value.toLowerCase();
+      const isDoe = v === "doe" || v === "calculated";
+      const isBill = v === "bill" || v === "learned";
+      const isManual = v === "manual";
+      const isAnalyzer = v === "analyzer";
+      if (isDoe) {
+        onSettingChange("useManualHeatLoss", false);
+        onSettingChange("useAnalyzerHeatLoss", false);
+        onSettingChange("useLearnedHeatLoss", false);
+        onSettingChange("useCalculatedHeatLoss", true);
+        try {
+          localStorage.setItem("heatLossMethodUserChoice", "true");
+        } catch { /* ignore */ }
+      } else if (isBill) {
+        onSettingChange("useManualHeatLoss", false);
+        onSettingChange("useAnalyzerHeatLoss", false);
+        onSettingChange("useCalculatedHeatLoss", false);
+        onSettingChange("useLearnedHeatLoss", true);
+        try {
+          localStorage.setItem("heatLossMethodUserChoice", "true");
+        } catch { /* ignore */ }
+      } else if (isManual) {
+        onSettingChange("useCalculatedHeatLoss", false);
+        onSettingChange("useAnalyzerHeatLoss", false);
+        onSettingChange("useLearnedHeatLoss", false);
+        onSettingChange("useManualHeatLoss", true);
+        try {
+          localStorage.setItem("heatLossMethodUserChoice", "true");
+        } catch { /* ignore */ }
+      } else if (isAnalyzer) {
+        onSettingChange("useManualHeatLoss", false);
+        onSettingChange("useCalculatedHeatLoss", false);
+        onSettingChange("useLearnedHeatLoss", false);
+        onSettingChange("useAnalyzerHeatLoss", true);
+        try {
+          localStorage.setItem("heatLossMethodUserChoice", "true");
+        } catch { /* ignore */ }
+      }
+    } else if (key === "insulationlevel") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(0.3, Math.min(2, num));
+        onSettingChange("insulationLevel", clamped);
+      }
+    } else if (key === "homeshape") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(0.5, Math.min(2, num));
+        onSettingChange("homeShape", clamped);
+      }
+    } else if (key === "winterthermostatnight" || key === "nighttimetemp") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(50, Math.min(85, num));
+        onSettingChange("winterThermostatNight", clamped);
+      }
+    } else if (key === "winterthermostatday") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(50, Math.min(85, num));
+        onSettingChange("winterThermostatDay", clamped);
+      }
+    } else if (key === "summerthermostat") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(50, Math.min(95, num));
+        onSettingChange("summerThermostat", clamped);
+      }
+    } else if (key === "summerthermostatnight") {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        const clamped = Math.max(50, Math.min(95, num));
+        onSettingChange("summerThermostatNight", clamped);
+      }
+    }
+  }
+  return cleanMessage;
+}
+
 export function useAskJoule({
   onParsed,
-  hasLocation,
-  disabled,
+  hasLocation: _HAS_LOCATION,
+  disabled: _DISABLED,
   tts: ttsProp,
   groqKey: groqKeyProp,
   userSettings = {},
@@ -56,8 +150,8 @@ export function useAskJoule({
   recommendations = [],
   onNavigate = null,
   onSettingChange = null,
-  auditLog = [],
-  onUndo = null,
+  auditLog: _AUDIT_LOG = [],
+  onUndo: _ON_UNDO = null,
   salesMode = false,
   pushAuditLog = null,
   latestAnalysis = null,
@@ -88,9 +182,26 @@ export function useAskJoule({
   const [showCommandHelp, setShowCommandHelp] = useState(false);
   const [showQuestionHelp, setShowQuestionHelp] = useState(true); // Show questions by default to help users explore
 
-  // Response state
+  // Response state (hydrate last response from localStorage so it persists across modal close/reopen)
+  const PERSISTED_RESPONSE_KEY = "askJouleLastResponse";
+  const PERSISTED_MESSAGE_MAX = 12000; // cap so we don't bloat localStorage or context
   const [answer, setAnswer] = useState("");
-  const [agenticResponse, setAgenticResponse] = useState(null);
+  const [agenticResponse, setAgenticResponse] = useState(() => {
+    try {
+      const raw = localStorage.getItem(PERSISTED_RESPONSE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed?.message != null && typeof parsed.message === "string") {
+        const message = parsed.message.length > PERSISTED_MESSAGE_MAX
+          ? parsed.message.slice(0, PERSISTED_MESSAGE_MAX) + "\n\n[Response truncated for display.]"
+          : parsed.message;
+        return { success: true, message, source: parsed.source || "groq" };
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
   const [loadingMessage, setLoadingMessage] = useState("");
 
   // History
@@ -103,7 +214,7 @@ export function useAskJoule({
     }
   });
   const [lastQuery, setLastQuery] = useState(null);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [_historyIndex, setHistoryIndex] = useState(-1);
 
   // Refs
   const inputRef = useRef(null);
@@ -583,7 +694,7 @@ export function useAskJoule({
             if (speak) speak(`The temperature is ${Math.round(temp)} degrees`);
             return true;
           }
-        } catch {}
+        } catch { /* no ecobee data */ }
         const msg =
           "Temperature data not available. Connect your Ecobee thermostat to see real-time temperature.";
         setOutput({ message: msg, status: "info" });
@@ -606,7 +717,7 @@ export function useAskJoule({
             if (speak) speak(`Humidity is ${humidity} percent`);
             return true;
           }
-        } catch {}
+        } catch { /* no ecobee data */ }
         const msg =
           "Humidity data not available. Connect your Ecobee thermostat to see real-time humidity.";
         setOutput({ message: msg, status: "info" });
@@ -629,7 +740,7 @@ export function useAskJoule({
             // Note: setOutput automatically handles TTS, so no need to call speak() again
             return true;
           }
-        } catch {}
+        } catch { /* no ecobee data */ }
         const msg =
           "HVAC status not available. Connect your Ecobee thermostat to see real-time status.";
         setOutput({ message: msg, status: "info" });
@@ -774,7 +885,7 @@ export function useAskJoule({
               if (resultsHistory && resultsHistory.length > 0) {
                 analysisData = resultsHistory[resultsHistory.length - 1];
               }
-            } catch (err) {
+            } catch {
               // Ignore
             }
           }
@@ -795,7 +906,7 @@ export function useAskJoule({
               hasEfficiencyAlert = true;
             }
           }
-        } catch (err) {
+        } catch {
           // Ignore errors - we'll provide a general answer
         }
 
@@ -889,7 +1000,7 @@ export function useAskJoule({
         });
         if (speak) speak(status);
         return true;
-      } catch {}
+      } catch { /* no bridge */ }
       setOutput({
         message: "Bridge connection status not available.",
         status: "info",
@@ -921,8 +1032,8 @@ export function useAskJoule({
           if (speak) speak(`Last update was ${timeAgoText}`);
           return true;
         }
-      } catch (err) {
-        console.warn("Error reading last update timestamp:", err);
+      } catch (e) {
+        console.warn("Error reading last update timestamp:", e);
       }
       // Check if we're in demo mode or if there's any data at all
       const hasAnyData =
@@ -949,7 +1060,7 @@ export function useAskJoule({
     return false;
   };
 
-  const handleCommand = async (parsed) => {
+  const _handleCommand = async (parsed) => {
     // A command is identified by either isCommand === true OR having an action
     // This handles cases where the parser returns an action but doesn't explicitly set isCommand
     if (!parsed.isCommand && !parsed.action) return false;
@@ -1001,7 +1112,7 @@ export function useAskJoule({
         
         const message = diagram + "\n\nTip: You can ask for specific configurations like 'wiring diagram for heat pump with aux heat' or 'show me wiring for conventional system'.";
         
-        setOutput({ message, status: "info" });
+        callbacks.setOutput({ message, status: "info" });
         setAgenticResponse({
           success: true,
           message,
@@ -1010,7 +1121,7 @@ export function useAskJoule({
         return true;
       } catch (error) {
         console.error("[AskJoule] Error generating wiring diagram:", error);
-        setOutput({
+        callbacks.setOutput({
           message: "Error generating wiring diagram. Please try again.",
           status: "error",
         });
@@ -1301,7 +1412,7 @@ export function useAskJoule({
           if (annualEstimate) {
             const totalAnnual = annualEstimate.totalCost || 0;
             const potentialSavings = setbackResults.annualSavings;
-            const savingsPercent =
+            const _savingsPercent =
               totalAnnual > 0
                 ? Math.round((potentialSavings / totalAnnual) * 100)
                 : 0;
@@ -1376,7 +1487,7 @@ export function useAskJoule({
           const winterTemp = userSettings?.winterThermostat || 68;
           const electricRate = userSettings?.utilityCost || 0.15;
           const hspfHP = userSettings?.hspf2 || 9;
-          const afueGas = 95; // Standard high-efficiency gas furnace
+          const afueGas = Math.round((userSettings?.afue ?? 0.95) * 100); // User's gas furnace AFUE %
 
           // Estimate average winter outdoor temp from location (if available)
           let avgWinterOutdoor = 35; // Default
@@ -1386,8 +1497,7 @@ export function useAskJoule({
             avgWinterOutdoor = 35; // Could be improved with HDD data
           }
 
-          // Calculate gas rate (estimate from electric rate if not available)
-          const gasRate = 1.2; // $/therm - typical US average
+          const gasRate = Number(userSettings?.gasCost ?? userSettings?.gasRate ?? 1.2); // $/therm from user settings
 
           const comparisonResults = compareHeatingSystems({
             squareFeet,
@@ -1900,6 +2010,9 @@ RULES:
             response.message?.slice(0, 100)
           );
 
+          // Parse and apply any [JOULE_ACTION:key=value] (thermostat, insulation, heat loss source); strip from display
+          const displayMessage = parseAndApplyJouleActions(response.message, onSettingChange);
+
           // Check if this is a sales query and the AI couldn't answer well
           const isSalesQuery = salesMode || hasSalesIntent(input);
           if (isSalesQuery) {
@@ -1933,15 +2046,25 @@ RULES:
             if (showsUncertainty || isTooShort) {
               // Append message seller advice
               const sellerMessage = `\n\nIf you need more specific information, please message the seller directly on eBay: ${EBAY_STORE_URL}`;
-              setAgenticResponse({
-                ...response,
-                message: response.message + sellerMessage,
-              });
+              const fullMessage = displayMessage + sellerMessage;
+              setAgenticResponse({ ...response, message: fullMessage });
+              try {
+                const toStore = fullMessage.slice(0, PERSISTED_MESSAGE_MAX);
+                localStorage.setItem(PERSISTED_RESPONSE_KEY, JSON.stringify({ message: toStore, source: response.source || "groq", lastQuery: input, timestamp: Date.now() }));
+              } catch { /* ignore */ }
             } else {
-              setAgenticResponse(response);
+              setAgenticResponse({ ...response, message: displayMessage });
+              try {
+                const toStore = displayMessage.slice(0, PERSISTED_MESSAGE_MAX);
+                localStorage.setItem(PERSISTED_RESPONSE_KEY, JSON.stringify({ message: toStore, source: response.source || "groq", lastQuery: input, timestamp: Date.now() }));
+              } catch { /* ignore */ }
             }
           } else {
-            setAgenticResponse(response);
+            setAgenticResponse({ ...response, message: displayMessage });
+            try {
+              const toStore = displayMessage.slice(0, PERSISTED_MESSAGE_MAX);
+              localStorage.setItem(PERSISTED_RESPONSE_KEY, JSON.stringify({ message: toStore, source: response.source || "groq", lastQuery: input, timestamp: Date.now() }));
+            } catch { /* ignore */ }
           }
         } else {
           console.log("[AskJoule] Unexpected response format:", response);

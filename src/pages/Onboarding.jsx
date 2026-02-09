@@ -88,7 +88,7 @@ export default function Onboarding() {
 
   // Onboarding state
   const [step, setStep] = useState(STEPS.WELCOME);
-  const [welcomeTheme, setWelcomeTheme] = useState(() => {
+  const [welcomeTheme, _setWelcomeTheme] = useState(() => {
     try {
       return localStorage.getItem("welcomeTheme") || "winter";
     } catch {
@@ -120,6 +120,11 @@ export default function Onboarding() {
   const defaultCapacity = userSettings.capacity || userSettings.coolingCapacity || 36; // 36 kBTU = 3 tons
   const defaultTons = defaultCapacity / 12;
   const [heatPumpTons, setHeatPumpTons] = useState(Math.round(defaultTons * 10) / 10); // Round to 1 decimal
+  // Gas furnace: size in kBTU and AFUE (only used when primarySystem === "gasFurnace")
+  const furnaceSizeOptions = [40, 60, 80, 100, 120];
+  const defaultFurnaceKbtu = furnaceSizeOptions.includes(defaultCapacity) ? defaultCapacity : 80;
+  const [furnaceSizeKbtu, setFurnaceSizeKbtu] = useState(userSettings.primarySystem === "gasFurnace" ? (userSettings.capacity || defaultFurnaceKbtu) : defaultFurnaceKbtu);
+  const [afue, setAfue] = useState(userSettings.afue ?? 0.9);
   
   // Multi-zone support
   const [numberOfThermostats, setNumberOfThermostats] = useState(() => {
@@ -260,7 +265,6 @@ export default function Onboarding() {
       ];
       
       let data = null;
-      let lastError = null;
       
       // Try each query until we get results
       for (const query of queries) {
@@ -280,8 +284,7 @@ export default function Onboarding() {
           if (data.results && data.results.length > 0) {
             break; // Found results, stop trying
           }
-        } catch (err) {
-          lastError = err;
+        } catch {
           continue;
         }
       }
@@ -387,7 +390,6 @@ export default function Onboarding() {
         if (!userSettings.primarySystem) {
           setUserSetting("primarySystem", primarySystem || "heatPump");
         }
-        // Set capacity if missing
         if (!userSettings.capacity && primarySystem === "heatPump") {
           const capacityKBTU = Math.round((heatPumpTons || 3) * 12);
           setSetting("capacity", capacityKBTU, { source: "onboarding" });
@@ -395,6 +397,14 @@ export default function Onboarding() {
           if (setUserSetting) {
             setUserSetting("capacity", capacityKBTU);
             setUserSetting("coolingCapacity", capacityKBTU);
+          }
+        }
+        if (primarySystem === "gasFurnace") {
+          setSetting("capacity", furnaceSizeKbtu, { source: "onboarding" });
+          setSetting("afue", afue, { source: "onboarding" });
+          if (setUserSetting) {
+            setUserSetting("capacity", furnaceSizeKbtu);
+            setUserSetting("afue", afue);
           }
         }
       }
@@ -428,7 +438,7 @@ export default function Onboarding() {
       const hasPairingCode = localStorage.getItem('pairingCode');
       navigate(hasPairingCode ? "/analysis/monthly" : "/analysis/weekly");
     }
-  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, userSettings]);
+  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, userSettings]);
 
   // Handle next step
   const handleNext = useCallback(() => {
@@ -478,14 +488,15 @@ export default function Onboarding() {
         const heatLossFactor = Math.round(calculatedHeatLoss / 70);
         setSetting("heatLossFactor", heatLossFactor, { source: "onboarding" });
       }
-      // Convert tons to kBTU (capacity): 1 ton = 12 kBTU
+      // Convert tons to kBTU (capacity): 1 ton = 12 kBTU for heat pump; furnace size in kBTU for gas
       if (primarySystem === "heatPump") {
         const capacityKBTU = Math.round(heatPumpTons * 12);
-        // Set both capacity and coolingCapacity for compatibility
         setSetting("capacity", capacityKBTU, { source: "onboarding" });
         setSetting("coolingCapacity", capacityKBTU, { source: "onboarding" });
+      } else if (primarySystem === "gasFurnace") {
+        setSetting("capacity", furnaceSizeKbtu, { source: "onboarding" });
+        setSetting("afue", afue, { source: "onboarding" });
       }
-      // Also try outlet context if available (for backwards compatibility)
       if (setUserSetting) {
         setUserSetting("squareFeet", squareFeet);
         setUserSetting("insulationLevel", insulationLevel);
@@ -497,6 +508,9 @@ export default function Onboarding() {
           const capacityKBTU = Math.round(heatPumpTons * 12);
           setUserSetting("capacity", capacityKBTU);
           setUserSetting("coolingCapacity", capacityKBTU);
+        } else if (primarySystem === "gasFurnace") {
+          setUserSetting("capacity", furnaceSizeKbtu);
+          setUserSetting("afue", afue);
         }
       }
       
@@ -509,7 +523,7 @@ export default function Onboarding() {
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -742,7 +756,7 @@ export default function Onboarding() {
                 return;
               }
             }
-          } catch (err) {
+          } catch {
             // Silent continue for failed IPs
             continue;
           }
@@ -1108,6 +1122,42 @@ export default function Onboarding() {
                     <option value={5.0}>5 ton (60k)</option>
                   </select>
                 </div>
+              )}
+
+              {primarySystem === "gasFurnace" && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                      Furnace Size
+                      <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Heating capacity in BTU/hr. Check furnace nameplate or model.">
+                        <HelpCircle size={12} />
+                      </span>
+                    </label>
+                    <select
+                      value={furnaceSizeKbtu}
+                      onChange={(e) => setFurnaceSizeKbtu(Number(e.target.value))}
+                      className={selectClasses}
+                    >
+                      {furnaceSizeOptions.map((k) => (
+                        <option key={k} value={k}>{k}k BTU</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      AFUE (efficiency)
+                    </label>
+                    <select
+                      value={afue}
+                      onChange={(e) => setAfue(Number(e.target.value))}
+                      className={selectClasses}
+                    >
+                      <option value={0.8}>80%</option>
+                      <option value={0.9}>90%</option>
+                      <option value={0.95}>95%</option>
+                    </select>
+                  </div>
+                </>
               )}
 
               {/* Number of Thermostats/Zones */}
@@ -1491,6 +1541,30 @@ export default function Onboarding() {
                       <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                     </span>
                   </button>
+                )}
+                {primarySystem === "gasFurnace" && (
+                  <>
+                    <button
+                      onClick={() => setStep(STEPS.BUILDING)}
+                      className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                    >
+                      <span className="text-gray-600 dark:text-gray-400">Furnace Size</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        {furnaceSizeKbtu}k BTU
+                        <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setStep(STEPS.BUILDING)}
+                      className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                    >
+                      <span className="text-gray-600 dark:text-gray-400">AFUE</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        {(afue * 100).toFixed(0)}%
+                        <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                      </span>
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setStep(STEPS.BUILDING)}

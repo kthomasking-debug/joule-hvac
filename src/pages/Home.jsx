@@ -53,6 +53,7 @@ import { getAllSettings } from "../lib/unifiedSettingsManager";
 import * as heatUtils from "../lib/heatUtils";
 import { routes } from "../navConfig";
 import { getCached, getCachedBatch } from "../utils/cachedStorage";
+import { shouldUseLearnedHeatLoss } from "../utils/billDataUtils";
 
 const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
 
@@ -522,8 +523,8 @@ const HomeDashboard = () => {
       heatLossFactor = latestAnalysis.heatLossFactor;
     }
     
-    // Priority 3: Bill-learned heat loss (if enabled)
-    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0) {
+    // Priority 3: Bill-learned heat loss (if enabled and ≥30 days of bill data)
+    if (!heatLossFactor && useLearnedHeatLoss && settings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss()) {
       heatLossFactor = Number(settings.learnedHeatLoss);
     }
     

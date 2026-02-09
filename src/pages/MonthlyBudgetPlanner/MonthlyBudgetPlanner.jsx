@@ -67,12 +67,12 @@ import {
 } from "./constants";
 import {
   getTypicalHDD,
-  getTypicalCDD,
   estimateTypicalHDDCost,
   estimateTypicalCDDCost
 } from "./calculations";
 import * as heatUtils from "../../lib/heatUtils";
 import { getCached, setCached } from "../../utils/cachedStorage";
+import { shouldUseLearnedHeatLoss } from "../../utils/billDataUtils";
 import { isAIAvailable, callLLM, callLLMStreaming } from "../../lib/aiProvider";
 import {
   defaultFixedChargesByState,
@@ -89,7 +89,7 @@ import {
   calculateGasCO2,
   formatCO2,
 } from "../../lib/carbonFootprint";
-import { getBestEquivalent, calculateCO2Equivalents, formatCO2Equivalent } from "../../lib/co2Equivalents";
+import { getBestEquivalent, calculateCO2Equivalents } from "../../lib/co2Equivalents";
 import { useUnitSystem, formatEnergyFromKwh } from "../../lib/units";
 import {
   STATE_ELECTRICITY_RATES,
@@ -123,7 +123,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
 
   const { unitSystem } = useUnitSystem();
   const outletContext = useOutletContext() || {};
-  const { userSettings, setUserSetting } = outletContext;
+  const { userSettings, setUserSetting, onOpenAskJoule } = outletContext;
 
   // Derive all settings from context for consistency
   const {
@@ -275,7 +275,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
 
   // Sync from thermostatSettings when they change (but respect userSettings/optimized values)
   useEffect(() => {
-    const handleSettingsUpdate = (e) => {
+    const handleSettingsUpdate = () => {
       try {
         const thermostatSettings = loadThermostatSettings();
         const homeEntry = thermostatSettings?.schedule?.weekly?.[0]?.find(
@@ -496,7 +496,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   });
   
   // Wrapper setters that persist to userSettings
-  const setMode = useCallback((newMode) => {
+  const _setMode = useCallback((newMode) => {
     setModeState(newMode);
     if (setUserSetting) {
       setUserSetting("budgetPlannerMode", newMode);
@@ -546,7 +546,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const isPastMonth = !isCurrentMonthSelected && (selectedYear < new Date().getFullYear() || (selectedYear === new Date().getFullYear() && selectedMonth < new Date().getMonth() + 1));
   
   // Load location data synchronously on mount to enable cache lookups
-  const [locationData, setLocationData] = useState(() => {
+  const [locationData, _setLocationData] = useState(() => {
     try {
       const saved = localStorage.getItem("userLocation");
       if (saved) return JSON.parse(saved);
@@ -765,7 +765,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [useWorstYear, setUseWorstYear] = useState(false);
   
   // Get hourly historical data for selected year (heat pumps only)
-  const { hourlyData: historicalHourly, loading: historicalLoading } = useHistoricalHourly(
+  const { hourlyData: historicalHourly, loading: _historicalLoading } = useHistoricalHourly(
     locationData?.latitude,
     locationData?.longitude,
     { 
@@ -783,10 +783,10 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [showDailyForecast, setShowDailyForecast] = useState(true); // Expanded by default to show full month like /analysis/monthly
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
-  const [showHeatingCosts, setShowHeatingCosts] = useState(false); // Collapsed by default
-  const [showCoolingCosts, setShowCoolingCosts] = useState(false); // Collapsed by default
+  const [_showHeatingCosts, _setShowHeatingCosts] = useState(false); // Collapsed by default
+  const [_showCoolingCosts, _setShowCoolingCosts] = useState(false); // Collapsed by default
   const [showTemperatureProfiles, setShowTemperatureProfiles] = useState(false); // Collapsed by default
-  const [thermostatModel, setThermostatModel] = useState("current"); // "current" | "flat70" | "flat68" | "custom"
+  const [_thermostatModel, setThermostatModel] = useState("current"); // "current" | "flat70" | "flat68" | "custom"
   const [annualCostData, setAnnualCostData] = useState(null); // Store annual cost data for top card
   const annualCostDataRef = useRef(null); // Ref to store calculated values without causing re-renders
   const dailyMetricsRef = useRef([]); // Ref to store dailyMetrics for analytics section
@@ -825,14 +825,58 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [billParsing, setBillParsing] = useState(false);
   const [billParseError, setBillParseError] = useState(null);
   const [showBillPaste, setShowBillPaste] = useState(false);
-  // Bill vs Forecast analysis
-  const [billAnalysis, setBillAnalysis] = useState(null);
+  // Bill vs Forecast analysis — persisted per month so chat survives navigation
+  const billChatStorageKey = `billAnalysisChat_${selectedYear}_${selectedMonth}`;
+  const [billAnalysis, setBillAnalysis] = useState(() => {
+    try {
+      const raw = localStorage.getItem(billChatStorageKey);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      return data.billAnalysis ?? null;
+    } catch { return null; }
+  });
   const [billAnalysisLoading, setBillAnalysisLoading] = useState(false);
   const [billFollowUpQuestion, setBillFollowUpQuestion] = useState('');
-  const [billConversationHistory, setBillConversationHistory] = useState([]);
+  const [billConversationHistory, setBillConversationHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem(billChatStorageKey);
+      if (!raw) return [];
+      const data = JSON.parse(raw);
+      return Array.isArray(data.billConversationHistory) ? data.billConversationHistory : [];
+    } catch { return []; }
+  });
   const [complaintCopyFeedback, setComplaintCopyFeedback] = useState('');
   const [billFollowUpLoading, setBillFollowUpLoading] = useState(false);
   const [billFollowUpStreamingText, setBillFollowUpStreamingText] = useState('');
+
+  // Reload bill chat when user switches month/year so they see that month's conversation
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(billChatStorageKey);
+      if (!raw) {
+        setBillAnalysis(null);
+        setBillConversationHistory([]);
+        return;
+      }
+      const data = JSON.parse(raw);
+      setBillAnalysis(data.billAnalysis ?? null);
+      setBillConversationHistory(Array.isArray(data.billConversationHistory) ? data.billConversationHistory : []);
+    } catch {
+      setBillAnalysis(null);
+      setBillConversationHistory([]);
+    }
+  }, [billChatStorageKey]);
+
+  // Persist bill analysis and conversation so chat survives navigation (pick up where you left off)
+  useEffect(() => {
+    try {
+      if (!billAnalysis) {
+        localStorage.removeItem(billChatStorageKey);
+      } else {
+        localStorage.setItem(billChatStorageKey, JSON.stringify({ billAnalysis, billConversationHistory }));
+      }
+    } catch { /* ignore */ }
+  }, [billChatStorageKey, billAnalysis, billConversationHistory]);
 
   const parseBillWithGroq = useCallback(async () => {
     if (!isAIAvailable()) {
@@ -902,8 +946,9 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     setBillFollowUpQuestion('');
     setBillFollowUpStreamingText('');
     try {
-      // Build comparison data (include aux heat for HVAC stage analysis)
-      const comparisonRows = (dailyMetrics || []).map((day, idx) => {
+      // Build comparison data — only include days with actual usage entered (ignore 0/blank so we compare apples to apples)
+      const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const allRows = (dailyMetrics || []).map((day, idx) => {
         const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
         const actual = actualKwhEntries[dayKey];
         return {
@@ -916,27 +961,31 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
           tempRange: `${day.low.toFixed(0)}-${day.high.toFixed(0)}°F`,
           source: day.source,
         };
-      }).filter(r => r.actualKwh != null);
+      });
+      // Only compare days that have actual usage > 0 (partial month: user may have filled only first N days)
+      const comparisonRows = allRows.filter(r => r.actualKwh != null && r.actualKwh > 0);
       const totalEst = comparisonRows.reduce((s, r) => s + r.estKwh, 0);
       const totalActual = comparisonRows.reduce((s, r) => s + r.actualKwh, 0);
+      const fullMonthForecast = allRows.reduce((s, r) => s + r.estKwh, 0);
+      const isPartialMonth = comparisonRows.length > 0 && comparisonRows.length < daysInMonth;
 
       // Build rich model context so AI knows exactly what parameters drive the estimate
       const ceilingMult = 1 + (ceilingHeight - 8) * 0.1;
       const designHeatLoss = squareFeet * 22.67 * insulationLevel * homeShape * ceilingMult;
       const calculatedBtuLossPerDegF = designHeatLoss / 70;
-      // Inline effective HLF (same logic as getEffectiveHeatLossFactor) to avoid use-before-init
+      // Inline effective HLF (same logic as getEffectiveHeatLossFactor, including 30-day gate for learned)
       const effectiveBtuLossPerDegF = (userSettings?.useManualHeatLoss && userSettings?.manualHeatLoss > 0)
         ? userSettings.manualHeatLoss
         : (userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss > 0)
           ? userSettings.analyzerHeatLoss
-          : (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0)
+          : (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss())
             ? userSettings.learnedHeatLoss
             : calculatedBtuLossPerDegF;
       const auditHlfSource = (userSettings?.useManualHeatLoss && userSettings?.manualHeatLoss > 0)
         ? 'manual'
         : (userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss > 0)
           ? 'analyzer'
-          : (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0)
+          : (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss())
             ? 'learned'
             : 'calculated';
       const elecRate = utilityCost;
@@ -964,6 +1013,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const learnedMonths = userSettings?.learnedHeatLossMonths || [];
       const isHeatLossFromThisBill = auditHlfSource === 'learned' && learnedMonths.includes(`${selectedYear}-${String(selectedMonth).padStart(2, '0')}`);
       const homeContextStr = [
+        isPartialMonth ? `PARTIAL MONTH: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only. The totals below are for those ${comparisonRows.length} days (forecast and actual for the same days). Do NOT call the actual total the "monthly bill" or "full bill" — say "actual usage for the ${comparisonRows.length} days you entered" or "so far" so they know this is a partial comparison.` : null,
         `${squareFeet} sqft, ${primarySystem === 'heatPump' ? 'heat pump' : 'gas furnace'}`,
         `Thermostat: day ${indoorTemp || winterThermostat}°F, night ${nighttimeTemp || winterThermostat}°F, weighted avg ${setTemp.toFixed(1)}°F`,
         `HSPF2: ${hspf2}, Rated COP: ${(hspf2 / 3.412).toFixed(2)}`,
@@ -989,7 +1039,9 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         text: '',
         totalEst,
         totalActual,
+        fullMonthForecast,
         daysCompared: comparisonRows.length,
+        daysInMonth: isPartialMonth ? daysInMonth : undefined,
         comparisonRows,
         homeContext: homeContextStr,
       });
@@ -1016,6 +1068,8 @@ HEAT LOSS FROM BILL: When heat loss source is "From Bill Data (Auto-learned)", t
 
 HEAT LOSS FROM DOE: When heat loss source is "Calculated (DOE)", the model uses building characteristics (insulation multiplier, home shape, ceiling height). Acknowledge this: e.g. "You're using Calculated (DOE) heat loss (${effectiveBtuLossPerDegF.toFixed(0)} BTU/hr/°F). To lower the forecast, adjust insulation multiplier or home shape in Settings → Building Characteristics." Do NOT suggest "From Bill Data" unless the user asks — DOE is a valid choice.
 
+HEAT LOSS vs TEMPERATURE: Heat loss (BTU/hr/°F) is NOT based on outdoor temperature. It comes from one of: building characteristics (DOE), bill data (auto-learned), or manual/analyzer. Temperature only affects how much energy is used each day (the forecast applies the same heat loss to each day's temperature). Do NOT say heat loss is "based on temperature" — that is incorrect.
+
 OTHER RULES:
 1. HVAC capacity DROPS in cold weather — use the capacity curve. At 15°F a ${capacity}k unit delivers ~${(0.64 * capacity).toFixed(0)}k BTU, not rated.
 2. Reference specific days and numbers. No generic advice like "inspect insulation" unless the data supports it.
@@ -1037,7 +1091,7 @@ REQUIRED: End with "Shareable summary:" on its own line, then a single paragraph
             },
             {
               role: 'user',
-              content: `My energy forecaster estimated ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) but my actual bill shows ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — a ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference for ${comparisonRows.length} days at $${elecRate}/kWh.\n\nDaily comparison (est vs actual, with modeled aux heat):\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\nPerform a field audit. Explain why the forecast differs from my bill. Consider baseload (whole-house vs HVAC-only), heat loss, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them (Settings → Building Characteristics or Heat Loss Source). Include dollar amounts.`
+              content: `My energy forecaster estimated ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) for the ${comparisonRows.length} days I entered${isPartialMonth ? ` (I only have actual data for ${comparisonRows.length} of ${daysInMonth} days this month — partial bill)` : ''}. My actual usage for those same days is ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — a ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference at $${elecRate}/kWh.\n\nDaily comparison (est vs actual, with modeled aux heat):\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\nPerform a field audit. Explain why the forecast differs from my bill for these days. ${isPartialMonth ? 'Note that I have only entered part of the month so far — do not treat the actual total as my full monthly bill.' : ''} Consider baseload (whole-house vs HVAC-only), heat loss, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them (Settings → Building Characteristics or Heat Loss Source). Include dollar amounts.`
             }
           ],
         temperature: 0.3,
@@ -1058,6 +1112,10 @@ REQUIRED: End with "Shareable summary:" on its own line, then a single paragraph
       setBillAnalysisLoading(false);
     }
   }, [actualKwhEntries, squareFeet, primarySystem, insulationLevel, effectiveIndoorTemp, winterThermostat, hspf2, capacity, ceilingHeight, homeShape, utilityCost, useElectricAuxHeat, indoorTemp, nighttimeTemp, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, selectedMonth, selectedYear]);
+
+  // Ref for follow-up prompt: updated in effect after getEffectiveHeatLossFactor/hlfSource exist (avoids TDZ)
+  const billFollowUpContextRef = useRef({ effectiveHeatLoss: 0, hlfSource: 'calculated', squareFeet: 800, insulationLevel: 1, homeShape: 1, ceilingHeight: 8 });
+  const billFollowUpScrollRef = useRef(null);
 
   const sendBillFollowUp = useCallback(async () => {
     if (!billFollowUpQuestion.trim() || !billAnalysis?.text) return;
@@ -1085,6 +1143,9 @@ REQUIRED: End with "Shareable summary:" on its own line, then a single paragraph
           content: `You are Joule, the homeowner's advocate. Be warm, validating, and on their side. If they're frustrated, acknowledge it first ("That's frustrating" or "You're right to ask") before explaining. Write in conversational paragraph form — no bullets, no numbered lists, no bold headers.
 
 CRITICAL: The MODEL estimates HVAC heating only. The ACTUAL BILL is whole-house (HVAC + baseload). Baseload makes the bill HIGHER. When actual < estimate: the bill was LOWER than the forecast. Baseload CANNOT explain a lower bill — never mention it. The model overestimated HVAC (heat loss too high, etc). When actual > estimate: the gap is often baseload — do NOT recommend lowering Heat Loss Factor. If the user asks "why my bill was high" but actual < estimate, correct them: "Actually your bill was lower than the forecast. The forecast overestimated."
+
+HEAT LOSS vs TEMPERATURE: Heat loss (BTU/hr/°F) is NOT based on temperature. It comes from one of: (1) Building characteristics — Calculated (DOE): sq ft, insulation, shape, ceiling height; (2) Bill data — auto-learned from past bills; (3) Manual entry or CSV Analyzer. Outdoor temperature only affects how much energy is used each day (the forecast applies the same heat loss to each day's temperature). Do NOT say heat loss is "based on temperature" or "from the forecast temperature" — that is incorrect.
+
 When heat loss source is "Calculated (DOE)", acknowledge it — suggest adjusting insulation multiplier or home shape to lower the forecast.
 Empirical HLF from total bill is misleading when baseload is significant. Be specific. No generic advice.
 
@@ -1093,6 +1154,12 @@ HOW TO CHANGE PARAMETERS (always include when recommending adjustments):
 • Home shape: Settings → Building Characteristics → "Building Shape".
 • Heat loss from bill: Settings → Heat Loss Source → "From Bill Data (Auto-learned)".
 • Manual heat loss: Settings → Heat Loss Source → "Manual Entry".
+
+CURRENT SETTINGS (use these numbers in your answer — they reflect any changes the user or you applied since the analysis was run):
+Model's BTU loss/°F (current): ${billFollowUpContextRef.current.effectiveHeatLoss.toFixed(0)} BTU/hr/°F
+Square feet: ${billFollowUpContextRef.current.squareFeet}, Insulation: ${billFollowUpContextRef.current.insulationLevel}x, Home shape: ${billFollowUpContextRef.current.homeShape}x, Ceiling: ${billFollowUpContextRef.current.ceilingHeight} ft
+Heat loss source: ${billFollowUpContextRef.current.hlfSource === 'learned' ? 'From Bill Data' : billFollowUpContextRef.current.hlfSource === 'manual' ? 'Manual' : billFollowUpContextRef.current.hlfSource === 'analyzer' ? 'CSV Analyzer' : 'Calculated (DOE)'}
+Do NOT use heat loss or building numbers from the HOME context below if they differ from the CURRENT SETTINGS above. The numbers above are what the app is using now.
 
 ${billAnalysis.homeContext || 'HOME: unknown'}
 
@@ -1104,7 +1171,17 @@ ELECTRICITY RATE: $${elecRate}/kWh | FIXED FEES: $${fixedElectricCost}/mo
 DAILY COMPARISON (estimated vs actual, with modeled aux heat):
 ${dailyBreakdown}
 
-FORMAT: Write in friendly, conversational paragraph form — like explaining to a homeowner in plain language. No bullet points, no numbered lists, no bold section headers. Use flowing prose that’s easy to read. Keep it under 250 words.`
+FORMAT: Write in friendly, conversational paragraph form — like explaining to a homeowner in plain language. No bullet points, no numbered lists, no bold section headers. Use flowing prose that’s easy to read. Keep it under 250 words.
+
+AGENTIC ACTIONS: When the user explicitly asks you to change a setting (e.g. "set heat loss to DOE", "switch to Calculated (DOE)", "use bill data", "please set heat loss source to ..."), you MUST perform it by outputting exactly one line at the very end of your response (after your prose, on a new line). Use this exact format — no other text on that line:
+[JOULE_ACTION:heatLossSource=doe]
+or heatLossSource=bill, heatLossSource=manual, heatLossSource=analyzer.
+Supported values: doe = Calculated (DOE Data), bill = From Bill Data (Auto-learned), manual = Manual Entry, analyzer = CSV Analyzer Data.
+When the user says "make the changes you recommended" or "apply those changes", you MUST output the specific setting changes you suggested. Use one line per change at the end of your response:
+[JOULE_ACTION:insulationLevel=0.55]
+[JOULE_ACTION:homeShape=1.1]
+Use the current values from the HOME context above; suggest a reasonable adjustment (e.g. if insulation is 0.65 and you said to lower it, use 0.55 or 0.5; if home shape is 1.2, try 1.1 or 1.0). insulationLevel: number typically 0.5-1.5 (lower = better insulation). homeShape: number typically 0.9-1.2. Only output these when the user is asking you to apply your prior recommendations.
+Only output action lines when the user is clearly asking you TO CHANGE or APPLY settings. Do NOT output them when you are only suggesting they could change it themselves.`
         },
         {
           role: 'assistant',
@@ -1117,16 +1194,74 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
         }
       ];
 
-      const content = (await callLLMStreaming({
+      const rawContent = (await callLLMStreaming({
         messages,
         temperature: 0.3,
         maxTokens: 600,
         onChunk: (chunk) => setBillFollowUpStreamingText((prev) => prev + chunk),
       })) || 'No response.';
 
+      // Parse all [JOULE_ACTION:key=value] lines; strip from message and apply
+      const actionRegex = /\[JOULE_ACTION:\s*(\w+)\s*=\s*([^\]]+)\s*\]/gi;
+      const actions = [];
+      let m;
+      while ((m = actionRegex.exec(rawContent)) !== null) {
+        actions.push({ key: m[1].toLowerCase(), value: m[2].trim() });
+      }
+      const cleanContent = rawContent.replace(/\n?\[JOULE_ACTION:\s*\w+\s*=\s*[^\]]+\s*\]\s*/gi, '').trim();
+
+      if (setUserSetting) {
+        for (const { key, value } of actions) {
+          if (key === 'heatlosssource') {
+            const v = value.toLowerCase();
+            const isDoe = v === 'doe' || v === 'calculated';
+            const isBill = v === 'bill' || v === 'learned';
+            const isManual = v === 'manual';
+            const isAnalyzer = v === 'analyzer';
+            if (isDoe) {
+              setUserSetting('useManualHeatLoss', false);
+              setUserSetting('useAnalyzerHeatLoss', false);
+              setUserSetting('useLearnedHeatLoss', false);
+              setUserSetting('useCalculatedHeatLoss', true);
+              try { localStorage.setItem('heatLossMethodUserChoice', 'true'); } catch { /* ignore */ }
+            } else if (isBill) {
+              setUserSetting('useManualHeatLoss', false);
+              setUserSetting('useAnalyzerHeatLoss', false);
+              setUserSetting('useCalculatedHeatLoss', false);
+              setUserSetting('useLearnedHeatLoss', true);
+              try { localStorage.setItem('heatLossMethodUserChoice', 'true'); } catch { /* ignore */ }
+            } else if (isManual) {
+              setUserSetting('useCalculatedHeatLoss', false);
+              setUserSetting('useAnalyzerHeatLoss', false);
+              setUserSetting('useLearnedHeatLoss', false);
+              setUserSetting('useManualHeatLoss', true);
+              try { localStorage.setItem('heatLossMethodUserChoice', 'true'); } catch { /* ignore */ }
+            } else if (isAnalyzer) {
+              setUserSetting('useManualHeatLoss', false);
+              setUserSetting('useCalculatedHeatLoss', false);
+              setUserSetting('useLearnedHeatLoss', false);
+              setUserSetting('useAnalyzerHeatLoss', true);
+              try { localStorage.setItem('heatLossMethodUserChoice', 'true'); } catch { /* ignore */ }
+            }
+          } else if (key === 'insulationlevel') {
+            const num = parseFloat(value);
+            if (Number.isFinite(num)) {
+              const clamped = Math.max(0.3, Math.min(2, num));
+              setUserSetting('insulationLevel', clamped);
+            }
+          } else if (key === 'homeshape') {
+            const num = parseFloat(value);
+            if (Number.isFinite(num)) {
+              const clamped = Math.max(0.5, Math.min(2, num));
+              setUserSetting('homeShape', clamped);
+            }
+          }
+        }
+      }
+
       const updatedHistory = [
         ...historyWithUser,
-        { role: 'assistant', content },
+        { role: 'assistant', content: cleanContent },
       ];
       setBillConversationHistory(updatedHistory.slice(-8));
     } catch (err) {
@@ -1139,7 +1274,13 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       setBillFollowUpStreamingText('');
       setBillFollowUpLoading(false);
     }
-  }, [billFollowUpQuestion, billAnalysis, billConversationHistory, utilityCost, fixedElectricCost]);
+  }, [billFollowUpQuestion, billAnalysis, billConversationHistory, utilityCost, fixedElectricCost, setUserSetting]);
+
+  // Auto-scroll follow-up chat so the latest message (and streaming) stays in view
+  useEffect(() => {
+    const el = billFollowUpScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [billConversationHistory, billFollowUpStreamingText]);
 
   // Daily forecast for breakdown
   const { dailyForecast, loading: forecastLoading, error: forecastError } = useMonthlyForecast(
@@ -1227,7 +1368,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
   }, [primarySystem, energyMode, capacity, squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft, userSettings?.winterThermostatDay, userSettings?.winterThermostatNight]);
   
   // Calculate potential savings from recommended schedule (70°F day / 68°F night)
-  const potentialSavings = useMemo(() => {
+  const _potentialSavings = useMemo(() => {
     if (energyMode !== "heating" || !monthlyEstimate?.cost) return null;
     
     // Helper: Convert time string to hours (0-24)
@@ -1295,8 +1436,8 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
   // State for fetched electricity rates
   const [electricityRateA, setElectricityRateA] = useState(null);
   const [electricityRateB, setElectricityRateB] = useState(null);
-  const [gasRateA, setGasRateA] = useState(null);
-  const [gasRateB, setGasRateB] = useState(null);
+  const [_gasRateA, setGasRateA] = useState(null);
+  const [_gasRateB, setGasRateB] = useState(null);
 
   // Hybrid rate fetching: Try EIA API first, fall back to hardcoded state averages
   const fetchUtilityRate = useCallback(
@@ -1453,9 +1594,9 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       return analyzerHeatLoss;
     }
     
-    // Priority 3: Auto-learned heat loss from bill data
+    // Priority 3: Auto-learned heat loss from bill data (only after ≥30 days of bill data)
     const learnedHeatLoss = userSettings?.learnedHeatLoss;
-    if (userSettings?.useLearnedHeatLoss && learnedHeatLoss && typeof learnedHeatLoss === 'number' && learnedHeatLoss > 0) {
+    if (userSettings?.useLearnedHeatLoss && learnedHeatLoss && typeof learnedHeatLoss === 'number' && learnedHeatLoss > 0 && shouldUseLearnedHeatLoss()) {
       return learnedHeatLoss;
     }
     
@@ -1463,13 +1604,25 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
     return calculatedHeatLossFactor;
   }, [userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, calculatedHeatLossFactor]);
 
-  // Track which HLF source is active for the calibration status indicator
+  // Track which HLF source is active for the calibration status indicator (learned only after ≥30 days of bill data)
   const hlfSource = useMemo(() => {
     if (userSettings?.useManualHeatLoss && userSettings?.manualHeatLoss > 0) return 'manual';
     if (userSettings?.useAnalyzerHeatLoss && userSettings?.analyzerHeatLoss > 0) return 'analyzer';
-    if (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0) return 'learned';
+    if (userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss()) return 'learned';
     return 'calculated';
   }, [userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss]);
+
+  // Keep bill follow-up prompt context ref in sync (used by sendBillFollowUp to avoid TDZ)
+  useEffect(() => {
+    billFollowUpContextRef.current = {
+      effectiveHeatLoss: getEffectiveHeatLossFactor,
+      hlfSource,
+      squareFeet,
+      insulationLevel,
+      homeShape,
+      ceilingHeight,
+    };
+  }, [getEffectiveHeatLossFactor, hlfSource, squareFeet, insulationLevel, homeShape, ceilingHeight]);
 
   /**
    * Auto-learn Heat Loss Factor from bill data
@@ -1556,7 +1709,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
    * @param {Object} locationData - Location data with latitude
    * @returns {number} Baseline temperature in °F
    */
-  const getLocationAwareBaselineTemp = useCallback((locationData) => {
+  const _getLocationAwareBaselineTemp = useCallback((locationData) => {
     if (!locationData?.latitude) return 35; // Default for unknown location
     
     const lat = Number(locationData.latitude);
@@ -2597,7 +2750,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
     }
     
     const savings = totalCostB - totalCostA;
-    const isWarmer = totalCostA < totalCostB;
+    const _isWarmer = totalCostA < totalCostB;
     
     // Show card if there's a meaningful difference (either direction)
     if (Math.abs(savings) < 10) return null;
@@ -2652,7 +2805,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       // Load thermostat settings as fallback
       const thermostatSettings = loadThermostatSettings();
       const comfortSettings = thermostatSettings?.comfortSettings || {};
-      const schedule = thermostatSettings?.schedule;
+      const _schedule = thermostatSettings?.schedule;
       
       // Get setpoints for all modes - prioritize userSettings
       // Priority: 1) userSettings, 2) thermostatSettings comfortSettings, 3) defaults
@@ -2684,14 +2837,14 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       
       const awayHeatSetPoint = comfortSettings?.away?.heatSetPoint ?? 62;
       const awayCoolSetPoint = comfortSettings?.away?.coolSetPoint ?? 85;
-      const deadband = 3; // Minimum deadband between heat and cool
+      const _deadband = 3; // Minimum deadband between heat and cool
       
       // Helper to get comfort mode for hour
       // Uses daytimeTime and nighttimeTime from user settings
-      const getComfortModeForHour = (hour, dayOfWeek = 0) => {
+      const getComfortModeForHour = (hour, _DAY_OF_WEEK = 0) => {
         // Convert daytimeTime and nighttimeTime to hours (0-23)
         const timeToHours = (timeStr) => {
-          const [h, m] = (timeStr || "06:00").split(":").map(Number);
+          const [h] = (timeStr || "06:00").split(":").map(Number);
           return h;
         };
         
@@ -2816,7 +2969,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
               } else if (primarySystem === "gasFurnace") {
                 const tempDiff = Math.max(0, indoorTempForMode - hour.temp);
                 const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
-                const thermsPerHour = (buildingHeatLossBtu) / (100000 * afue);
+                const _thermsPerHour = (buildingHeatLossBtu) / (100000 * afue);
                 monthHeatingKwh += 0; // Gas, not electric
               } else {
                 const tempDiff = Math.max(0, indoorTempForMode - hour.temp);
@@ -2862,7 +3015,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
               
               // Calculate hourly energy using temperature-adjusted SEER2
               // SEER2 is BTU/Wh, so kWh = BTU / (SEER2 * 1000)
-              const hourlyKWh = buildingHeatGainBtuPerHour / (adjustedSeer2 * 1000);
+              const _hourlyKWh = buildingHeatGainBtuPerHour / (adjustedSeer2 * 1000);
               
               // Check system capacity limit (system can only remove so much heat per hour)
               const coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : coolingCapacity;
@@ -3718,7 +3871,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+              <p className="text-gray-600 dark:text-gray-400 font-medium" style={{ fontSize: '16pt' }}>
                 {activeMonths.find((m) => m.value === selectedMonth)?.label} {selectedYear}{isPastMonth ? ' — Actual Weather' : ' — Forecast-Based Estimate'}
               </p>
               <button
@@ -3732,7 +3885,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             </div>
             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               {isPastMonth ? (
-                <p className="text-xs text-gray-700 dark:text-gray-300">
+                <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: '14pt' }}>
                   <strong>📊 Past Month:</strong> All temperatures are <strong>actual observed weather</strong> from{" "}
                   <a
                     href="https://api.open-meteo.com/"
@@ -3746,12 +3899,11 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 </p>
               ) : (
                 <>
-              <p className="text-xs text-gray-700 dark:text-gray-300 mb-2">
-                <strong>⚠️ Note:</strong> This forecast-based total may differ from the "30-year typical" estimate above. 
-                The main estimate uses long-term climate average for budgeting, while this table uses actual forecast data 
-                (first 15 days from NWS forecast, remaining days from historical average).
+              <p className="text-gray-700 dark:text-gray-300 mb-2" style={{ fontSize: '14pt' }}>
+                <strong>⚠️ Note:</strong> The main estimate and this table both use the same forecast-based data: 
+                actual observed weather for past days this month, NWS forecast for the next 15 days, and 3-year historical average for days beyond the forecast range.
               </p>
-              <p className="text-xs text-gray-700 dark:text-gray-300">
+              <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: '14pt' }}>
                 <strong>Data Sources:</strong> Daily forecast data is fetched from{" "}
                 <a
                   href="https://api.open-meteo.com/"
@@ -3833,7 +3985,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 >
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-blue-500" />
-                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <span className="font-semibold text-gray-900 dark:text-gray-100" style={{ fontSize: '14pt' }}>
                       Sinusoidal Temperature Profile (Entire Month)
                     </span>
                   </div>
@@ -3846,7 +3998,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 
                 {showSinusoidalGraph && (
                   <div className="mt-3 bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                    <p className="text-gray-600 dark:text-gray-400 mb-3" style={{ fontSize: '14pt' }}>
                       This graph shows the hourly temperature profile for each day of the month, calculated using a sinusoidal curve. 
                       Temperatures are lowest around 6 AM and highest around 2 PM, creating a realistic daily temperature cycle.
                     </p>
@@ -4030,7 +4182,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   dailyCost = dailyTherms * gasCost;
                   dailyEnergy = dailyTherms * 29.3; // Convert therms to kWh for display
                 } else if (dayMode === "cooling") {
-                  const coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : coolingCapacity;
+                  const _coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : coolingCapacity;
                   const seer2 = efficiency;
                   const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
                   const btuGainPerDegF = (squareFeet * 28.0 * insulationLevel * homeShape * ceilingMultiplier * solarExposure) / 20.0;
@@ -4099,7 +4251,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       style={{ width: `${percentage}%` }}
                     ></div>
                   </div>
-                  <span className="text-sm font-semibold min-w-[50px] text-right text-gray-900 dark:text-gray-100">
+                  <span className="font-semibold min-w-[50px] text-right text-gray-900 dark:text-gray-100">
                     {Math.round(value * 10) / 10}
                   </span>
                 </div>
@@ -4108,7 +4260,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             
             return (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse min-w-[640px]">
+                <table className="w-full border-collapse min-w-[640px]" style={{ fontSize: '14pt' }}>
                   <thead>
                     <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-700 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600 sticky top-0 z-10">
                       <th className="text-left py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col">Day</th>
@@ -4141,12 +4293,12 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       >
                         <td className={`py-2 px-2 font-semibold ${isToday ? 'text-blue-900 dark:text-blue-100' : 'text-gray-900 dark:text-gray-100'}`}>
                           {isToday && <span className="mr-1">📍</span>}{day.day}
-                          {isToday && <span className="ml-2 text-xs bg-blue-600 dark:bg-blue-500 text-white px-2 py-0.5 rounded-full">Today</span>}
+                          {isToday && <span className="ml-2 bg-blue-600 dark:bg-blue-500 text-white px-2 py-0.5 rounded-full" style={{ fontSize: '11pt' }}>Today</span>}
                         </td>
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-2">
                             <div className="bg-gradient-to-r from-blue-400 to-red-400 rounded-full h-2 w-16 shrink-0"></div>
-                            <span className="text-sm text-gray-900 dark:text-gray-100">
+                            <span className="text-gray-900 dark:text-gray-100">
                               {day.low.toFixed(0)}° – {day.high.toFixed(0)}°F
                             </span>
                           </div>
@@ -4163,7 +4315,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                           className="py-2 px-2 text-right transition-colors"
                           style={{ backgroundColor: getHeatMapColor(day.cost) }}
                         >
-                          <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                          <span className="font-bold text-green-700 dark:text-green-400">
                             ${Math.round(day.cost * 100) / 100}
                           </span>
                         </td>
@@ -4179,7 +4331,8 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                                 placeholder="—"
                                 value={actualVal ?? ''}
                                 onChange={(e) => updateActualKwh(dayKey, e.target.value)}
-                                className="w-full max-w-[70px] px-1.5 py-0.5 text-right text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="w-full max-w-[80px] px-1.5 py-0.5 text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                style={{ fontSize: '14pt' }}
                               />
                             );
                           })()}
@@ -4191,7 +4344,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                             const elecRate = monthlyEstimate?.electricityRate ?? utilityCost ?? 0.1;
                             if (actualVal == null || actualVal <= 0) return <span className="text-gray-400">—</span>;
                             return (
-                              <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                              <span className="font-bold text-green-700 dark:text-green-400">
                                 ${(actualVal * elecRate).toFixed(2)}
                               </span>
                             );
@@ -4201,10 +4354,12 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                           {(() => {
                             const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
                             const actualVal = actualKwhEntries[dayKey];
-                            const diff = actualVal != null ? (actualVal - day.energy) : null;
+                            // Only show delta when there is actual bill data (no delta for empty or 0 — that's "no data")
+                            const hasActual = actualVal != null && actualVal > 0;
+                            const diff = hasActual ? (actualVal - day.energy) : null;
                             if (diff == null) return <span className="text-gray-400">—</span>;
                             return (
-                              <span className={`text-xs font-medium ${diff > 0 ? 'text-red-500' : diff < 0 ? 'text-green-500' : 'text-gray-400'}`} title="Your bill kWh − Forecast kWh">
+                              <span className={`font-medium ${diff > 0 ? 'text-red-500' : diff < 0 ? 'text-green-500' : 'text-gray-400'}`} title="Your bill kWh − Forecast kWh">
                                 {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                               </span>
                             );
@@ -4219,14 +4374,14 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                             const deltaT = Math.max(1, (effectiveIndoorTemp || 70) - avgOutdoor);
                             const btuPerDegF = (actualVal * 3412) / 24 / deltaT;
                             return (
-                              <span className="text-xs text-gray-600 dark:text-gray-400" title="actual kWh × 3412 ÷ 24 ÷ ΔT (assumes all kWh is heating)">
+                              <span className="text-gray-600 dark:text-gray-400" title="actual kWh × 3412 ÷ 24 ÷ ΔT (assumes all kWh is heating)">
                                 {Math.round(btuPerDegF)}
                               </span>
                             );
                           })()}
                         </td>
                         <td className="py-2 px-2">
-                          <span className={`text-xs px-2 py-1 rounded ${
+                          <span className={`px-2 py-1 rounded ${
                             day.source === 'actual'
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                               : day.source === 'forecast' 
@@ -4244,35 +4399,35 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                         Monthly Total
                       </td>
                       <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">Forecast</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Forecast</span>
                         {Math.round(totalForecastEnergy * 10) / 10} kWh
                       </td>
                       {primarySystem === "heatPump" && energyMode === "heating" && useElectricAuxHeat && (
                         <td className="py-3 px-2 text-center"></td>
                       )}
                       <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">Est. cost (Heating/Cooling only)</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Est. cost (Heating/Cooling only)</span>
                         ${(Math.round(totalForecastCost * 100) / 100).toFixed(2)} variable
                         {monthlyEstimate?.fixedCost > 0 && (
-                          <span className="text-sm text-gray-600 dark:text-gray-300 font-normal block">
+                          <span className="text-gray-600 dark:text-gray-300 font-normal block" style={{ fontSize: '13pt' }}>
                             + ${monthlyEstimate.fixedCost.toFixed(2)} fixed = ${(Math.round(totalForecastCost * 100) / 100 + monthlyEstimate.fixedCost).toFixed(2)} total
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">Your bill</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Your bill</span>
                         {(() => {
                           const actualValues = Object.values(actualKwhEntries).filter(v => typeof v === 'number');
-                          if (actualValues.length === 0) return <span className="text-xs text-gray-400">—</span>;
+                          if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
                           const actualTotal = actualValues.reduce((sum, v) => sum + v, 0);
                           return <span>{Math.round(actualTotal * 10) / 10} kWh</span>;
                         })()}
                       </td>
                       <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">Actual cost</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Actual cost</span>
                         {(() => {
                           const actualValues = Object.values(actualKwhEntries).filter(v => typeof v === 'number');
-                          if (actualValues.length === 0) return <span className="text-xs text-gray-400">—</span>;
+                          if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
                           const actualTotal = actualValues.reduce((sum, v) => sum + v, 0);
                           const elecRate = monthlyEstimate?.electricityRate ?? utilityCost ?? 0.1;
                           const actualCost = actualTotal * elecRate;
@@ -4280,7 +4435,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                         })()}
                       </td>
                       <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">Δ kWh</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Δ kWh</span>
                         {(() => {
                           const actualValues = Object.values(actualKwhEntries).filter(v => typeof v === 'number');
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
@@ -4294,7 +4449,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                         })()}
                       </td>
                       <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
-                        <span className="text-xs font-normal text-gray-500 dark:text-gray-400 block">BTU/°F (avg)</span>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>BTU/°F (avg)</span>
                         {(() => {
                           const setTemp = effectiveIndoorTemp || 70;
                           const daysWithBtu = dailyMetrics.filter((d, i) => {
@@ -4303,7 +4458,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                             return v != null && v > 0;
                           });
                           if (daysWithBtu.length === 0) return <span className="text-gray-400">—</span>;
-                          const hlfs = daysWithBtu.map((d, i) => {
+                          const hlfs = daysWithBtu.map((d) => {
                             const dayKey = d.date instanceof Date ? `${d.date.getMonth()+1}-${d.date.getDate()}` : String(dailyMetrics.indexOf(d)+1);
                             const actualVal = actualKwhEntries[dayKey];
                             const avgOutdoor = (d.low + d.high) / 2;
@@ -4327,14 +4482,20 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             <div className="bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-700 dark:to-indigo-700 rounded-xl p-5 shadow-lg border border-purple-500/30">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <h3 className="font-bold text-white flex items-center gap-2" style={{ fontSize: '18pt' }}>
                     💡 Got Your Bill? Let's Compare.
                   </h3>
-                  <p className="text-purple-200 text-xs mt-1">
+                  <p className="text-purple-200 mt-1" style={{ fontSize: '14pt' }}>
                     Paste your utility bill and Joule will tell you exactly why it's different from the forecast — down to the dollar.
                   </p>
-                  <p className="text-purple-300/90 text-xs mt-1">
-                    For general questions about efficiency, settings, or savings, use <strong className="text-white">Ask Joule</strong>.
+                  <p className="text-purple-300/90 mt-1" style={{ fontSize: '14pt' }}>
+                    For general questions about efficiency, settings, or savings, use {onOpenAskJoule ? (
+                      <button type="button" onClick={onOpenAskJoule} className="font-bold text-white underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-white/50 rounded">
+                        Ask Joule
+                      </button>
+                    ) : (
+                      <strong className="text-white">Ask Joule</strong>
+                    )}.
                   </p>
                 </div>
                 {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
@@ -4343,12 +4504,14 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       if (confirm('Clear all entered bill data for this month?')) {
                         setActualKwhEntries({});
                         localStorage.removeItem(actualKwhStorageKey);
+                        localStorage.removeItem(billChatStorageKey);
                         setBillAnalysis(null);
                         setBillConversationHistory([]);
                         setBillFollowUpStreamingText('');
                       }
                     }}
-                    className="text-xs text-purple-300 hover:text-white transition-colors flex items-center gap-1 shrink-0"
+                    className="text-purple-300 hover:text-white transition-colors flex items-center gap-1 shrink-0"
+                    style={{ fontSize: '13pt' }}
                     title="Clear all bill entries"
                   >
                     ✕ Clear Data
@@ -4376,8 +4539,8 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   </button>
                 )}
               </div>
-              {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
-                <div className="mt-3 flex items-center gap-4 text-xs text-purple-200">
+                {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
+                <div className="mt-3 flex items-center gap-4 text-purple-200" style={{ fontSize: '14pt' }}>
                   <span>📊 {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length} days entered</span>
                   <span>⚡ {Object.values(actualKwhEntries).filter(v => typeof v === 'number').reduce((s, v) => s + v, 0).toFixed(1)} kWh actual</span>
                   <span>💰 ${(Object.values(actualKwhEntries).filter(v => typeof v === 'number').reduce((s, v) => s + v, 0) * utilityCost).toFixed(2)} at ${utilityCost}/kWh</span>
@@ -4390,10 +4553,10 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             {/* Bill Paste Area */}
             {showBillPaste && (
               <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 animate-fade-in">
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
+                <p className="font-medium text-gray-800 dark:text-gray-200 mb-2" style={{ fontSize: '14pt' }}>
                   📋 Paste your utility bill or daily usage data below
                 </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                <p className="text-gray-600 dark:text-gray-400 mb-3" style={{ fontSize: '14pt' }}>
                   Joule uses AI to extract daily kWh from your bill. You can paste raw text, a CSV table, or even a summary — the AI will figure out the format. 
                   {!isAIAvailable() && (
                     <span className="text-amber-600 dark:text-amber-400 font-medium"> ⚠️ Requires Groq API key or Local AI (Ollama) — set in Settings → Bridge & AI.</span>
@@ -4434,12 +4597,13 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             {billAnalysis && (
               <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 animate-fade-in">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                  <h4 className="font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2" style={{ fontSize: '16pt' }}>
                     🔍 Bill vs Forecast Analysis
                   </h4>
                   <button
                     onClick={() => { setBillAnalysis(null); setBillConversationHistory([]); setBillFollowUpQuestion(''); setBillFollowUpStreamingText(''); }}
-                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    style={{ fontSize: '13pt' }}
                   >
                     ✕ Close
                   </button>
@@ -4448,23 +4612,36 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   <p className="text-sm text-red-600 dark:text-red-400">❌ {billAnalysis.error}</p>
                 ) : (
                   <>
-                    <div className="flex flex-wrap gap-3 mb-3 text-sm">
+                    {(billAnalysis.daysInMonth && billAnalysis.fullMonthForecast != null && billAnalysis.daysCompared < billAnalysis.daysInMonth) && (
+                      <p className="text-purple-700 dark:text-purple-300 mb-2" style={{ fontSize: '14pt' }}>
+                        Comparison is for the <strong>{billAnalysis.daysCompared} days</strong> you entered. Full month forecast (table above): <strong>{billAnalysis.fullMonthForecast?.toFixed(1)} kWh</strong> — same heat loss, different day range.
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-3 mb-3" style={{ fontSize: '14pt' }}>
                       <div className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Estimated</span>
+                        <span className="text-gray-600 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>
+                          {billAnalysis.daysInMonth && billAnalysis.daysCompared < billAnalysis.daysInMonth
+                            ? `Estimated (${billAnalysis.daysCompared} days)`
+                            : 'Estimated'}
+                        </span>
                         <p className="font-bold text-blue-700 dark:text-blue-300">{billAnalysis.totalEst?.toFixed(1)} kWh</p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400">${(billAnalysis.totalEst * utilityCost).toFixed(2)}</p>
+                        <p className="text-blue-600 dark:text-blue-400" style={{ fontSize: '13pt' }}>${(billAnalysis.totalEst * utilityCost).toFixed(2)}</p>
                       </div>
                       <div className="px-3 py-1.5 bg-green-100 dark:bg-green-900/30 rounded">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Actual Bill</span>
+                        <span className="text-gray-600 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>
+                          {billAnalysis.daysInMonth && billAnalysis.daysCompared < billAnalysis.daysInMonth
+                            ? `Actual (${billAnalysis.daysCompared} days)`
+                            : 'Actual Bill'}
+                        </span>
                         <p className="font-bold text-green-700 dark:text-green-300">{billAnalysis.totalActual?.toFixed(1)} kWh</p>
-                        <p className="text-xs text-green-600 dark:text-green-400">${(billAnalysis.totalActual * utilityCost).toFixed(2)}</p>
+                        <p className="text-green-600 dark:text-green-400" style={{ fontSize: '13pt' }}>${(billAnalysis.totalActual * utilityCost).toFixed(2)}</p>
                       </div>
                       <div className={`px-3 py-1.5 rounded ${(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Difference</span>
+                        <span className="text-gray-600 dark:text-gray-400 block" style={{ fontSize: '12pt' }}>Difference</span>
                         <p className={`font-bold ${(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
                           {(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? '+' : ''}{(billAnalysis.totalActual - billAnalysis.totalEst)?.toFixed(1)} kWh
                         </p>
-                        <p className={`text-xs ${(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        <p className={(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'} style={{ fontSize: '13pt' }}>
                           {(billAnalysis.totalActual - billAnalysis.totalEst) > 0 ? '+' : '-'}${Math.abs((billAnalysis.totalActual - billAnalysis.totalEst) * utilityCost).toFixed(2)}
                         </p>
                       </div>
@@ -4485,13 +4662,13 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       const summaryToShow = complaintSummary || fallbackSummary;
                       return (
                         <>
-                          <div className="text-sm text-gray-800 dark:text-gray-200 prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                          <div className="text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none whitespace-pre-wrap" style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>
                             {mainText}
                           </div>
                           {summaryToShow && (
                             <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                                <span className="font-semibold text-amber-800 dark:text-amber-200" style={{ fontSize: '14pt' }}>
                                   {complaintSummary ? 'Shareable summary' : 'Copy to share'}
                                 </span>
                                 <button
@@ -4505,15 +4682,16 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                                       setTimeout(() => setComplaintCopyFeedback(''), 2000);
                                     }
                                   }}
-                                  className="text-xs px-2 py-1 rounded bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-900 dark:text-amber-100 flex items-center gap-1 transition-colors"
+                                  className="px-2 py-1 rounded bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-900 dark:text-amber-100 flex items-center gap-1 transition-colors"
                                   title="Copy to share with spouse, landlord, or utility"
+                                  style={{ fontSize: '13pt' }}
                                 >
-                                  <Copy className="w-3 h-3" />
+                                  <Copy className="w-3.5 h-3.5" />
                                   {complaintCopyFeedback || 'Copy'}
                                 </button>
                               </div>
-                              <p className="text-sm text-amber-900 dark:text-amber-100 whitespace-pre-wrap">{summaryToShow}</p>
-                              <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1.5 italic">
+                              <p className="text-amber-900 dark:text-amber-100 whitespace-pre-wrap" style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>{summaryToShow}</p>
+                              <p className="text-amber-700 dark:text-amber-300 mt-1.5 italic" style={{ fontSize: '12pt' }}>
                                 {complaintSummary
                                   ? 'Copy this to explain your bill to a spouse, landlord, or utility.'
                                   : 'AI summary not included — copy this template and edit as needed.'}
@@ -4523,7 +4701,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                         </>
                       );
                     })()}
-                    <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-2 italic">Based on {billAnalysis.daysCompared} days with bill data • Powered by Groq AI</p>
+                    <p className="text-gray-500 dark:text-gray-500 mt-2 italic" style={{ fontSize: '12pt' }}>Based on {billAnalysis.daysInMonth ? `${billAnalysis.daysCompared} of ${billAnalysis.daysInMonth}` : billAnalysis.daysCompared} days with bill data • Powered by Groq AI</p>
 
                     {/* Follow-up conversation */}
                     <div className="mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
@@ -4548,17 +4726,17 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       <div className="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden">
                         {/* Conversation history */}
                         {(billConversationHistory.length > 0 || billFollowUpStreamingText) && (
-                          <div className="max-h-64 overflow-y-auto p-3 space-y-3">
+                          <div ref={billFollowUpScrollRef} className="max-h-80 overflow-y-auto overflow-x-hidden p-3 space-y-3 scroll-smooth">
                             {billConversationHistory.map((msg, idx) => (
-                              <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-blue-400' : 'text-green-400'}`}>
-                                <div className="font-semibold text-xs">{msg.role === 'user' ? 'You:' : 'AI:'}</div>
-                                <div className="whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</div>
+                              <div key={idx} className={msg.role === 'user' ? 'text-blue-400' : 'text-green-400'} style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>
+                                <div className="font-semibold mb-0.5" style={{ fontSize: '13pt' }}>{msg.role === 'user' ? 'You:' : 'AI:'}</div>
+                                <div className="whitespace-pre-wrap mt-1 opacity-90">{msg.content}</div>
                               </div>
                             ))}
                             {billFollowUpStreamingText && (
-                              <div className="text-sm text-green-400">
-                                <div className="font-semibold text-xs">AI:</div>
-                                <div className="whitespace-pre-wrap text-xs mt-1 opacity-90">
+                              <div className="text-green-400" style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>
+                                <div className="font-semibold mb-0.5" style={{ fontSize: '13pt' }}>AI:</div>
+                                <div className="whitespace-pre-wrap mt-1 opacity-90">
                                   {billFollowUpStreamingText}
                                   <span className="inline-block w-2 h-4 ml-0.5 bg-green-400 animate-pulse" />
                                 </div>
@@ -4603,25 +4781,54 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                               </div>
                             </div>
                           )}
-                          {billConversationHistory.length > 0 && billConversationHistory.length <= 4 && (
-                            <div className="mb-2">
-                              <div className="flex flex-wrap gap-1.5">
-                                {[
-                                  `What would my bill be if the model were calibrated correctly?`,
-                                  `Should I adjust my ceiling multiplier or insulation multiplier?`,
-                                  `How many kWh per day is just my baseload (fridge, lights, etc)?`,
-                                ].map((q, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => { setBillFollowUpQuestion(q); }}
-                                    className="text-[11px] px-2.5 py-1 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 transition-all cursor-pointer text-left leading-tight"
-                                  >
-                                    {q}
-                                  </button>
-                                ))}
+                          {billConversationHistory.length > 0 && (() => {
+                            const pool = [
+                              `What would my bill be if the model were calibrated correctly?`,
+                              `Should I adjust my ceiling multiplier or insulation multiplier?`,
+                              `How many kWh per day is just my baseload (fridge, lights, etc)?`,
+                              `What variable has biggest impact on monthly bill?`,
+                              `At what outdoor temp does aux heat activate based on morning spikes?`,
+                              `What night setback minimizes cost without triggering strip heat?`,
+                              `Could my water heater explain the gap?`,
+                              `What insulation multiplier would make the model match my actual bill?`,
+                              `Based on my actual usage, what should my Heat Loss Factor be?`,
+                              `If I lower my thermostat to 66°F, how much would I save per month?`,
+                              `How did you extrapolate to a full month estimate?`,
+                              `What if I enter more days of bill data?`,
+                            ];
+                            const lastAi = billConversationHistory.filter(m => m.role === 'assistant').pop()?.content || '';
+                            const lastUser = billConversationHistory.filter(m => m.role === 'user').pop()?.content || '';
+                            const asked = new Set(billConversationHistory.filter(m => m.role === 'user').map(m => (m.content || '').trim().toLowerCase()));
+                            const text = `${lastAi} ${lastUser}`.toLowerCase();
+                            const words = text.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
+                            const scored = pool
+                              .filter(q => !asked.has(q.trim().toLowerCase()))
+                              .map(q => {
+                                const qWords = q.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
+                                const overlap = qWords.filter(w => w.length > 2 && words.includes(w)).length;
+                                const phraseMatch = qWords.length >= 3 && qWords.some(w => text.includes(w)) ? 1 : 0;
+                                return { q, score: overlap + phraseMatch };
+                              })
+                              .sort((a, b) => (b.score - a.score) || Math.random() - 0.5)
+                              .slice(0, 3)
+                              .map(({ q }) => q);
+                            const toShow = scored.length >= 3 ? scored : [...scored, ...pool.filter(q => !scored.includes(q))].slice(0, 3);
+                            return (
+                              <div className="mb-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {toShow.map((q, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => { setBillFollowUpQuestion(q); }}
+                                      className="text-[11px] px-2.5 py-1 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 transition-all cursor-pointer text-left leading-tight"
+                                    >
+                                      {q}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
                           <div className="flex gap-2">
                             <input
                               type="text"
@@ -5156,8 +5363,8 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
             // Track data source for display
-            let usesHistoricalHourly = false;
-            let usesSinusoidalApprox = false;
+                    let _usesHistoricalHourly = false;
+                    let _usesSinusoidalApprox = false;
             
             for (let month = 0; month < 12; month++) {
               // 1. Calculate Load
@@ -5183,7 +5390,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   });
                   
                   if (monthHours.length > 0) {
-                    usesHistoricalHourly = true;
+                    _usesHistoricalHourly = true;
                     const tonsMap = { 18: 1.5, 24: 2.0, 30: 2.5, 36: 3.0, 42: 3.5, 48: 4.0, 60: 5.0 };
                     const tons = tonsMap[capacity] || 3.0;
                     const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
@@ -5212,7 +5419,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       // Auto-mode logic: determine if heating or cooling is needed based on outdoor temp vs setpoints
                       // Like Ecobee auto mode: heating runs when outdoor temp < heatSetPoint, cooling runs when outdoor temp > coolSetPoint
                       const needsHeating = hour.temp < setpoints.heat;
-                      const needsCooling = hour.temp > setpoints.cool;
+                      const _needsCooling = hour.temp > setpoints.cool;
                       // Between heatSetPoint and coolSetPoint: no HVAC needed (deadband)
                       
                       if (needsHeating) {
@@ -5271,7 +5478,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                     monthHeatingCost = monthVariableHeating;
                   } else {
                     // Fallback: Generate hourly temps using sinusoidal pattern
-                    usesSinusoidalApprox = true;
+                    _usesSinusoidalApprox = true;
                     const daysInMonth = new Date(new Date().getFullYear(), month + 1, 0).getDate();
                     
                     // Estimate typical daily low/high for this month based on HDD
@@ -5311,7 +5518,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                         
                         // Auto-mode logic: determine if heating or cooling is needed based on outdoor temp vs setpoints
                         const needsHeating = hour.temp < setpoints.heat;
-                        const needsCooling = hour.temp > setpoints.cool;
+                        const _needsCooling = hour.temp > setpoints.cool;
                         // Between heatSetPoint and coolSetPoint: no HVAC needed (deadband)
                         
                         if (needsHeating) {
@@ -6162,6 +6369,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
 
       {/* Annual Budget Planner - Enhanced Section */}
       {/* Year-Ahead Budget Planning - Removed for simplified design */}
+      {/* eslint-disable-next-line no-constant-binary-expression -- intentionally dead code for future use */}
       {false && mode === "budget" && locationData && (
         <div className="mt-16 pt-10 border-t-2 border-gray-300/30 dark:border-gray-700/30">
           <div className="glass-card p-5 mb-4 animate-fade-in-up border-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10 rounded-xl">
@@ -8176,6 +8384,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       )}
 
       {/* Footer Section - Removed for simplified design */}
+      {/* eslint-disable-next-line no-constant-binary-expression -- intentionally dead code for future use */}
       {false && (
       <div className="mt-16 pt-10 border-t-2 border-gray-300/30 dark:border-gray-700/30">
         {/* Disclaimer */}
@@ -8224,6 +8433,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
       )}
 
       {/* Compare Upgrade Button - Removed for simplified design */}
+      {/* eslint-disable-next-line no-constant-binary-expression -- intentionally dead code for future use */}
       {false && (
       <div className="flex justify-center mt-8">
         <Link
@@ -8256,7 +8466,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
         </button>
 
         {showCalculations && (
-          <div className="px-4 pb-4 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+          <div className="px-4 pb-4 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3 text-[14pt] [&_.text-sm]:text-[14pt] [&_.text-xs]:text-[12pt]">
             {/* Building Characteristics */}
             <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
               <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Building Characteristics</h4>
@@ -8265,7 +8475,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 const useCalculated = userSettings?.useCalculatedHeatLoss !== false; // Default to true
                 const useManual = Boolean(userSettings?.useManualHeatLoss);
                 const useAnalyzer = Boolean(userSettings?.useAnalyzerHeatLoss);
-                const useLearned = Boolean(userSettings?.useLearnedHeatLoss);
+                const useLearned = Boolean(userSettings?.useLearnedHeatLoss) && shouldUseLearnedHeatLoss();
                 
                 let methodLabel = "";
                 let methodColor = "text-blue-600 dark:text-blue-400";
@@ -8284,10 +8494,18 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   methodColor = "text-blue-600 dark:text-blue-400";
                 }
                 
+                const hasLearnedButNotYet = Boolean(userSettings?.useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0) && !shouldUseLearnedHeatLoss();
                 if (methodLabel) {
                   return (
-                    <div className={`mb-3 text-xs font-semibold ${methodColor} bg-white dark:bg-gray-800 rounded px-2 py-1 inline-block border border-current`}>
-                      📊 {methodLabel}
+                    <div className="mb-3">
+                      <div className={`text-xs font-semibold ${methodColor} bg-white dark:bg-gray-800 rounded px-2 py-1 inline-block border border-current`}>
+                        📊 {methodLabel}
+                      </div>
+                      {hasLearnedButNotYet && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                          Bill data available; Joule uses DOE until 30+ days of actual bill data are entered.
+                        </p>
+                      )}
                     </div>
                   );
                 }
@@ -8469,10 +8687,10 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                   <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : "Gas Furnace"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Capacity:</span>
+                  <span>{primarySystem === "gasFurnace" ? "Furnace Size:" : "Capacity:"}</span>
                   <span className="font-bold">{capacity}k BTU</span>
                 </div>
-                {energyMode === "heating" ? (
+                {energyMode === "heating" && primarySystem === "heatPump" && (
                   <>
                     <div className="flex justify-between">
                       <span>HSPF2:</span>
@@ -8488,7 +8706,8 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                       </span>
                     </div>
                   </>
-                ) : (
+                )}
+                {energyMode === "cooling" && (
                   <>
                     <div className="flex justify-between">
                       <span>SEER2:</span>
@@ -8709,9 +8928,52 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 const estimatedDesignHeatLoss = squareFeet * BASE_BTU_PER_SQFT * insulationLevel * homeShape * ceilingMultiplier;
                 const btuLossPerDegF = estimatedDesignHeatLoss / 70;
                 const buildingHeatLoss = btuLossPerDegF * tempDiff;
-                // Capacity factor: heat pumps lose capacity as outdoor temp drops
-                // At 47°F: 100% capacity, at 17°F: ~70% capacity, at 0°F: ~50% capacity
-                // Simplified linear model: capFactor = 1 - ((47 - outdoorTemp) / 100) * 0.3 for temps below 47°F
+
+                if (primarySystem === "gasFurnace") {
+                  const eff = Math.min(0.99, Math.max(0.6, afue));
+                  const btuPerTherm = 100000;
+                  const thermsPerDay = (buildingHeatLoss * 24) / (btuPerTherm * eff);
+                  const dayCost = thermsPerDay * gasCost;
+                  return (
+                    <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                      <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Example Day Calculation ({exampleOutdoorTemp}°F outdoor – cold day example)</h4>
+                      <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                        <div className="flex justify-between">
+                          <span>Temperature Difference:</span>
+                          <span className="font-bold">{tempDiff.toFixed(1)}°F</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {effectiveIndoorTemp.toFixed(1)}°F - {exampleOutdoorTemp}°F
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Building Heat Loss:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{(buildingHeatLoss / 1000).toFixed(1)}k BTU/hr</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = {btuLossPerDegF.toFixed(1)} BTU/hr/°F × {tempDiff.toFixed(1)}°F
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Therms per Day:</span>
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{thermsPerDay.toFixed(2)} therms</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          = ({(buildingHeatLoss / 1000).toFixed(1)}k × 24 hr) ÷ (100,000 × {(eff * 100).toFixed(0)}% AFUE)
+                        </div>
+                        <div className="pt-2 border-t border-orange-300 dark:border-orange-700">
+                          <div className="flex justify-between">
+                            <span>Daily Cost:</span>
+                            <span className="font-bold text-orange-600 dark:text-orange-400">${dayCost.toFixed(2)}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            = {thermsPerDay.toFixed(2)} therms × ${gasCost.toFixed(2)}/therm
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Heat pump
                 const capFactor = exampleOutdoorTemp >= 47 
                   ? 1.0 
                   : Math.max(0.3, 1.0 - ((47 - exampleOutdoorTemp) / 100) * 0.3);
@@ -8984,7 +9246,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 const indoorTemp = winterThermostat || 70;
                 const nighttimeTemp = indoorTemp - 3; // Standard 3 degree night setback
                 const dayHours = 16;
-                const nightHours = 8;
+                const _nightHours = 8;
                 const avgDailyEnergy = totalForecastEnergy / dailyMetrics.length;
                 const estimatedDaytimeFraction = dayHours / 24 * 1.1; // Slightly higher since daytime is typically colder
                 const estimatedDaytimeEnergy = avgDailyEnergy * estimatedDaytimeFraction * dailyMetrics.length;
@@ -9003,7 +9265,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 
                 // 6. Balance Point Analysis
                 const balancePointTemp = 65; // Standard balance point
-                const daysAboveBalance = dailyMetrics.filter(d => d.avg >= balancePointTemp).length;
+                const _daysAboveBalance = dailyMetrics.filter(d => d.avg >= balancePointTemp).length;
                 const daysBelowBalance = dailyMetrics.filter(d => d.avg < balancePointTemp).length;
                 const balancePointPercentage = dailyMetrics.length > 0 ? (daysBelowBalance / dailyMetrics.length) * 100 : 0;
                 const avgTempBelowBalance = daysBelowBalance > 0 
@@ -9037,7 +9299,7 @@ FORMAT: Write in friendly, conversational paragraph form — like explaining to 
                 const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({ squareFeet, insulationLevel, homeShape, ceilingHeight, wallHeight, hasLoft });
                 const btuLossPerDegF = estimatedDesignHeatLoss / 70;
                 const totalHours = dailyMetrics.length * 24;
-                const totalBtuDelivered = totalForecastEnergy * 3412.14; // Convert kWh to BTU
+                const _totalBtuDelivered = totalForecastEnergy * 3412.14; // Convert kWh to BTU
                 const totalBtuNeeded = btuLossPerDegF * avgTempDiff * totalHours;
                 const realizedCOP = totalHpEnergy > 0 ? totalBtuNeeded / (totalHpEnergy * 3412.14) : 0;
                 const ratedCOP = hspf2 / 3.412; // Convert HSPF2 to COP

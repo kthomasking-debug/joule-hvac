@@ -44,6 +44,7 @@ import {
   inputClasses,
   selectClasses,
 } from "../lib/uiClasses";
+import { shouldUseLearnedHeatLoss } from "../utils/billDataUtils";
 import { DashboardLink } from "../components/DashboardLink";
 import AskJoule from "../components/AskJoule";
 // CO2 calculations - may be used in future features
@@ -963,8 +964,8 @@ const SevenDayCostForecaster = () => {
       return analyzerHeatLossValue * 70;
     }
     
-    // Priority 3: Bill-learned heat loss (if enabled)
-    if (useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0) {
+    // Priority 3: Bill-learned heat loss (if enabled and ≥30 days of bill data)
+    if (useLearnedHeatLoss && userSettings?.learnedHeatLoss > 0 && shouldUseLearnedHeatLoss()) {
       const learned = Number(userSettings.learnedHeatLoss);
       if (Number.isFinite(learned)) return learned * 70; // BTU/hr at 70°F delta
     }

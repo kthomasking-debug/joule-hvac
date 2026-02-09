@@ -52,9 +52,9 @@ function persistAIConfigToBridge(key, value) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: value ?? "" }),
     }).catch(() => {});
-  } catch {}
+  } catch { /* ignore */ }
 }
-import { fullInputClasses } from "../lib/uiClasses";
+import { fullInputClasses as _fullInputClasses } from "../lib/uiClasses";
 import { DashboardLink } from "../components/DashboardLink";
 import { Toast } from "../components/Toast";
 import Breadcrumbs from "../components/Breadcrumbs";
@@ -73,8 +73,9 @@ import StorageUsageIndicator from "../components/StorageUsageIndicator";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";
 import AutoSettingsMathEquations from "../components/AutoSettingsMathEquations";
 import { setProCode, clearProCode, hasProAccess } from "../utils/demoMode";
-import { getStorageUsage, cleanupOldAnalyses } from "../utils/storageCleanup";
-import { useAutoSave } from "../hooks/useAutoSave";
+import { getTotalBillDaysEntered, MIN_BILL_DAYS_FOR_LEARNED } from "../utils/billDataUtils";
+import "../utils/storageCleanup";
+import "../hooks/useAutoSave";
 import ValidatedInput from "../components/ValidatedInput";
 import UnitSystemToggle from "../components/UnitSystemToggle";
 import {
@@ -497,7 +498,7 @@ export const VoiceListenDurationInput = () => {
     setValue(val);
     try {
       localStorage.setItem("askJouleListenSeconds", String(val));
-    } catch {}
+    } catch { /* ignore */ }
     window.dispatchEvent(new Event("askJouleListenSecondsChanged"));
   };
   return (
@@ -905,7 +906,7 @@ const GroqApiKeyInput = () => {
       persistAIConfigToBridge("aiProvider", newProvider);
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: "" } }));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const handleLocalBaseUrlChange = (e) => {
@@ -917,7 +918,7 @@ const GroqApiKeyInput = () => {
       localStorage.setItem("localAIBaseUrl", val);
       persistAIConfigToBridge("localAIBaseUrl", val);
       window.dispatchEvent(new Event("storage"));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const handleLocalModelChange = (e) => {
@@ -927,7 +928,7 @@ const GroqApiKeyInput = () => {
       localStorage.setItem("localAIModel", v);
       persistAIConfigToBridge("localAIModel", v);
       window.dispatchEvent(new Event("storage"));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -951,7 +952,7 @@ const GroqApiKeyInput = () => {
               localStorage.setItem("localAIModel", first);
               persistAIConfigToBridge("localAIModel", first);
               window.dispatchEvent(new Event("storage"));
-            } catch {}
+            } catch { /* ignore */ }
           }
         }
       })
@@ -1072,7 +1073,7 @@ const GroqApiKeyInput = () => {
       }
       // Also dispatch storage event for cross-tab sync
       window.dispatchEvent(new Event("storage"));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const handleModelChange = (e) => {
@@ -1086,7 +1087,7 @@ const GroqApiKeyInput = () => {
       });
       // Trigger storage event for other components to pick up the change
       window.dispatchEvent(new Event("storage"));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const clearKey = () => {
@@ -1096,7 +1097,7 @@ const GroqApiKeyInput = () => {
     try {
       localStorage.removeItem("groqApiKey");
       persistAIConfigToBridge("groqApiKey", "");
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const isConfigured = aiProvider === AI_PROVIDERS.GROQ
@@ -1234,7 +1235,7 @@ const GroqApiKeyInput = () => {
                   localStorage.setItem("localAIBaseUrl", url);
                   persistAIConfigToBridge("localAIBaseUrl", url);
                   window.dispatchEvent(new Event("storage"));
-                } catch {}
+                } catch { /* ignore */ }
               }}
               className="rounded-full"
             />
@@ -1253,7 +1254,7 @@ const GroqApiKeyInput = () => {
                   localStorage.setItem("localAIBaseUrl", url);
                   persistAIConfigToBridge("localAIBaseUrl", url);
                   window.dispatchEvent(new Event("storage"));
-                } catch {}
+                } catch { /* ignore */ }
               }}
               className="rounded-full"
             />
@@ -1280,7 +1281,7 @@ const GroqApiKeyInput = () => {
         </p>
         {ollamaLocation === "other-device" && (
           <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-            To find that computer’s address: on the <strong>PC that runs Ollama</strong> (the one with the GPU), open Command Prompt and run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code>, then look for IPv4. On Mac, use System Settings → Network on that Mac.
+            To find that computer’s address: on the <strong>device that runs Ollama</strong> (the one with the GPU), run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code> (Windows), or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">hostname -I</code> or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ip addr</code> (Linux), or use System Settings → Network (Mac). Use the IPv4 address (e.g. 192.168.0.108).
           </p>
         )}
       </div>
@@ -1432,8 +1433,50 @@ const GroqApiKeyInput = () => {
                 <h3 id="ollama-step-title" className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-3">
                   2. Start Ollama (Mac / Linux)
                 </h3>
-                <p className="text-sm text-slate-700 dark:text-slate-300 mb-4">
-                  The command is in your clipboard. On that computer, open Terminal, paste (Cmd+V or Ctrl+V), press Enter. Leave the window open so Ollama keeps running.
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+                  So other devices (e.g. your phone) can use this PC’s AI, Ollama must listen on all interfaces. The command is in your clipboard.
+                </p>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mb-3">
+                  <strong>Mac or Linux (run in Terminal):</strong> Open Terminal on that computer, paste (Cmd+V or Ctrl+V), press Enter. Leave the window open so Ollama keeps running.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap mb-3 p-2 bg-slate-100 dark:bg-slate-700 rounded">
+                  <code className="flex-1 min-w-0 text-xs break-all">
+                    OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard("OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve", "Run command (Linux/Mac) copied", null)}
+                    className="shrink-0 px-2 py-1.5 rounded border border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mt-3 mb-1">Linux only — Ollama runs as a service (persists after reboot):</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                  On the Linux PC, run these in a terminal so Ollama accepts connections from other devices and survives restarts:
+                </p>
+                <div className="space-y-2 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap p-2 bg-slate-100 dark:bg-slate-700 rounded">
+                    <code className="flex-1 min-w-0 text-xs break-all">
+                      sudo mkdir -p /etc/systemd/system/ollama.service.d/
+                    </code>
+                    <button type="button" onClick={() => copyToClipboard("sudo mkdir -p /etc/systemd/system/ollama.service.d/", "Linux mkdir copied", null)} className="shrink-0 px-2 py-1 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs">Copy</button>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap p-2 bg-slate-100 dark:bg-slate-700 rounded">
+                    <code className="flex-1 min-w-0 text-xs break-all">
+                      printf &apos;[Service]\nEnvironment=&quot;OLLAMA_HOST=0.0.0.0&quot;\nEnvironment=&quot;OLLAMA_ORIGINS=*&quot;\n&apos; | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+                    </code>
+                    <button type="button" onClick={() => copyToClipboard('printf \'[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n\' | sudo tee /etc/systemd/system/ollama.service.d/override.conf', "Linux override copied", null)} className="shrink-0 px-2 py-1 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs">Copy</button>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap p-2 bg-slate-100 dark:bg-slate-700 rounded">
+                    <code className="flex-1 min-w-0 text-xs break-all">
+                      sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart ollama
+                    </code>
+                    <button type="button" onClick={() => copyToClipboard("sudo systemctl daemon-reload && sudo systemctl restart ollama", "Linux restart copied", null)} className="shrink-0 px-2 py-1 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs">Copy</button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  If your distro uses a firewall, allow port 11434 from your LAN (e.g. <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">sudo ufw allow 11434/tcp</code> then <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">sudo ufw reload</code>).
                 </p>
               </>
             )}
@@ -1561,10 +1604,10 @@ const UserProfileCard = ({ setToast }) => {
         setCustomHeroUrl(url);
         try {
           localStorage.setItem("onboardingWelcomeTheme", "custom");
-        } catch (err) {}
+        } catch { /* ignore */ }
         setToast({ message: "Profile picture saved.", type: "success" });
       }
-    } catch (err) {
+    } catch {
       setToast({
         message: "Could not process that image. Please try a different file.",
         type: "error",
@@ -1580,9 +1623,9 @@ const UserProfileCard = ({ setToast }) => {
       setCustomHeroUrl(null);
       try {
         localStorage.setItem("onboardingWelcomeTheme", "winter");
-      } catch (err) {}
+      } catch { /* ignore */ }
       setToast({ message: "Profile picture removed.", type: "info" });
-    } catch (err) {
+    } catch {
       setToast({ message: "Failed to remove profile picture.", type: "error" });
     }
   };
@@ -2113,6 +2156,8 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
             const hasLearnedData = settings.learnedHeatLoss && typeof settings.learnedHeatLoss === "number" && settings.learnedHeatLoss > 0;
             const learnedDays = settings.learnedHeatLossDays || 0;
             const learnedMonths = (settings.learnedHeatLossMonths || []).length;
+            const totalBillDays = getTotalBillDaysEntered();
+            const canUseLearned = totalBillDays >= MIN_BILL_DAYS_FOR_LEARNED;
             return (
               <div className={`flex items-start gap-3 ${!hasLearnedData ? "opacity-50" : ""}`}>
                 <label className="inline-flex items-center gap-2 mt-1">
@@ -2138,7 +2183,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                     ○ From Bill Data (Auto-learned)
                   </label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Back-calculated from pasted utility bill data vs. weather. Appears after you paste a bill with ≥7 heating days in Monthly Forecast.
+                    Back-calculated from pasted utility bill data vs. weather. Joule uses DOE estimates until you've entered at least {MIN_BILL_DAYS_FOR_LEARNED} days of actual bill data.
                   </p>
                   {!hasLearnedData && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
@@ -2146,16 +2191,23 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
                     </p>
                   )}
                   {hasLearnedData && settings.useLearnedHeatLoss && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
-                      Current value: {Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F
-                      <span className="ml-2 text-emerald-500 dark:text-emerald-300">
-                        (from {learnedDays} days across {learnedMonths} month{learnedMonths !== 1 ? "s" : ""})
-                      </span>
-                    </p>
+                    <>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                        Current value: {Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F
+                        <span className="ml-2 text-emerald-500 dark:text-emerald-300">
+                          (from {learnedDays} days across {learnedMonths} month{learnedMonths !== 1 ? "s" : ""})
+                        </span>
+                      </p>
+                      {!canUseLearned && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          Joule is using DOE until 30+ days entered (you have {totalBillDays} days).
+                        </p>
+                      )}
+                    </>
                   )}
                   {hasLearnedData && !settings.useLearnedHeatLoss && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
-                      Bill data available ({Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F). Click to use it.
+                      Bill data available ({Number(settings.learnedHeatLoss).toFixed(0)} BTU/hr/°F). Click to use it once you have 30+ days.
                     </p>
                   )}
                 </div>
@@ -2170,7 +2222,7 @@ const BuildingCharacteristics = ({ settings, onSettingChange, outletContext }) =
 
 const CostSettings = ({ settings, onSettingChange, userSettings, setToast }) => {
   // Get location from userSettings or localStorage userLocation
-  const [userLocation, setUserLocation] = useState(() => {
+  const [userLocation, _setUserLocation] = useState(() => {
     try {
       const stored = localStorage.getItem("userLocation");
       return stored ? JSON.parse(stored) : null;
@@ -2455,7 +2507,7 @@ const CostSettings = ({ settings, onSettingChange, userSettings, setToast }) => 
   );
 };
 
-const AdvancedEquipmentProfile = ({ settings, onSettingChange, setToast }) => {
+const AdvancedEquipmentProfile = ({ settings, onSettingChange, setToast: _SET_TOAST }) => {
   const [expanded, setExpanded] = useState(false);
 
   const handleToggle = () => {
@@ -2888,7 +2940,7 @@ const SettingsPage = () => {
     });
 
   const location = useLocation();
-  const params = useParams();
+  const _params = useParams();
   
   // Check if we're on a specific section route (e.g., /settings/home-setup)
   const sectionFromRoute = location.pathname.split('/settings/')[1];

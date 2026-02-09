@@ -13,6 +13,12 @@ export const AI_PROVIDERS = {
 
 const DEFAULT_LOCAL_AI_BASE_URL = "http://192.168.0.108:11434/v1";
 
+/** Return a user-friendly message for Groq 429 rate limit; otherwise return null. */
+function friendlyMessageForGroqError(status) {
+  if (status !== 429) return null;
+  return "Groq rate limit reached. Switch to Local LLM (Ollama) in Settings → Bridge & AI, or upgrade your Groq subscription at https://console.groq.com/settings/billing";
+}
+
 /**
  * Check if any AI backend is available (Groq API key or local Ollama configured)
  * Uses same defaults as getAIConfig() so Settings "Local AI connected" and bill auditor stay in sync.
@@ -65,7 +71,8 @@ export async function callChatCompletions({ url, apiKey, model, messages, temper
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`LLM request failed: ${response.status} ${text}`);
+    const friendly = friendlyMessageForGroqError(response.status);
+    throw new Error(friendly || `LLM request failed: ${response.status} ${text}`);
   }
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
@@ -139,7 +146,8 @@ export async function callLLMStreaming({
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`LLM request failed: ${response.status} ${text}`);
+    const friendly = friendlyMessageForGroqError(response.status);
+    throw new Error(friendly || `LLM request failed: ${response.status} ${text}`);
   }
 
   if (!response.body) {
