@@ -1,6 +1,6 @@
 # Pi Zero 2 W E‑Ink HMI
 
-Simple wall-mounted HMI for Waveshare 2.13" Touch ePaper HAT on Raspberry Pi Zero 2 W.
+Simple wall-mounted HMI for Waveshare 2.13" Touch ePaper HAT on Raspberry Pi Zero 2 W. **Entry point: `app.py`** (legacy `joule_hmi.py` is in `archive/`).
 
 ## Features
 - Status page: shows mode, indoor temp, humidity, connection state

@@ -4,6 +4,9 @@ This folder contains documentation that is no longer actively maintained but pre
 
 ## Archive Structure
 
+### `joule_hmi.py`
+Legacy Pi HMI implementation (replaced by `pi-hmi/app.py`). Used the original waveshare_epd library with Status/Energy/3-day pages. The current HMI uses the Touch e-Paper HAT with Status/Energy/QR Code pages.
+
 ### `dev-notes/`
 Development notes, analysis, and planning documents created during implementation:
 - Feature implementation summaries

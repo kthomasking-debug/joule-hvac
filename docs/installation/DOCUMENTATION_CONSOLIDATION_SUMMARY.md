@@ -63,7 +63,7 @@ Added line to documentation section:
 | **BRIDGE_DYNAMIC_COST_ESTIMATION.md** | Cost calculation endpoint | What-if cost estimation |
 | **docs/BRIDGE-INSTALLATION-GUIDE.md** | Bridge deployment on various systems | Traditional server setups |
 | **src/pages/Onboarding.jsx** | User onboarding workflow | 6-step unified setup flow |
-| **pi-hmi/joule_hmi.py** | E-ink display HMI | Hardware integration |
+| **pi-hmi/app.py** | E-ink display HMI | Hardware integration |
 
 ### Removed Documents
 

@@ -23,6 +23,7 @@ import {
   Cloud,
   Check,
   DollarSign,
+  Cpu,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -33,7 +34,9 @@ import { calculateHeatLoss } from "../lib/heatUtils";
 import UnitSystemToggle from "../components/UnitSystemToggle";
 import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
 import { setBridgeBase } from "../lib/bridgeApi";
-import { GroqApiKeyInput } from "./Settings";
+import { AI_PROVIDERS } from "../lib/aiProvider";
+
+const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://tricks-actions-applied-clothing.trycloudflare.com/v1").trim();
 import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
 import {
   defaultFixedChargesByState,
@@ -71,7 +74,7 @@ const STEP_BENEFITS = {
   [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
   [STEPS.COST_SETTINGS]: 'Used for 7-day forecasts, annual estimates, and gas vs heat pump comparisons',
   [STEPS.BRIDGE]: 'Streams real-time data from your Ecobee thermostat',
-  [STEPS.AI]: 'Optional: set up Ask Joule with Groq or local Ollama',
+  [STEPS.AI]: 'Optional: set up Ask Joule — use Joule (free), Groq, or your computer',
 };
 
 export default function Onboarding() {
@@ -132,9 +135,12 @@ export default function Onboarding() {
   // Gas furnace: size in kBTU and AFUE (only used when primarySystem === "gasFurnace")
   const furnaceSizeOptions = [40, 60, 80, 100, 120];
   const defaultFurnaceKbtu = furnaceSizeOptions.includes(defaultCapacity) ? defaultCapacity : 80;
-  const [furnaceSizeKbtu, setFurnaceSizeKbtu] = useState(userSettings.primarySystem === "gasFurnace" ? (userSettings.capacity || defaultFurnaceKbtu) : defaultFurnaceKbtu);
+  const [furnaceSizeKbtu, setFurnaceSizeKbtu] = useState(userSettings.primarySystem === "gasFurnace" || userSettings.primarySystem === "acPlusGas" ? (userSettings.capacity || defaultFurnaceKbtu) : defaultFurnaceKbtu);
   const [afue, setAfue] = useState(userSettings.afue ?? 0.9);
-  
+  // Central AC tons (only when primarySystem === "acPlusGas"): cooling in summer
+  const defaultAcTons = (userSettings.coolingCapacity || 36) / 12;
+  const [acTons, setAcTons] = useState(userSettings.primarySystem === "acPlusGas" ? Math.round(defaultAcTons * 10) / 10 : 3);
+
   // Multi-zone support
   const [numberOfThermostats, setNumberOfThermostats] = useState(() => {
     try {
@@ -207,6 +213,24 @@ export default function Onboarding() {
   const [ecobeeAlreadyPaired, setEcobeeAlreadyPaired] = useState(false);
   const [pairedEcobeeInfo, setPairedEcobeeInfo] = useState(null);
 
+  // AI step: "joule" = Use Joule (free, default), "groq" = Groq Cloud, "local" = Local (Ollama / your computer)
+  const [onboardingAiChoice, setOnboardingAiChoice] = useState(() => {
+    try {
+      const p = localStorage.getItem("aiProvider");
+      if (p === AI_PROVIDERS.LOCAL) return "local";
+      if (p === AI_PROVIDERS.GROQ && (localStorage.getItem("groqApiKey") || "").trim()) return "groq";
+    } catch { /* ignore */ }
+    return "joule";
+  });
+  const [onboardingGroqKey, setOnboardingGroqKey] = useState(() => (localStorage.getItem("groqApiKey") || "").trim());
+  const [onboardingLocalUrl, setOnboardingLocalUrl] = useState(() =>
+    (localStorage.getItem("localAIBaseUrl") || "http://localhost:11434/v1").trim()
+  );
+  const [onboardingLocalModel, setOnboardingLocalModel] = useState(() =>
+    (localStorage.getItem("localAIModel") || "llama3:latest").trim()
+  );
+  const [onboardingOllamaOnThisDevice, setOnboardingOllamaOnThisDevice] = useState(true);
+
   // Derive state name and abbreviation from foundLocation for cost settings
   const { costStateName, costStateAbbr, costLocationDisplay } = useMemo(() => {
     if (!foundLocation || !foundLocation.includes(",")) {
@@ -225,6 +249,39 @@ export default function Onboarding() {
       costLocationDisplay: `${cityPart}, ${stateName}`,
     };
   }, [foundLocation]);
+
+  // Auto-populate cost settings from state when entering Cost Settings step (once per step visit)
+  const appliedCostStateDefaultsRef = React.useRef(false);
+  useEffect(() => {
+    if (step !== STEPS.COST_SETTINGS || !costStateName || !costStateAbbr) {
+      if (step !== STEPS.COST_SETTINGS) appliedCostStateDefaultsRef.current = false;
+      return;
+    }
+    if (appliedCostStateDefaultsRef.current) return;
+    appliedCostStateDefaultsRef.current = true;
+    const stateElec = getStateElectricityRate(costStateName);
+    const stateGas = getStateGasRate(costStateName);
+    const defaultFixed = defaultFixedChargesByState[costStateAbbr]
+      ? defaultFixedChargesByState[costStateAbbr].electric
+      : defaultFallbackFixedCharges.electric;
+    setUtilityCost(stateElec);
+    setGasCost(stateGas);
+    setFixedElectricCost(defaultFixed);
+  }, [step, costStateName, costStateAbbr]);
+
+  // When entering AI step with "Use Joule (free)" selected, ensure Local config uses Joule server
+  const appliedJouleDefaultsRef = React.useRef(false);
+  useEffect(() => {
+    if (step !== STEPS.AI || onboardingAiChoice !== "joule") {
+      if (step !== STEPS.AI) appliedJouleDefaultsRef.current = false;
+      return;
+    }
+    if (appliedJouleDefaultsRef.current) return;
+    appliedJouleDefaultsRef.current = true;
+    setOnboardingOllamaOnThisDevice(false);
+    if (JOULE_LLM_URL) setOnboardingLocalUrl(JOULE_LLM_URL);
+    setOnboardingLocalModel("llama3:latest");
+  }, [step, onboardingAiChoice]);
 
   // Load saved location on mount
   useEffect(() => {
@@ -446,6 +503,16 @@ export default function Onboarding() {
             setUserSetting("afue", afue);
           }
         }
+        if (primarySystem === "acPlusGas") {
+          setSetting("capacity", furnaceSizeKbtu, { source: "onboarding" });
+          setSetting("coolingCapacity", Math.round((acTons || 3) * 12), { source: "onboarding" });
+          setSetting("afue", afue, { source: "onboarding" });
+          if (setUserSetting) {
+            setUserSetting("capacity", furnaceSizeKbtu);
+            setUserSetting("coolingCapacity", Math.round((acTons || 3) * 12));
+            setUserSetting("afue", afue);
+          }
+        }
       }
       // Also save using unified settings manager for final completion
       const currentSettings = getAllSettings();
@@ -477,7 +544,7 @@ export default function Onboarding() {
       const hasPairingCode = localStorage.getItem('pairingCode');
       navigate(hasPairingCode ? "/analysis/monthly" : "/analysis/weekly");
     }
-  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, userSettings]);
+  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, userSettings]);
 
   // Handle next step
   const handleNext = useCallback(() => {
@@ -535,6 +602,10 @@ export default function Onboarding() {
       } else if (primarySystem === "gasFurnace") {
         setSetting("capacity", furnaceSizeKbtu, { source: "onboarding" });
         setSetting("afue", afue, { source: "onboarding" });
+      } else if (primarySystem === "acPlusGas") {
+        setSetting("capacity", furnaceSizeKbtu, { source: "onboarding" });
+        setSetting("coolingCapacity", Math.round(acTons * 12), { source: "onboarding" });
+        setSetting("afue", afue, { source: "onboarding" });
       }
       if (setUserSetting) {
         setUserSetting("squareFeet", squareFeet);
@@ -549,6 +620,10 @@ export default function Onboarding() {
           setUserSetting("coolingCapacity", capacityKBTU);
         } else if (primarySystem === "gasFurnace") {
           setUserSetting("capacity", furnaceSizeKbtu);
+          setUserSetting("afue", afue);
+        } else if (primarySystem === "acPlusGas") {
+          setUserSetting("capacity", furnaceSizeKbtu);
+          setUserSetting("coolingCapacity", Math.round(acTons * 12));
           setUserSetting("afue", afue);
         }
       }
@@ -569,11 +644,28 @@ export default function Onboarding() {
     } else if (step === STEPS.BRIDGE) {
       setStep(STEPS.AI);
     } else if (step === STEPS.AI) {
+      // Persist AI choice to localStorage
+      try {
+        if (onboardingAiChoice === "local" || onboardingAiChoice === "joule") {
+          localStorage.setItem("aiProvider", AI_PROVIDERS.LOCAL);
+          const url = onboardingAiChoice === "joule"
+            ? (onboardingLocalUrl || JOULE_LLM_URL)
+            : (onboardingLocalUrl || "http://localhost:11434/v1");
+          localStorage.setItem("localAIBaseUrl", url);
+          localStorage.setItem("localAIModel", onboardingLocalModel || "llama3:latest");
+          localStorage.removeItem("groqApiKey");
+        } else {
+          localStorage.setItem("aiProvider", AI_PROVIDERS.GROQ);
+          if ((onboardingGroqKey || "").trim()) localStorage.setItem("groqApiKey", (onboardingGroqKey || "").trim());
+          else localStorage.removeItem("groqApiKey");
+        }
+        window.dispatchEvent(new Event("storage"));
+      } catch { /* ignore */ }
       setStep(STEPS.CONFIRMATION);
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, numberOfThermostats, heatLossSource, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, numberOfThermostats, heatLossSource, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, onboardingAiChoice, onboardingGroqKey, onboardingLocalUrl, onboardingLocalModel]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -722,17 +814,6 @@ export default function Onboarding() {
     }
   }, [bridgeIp, pairingCode, foundLocation, locationElevation]);
 
-  // Auto-connect when bridge IP and pairing code are both entered
-  useEffect(() => {
-    if (step === STEPS.BRIDGE && bridgeIp.trim() && pairingCode?.replace(/-/g, '').length === 8 && !bridgeConnected && !bridgeConnecting && !bridgeError) {
-      // Debounce to avoid spamming while typing
-      const timer = setTimeout(() => {
-        testBridgeConnection();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [step, bridgeIp, pairingCode, bridgeConnected, bridgeConnecting, bridgeError, testBridgeConnection]);
-
   // Search for Joule-Bridge on the network (mDNS: joule-bridge.local)
   const handleSearchBridge = useCallback(async () => {
     setSearchingBridge(true);
@@ -824,6 +905,27 @@ export default function Onboarding() {
       console.log('[Bridge Search] Search complete');
     }
   }, []);
+
+  // Auto-search for bridge when entering Bridge step (once, if no IP)
+  const autoSearchedBridgeRef = React.useRef(false);
+  useEffect(() => {
+    if (step !== STEPS.BRIDGE) {
+      autoSearchedBridgeRef.current = false;
+      return;
+    }
+    if (bridgeIp.trim() || searchingBridge || autoSearchedBridgeRef.current) return;
+    autoSearchedBridgeRef.current = true;
+    handleSearchBridge();
+  }, [step, bridgeIp, searchingBridge, handleSearchBridge]);
+
+  // Auto-test and send config when bridge IP is set (no user action needed)
+  useEffect(() => {
+    if (step !== STEPS.BRIDGE || !bridgeIp.trim() || bridgeConnected || bridgeConnecting || bridgeError) return;
+    const timer = setTimeout(() => {
+      testBridgeConnection();
+    }, 800); // Short delay after search finds IP
+    return () => clearTimeout(timer);
+  }, [step, bridgeIp, bridgeConnected, bridgeConnecting, bridgeError, testBridgeConnection]);
 
   // If already completed, show a quick redirect message
   if (hasCompletedOnboarding) {
@@ -1146,7 +1248,11 @@ export default function Onboarding() {
                 >
                   <option value="heatPump">Heat Pump</option>
                   <option value="gasFurnace">Gas Furnace</option>
+                  <option value="acPlusGas">Central AC + Gas Furnace</option>
                 </select>
+                {primarySystem === "acPlusGas" && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Cooling in summer (condenser), gas heat in winter.</p>
+                )}
               </div>
 
               {/* Heat Pump Size (only show if heat pump is selected) */}
@@ -1174,11 +1280,34 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {primarySystem === "gasFurnace" && (
+              {(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && (
                 <>
+                  {primarySystem === "acPlusGas" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                        AC / Condenser Size (summer cooling)
+                        <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Outdoor unit cooling capacity. 12k BTU = 1 ton.">
+                          <HelpCircle size={12} />
+                        </span>
+                      </label>
+                      <select
+                        value={acTons}
+                        onChange={(e) => setAcTons(Number(e.target.value))}
+                        className={selectClasses}
+                      >
+                        <option value={1.5}>1.5 ton (18k)</option>
+                        <option value={2.0}>2 ton (24k)</option>
+                        <option value={2.5}>2.5 ton (30k)</option>
+                        <option value={3.0}>3 ton (36k)</option>
+                        <option value={3.5}>3.5 ton (42k)</option>
+                        <option value={4.0}>4 ton (48k)</option>
+                        <option value={5.0}>5 ton (60k)</option>
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-                      Furnace Size
+                      Furnace Size {primarySystem === "acPlusGas" && "(winter heat)"}
                       <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Heating capacity in BTU/hr. Check furnace nameplate or model.">
                         <HelpCircle size={12} />
                       </span>
@@ -1479,7 +1608,7 @@ export default function Onboarding() {
                     Search
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Find this on your Pi bridge device or router (shows as &quot;Joule-Bridge&quot;)</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Go to the IP address shown on your bridge screen, or scan the QR code on the device.</p>
               </div>
 
               {/* Pairing Code Input - from Ecobee (hidden if already paired) */}
@@ -1620,8 +1749,163 @@ export default function Onboarding() {
               Optional — you can set this up later in Settings.
             </p>
             <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 max-h-[60vh] overflow-y-auto">
-              <GroqApiKeyInput />
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                How do you want to run Ask Joule?
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOnboardingAiChoice("joule");
+                    setOnboardingOllamaOnThisDevice(false);
+                    setOnboardingLocalUrl(JOULE_LLM_URL || "");
+                    setOnboardingLocalModel("llama3:latest");
+                  }}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
+                    onboardingAiChoice === "joule"
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+                  }`}
+                >
+                  <Zap className="w-8 h-8 text-amber-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Use Joule (free)</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Uses shared Joule LLM server via Cloudflare Tunnel — no setup, no credit card.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnboardingAiChoice("groq")}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
+                    onboardingAiChoice === "groq"
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+                  }`}
+                >
+                  <Cloud className="w-8 h-8 text-slate-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Groq Cloud</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Bring your own API key for fast responses.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnboardingAiChoice("local")}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
+                    onboardingAiChoice === "local"
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+                  }`}
+                >
+                  <Cpu className="w-8 h-8 text-indigo-500" />
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">Your computer</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Run Ollama on your gaming PC — nothing leaves your network.</span>
+                </button>
+              </div>
+
+              {onboardingAiChoice === "groq" && (
+                <div className="mt-4 space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Groq API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={onboardingGroqKey}
+                    onChange={(e) => setOnboardingGroqKey(e.target.value)}
+                    placeholder="gsk_..."
+                    className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
+                    aria-label="Groq API Key"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">groq.com</a> — no credit card.
+                  </p>
+                </div>
+              )}
+
+              {(onboardingAiChoice === "joule" || onboardingAiChoice === "local") && (
+                <div className="mt-4 space-y-3">
+                  {onboardingAiChoice === "joule" ? (
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Using the shared Joule LLM server via Cloudflare Tunnel. No setup needed.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Do this once: install Ollama, start it, then download a model. Where is Ollama running?
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-4">
+                    {onboardingAiChoice === "local" && (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="onboardingOllamaLocation"
+                          checked={onboardingOllamaOnThisDevice}
+                          onChange={() => {
+                            setOnboardingOllamaOnThisDevice(true);
+                            setOnboardingLocalUrl("http://localhost:11434/v1");
+                          }}
+                          className="rounded-full"
+                        />
+                        <span className="text-sm">On this device</span>
+                      </label>
+                    )}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="onboardingOllamaLocation"
+                        checked={!onboardingOllamaOnThisDevice}
+                        onChange={() => {
+                          setOnboardingOllamaOnThisDevice(false);
+                          if (onboardingAiChoice === "local" && (onboardingLocalUrl.includes("localhost") || onboardingLocalUrl.includes("127.0.0.1"))) {
+                            setOnboardingLocalUrl("http://192.168.0.108:11434/v1");
+                          }
+                          if (onboardingAiChoice === "joule" && JOULE_LLM_URL) {
+                            setOnboardingLocalUrl(JOULE_LLM_URL);
+                          }
+                        }}
+                        className="rounded-full"
+                      />
+                      <span className="text-sm">{onboardingAiChoice === "joule" ? "Joule server (Cloudflare Tunnel)" : "On another device or shared server (local IP or public URL)"}</span>
+                    </label>
+                  </div>
+                  {!onboardingOllamaOnThisDevice && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        {onboardingAiChoice === "joule" ? "Address of the Joule LLM server" : "Address of the computer running Ollama"}
+                      </label>
+                      <input
+                        type="url"
+                        value={onboardingLocalUrl}
+                        onChange={(e) => setOnboardingLocalUrl(e.target.value.trim())}
+                        placeholder={onboardingAiChoice === "joule" ? "https://your-subdomain.trycloudflare.com/v1" : "http://192.168.0.108:11434/v1"}
+                        className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
+                        aria-label={onboardingAiChoice === "joule" ? "Joule LLM URL" : "Ollama base URL"}
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {onboardingAiChoice === "joule"
+                          ? "Set VITE_JOULE_LLM_URL when building, or enter the Cloudflare Tunnel URL (e.g. https://your-subdomain.trycloudflare.com/v1). See "
+                          : "Same network: use the other computer's IP (e.g. 192.168.0.108). Add /v1 at the end. Shared server (off-network): use a public URL (ngrok/Cloudflare Tunnel). See "}
+                        <Link to="/tools/shared-llm-server" className="text-blue-600 dark:text-blue-400 hover:underline">Tools → Shared LLM Server Wizard</Link>
+                        {onboardingAiChoice === "joule" ? " for setup." : " for setup."}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Model to use
+                    </label>
+                    <input
+                      type="text"
+                      value={onboardingLocalModel}
+                      onChange={(e) => setOnboardingLocalModel(e.target.value.trim())}
+                      placeholder="llama3:latest"
+                      className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                      aria-label="Ollama model"
+                    />
+                  </div>
+                </div>
+              )}
+
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+                🔒 All AI calls run from your browser. Groq keys stay local; local AI never leaves your machine.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Want to share your LLM with others off-network? See <Link to="/tools/shared-llm-server" className="text-blue-600 dark:text-blue-400 hover:underline">Tools → Shared LLM Server Wizard</Link> after setup.
               </p>
             </div>
@@ -1722,7 +2006,7 @@ export default function Onboarding() {
                 >
                   <span className="text-gray-600 dark:text-gray-400">Heating System</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {primarySystem === "heatPump" ? "Heat Pump" : "Gas Furnace"}
+                    {primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "acPlusGas" ? "Central AC + Gas" : "Gas Furnace"}
                     <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
                 </button>
@@ -1738,8 +2022,20 @@ export default function Onboarding() {
                     </span>
                   </button>
                 )}
-                {primarySystem === "gasFurnace" && (
+                {(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && (
                   <>
+                    {primarySystem === "acPlusGas" && (
+                      <button
+                        onClick={() => setStep(STEPS.BUILDING)}
+                        className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                      >
+                        <span className="text-gray-600 dark:text-gray-400">AC Size</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                          {acTons} tons ({Math.round(acTons * 12)}k BTU)
+                          <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                        </span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setStep(STEPS.BUILDING)}
                       className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"

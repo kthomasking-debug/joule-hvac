@@ -114,7 +114,7 @@ export const SETTING_VALIDATORS = {
   },
 
   primarySystem: (value) => {
-    const valid = ["heatPump", "gasFurnace"];
+    const valid = ["heatPump", "gasFurnace", "acPlusGas"];
     if (!valid.includes(value)) {
       return {
         valid: false,

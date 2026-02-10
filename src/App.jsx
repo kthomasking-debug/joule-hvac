@@ -18,6 +18,7 @@ import {
   BarChart3,
   DollarSign,
   MapPin,
+  Home,
 } from "lucide-react";
 import { routes } from "./navConfig";
 import "./App.css"; // Retain any legacy specifics (can prune later)
@@ -1133,6 +1134,20 @@ function AppInner() {
           <AIMode />
         ) : (
           <>
+            {/* Mobile: prominent Home link so it's always visible on small screens */}
+            {(location.pathname !== "/" && location.pathname !== "/home") && (
+              <div className="md:hidden mb-2 -mt-1 -mx-1">
+                <NavLink
+                  to="/home"
+                  className="flex items-center gap-2 text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 py-2 px-2 rounded-lg touch-manipulation min-h-[44px]"
+                  style={{ WebkitTapHighlightColor: "transparent" }}
+                  aria-label="Back to Home"
+                >
+                  <Home className="w-5 h-5 shrink-0" aria-hidden />
+                  <span className="text-sm font-medium">Home</span>
+                </NavLink>
+              </div>
+            )}
             <Breadcrumbs />
             <Outlet
               context={{

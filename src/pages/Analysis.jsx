@@ -6,7 +6,8 @@ import {
   Search, 
   BarChart2,
   Activity,
-  MapPin
+  MapPin,
+  Home
 } from 'lucide-react';
 import AIExplanation from '../components/AIExplanation';
 
@@ -123,13 +124,24 @@ const Analysis = () => {
           </Suspense>
         ) : (
           <>
-            {/* Page Header - Always visible */}
+            {/* Page Header - Always visible; Home link prominent on mobile */}
             <header className="mb-2">
-              <div className="flex items-center justify-between mb-0.5">
-                <h1 className="text-lg font-semibold text-white">Cost Simulator</h1>
+              <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Link
+                    to="/home"
+                    className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors py-2 pr-2 -ml-2 rounded touch-manipulation shrink-0"
+                    style={{ minHeight: '44px' }}
+                    aria-label="Back to Home"
+                  >
+                    <Home className="w-5 h-5 shrink-0" />
+                    <span className="text-sm font-medium">Home</span>
+                  </Link>
+                  <h1 className="text-lg font-semibold text-white truncate">Cost Simulator</h1>
+                </div>
                 <Link
                   to="/analysis/annual"
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 shrink-0 py-2 touch-manipulation"
                 >
                   <TrendingUp className="w-3 h-3" />
                   Annual Forecast

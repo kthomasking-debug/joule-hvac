@@ -150,7 +150,7 @@ All changes persist in `joule-settings.json`:
 
 ## Integration with HMI
 
-The HMI (`pi-hmi/joule_hmi.py`) now:
+The HMI (`pi-hmi/app.py`) now:
 
 ✅ Calls `/api/status` to get HVAC state  
 ✅ Calls `/api/wifi/signal` to show signal bars  
@@ -259,7 +259,7 @@ To make the bridge truly smart:
 ## Files Modified
 
 - ✅ `pi-zero-bridge/server.js` - Added 4 new endpoints
-- ✅ `pi-hmi/joule_hmi.py` - Updated to use `/api/cost-estimate`
+- ✅ `pi-hmi/app.py` - Updated to use `/api/cost-estimate`
 - ✅ `test-bridge-endpoints.js` - Created test suite (new file)
 
 ---

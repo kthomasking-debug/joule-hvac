@@ -197,7 +197,7 @@ curl http://192.168.0.103:8080/health
 │
 └── joule-hvac/              # Alternate install location
     └── pi-hmi/
-        └── joule_hmi.py     # Legacy HMI script
+        └── app.py           # HMI entry point
 ```
 
 ## Deployment

@@ -1,5 +1,7 @@
 # Joule Bridge & E-Ink HMI Review
 
+> **Note:** The Pi HMI is now **`pi-hmi/app.py`** (Touch e-Paper HAT). The legacy script `joule_hmi.py` has been moved to `archive/joule_hmi.py`. References below to `joule_hmi.py` are historical; use `app.py` for current behavior.
+
 ## Executive Summary
 
 The Joule Bridge is a Raspberry Pi-based HomeKit HAP controller that provides local, low-latency control of Ecobee thermostats. The e-ink HMI provides a wall-mounted display interface optimized for the Waveshare 2.13" e-paper display.

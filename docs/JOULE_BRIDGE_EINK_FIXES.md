@@ -1,5 +1,7 @@
 # Joule Bridge & E-Ink HMI - Fixes Implemented
 
+> **Note:** The Pi HMI is now **`pi-hmi/app.py`** (Touch e-Paper HAT). The legacy script `joule_hmi.py` has been moved to `archive/joule_hmi.py`.
+
 ## Summary
 
 Fixed critical issues identified in the review:

@@ -541,10 +541,10 @@ class JouleHMI:
         
         line_y += 10
         
-        # IP Address on its own line
+        # IP Address with helper text
         ip_addr = self.get_local_ip()
         if ip_addr:
-            draw.text((x1 + 4, line_y), f"IP: {ip_addr}", font=self.fonts['small'], fill=BLACK)
+            draw.text((x1 + 4, line_y), f"Go to {ip_addr} or scan QR code", font=self.fonts['small'], fill=BLACK)
     
     def draw_energy_page(self, draw):
         """Draw Energy page content"""

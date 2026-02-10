@@ -299,7 +299,7 @@ const handleTemperatureAdjust = async (delta) => {
 Pi's display can recalculate when conditions change:
 
 ```python
-# pi-hmi/joule_hmi.py
+# pi-hmi/app.py
 def fetch_weekly_cost(self):
     """Use bridge to calculate dynamic cost"""
     try:

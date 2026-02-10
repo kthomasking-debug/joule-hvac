@@ -89,7 +89,7 @@ joule-hvac/
 │       └── joule-settings.json       ← Configuration
 │
 ├── pi-hmi/                           ← HMI (optional)
-│   ├── joule_hmi.py                  ← Python HMI
+│   ├── app.py                        ← Python HMI
 │   └── requirements.txt              ← Python deps
 │
 └── BRIDGE_ENDPOINTS_COMPLETE.md      ← API documentation

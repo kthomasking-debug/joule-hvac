@@ -36,13 +36,13 @@ This folder contains test files, development scripts, and obsolete code that are
 - **RUN-INSTALLER.txt** - Old installer instructions
 
 ### Obsolete HMI Files (from pi-hmi/)
-- **app.py** - Old e-ink display code (replaced by joule_hmi.py)
+- **app.py** - E-ink display code (in pi-hmi/)
 - **mock_server.py** - Mock server for testing
 - **touch_calibrate.py** - Touch calibration utility
 
 ## Current Active Files
 
-**pi-hmi/joule_hmi.py** - Current e-ink HMI (707 lines, actively maintained)
+**pi-hmi/app.py** - Current e-ink HMI (Touch e-Paper HAT, Status/Energy/QR pages)
 **prostat-bridge/server.py** - Current bridge server (186KB, actively maintained)
 
 ## Why Archived

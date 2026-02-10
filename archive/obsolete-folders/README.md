@@ -42,7 +42,7 @@ This folder contains directories that are no longer actively used in the project
 
 **Pi Setup:**
 - **pi-zero-setup/** - Current Pi Zero 2W setup scripts and guides
-- **pi-hmi/** - Current e-ink HMI (joule_hmi.py)
+- **pi-hmi/** - Current e-ink HMI (app.py; joule_hmi.py archived)
 
 ## Why Archived
 

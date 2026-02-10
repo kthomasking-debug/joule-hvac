@@ -2731,6 +2731,16 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
             >
               <Flame size={16} /> Gas Furnace
             </button>
+            <button
+              onClick={() => onSettingChange("primarySystem", "acPlusGas")}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-1 transition-colors ${
+                settings.primarySystem === "acPlusGas"
+                  ? "bg-[#1E4CFF] text-white"
+                  : "bg-slate-900 text-[#A7B0BA] hover:text-white hover:bg-slate-800"
+              }`}
+            >
+              <Flame size={16} /> Central AC + Gas
+            </button>
           </div>
         </div>
 
@@ -2837,95 +2847,108 @@ const HvacSystemConfig = ({ settings, onSettingChange, setToast }) => {
                   <HelpCircle size={14} />
                 </button>
               </div>
-
               {showAfueTooltip && (
                 <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
-                  <p className="font-semibold text-blue-700 dark:text-blue-300 mb-2">
-                    What's AFUE?
-                  </p>
-                  <p className="mb-2">
-                    AFUE stands for{" "}
-                    <strong>Annual Fuel Utilization Efficiency</strong>. It's
-                    like your furnace's "gas mileage."
-                  </p>
-                  <ul className="space-y-1 ml-4 mb-2">
-                    <li>
-                      <strong>90-98%:</strong> High-efficiency furnace
-                    </li>
-                    <li>
-                      <strong>80%:</strong> Standard, mid-efficiency
-                    </li>
-                    <li>
-                      <strong>&lt; 80%:</strong> Older, less efficient
-                    </li>
-                  </ul>
+                  <p className="font-semibold text-blue-700 dark:text-blue-300 mb-2">What&apos;s AFUE?</p>
+                  <p className="mb-2">AFUE (Annual Fuel Utilization Efficiency) is like your furnace&apos;s &quot;gas mileage.&quot; 90-98%: high-efficiency; 80%: standard; &lt;80%: older.</p>
                 </div>
               )}
-
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0.6}
-                  max={0.99}
-                  step={0.01}
-                  value={settings.afue ?? 0.95}
-                  onChange={(e) =>
-                    onSettingChange(
-                      "afue",
-                      Math.min(0.99, Math.max(0.6, Number(e.target.value)))
-                    )
-                  }
-                  className="flex-grow"
-                />
-                <span className="font-bold text-blue-600 dark:text-blue-400">
-                  {Math.round((settings.afue ?? 0.95) * 100)}%
-                </span>
-              </div>
+              <input
+                type="number"
+                min={60}
+                max={99}
+                step={1}
+                value={Math.round((settings.afue ?? 0.9) * 100)}
+                onChange={(e) =>
+                  onSettingChange(
+                    "afue",
+                    Math.min(0.99, Math.max(0.6, Number(e.target.value) / 100))
+                  )
+                }
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
             </div>
-
-            {/* Cooling System for Gas Furnace */}
             <div>
-              <p className="text-xs font-semibold mb-2 text-gray-600 dark:text-gray-300">
-                Cooling System
-              </p>
-              <div className="inline-flex rounded-md overflow-hidden border dark:border-gray-600">
-                <button
-                  type="button"
-                  onClick={() => onSettingChange("coolingSystem", "centralAC")}
-                  className={`px-3 py-1 text-xs font-semibold flex items-center gap-1 ${
-                    settings.coolingSystem === "centralAC"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
-                  }`}
-                >
-                  <Snowflake size={14} /> Central A/C
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSettingChange("coolingSystem", "dualFuel")}
-                  className={`px-3 py-1 text-xs font-semibold flex items-center gap-1 ${
-                    settings.coolingSystem === "dualFuel"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
-                  }`}
-                >
-                  ⚡ Dual-Fuel HP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSettingChange("coolingSystem", "none")}
-                  className={`px-3 py-1 text-xs font-semibold flex items-center gap-1 ${
-                    settings.coolingSystem === "none"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
-                  }`}
-                >
-                  None/Other
-                </button>
-              </div>
+              <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                Furnace Size (kBTU)
+              </label>
+              <select
+                value={settings.capacity ?? 80}
+                onChange={(e) => onSettingChange("capacity", Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {[40, 60, 80, 100, 120].map((k) => (
+                  <option key={k} value={k}>{k}k BTU</option>
+                ))}
+              </select>
             </div>
           </div>
         )}
+
+        {/* Central AC + Gas Configuration (cooling in summer, gas in winter) */}
+        {settings.primarySystem === "acPlusGas" && (
+          <div className="space-y-4">
+            <p className="text-xs text-[#A7B0BA]">Cooling (AC) in summer, gas heat in winter.</p>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                AC / Condenser Size (summer cooling, kBTU)
+              </label>
+              <select
+                value={settings.coolingCapacity ?? 36}
+                onChange={(e) => onSettingChange("coolingCapacity", Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {[18, 24, 30, 36, 42, 48, 60].map((k) => (
+                  <option key={k} value={k}>{k}k BTU ({k / 12} tons)</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-sm font-medium text-[#E8EDF3]">
+                  Furnace AFUE (winter heat)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAfueTooltip(!showAfueTooltip)}
+                  className="text-[#7C8894] hover:text-[#A7B0BA] transition-colors"
+                  aria-label="What's AFUE?"
+                >
+                  <HelpCircle size={14} />
+                </button>
+              </div>
+              <input
+                type="number"
+                min={60}
+                max={99}
+                step={1}
+                value={Math.round((settings.afue ?? 0.9) * 100)}
+                onChange={(e) =>
+                  onSettingChange(
+                    "afue",
+                    Math.min(0.99, Math.max(0.6, Number(e.target.value) / 100))
+                  )
+                }
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-[#E8EDF3]">
+                Furnace Size (winter heat, kBTU)
+              </label>
+              <select
+                value={settings.capacity ?? 80}
+                onChange={(e) => onSettingChange("capacity", Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[#E8EDF3] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {[40, 60, 80, 100, 120].map((k) => (
+                  <option key={k} value={k}>{k}k BTU</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
 
       </div>
     </Section>
@@ -3568,7 +3591,7 @@ const SettingsPage = () => {
                 </p>
                 <div className="flex flex-wrap items-center gap-3 text-sm">
                   <span className="text-slate-300">
-                    Mode: <span className="font-semibold text-white">{userSettings.primarySystem === "heatPump" ? "Heat pump" : userSettings.primarySystem === "gasFurnace" ? "Gas furnace" : "Unknown"}</span>
+                    Mode: <span className="font-semibold text-white">{userSettings.primarySystem === "heatPump" ? "Heat pump" : userSettings.primarySystem === "acPlusGas" ? "Central AC + gas" : userSettings.primarySystem === "gasFurnace" ? "Gas furnace" : "Unknown"}</span>
                   </span>
                   <span className="text-slate-500">·</span>
                   <span className="text-slate-300">

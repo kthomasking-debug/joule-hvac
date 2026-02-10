@@ -851,7 +851,7 @@ class EInkHMI:
             # Bridge IP:PORT at very bottom (user needs both to open app)
             if self.status.bridge_ip:
                 ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
-                self.draw.text((4, content_y + 68), ip_str, font=FONT_SMALL, fill=0)
+                self.draw.text((4, content_y + 68), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
                 if self.status.device_id:
                     short_id = self.status.device_id[-8:] if len(self.status.device_id) > 8 else self.status.device_id
                     self.draw.text((155, content_y + 68), f"ID:{short_id}", font=FONT_SMALL, fill=0)
@@ -882,7 +882,7 @@ class EInkHMI:
             # Bridge IP:PORT at very bottom (user needs both to open app)
             if self.status.bridge_ip:
                 ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
-                self.draw.text((4, content_y + 68), ip_str, font=FONT_SMALL, fill=0)
+                self.draw.text((4, content_y + 68), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
                 # Show device ID (last 8 chars) on right, or humidity if no device
                 if self.status.device_id:
                     # Show short device ID (last 8 chars: e.g., "3c:8a:b9")

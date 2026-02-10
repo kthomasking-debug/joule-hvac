@@ -151,6 +151,9 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     fixedGasCost = 0,
   } = userSettings || {};
 
+  // Gas heat in winter (gasFurnace or Central AC + Gas). Summer cooling always uses electric/coolingCapacity.
+  const isGasHeat = primarySystem === "gasFurnace" || primarySystem === "acPlusGas";
+
   // Round time to nearest 30 minutes for cleaner display
   const roundTimeTo30Minutes = (time) => {
     const [hours, minutes] = time.split(":").map(Number);
@@ -1014,7 +1017,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const isHeatLossFromThisBill = auditHlfSource === 'learned' && learnedMonths.includes(`${selectedYear}-${String(selectedMonth).padStart(2, '0')}`);
       const homeContextStr = [
         isPartialMonth ? `PARTIAL MONTH: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only. The totals below are for those ${comparisonRows.length} days (forecast and actual for the same days). Do NOT call the actual total the "monthly bill" or "full bill" — say "actual usage for the ${comparisonRows.length} days you entered" or "so far" so they know this is a partial comparison.` : null,
-        `${squareFeet} sqft, ${primarySystem === 'heatPump' ? 'heat pump' : 'gas furnace'}`,
+        `${squareFeet} sqft, ${primarySystem === 'heatPump' ? 'heat pump' : primarySystem === 'acPlusGas' ? 'Central AC + gas' : 'gas furnace'}`,
         `Thermostat: day ${indoorTemp || winterThermostat}°F, night ${nighttimeTemp || winterThermostat}°F, weighted avg ${setTemp.toFixed(1)}°F`,
         `HSPF2: ${hspf2}, Rated COP: ${(hspf2 / 3.412).toFixed(2)}`,
         `Rated capacity: ${capacity}k BTU (${(capacity / 12).toFixed(1)} tons)`,
@@ -1504,7 +1507,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
         isFetchingRateRef.current = false;
       });
       
-      if (primarySystem === "gasFurnace") {
+      if (isGasHeat) {
         fetchUtilityRate(locationData.state, "gas").then((result) => {
           if (result?.rate) {
             setGasRateA(result.rate);
@@ -1545,7 +1548,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
         isFetchingRateBRef.current = false;
       });
       
-      if (primarySystem === "gasFurnace") {
+      if (isGasHeat) {
         fetchUtilityRate(locationDataB.state, "gas").then((result) => {
           if (result?.rate) {
             setGasRateB(result.rate);
@@ -1791,7 +1794,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       // Note: Realistically users pay both if they have both meters, but this attributes 
       // the fixed cost to the active fuel source for this budget estimate.
       const isHeatingMode = energyMode === "heating";
-      if (isHeatingMode && primarySystem === "gasFurnace") {
+      if (isHeatingMode && isGasHeat) {
          monthlyFixedCharge = fixedGasCost;
       } else {
          monthlyFixedCharge = fixedElectricCost;
@@ -1841,7 +1844,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       
       if (useCooling) {
         const coolingCapacityKbtu =
-          primarySystem === "heatPump" ? capacity : coolingCapacity;
+          primarySystem === "heatPump" ? capacity : (coolingCapacity || capacity);
         const seer2 = efficiency;
         const tonsMap = {
           18: 1.5,
@@ -1897,7 +1900,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
         return;
       }
 
-      if (primarySystem === "gasFurnace") {
+      if (isGasHeat) {
         const eff = Math.min(0.99, Math.max(0.6, afue));
         const btuPerTherm = 100000;
         const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
@@ -2354,7 +2357,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       setUserSetting("fixedElectricCost", defaults.electric);
     }
 
-    if (primarySystem === "gasFurnace" && (fixedGasCost ?? 0) <= 0) {
+    if (isGasHeat && (fixedGasCost ?? 0) <= 0) {
       setUserSetting("fixedGasCost", defaults.gas);
     }
   }, [
@@ -2453,7 +2456,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     if (!temps || temps.length === 0) return null;
 
     // --- Gas Furnace Calculation ---
-    if (primarySystem === "gasFurnace") {
+    if (isGasHeat) {
       const eff = Math.min(0.99, Math.max(0.6, afue));
       const btuPerTherm = 100000;
       const estimatedDesignHeatLoss = heatUtils.calculateHeatLoss({
@@ -2966,7 +2969,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 if (useElectricAuxHeat && perf.auxKwh !== undefined && perf.auxKwh > 0) {
                   monthHeatingKwh += perf.auxKwh;
                 }
-              } else if (primarySystem === "gasFurnace") {
+              } else if (isGasHeat) {
                 const tempDiff = Math.max(0, indoorTempForMode - hour.temp);
                 const buildingHeatLossBtu = btuLossPerDegF * tempDiff;
                 const _thermsPerHour = (buildingHeatLossBtu) / (100000 * afue);
@@ -3041,7 +3044,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
           const monthCoolingCost = monthCoolingKwh * electricityRate;
           
           // Add fixed costs (prorated monthly)
-          const monthlyFixed = (primarySystem === "gasFurnace" && monthHDD > 0) ? fixedGasCost : fixedElectricCost;
+          const monthlyFixed = (isGasHeat && monthHDD > 0) ? fixedGasCost : fixedElectricCost;
           const monthTotal = monthHeatingCost + monthCoolingCost + monthlyFixed;
           
           totalHeatingCost += monthHeatingCost;
@@ -4157,7 +4160,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     
                     dailyCost += hourlyEnergy * utilityCost;
                   }
-                } else if (dayMode === "heating" && primarySystem === "gasFurnace") {
+                } else if (dayMode === "heating" && isGasHeat) {
                   // Use sinusoidal hourly temperatures for accurate calculations (consistent with heat pump)
                   const eff = Math.min(0.99, Math.max(0.6, afue));
                   const btuPerTherm = 100000;
@@ -4182,7 +4185,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   dailyCost = dailyTherms * gasCost;
                   dailyEnergy = dailyTherms * 29.3; // Convert therms to kWh for display
                 } else if (dayMode === "cooling") {
-                  const _coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : coolingCapacity;
+                  const _coolingCapacityKbtu = primarySystem === "heatPump" ? capacity : (coolingCapacity || capacity);
                   const seer2 = efficiency;
                   const ceilingMultiplier = 1 + (ceilingHeight - 8) * 0.1;
                   const btuGainPerDegF = (squareFeet * 28.0 * insulationLevel * homeShape * ceilingMultiplier * solarExposure) / 20.0;
@@ -4259,7 +4262,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             };
             
             return (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" data-no-swipe>
                 <table className="w-full border-collapse min-w-[640px]" style={{ fontSize: '14pt' }}>
                   <thead>
                     <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-700 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600 sticky top-0 z-10">
@@ -4947,7 +4950,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       />
                     </div>
                   </div>
-                  {primarySystem === "gasFurnace" && (
+                  {isGasHeat && (
                     <div className="flex items-center gap-1">
                       <label className="text-[9px] text-muted whitespace-nowrap">Gas:</label>
                       <div className="relative flex-1">
@@ -5619,7 +5622,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
 
               // C. Apply Fixed Costs (Crucial Step)
               // If Gas Furnace: Always add gas fixed cost to heating bucket
-              if (primarySystem === "gasFurnace") {
+              if (isGasHeat) {
                 monthHeatingCost += safeFixedGas;
               }
               
@@ -5646,7 +5649,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               monthlyCoolingCosts.push(monthCoolingCost);
             }
             
-            const annualFixedOnly = (safeFixedElectric * 12) + (primarySystem === "gasFurnace" ? safeFixedGas * 12 : 0);
+            const annualFixedOnly = (safeFixedElectric * 12) + (isGasHeat ? safeFixedGas * 12 : 0);
             const totalAnnualCost = annualVariableHeating + annualVariableCooling + annualFixedOnly;
             
             // Store annual cost data in ref (will be set to state via useEffect)
@@ -6118,7 +6121,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           <div className="space-y-2">
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Primary System:</span>
-                              <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "gasFurnace" ? "Gas Furnace" : "Resistance"}</span>
+                              <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "acPlusGas" ? "Central AC + Gas" : primarySystem === "gasFurnace" ? "Gas Furnace" : "Resistance"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Capacity:</span>
@@ -6640,7 +6643,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     const safeFixedGas = Number(fixedGasCost) || 0;
                     
                     // 1. Gas Fixed Charge (if using gas furnace)
-                    if (primarySystem === "gasFurnace") {
+                    if (isGasHeat) {
                       monthHeatingCost += safeFixedGas;
                     }
 
@@ -6848,7 +6851,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
 
                     // C. Apply Fixed Costs (Crucial Step)
                     // If Gas Furnace: Always add gas fixed cost to heating bucket
-                    if (primarySystem === "gasFurnace") {
+                    if (isGasHeat) {
                       monthHeatingCost += safeFixedGas;
                     }
                     
@@ -6876,7 +6879,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   }
                   
                   // --- 3. TOTALS ---
-                  const annualFixedOnly = (safeFixedElectric * 12) + (primarySystem === "gasFurnace" ? safeFixedGas * 12 : 0);
+                  const annualFixedOnly = (safeFixedElectric * 12) + (isGasHeat ? safeFixedGas * 12 : 0);
                   const totalAnnualCost = annualVariableHeating + annualVariableCooling + annualFixedOnly;
                 
                 // --- 4. RENDER ---
@@ -8684,10 +8687,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
                 <div className="flex justify-between">
                   <span>Primary System:</span>
-                  <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : "Gas Furnace"}</span>
+                  <span className="font-bold">{primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "acPlusGas" ? "Central AC + Gas" : "Gas Furnace"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>{primarySystem === "gasFurnace" ? "Furnace Size:" : "Capacity:"}</span>
+                  <span>{(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") ? "Furnace Size:" : "Capacity:"}</span>
                   <span className="font-bold">{capacity}k BTU</span>
                 </div>
                 {energyMode === "heating" && primarySystem === "heatPump" && (
@@ -8728,7 +8731,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   <span>Electricity Rate:</span>
                   <span className="font-bold">${utilityCost.toFixed(3)} / kWh</span>
                 </div>
-                {primarySystem === "gasFurnace" && (
+                {(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && (
                   <>
                     <div className="flex justify-between">
                       <span>AFUE:</span>
@@ -8929,7 +8932,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 const btuLossPerDegF = estimatedDesignHeatLoss / 70;
                 const buildingHeatLoss = btuLossPerDegF * tempDiff;
 
-                if (primarySystem === "gasFurnace") {
+                if (isGasHeat) {
                   const eff = Math.min(0.99, Math.max(0.6, afue));
                   const btuPerTherm = 100000;
                   const thermsPerDay = (buildingHeatLoss * 24) / (btuPerTherm * eff);

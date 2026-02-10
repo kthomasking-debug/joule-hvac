@@ -194,8 +194,8 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# HMI Service (if joule_hmi.py exists)
-if [ -f "$HMI_DIR/joule_hmi.py" ]; then
+# HMI Service (if app.py exists)
+if [ -f "$HMI_DIR/app.py" ]; then
     sudo tee /etc/systemd/system/joule-hmi.service > /dev/null << EOF
 [Unit]
 Description=Joule HMI Display
@@ -206,8 +206,9 @@ StartLimitIntervalSec=0
 Type=simple
 User=$USERNAME
 WorkingDirectory=$HMI_DIR
-Environment="BRIDGE_URL=http://localhost:3002"
-ExecStart=$HMI_DIR/venv/bin/python joule_hmi.py
+Environment="HMI_API_BASE=http://127.0.0.1:3002"
+Environment="HMI_POLL_SECS=15"
+ExecStart=$HMI_DIR/venv/bin/python $HMI_DIR/app.py
 Restart=always
 RestartSec=10
 
@@ -216,7 +217,7 @@ WantedBy=multi-user.target
 EOF
     echo "✅ Created joule-bridge.service and joule-hmi.service"
 else
-    echo "✅ Created joule-bridge.service (HMI skipped - joule_hmi.py not found)"
+    echo "✅ Created joule-bridge.service (HMI skipped - app.py not found)"
 fi
 
 # Reload systemd
