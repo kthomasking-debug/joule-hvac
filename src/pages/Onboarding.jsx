@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Cloud,
   Check,
+  DollarSign,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -33,6 +34,12 @@ import UnitSystemToggle from "../components/UnitSystemToggle";
 import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
 import { setBridgeBase } from "../lib/bridgeApi";
 import { GroqApiKeyInput } from "./Settings";
+import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
+import {
+  defaultFixedChargesByState,
+  defaultFallbackFixedCharges,
+  normalizeStateToAbbreviation,
+} from "../data/fixedChargesByState";
 
 // Build public path helper
 function buildPublicPath(path) {
@@ -49,18 +56,20 @@ const STEPS = {
   WELCOME: 0,
   LOCATION: 1,
   BUILDING: 2,
-  BRIDGE: 3,
-  AI: 4,
-  CONFIRMATION: 5,
+  COST_SETTINGS: 3,
+  BRIDGE: 4,
+  AI: 5,
+  CONFIRMATION: 6,
 };
 
 // Step labels for progress bar
-const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Bridge', 'AI', 'Done'];
+const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Costs', 'Bridge', 'AI', 'Done'];
 
 // Step benefits - what each step unlocks
 const STEP_BENEFITS = {
   [STEPS.LOCATION]: 'Enables local weather data and utility rates',
   [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
+  [STEPS.COST_SETTINGS]: 'Used for 7-day forecasts, annual estimates, and gas vs heat pump comparisons',
   [STEPS.BRIDGE]: 'Streams real-time data from your Ecobee thermostat',
   [STEPS.AI]: 'Optional: set up Ask Joule with Groq or local Ollama',
 };
@@ -136,6 +145,17 @@ export default function Onboarding() {
     }
   });
 
+  // Cost settings state (for Cost Settings onboarding step)
+  const [utilityCost, setUtilityCost] = useState(
+    userSettings.utilityCost != null ? Number(userSettings.utilityCost) : 0.10
+  );
+  const [gasCost, setGasCost] = useState(
+    userSettings.gasCost != null ? Number(userSettings.gasCost) : 1.2
+  );
+  const [fixedElectricCost, setFixedElectricCost] = useState(
+    userSettings.fixedElectricCost != null ? Number(userSettings.fixedElectricCost) : 15
+  );
+
   // Heat Loss Source
   const [heatLossSource, setHeatLossSource] = useState(() => {
     try {
@@ -173,7 +193,7 @@ export default function Onboarding() {
   }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
-  const totalSteps = 6; // Welcome, Location, Building, Bridge, AI (optional), Confirmation
+  const totalSteps = 7; // Welcome, Location, Building, Cost Settings, Bridge, AI (optional), Confirmation
   
   // Bridge Setup State
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
@@ -186,6 +206,25 @@ export default function Onboarding() {
   const [bridgeDeviceId, setBridgeDeviceId] = useState(localStorage.getItem('bridgeDeviceId') || '');
   const [ecobeeAlreadyPaired, setEcobeeAlreadyPaired] = useState(false);
   const [pairedEcobeeInfo, setPairedEcobeeInfo] = useState(null);
+
+  // Derive state name and abbreviation from foundLocation for cost settings
+  const { costStateName, costStateAbbr, costLocationDisplay } = useMemo(() => {
+    if (!foundLocation || !foundLocation.includes(",")) {
+      return { costStateName: null, costStateAbbr: null, costLocationDisplay: null };
+    }
+    const parts = foundLocation.split(",").map((s) => s.trim());
+    const cityPart = parts[0];
+    const statePart = parts[1];
+    if (!statePart) return { costStateName: null, costStateAbbr: null, costLocationDisplay: foundLocation };
+    // State can be "Georgia" or "GA"
+    const stateName = statePart.length === 2 ? US_STATES[statePart.toUpperCase()] || statePart : statePart;
+    const stateAbbr = normalizeStateToAbbreviation(statePart);
+    return {
+      costStateName: stateName,
+      costStateAbbr: stateAbbr,
+      costLocationDisplay: `${cityPart}, ${stateName}`,
+    };
+  }, [foundLocation]);
 
   // Load saved location on mount
   useEffect(() => {
@@ -200,13 +239,13 @@ export default function Onboarding() {
         }
       }
       
-      // For rerun, skip to bridge step if location and building are already set
+      // For rerun, skip to cost settings step if location and building are already set
       if (isRerun) {
         const hasLocation = savedLocation && JSON.parse(savedLocation).city;
         const settings = getAllSettings();
         const hasBuilding = settings.squareFeet && settings.squareFeet > 0;
         if (hasLocation && hasBuilding) {
-          setStep(STEPS.BRIDGE);
+          setStep(STEPS.COST_SETTINGS);
         }
       }
     } catch {
@@ -515,6 +554,17 @@ export default function Onboarding() {
       }
       
       setBuildingError(null); // Clear any errors
+      setStep(STEPS.COST_SETTINGS);
+    } else if (step === STEPS.COST_SETTINGS) {
+      // Save cost settings
+      setSetting("utilityCost", utilityCost, { source: "onboarding" });
+      setSetting("gasCost", gasCost, { source: "onboarding" });
+      setSetting("fixedElectricCost", fixedElectricCost, { source: "onboarding" });
+      if (setUserSetting) {
+        setUserSetting("utilityCost", utilityCost);
+        setUserSetting("gasCost", gasCost);
+        setUserSetting("fixedElectricCost", fixedElectricCost);
+      }
       setStep(STEPS.BRIDGE);
     } else if (step === STEPS.BRIDGE) {
       setStep(STEPS.AI);
@@ -523,7 +573,7 @@ export default function Onboarding() {
     } else if (step === STEPS.CONFIRMATION) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, numberOfThermostats, heatLossSource, setUserSetting, calculatedHeatLoss, completeOnboarding]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, numberOfThermostats, heatLossSource, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -1244,7 +1294,150 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 4: Bridge Setup (Optional) */}
+        {/* Step 4: Cost Settings */}
+        {step === STEPS.COST_SETTINGS && (() => {
+          const stateElecRate = costStateName ? getStateElectricityRate(costStateName) : 0.10;
+          const stateGasRate = costStateName ? getStateGasRate(costStateName) : 1.2;
+          const defaultFixed = costStateAbbr && defaultFixedChargesByState[costStateAbbr]
+            ? defaultFixedChargesByState[costStateAbbr].electric
+            : defaultFallbackFixedCharges.electric;
+          return (
+            <div className="space-y-8">
+              <div className="text-center mb-6">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                  STEP {STEPS.COST_SETTINGS + 1} OF {totalSteps}
+                </p>
+                <DollarSign size={48} className="mx-auto text-emerald-600 dark:text-emerald-400 mb-4" />
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+                  Cost Settings
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Used for 7-day cost forecasts, annual estimates, and gas vs heat pump comparisons.
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                  These rates are used for budgeting and comparisons. They do not affect your utility bill or thermostat.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                    Cost per kWh ($)
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <input
+                      type="number"
+                      min={0.05}
+                      max={1.0}
+                      step={0.01}
+                      value={utilityCost}
+                      onChange={(e) => setUtilityCost(Math.min(1.0, Math.max(0.05, Number(e.target.value) || 0.05)))}
+                      className={`${fullInputClasses} flex-1`}
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">/kWh</span>
+                  </div>
+                  {costLocationDisplay && costStateName && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setUtilityCost(stateElecRate)}
+                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      >
+                        Use State Average
+                      </button>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                        💡 {costLocationDisplay} average: ${stateElecRate.toFixed(2)}/kWh (EIA data)
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                    Gas Cost per Therm ($)
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={5.0}
+                      step={0.01}
+                      value={gasCost}
+                      onChange={(e) => setGasCost(Math.min(5.0, Math.max(0.5, Number(e.target.value) || 0.5)))}
+                      className={`${fullInputClasses} flex-1`}
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">/therm</span>
+                  </div>
+                  {costLocationDisplay && costStateName && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setGasCost(stateGasRate)}
+                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      >
+                        Use State Average
+                      </button>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                        💡 {costLocationDisplay} average: ~${stateGasRate.toFixed(2)}/therm (EIA data)
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                    Fixed Monthly Charge ($)
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={50}
+                      step={0.01}
+                      value={fixedElectricCost}
+                      onChange={(e) => setFixedElectricCost(Math.min(50, Math.max(0, Number(e.target.value) || 0)))}
+                      className={`${fullInputClasses} flex-1 max-w-[140px]`}
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">/mo</span>
+                  </div>
+                  {costLocationDisplay && costStateName && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setFixedElectricCost(defaultFixed)}
+                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      >
+                        Use State Default
+                      </button>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                        💡 {costLocationDisplay} default: ${defaultFixed.toFixed(2)}/mo (typical service charge)
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-center mt-8">
+                <button
+                  onClick={() => setStep(STEPS.BUILDING)}
+                  className="btn btn-outline px-6 py-3"
+                >
+                  Back
+                </button>
+                <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+                  <span className="flex items-center gap-1">
+                    Continue <ChevronRight size={18} />
+                  </span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Step 5: Bridge Setup (Optional) */}
         {step === STEPS.BRIDGE && (
           <div className="space-y-8">
             <div className="text-center mb-8">
@@ -1400,7 +1593,7 @@ export default function Onboarding() {
 
             <div className="flex gap-3 justify-center mt-8">
               <button
-                onClick={() => setStep(STEPS.BUILDING)}
+                onClick={() => setStep(STEPS.COST_SETTINGS)}
                 className="btn btn-outline px-6 py-3"
               >
                 Back
@@ -1414,7 +1607,7 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 5: AI Integration (Optional, skippable) */}
+        {/* Step 6: AI Integration (Optional, skippable) */}
         {step === STEPS.AI && (
           <div className="text-left">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
@@ -1428,6 +1621,9 @@ export default function Onboarding() {
             </p>
             <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 max-h-[60vh] overflow-y-auto">
               <GroqApiKeyInput />
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+                Want to share your LLM with others off-network? See <Link to="/tools/shared-llm-server" className="text-blue-600 dark:text-blue-400 hover:underline">Tools → Shared LLM Server Wizard</Link> after setup.
+              </p>
             </div>
             <div className="flex flex-wrap gap-3 justify-center">
               <button
@@ -1573,6 +1769,16 @@ export default function Onboarding() {
                   <span className="text-gray-600 dark:text-gray-400">Thermostats/Zones</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     {numberOfThermostats} {numberOfThermostats === 1 ? "zone" : "zones"}
+                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
+                  </span>
+                </button>
+                <button
+                  onClick={() => setStep(STEPS.COST_SETTINGS)}
+                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                >
+                  <span className="text-gray-600 dark:text-gray-400">Cost Settings</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    ${utilityCost.toFixed(2)}/kWh, ${gasCost.toFixed(2)}/therm, ${fixedElectricCost.toFixed(2)}/mo
                     <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
                   </span>
                 </button>

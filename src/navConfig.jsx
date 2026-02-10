@@ -89,6 +89,8 @@ const RemotePairingLink = lazy(() => import("./pages/RemotePairingLink"));
 const RemoteSettings = lazy(() => import("./pages/RemoteSettings"));
 const SupportTicket = lazy(() => import("./pages/SupportTicket"));
 const OfflineLauncher = lazy(() => import("./pages/OfflineLauncher"));
+const SharedLLMServerWizard = lazy(() => import("./pages/SharedLLMServerWizard"));
+const BridgeRemoteAccessWizard = lazy(() => import("./pages/BridgeRemoteAccessWizard"));
 const GeneratorCalculator = lazy(() => import("./pages/GeneratorCalculator"));
 const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
 const BridgePerformance = lazy(() => import("./pages/BridgePerformance"));
@@ -968,6 +970,28 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Self-service diagnostics and troubleshooting. Check status, view logs, and perform basic maintenance tasks.",
+  },
+  {
+    path: "/tools/shared-llm-server-wizard",
+    name: "Shared LLM Server Wizard",
+    label: "Shared LLM Server Wizard",
+    icon: Server,
+    Component: SharedLLMServerWizard,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Step-by-step wizard to host a shared LLM server with DuckDNS + Ollama. Free, no ngrok or Cloudflare.",
+  },
+  {
+    path: "/tools/bridge-remote-access-wizard",
+    name: "Bridge Remote Access Wizard",
+    label: "Bridge Remote Access Wizard",
+    icon: Server,
+    Component: BridgeRemoteAccessWizard,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Make your Pi Zero bridge accessible from outside your network. DuckDNS, Cloudflare Tunnel, or Tailscale.",
   },
   {
     path: "/tools/offline-launcher",

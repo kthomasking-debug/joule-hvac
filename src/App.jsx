@@ -142,6 +142,30 @@ function AppInner() {
     });
   }, []);
   
+  // Apply shared LLM config from URL params (e.g. from QR code for off-network users)
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ollamaUrl = params.get("ollamaUrl") || params.get("ollama");
+    if (!ollamaUrl?.trim()) return;
+    try {
+      localStorage.setItem("aiProvider", "local");
+      localStorage.setItem("localAIBaseUrl", ollamaUrl.trim());
+      const model = params.get("ollamaModel") || params.get("model") || "llama3:latest";
+      localStorage.setItem("localAIModel", model);
+      try {
+        const base = localStorage.getItem("jouleBridgeUrl") || import.meta.env?.VITE_JOULE_BRIDGE_URL || (window.location?.port === "8080" ? window.location.origin : null) || "";
+        if (base) {
+          ["aiProvider", "localAIBaseUrl", "localAIModel"].forEach((key) => {
+            fetch(`${base}/api/settings/${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: key === "aiProvider" ? "local" : key === "localAIBaseUrl" ? ollamaUrl.trim() : model }) }).catch(() => {});
+          });
+        }
+      } catch { /* ignore */ }
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: {} }));
+      navigate(location.pathname || "/", { replace: true });
+    } catch { /* ignore */ }
+  }, [location.search, location.pathname, navigate]);
+
   // Hydrate AI config from bridge when app runs on bridge (localStorage is per-origin, so bridge origin starts empty)
   React.useEffect(() => {
     let cancelled = false;

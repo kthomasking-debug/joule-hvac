@@ -1258,7 +1258,7 @@ const GroqApiKeyInput = () => {
               }}
               className="rounded-full"
             />
-            <span className="text-sm">On another device (e.g. my PC — I use the app on my phone)</span>
+            <span className="text-sm">On another device or shared server (local IP or public URL)</span>
           </label>
         </div>
       </div>
@@ -1277,12 +1277,17 @@ const GroqApiKeyInput = () => {
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           {ollamaLocation === "this-device"
             ? "Usually leave as is when Ollama runs on this device."
-            : "Enter the other computer’s address so Joule can reach it. Same Wi‑Fi required."}
+            : "Enter the address: a local IP (e.g. 192.168.0.108) for same Wi‑Fi, or a public URL (ngrok/Cloudflare Tunnel) for off-network access."}
         </p>
         {ollamaLocation === "other-device" && (
-          <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-            To find that computer’s address: on the <strong>device that runs Ollama</strong> (the one with the GPU), run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code> (Windows), or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">hostname -I</code> or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ip addr</code> (Linux), or use System Settings → Network (Mac). Use the IPv4 address (e.g. 192.168.0.108).
-          </p>
+          <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 space-y-2">
+            <p>
+              <strong>Same network:</strong> On the device running Ollama, run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code> (Windows), <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">hostname -I</code> or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ip addr</code> (Linux), or System Settings → Network (Mac). Use the IPv4 address (e.g. 192.168.0.108). Add <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">/v1</code> (e.g. http://192.168.0.108:11434/v1).
+            </p>
+            <p>
+              <strong>Shared server (off-network):</strong> If someone hosts a shared Joule LLM server, they can give you a public URL. See <Link to="/docs/SHARED-LLM-SERVER.md" className="text-blue-600 dark:text-blue-400 hover:underline">Shared LLM Server guide</Link> for setup.
+            </p>
+          </div>
         )}
       </div>
       <div>

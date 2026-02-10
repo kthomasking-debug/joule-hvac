@@ -138,6 +138,22 @@ export default function Tools() {
           description: "See exactly what the Pi Zero 2 W Waveshare e-paper shows, with live bridge data and the same Status/Actions/Guide navigation.",
           color: "blue",
         },
+        {
+          path: "/tools/shared-llm-server-wizard",
+          name: "Shared LLM Server Wizard",
+          label: "Shared LLM Server Wizard",
+          icon: Server,
+          description: "Step-by-step wizard to host a shared LLM server with DuckDNS + Ollama. Free — no ngrok or Cloudflare. Let others use your GPU for Ask Joule.",
+          color: "green",
+        },
+        {
+          path: "/tools/bridge-remote-access-wizard",
+          name: "Bridge Remote Access Wizard",
+          label: "Bridge Remote Access Wizard",
+          icon: Network,
+          description: "Make your Pi Zero bridge accessible from outside your network. DuckDNS, Cloudflare Tunnel, or Tailscale.",
+          color: "blue",
+        },
       ],
     },
     {
