@@ -175,7 +175,7 @@ export function useAskJouleController(props) {
     if (typeof window === "undefined") return "";
     const key = (localStorage.getItem("groqApiKey") || "").trim();
     if (key) return key;
-    const provider = localStorage.getItem("aiProvider");
+    const provider = localStorage.getItem("aiProvider") || "local";
     const localUrl = (localStorage.getItem("localAIBaseUrl") || "").trim();
     if (provider === "local" && localUrl) return "local"; // Truthy so AI features are enabled
     return "";

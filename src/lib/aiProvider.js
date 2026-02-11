@@ -11,7 +11,36 @@ export const AI_PROVIDERS = {
   LOCAL: "local",
 };
 
-const DEFAULT_LOCAL_AI_BASE_URL = "http://192.168.0.108:11434/v1";
+const DEFAULT_LOCAL_AI_BASE_URL = "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+
+/**
+ * Extract and normalize the Ollama base URL.
+ * - If user pastes a Joule share link (e.g. http://localhost:5173/?ollamaUrl=...), extract the ollamaUrl param.
+ * - If URL has no path (e.g. https://xxx.trycloudflare.com), append /v1 so chat/completions works.
+ */
+export function sanitizeOllamaBaseUrl(input) {
+  if (!input || typeof input !== "string") return input;
+  const trimmed = input.trim();
+  if (!trimmed) return trimmed;
+  try {
+    let result = trimmed;
+    // Extract from full page URL with ollamaUrl param
+    if (trimmed.includes("?ollamaUrl=") || trimmed.includes("&ollamaUrl=") || trimmed.includes("?ollama=") || trimmed.includes("&ollama=")) {
+      const url = new URL(trimmed);
+      const extracted = url.searchParams.get("ollamaUrl") || url.searchParams.get("ollama");
+      if (extracted?.trim()) result = extracted.trim();
+    }
+    // Ollama's OpenAI-compatible API is at /v1/chat/completions. If URL has no path, add /v1.
+    const u = new URL(result);
+    if (!u.pathname || u.pathname === "/") {
+      u.pathname = "/v1";
+      result = u.toString().replace(/\/$/, "");
+    }
+    return result;
+  } catch {
+    return trimmed;
+  }
+}
 
 /** Return a user-friendly message for Groq 429 rate limit; otherwise return null. */
 function friendlyMessageForGroqError(status) {
@@ -25,7 +54,7 @@ function friendlyMessageForGroqError(status) {
  */
 export function isAIAvailable() {
   if (typeof window === "undefined") return false;
-  const provider = localStorage.getItem(AI_PROVIDER_KEY) || AI_PROVIDERS.GROQ;
+  const provider = localStorage.getItem(AI_PROVIDER_KEY) || AI_PROVIDERS.LOCAL;
   if (provider === AI_PROVIDERS.LOCAL) {
     const baseUrl = (localStorage.getItem(LOCAL_AI_BASE_URL_KEY) || DEFAULT_LOCAL_AI_BASE_URL).trim();
     return baseUrl.length > 0;
@@ -38,9 +67,10 @@ export function isAIAvailable() {
  * Get current AI configuration for making LLM requests
  */
 export function getAIConfig() {
-  const provider = localStorage.getItem(AI_PROVIDER_KEY) || AI_PROVIDERS.GROQ;
+  const provider = localStorage.getItem(AI_PROVIDER_KEY) || AI_PROVIDERS.LOCAL;
   if (provider === AI_PROVIDERS.LOCAL) {
-    const baseUrl = (localStorage.getItem(LOCAL_AI_BASE_URL_KEY) || DEFAULT_LOCAL_AI_BASE_URL).trim();
+    const raw = (localStorage.getItem(LOCAL_AI_BASE_URL_KEY) || DEFAULT_LOCAL_AI_BASE_URL).trim();
+    const baseUrl = sanitizeOllamaBaseUrl(raw) || raw;
     const model = (localStorage.getItem(LOCAL_AI_MODEL_KEY) || "llama3:latest").trim();
     return { provider: AI_PROVIDERS.LOCAL, baseUrl, model };
   }
@@ -50,14 +80,44 @@ export function getAIConfig() {
 }
 
 /**
- * Call OpenAI-compatible chat completions endpoint (works with Groq and Ollama)
+ * Return { url, target } for chat/completions.
+ * In dev, when Local AI URL is cross-origin, uses proxy (target = baseUrl for X-LLM-Target header).
  */
-export async function callChatCompletions({ url, apiKey, model, messages, temperature = 0.1, maxTokens = 500 }) {
+function getChatCompletionsUrl(config) {
+  if (config.provider !== AI_PROVIDERS.LOCAL) return null;
+  const baseUrl = config.baseUrl.replace(/\/$/, "");
+  const useProxy =
+    typeof window !== "undefined" &&
+    import.meta.env?.DEV &&
+    (() => {
+      try {
+        return new URL(baseUrl).origin !== window.location.origin;
+      } catch {
+        return false;
+      }
+    })();
+  if (useProxy) {
+    return {
+      url: `${window.location.origin}/api/llm-proxy/chat/completions`,
+      target: baseUrl,
+    };
+  }
+  return { url: baseUrl + "/chat/completions", target: null };
+}
+
+/**
+ * Call OpenAI-compatible chat completions endpoint (works with Groq and Ollama)
+ * @param {string} target - When using dev proxy, the base URL for X-LLM-Target header
+ */
+export async function callChatCompletions({ url, apiKey, model, messages, temperature = 0.1, maxTokens = 500, target }) {
   const headers = {
     "Content-Type": "application/json",
   };
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
+  }
+  if (target) {
+    headers["X-LLM-Target"] = target;
   }
   const response = await fetch(url, {
     method: "POST",
@@ -98,7 +158,11 @@ export async function callLLMStreaming({
   let body;
 
   if (config.provider === AI_PROVIDERS.LOCAL) {
-    url = config.baseUrl.replace(/\/$/, "") + "/chat/completions";
+    const urlInfo = getChatCompletionsUrl(config);
+    url = urlInfo.url;
+    if (urlInfo.target) {
+      headers["X-LLM-Target"] = urlInfo.target;
+    }
     body = {
       model: config.model || "llama3:latest",
       messages,
@@ -203,9 +267,10 @@ export async function callLLMStreaming({
 export async function callLLM({ messages, temperature = 0.1, maxTokens = 500 }) {
   const config = getAIConfig();
   if (config.provider === AI_PROVIDERS.LOCAL) {
-    const url = config.baseUrl.replace(/\/$/, "") + "/chat/completions";
+    const urlInfo = getChatCompletionsUrl(config);
     return callChatCompletions({
-      url,
+      url: urlInfo.url,
+      target: urlInfo.target,
       apiKey: null,
       model: config.model,
       messages,
@@ -235,12 +300,58 @@ export async function callLLM({ messages, temperature = 0.1, maxTokens = 500 }) 
 }
 
 /**
- * Fetch available models from Ollama (GET /api/tags)
+ * Warm the local LLM (Ollama) by sending a tiny prompt. Loads the model into VRAM
+ * before the user's first real request, eliminating 5-20s cold-start latency.
+ * No-op for Groq (cloud has no cold start). Fire-and-forget — never blocks UI.
+ */
+const WARM_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
+const WARM_STORAGE_KEY = "llmLastWarmedAt";
+
+export function warmLLM() {
+  if (typeof window === "undefined") return;
+  const config = getAIConfig();
+  if (config.provider !== AI_PROVIDERS.LOCAL) return;
+
+  const last = parseInt(sessionStorage.getItem(WARM_STORAGE_KEY) || "0", 10);
+  if (Date.now() - last < WARM_DEBOUNCE_MS) return;
+
+  const urlInfo = getChatCompletionsUrl(config);
+  const body = JSON.stringify({
+    model: config.model || "llama3:latest",
+    messages: [{ role: "user", content: "Ready." }],
+    stream: false,
+    temperature: 0,
+    max_tokens: 2,
+  });
+
+  const headers = { "Content-Type": "application/json" };
+  if (urlInfo.target) headers["X-LLM-Target"] = urlInfo.target;
+  fetch(urlInfo.url, {
+    method: "POST",
+    headers,
+    body,
+  })
+    .then(() => sessionStorage.setItem(WARM_STORAGE_KEY, String(Date.now())))
+    .catch(() => {});
+}
+
+/**
+ * Fetch available models from Ollama (GET /api/tags).
+ * In dev, when baseUrl is cross-origin, uses proxy to avoid CORS.
  */
 export async function fetchOllamaModels(baseUrl) {
-  const u = new URL(baseUrl || "http://192.168.0.108:11434/v1");
-  const tagsUrl = `${u.origin}/api/tags`;
-  const res = await fetch(tagsUrl);
+  const raw = (baseUrl || DEFAULT_LOCAL_AI_BASE_URL).trim();
+  const base = sanitizeOllamaBaseUrl(raw);
+  const u = new URL(base);
+  const useProxy =
+    typeof window !== "undefined" &&
+    import.meta.env?.DEV &&
+    u.origin !== window.location.origin;
+  const tagsUrl = useProxy
+    ? `${window.location.origin}/api/llm-proxy/api/tags`
+    : `${u.origin}/api/tags`;
+  const headers = useProxy ? { "X-LLM-Target": u.origin } : {};
+  const res = await fetch(tagsUrl, { headers });
   if (!res.ok) throw new Error(`Ollama models fetch failed: ${res.status}`);
   const data = await res.json();
   const models = data.models || [];

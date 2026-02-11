@@ -49,6 +49,7 @@ import { SeasonProvider } from "./features/forecaster/components";
 import { JouleBridgeProvider } from "./contexts/JouleBridgeContext";
 import { indexMarkdownDocs } from "./utils/rag/loadMarkdownDocs";
 import { shouldUseLearnedHeatLoss } from "./utils/billDataUtils";
+import { warmLLM, sanitizeOllamaBaseUrl } from "./lib/aiProvider";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -75,6 +76,29 @@ function AppInner() {
   const { mode, setMode } = useMode();
   const queryClient = useQueryClient();
   
+  // Migrate old wrong Cloudflare URL to correct default (runs on app load)
+  React.useEffect(() => {
+    try {
+      const url = localStorage.getItem("localAIBaseUrl") || "";
+      if (url.includes("tricks-actions-applied-clothing")) {
+        const fixed = url.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        localStorage.setItem("localAIBaseUrl", fixed);
+      }
+      const other = localStorage.getItem("localAIBaseUrlOtherDevice") || "";
+      if (other.includes("tricks-actions-applied-clothing")) {
+        const fixed = other.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        localStorage.setItem("localAIBaseUrlOtherDevice", fixed);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Pre-warm local LLM on window focus (user returns after idle — model may have unloaded)
+  React.useEffect(() => {
+    const handler = () => warmLLM();
+    window.addEventListener("focus", handler);
+    return () => window.removeEventListener("focus", handler);
+  }, []);
+
   // Auto-accept terms on mount (for Reddit demo - skip terms modal)
   React.useEffect(() => {
     if (!termsAccepted && isLoaded) {
@@ -146,11 +170,12 @@ function AppInner() {
   // Apply shared LLM config from URL params (e.g. from QR code for off-network users)
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const ollamaUrl = params.get("ollamaUrl") || params.get("ollama");
-    if (!ollamaUrl?.trim()) return;
+    const raw = params.get("ollamaUrl") || params.get("ollama");
+    if (!raw?.trim()) return;
     try {
+      const ollamaUrl = sanitizeOllamaBaseUrl(raw.trim()) || raw.trim();
       localStorage.setItem("aiProvider", "local");
-      localStorage.setItem("localAIBaseUrl", ollamaUrl.trim());
+      localStorage.setItem("localAIBaseUrl", ollamaUrl);
       const model = params.get("ollamaModel") || params.get("model") || "llama3:latest";
       localStorage.setItem("localAIModel", model);
       try {

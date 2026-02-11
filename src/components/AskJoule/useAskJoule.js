@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
@@ -225,6 +225,7 @@ export function useAskJoule({
   const speechManuallyStoppedRef = useRef(false);
   const lastProcessedResponseRef = useRef(null); // Track last processed response to prevent loops
   const speakerAutoEnabledRef = useRef(false); // Track if we auto-enabled speaker for this session
+  const userManuallyMutedRef = useRef(false); // User explicitly clicked mute - don't auto-enable
   const isProcessingResponseRef = useRef(false); // Prevent concurrent response processing
   const speechTimeoutRef = useRef(null); // Track speech timeout to prevent multiple calls
   const agentSubmittingRef = useRef(false); // Prevent concurrent agent requests (avoids hung/overlapping responses)
@@ -1557,7 +1558,7 @@ export function useAskJoule({
     setError("");
     setOutputStatus("");
     // Show hint for local AI (slow GPU can take 1–6 min)
-    const aiProvider = typeof window !== "undefined" ? localStorage.getItem("aiProvider") : "groq";
+    const aiProvider = typeof window !== "undefined" ? (localStorage.getItem("aiProvider") || "local") : "local";
     const isLocalAI = aiProvider === "local";
     setLoadingMessage(isLocalAI ? "Thinking... (Local AI can take 1–6 min on slow GPUs)" : "Thinking...");
     setIsLoadingGroq(true);
@@ -2205,12 +2206,13 @@ RULES:
         lastProcessedResponseRef.current = responseId;
 
         // Auto-enable speaker if user is using voice input (microphone is active)
-        // Only do this once per session to prevent loops
+        // Only do this once per session and never when user explicitly muted
         if (
           isListening &&
           !speechEnabled &&
           toggleSpeech &&
-          !speakerAutoEnabledRef.current
+          !speakerAutoEnabledRef.current &&
+          !userManuallyMutedRef.current
         ) {
           speakerAutoEnabledRef.current = true; // Mark that we've auto-enabled
           toggleSpeech(); // Enable the speaker button
@@ -2376,6 +2378,16 @@ RULES:
     }
   };
 
+  // Wrap toggleSpeech to track manual mute - prevents auto-enable from fighting user intent
+  const wrappedToggleSpeech = useCallback(() => {
+    if (speechEnabled) {
+      userManuallyMutedRef.current = true; // User is muting
+    } else {
+      userManuallyMutedRef.current = false; // User is unmuting
+    }
+    toggleSpeech();
+  }, [toggleSpeech, speechEnabled]);
+
   const handleRetryGroq = () => {
     if (lastQuery) handleSubmit(null, lastQuery);
   };
@@ -2426,7 +2438,7 @@ RULES:
     // Actions
     handleSubmit,
     toggleListening,
-    toggleSpeech,
+    toggleSpeech: wrappedToggleSpeech,
     stopSpeaking: () => {
       speechManuallyStoppedRef.current = true; // Mark that user manually stopped
       stopSpeaking();

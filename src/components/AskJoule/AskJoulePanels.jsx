@@ -61,7 +61,7 @@ function SampleCommands({ onSelectCommand }) {
 function SampleQuestions({ onSelectQuestion }) {
   const location = useLocation();
   const questions = getSuggestedQuestions(location.pathname);
-  const aiProvider = typeof window !== "undefined" ? localStorage.getItem("aiProvider") : "groq";
+  const aiProvider = typeof window !== "undefined" ? (localStorage.getItem("aiProvider") || "local") : "local";
   const hasLocalAI = aiProvider === "local" && (localStorage.getItem("localAIBaseUrl") || "").trim();
   const hasGroq = (localStorage.getItem("groqApiKey") || "").trim();
   const hasAI = hasGroq || hasLocalAI;

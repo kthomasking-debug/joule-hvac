@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import "./styles/design-system.css";
 import "./styles/print.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { routes } from "./navConfig.jsx";
+
+const RootRedirect = lazy(() => import("./components/RootRedirect"));
 
 // Create React Query client with optimized settings for background fetching
 const queryClient = new QueryClient({
@@ -96,7 +98,11 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: <Navigate to="/home" replace />,
+          element: (
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <RootRedirect />
+            </Suspense>
+          ),
         },
         // Redirect old tool paths to new /tools/ paths for backward compatibility
         {

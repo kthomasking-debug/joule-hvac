@@ -157,7 +157,11 @@ export const AskJouleInput = React.memo(({
                 className={`btn px-2.5 py-2 text-xs flex items-center gap-1.5 ${
                   speechEnabled ? "btn-primary" : "btn-outline"
                 }`}
-                onClick={toggleSpeech}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSpeech();
+                }}
                 title={speechEnabled ? "Voice enabled" : "Voice disabled"}
               >
                 {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}

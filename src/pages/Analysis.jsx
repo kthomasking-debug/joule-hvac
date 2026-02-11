@@ -7,7 +7,8 @@ import {
   BarChart2,
   Activity,
   MapPin,
-  Home
+  Home,
+  FileText
 } from 'lucide-react';
 import AIExplanation from '../components/AIExplanation';
 
@@ -47,7 +48,7 @@ const Analysis = () => {
   // Sync activeTab with location changes and redirect to default if needed
   useEffect(() => {
     if (location.pathname === '/analysis') {
-      navigate('/analysis/weekly', { replace: true });
+      navigate('/analysis/monthly', { replace: true });
       return;
     }
     setActiveTab(getActiveTab());
@@ -139,13 +140,22 @@ const Analysis = () => {
                   </Link>
                   <h1 className="text-lg font-semibold text-white truncate">Cost Simulator</h1>
                 </div>
-                <Link
-                  to="/analysis/annual"
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 shrink-0 py-2 touch-manipulation"
-                >
-                  <TrendingUp className="w-3 h-3" />
-                  Annual Forecast
-                </Link>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link
+                    to="/analysis/monthly#bill-analysis"
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors py-2 touch-manipulation"
+                  >
+                    <FileText className="w-3 h-3" />
+                    Compare Bill
+                  </Link>
+                  <Link
+                    to="/analysis/annual"
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors py-2 touch-manipulation"
+                  >
+                    <TrendingUp className="w-3 h-3" />
+                    Annual Forecast
+                  </Link>
+                </div>
               </div>
               <p className="text-xs text-[#A7B0BA] italic">
                 Simulate costs, track monthly spending, and explore what your thermostat data reveals — all in one place.

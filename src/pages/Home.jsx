@@ -54,6 +54,7 @@ import * as heatUtils from "../lib/heatUtils";
 import { routes } from "../navConfig";
 import { getCached, getCachedBatch } from "../utils/cachedStorage";
 import { shouldUseLearnedHeatLoss } from "../utils/billDataUtils";
+import { warmLLM } from "../lib/aiProvider";
 
 const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
 
@@ -65,11 +66,17 @@ const HomeDashboard = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const toolsSectionRef = useRef(null);
 
+  const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
+
+  // Warm local LLM on Home load so bill analysis is instant (no cold-start latency)
+  useEffect(() => {
+    warmLLM();
+  }, []);
+
   // Handle clicks on main feature buttons - require onboarding first
   const handleFeatureClick = (targetPath, event) => {
     event.preventDefault();
     try {
-      const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
       const userLocation = localStorage.getItem("userLocation");
       const settings = getAllSettings?.();
       
@@ -772,27 +779,29 @@ const HomeDashboard = () => {
   return (
     <div className="min-h-screen bg-[#050B10]">
       <div className="w-full px-6 lg:px-8 py-6">
-        {/* Page Header */}
-        <header className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-[28px] font-semibold text-white mb-2">
-              Mission Control
-            </h1>
-            <p className="text-sm text-[#A7B0BA]">
-              Quick overview of your system status
-            </p>
-          </div>
-          <Link
-            to="/onboarding?rerun=true"
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
-          >
-            <SettingsIcon className="w-4 h-4" />
-            Re-run Onboarding
-          </Link>
-        </header>
+        {/* Page Header - Only show after onboarding complete */}
+        {hasCompletedOnboarding && (
+          <header className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-[28px] font-semibold text-white mb-2">
+                Mission Control
+              </h1>
+              <p className="text-sm text-[#A7B0BA]">
+                Quick overview of your system status
+              </p>
+            </div>
+            <Link
+              to="/onboarding?rerun=true"
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+            >
+              <SettingsIcon className="w-4 h-4" />
+              Re-run Onboarding
+            </Link>
+          </header>
+        )}
 
-        {/* Quick Status Card - Only show when Ecobee is paired */}
-        {bridgeAvailable && jouleBridge.connected && (
+        {/* Quick Status Card - Only show when Ecobee is paired AND onboarding complete */}
+        {hasCompletedOnboarding && bridgeAvailable && jouleBridge.connected && (
           <div className="mb-6 bg-[#0C1118] border border-slate-800 rounded-xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
@@ -815,71 +824,27 @@ const HomeDashboard = () => {
           </div>
         )}
 
-        {/* Coming Soon Notice */}
-        {!bridgeAvailable || !jouleBridge.connected ? (
-          <div className="mb-6 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-purple-500/10 border border-purple-500/30 rounded-xl p-6 relative overflow-hidden">
-            <div className="flex items-start gap-4 relative z-10">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-400/30 flex items-center justify-center animate-pulse">
-                  <Sparkles className="w-6 h-6 text-purple-300" />
-                </div>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-md text-xs font-semibold text-green-200 uppercase tracking-wider">
-                    New Feature
-                  </span>
-                </div>
-                <p className="text-base text-white font-semibold mb-2">
-                  <a 
-                    href={EBAY_STORE_URL} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="hover:text-purple-200 transition-colors"
-                  >
-                    Pair with Ecobee to enable full features
-                  </a>
-                </p>
-                <p className="text-sm text-slate-300">
-                  Go to <Link to="/settings/bridge-ai" className="text-purple-300 hover:text-purple-200 underline font-medium">Settings → Bridge & AI</Link> to pair your Ecobee thermostat with the Joule Bridge.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Quick Links - Simplified to 2 main actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Primary: Cost Simulator */}
+        {/* Primary CTA: Why is my bill so high? */}
+        <div className="w-full">
           <button
             onClick={(e) => handleFeatureClick("/analysis", e)}
-            className="bg-gradient-to-br from-green-600/20 to-emerald-700/20 border-2 border-green-500/40 rounded-xl p-6 hover:border-green-400/60 transition-colors text-left w-full"
+            className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-8 hover:border-orange-400/60 transition-colors text-left w-full"
           >
-            <div className="flex items-center gap-3 mb-2">
-              <Calendar className="w-6 h-6 text-green-400" />
-              <h3 className="text-lg font-semibold text-white">Cost Simulator</h3>
+            <div className="flex items-center gap-4 mb-3">
+              <Calendar className="w-10 h-10 text-orange-400" />
+              <h3 className="text-2xl font-semibold text-white">Why is my bill so high?</h3>
             </div>
-            <p className="text-sm text-[#A7B0BA]">Weekly, monthly, and annual forecasts</p>
-          </button>
-
-          {/* Secondary: Bridge Performance */}
-          <button
-            onClick={(e) => handleFeatureClick("/analysis/performance", e)}
-            className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-6 hover:border-orange-400/60 transition-colors text-left w-full"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <Zap className="w-6 h-6 text-orange-400" />
-              <h3 className="text-lg font-semibold text-white">Your Bridge</h3>
-            </div>
-            <p className="text-sm text-[#A7B0BA]">Real-time data from your thermostat</p>
+            <p className="text-lg text-[#A7B0BA]">Weekly, monthly, and annual forecasts — plus bill comparison</p>
           </button>
         </div>
 
-        {/* Savings Dashboard - Money-saving widgets */}
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold text-white mb-4">💰 Save Money</h2>
-          <SavingsDashboard />
-        </div>
+        {/* Savings Dashboard - Only show after onboarding complete */}
+        {hasCompletedOnboarding && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold text-white mb-4">💰 Save Money</h2>
+            <SavingsDashboard />
+          </div>
+        )}
       </div>
     </div>
   );

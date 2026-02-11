@@ -1,9 +1,55 @@
-# Quick Start: Your Talking Thermostat
+# Joule Quick Start Guide
 
-> **Note:** For complete setup instructions, see `docs/USER_MANUAL.md`  
-> This guide focuses specifically on voice commands and AI Mode features.
+> **Note:** For complete setup instructions, see `docs/USER_MANUAL.md`
 
-## 🎙️ Try It Now
+---
+
+## 📦 3-Step Device Setup
+
+### Step 1: Power On
+Plug the USB-C cable into the bridge and a power outlet. Wait 60 seconds for the display to show the IP address.
+
+### Step 2: Connect Your Phone
+1. Open the app (on home Wi‑Fi, use the IP on the display; remotely, use your tunnel URL e.g. `joulehvac.duckdns.org`)
+2. Complete the setup wizard
+3. Enter the IP address shown on the display
+
+### Step 3: Link Your Ecobee
+1. In the app, go to **Settings → Ecobee**
+2. Enter your Ecobee API key
+3. Your thermostat data will sync automatically
+
+**Display icons:**
+
+| Icon | Meaning |
+|------|---------|
+| 🏠 72°F | Current indoor temperature |
+| ❄️ Cool / 🔥 Heat | Current HVAC mode |
+| 📶 IP Address | Bridge network address |
+
+---
+
+## 🌐 App Access (Local vs Remote)
+
+The app behaves differently depending on *how* you reach it:
+
+| URL type | First visit | After onboarding |
+|----------|-------------|------------------|
+| **Local IP** (e.g. `192.168.0.103:8080`) | Onboarding | Home |
+| **Tunnel / public** (e.g. `joulehvac.duckdns.org`) | Landing page | Home |
+| **Local + `?bridge=1`** | Onboarding | Home |
+| **Tunnel + `?bridge=1`** | Onboarding | Home |
+
+**Why?** `localStorage` (including onboarding completion) is per-origin. Visiting via local IP vs tunnel URL are different origins to the browser, so each “remembers” onboarding separately. Most users stick to one URL, so this is fine for v1.
+
+**`?bridge=1` override** — Add to any URL to skip the landing page and go straight to onboarding/app. Useful for:
+- Remote users who have already set up
+- Debugging
+- Support (“add ?bridge=1 to the end of the URL”)
+
+---
+
+## 🎙️ AI Mode & Voice Commands
 
 ### 1. Access AI Mode
 

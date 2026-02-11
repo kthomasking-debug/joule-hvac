@@ -2,6 +2,56 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+// Custom proxy in dev: forwards /api/llm-proxy to the URL in X-LLM-Target header (bypasses CORS)
+function llmProxyPlugin() {
+  return {
+    name: "llm-proxy",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith("/api/llm-proxy/")) return next();
+        const target = req.headers["x-llm-target"];
+        if (!target || typeof target !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing X-LLM-Target header" }));
+          return;
+        }
+        const targetBase = target.replace(/\/$/, "");
+        const pathSuffix = req.url.replace(/^\/api\/llm-proxy/, "") || "/chat/completions";
+        const proxyUrl = targetBase + pathSuffix;
+        try {
+          const isGet = req.method === "GET";
+          const fetchOpts = isGet ? { method: "GET" } : {
+            method: "POST",
+            headers: { "Content-Type": req.headers["content-type"] || "application/json" },
+            body: await new Promise((resolve, reject) => {
+              const chunks = [];
+              req.on("data", (c) => chunks.push(c));
+              req.on("end", () => resolve(Buffer.concat(chunks)));
+              req.on("error", reject);
+            }),
+          };
+          const proxyRes = await fetch(proxyUrl, fetchOpts);
+          res.writeHead(proxyRes.status, {
+            "Content-Type": proxyRes.headers.get("content-type") || "application/json",
+          });
+          const reader = proxyRes.body?.getReader();
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(value);
+            }
+          }
+          res.end();
+        } catch (err) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err?.message || err) }));
+        }
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   // Environment-dependent base path:
@@ -37,6 +87,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    llmProxyPlugin(),
     // Plugin to inject global polyfill at the start of vendor chunks
     {
       name: "inject-global-polyfill",

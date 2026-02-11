@@ -553,7 +553,7 @@ credentials-file: /home/YOUR_USER/.cloudflared/TUNNEL_UUID.json`}
                   <p className="text-xl text-gray-500">Joule users: Settings → AI Integration → Local (Ollama) → On another device → enter the URL.</p>
                   <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 mt-4">
                     <p className="text-xl text-emerald-800 dark:text-emerald-200 font-semibold">QR code for off-network users</p>
-                    <p className="text-xl text-emerald-700 dark:text-emerald-300 mt-1">Paste your Cloudflare tunnel URL below (e.g. https://tricks-actions-applied-clothing.trycloudflare.com). The link will auto-configure Local Ollama when users open it. Create a QR code from the link.</p>
+                    <p className="text-xl text-emerald-700 dark:text-emerald-300 mt-1">Paste your Cloudflare tunnel URL below (e.g. https://criteria-toolkit-certainly-representations.trycloudflare.com). The link will auto-configure Local Ollama when users open it. Create a QR code from the link.</p>
                     <input
                       type="url"
                       value={cloudflareTunnelUrl}

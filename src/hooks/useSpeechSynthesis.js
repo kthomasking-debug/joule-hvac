@@ -583,11 +583,13 @@ export function useSpeechSynthesis(options = {}) {
   }, [isSupported]);
 
   // Speak text function
+  // options.force: when true, speak even if user has TTS disabled (for explicit "Read aloud" clicks)
   const speak = useCallback(
     async (text, options = {}) => {
+      const force = options.force === true;
       // Check both the parent's enabled prop (enabledRef) AND internal state (isEnabled)
-      // Both must be true for speech to work
-      if (!enabledRef.current || !isEnabled || !text) return Promise.resolve();
+      // Both must be true for speech to work, unless force is set (explicit user click)
+      if ((!force && (!enabledRef.current || !isEnabled)) || !text) return Promise.resolve();
 
       // Cancel any ongoing speech (both browser TTS and ElevenLabs)
       // Do this FIRST before anything else to prevent overlapping audio
@@ -1141,21 +1143,21 @@ export function useSpeechSynthesis(options = {}) {
     window.speechSynthesis.resume();
   }, [isSupported]);
 
-  // Toggle enabled state
+  // Toggle enabled state - use functional update to avoid stale closure and keep callback stable
   const toggleEnabled = useCallback(() => {
-    const newState = !isEnabled;
-    setIsEnabled(newState);
-    try {
-      localStorage.setItem("askJouleSpeechEnabled", newState.toString());
-    } catch (err) {
-      console.warn("Failed to save speech enabled state:", err);
-    }
-
-    // Stop speaking if disabling
-    if (!newState && isSpeaking) {
-      stop();
-    }
-  }, [isEnabled, isSpeaking, stop]);
+    setIsEnabled((prev) => {
+      const newState = !prev;
+      try {
+        localStorage.setItem("askJouleSpeechEnabled", newState.toString());
+      } catch (err) {
+        console.warn("Failed to save speech enabled state:", err);
+      }
+      if (!newState) {
+        stop(); // Stop speaking when disabling
+      }
+      return newState;
+    });
+  }, [stop]);
 
   // Change voice
   const changeVoice = useCallback(

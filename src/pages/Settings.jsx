@@ -38,7 +38,7 @@ import {
   getModelDescription,
   getBestModel,
 } from "../lib/groqModels";
-import { AI_PROVIDERS, fetchOllamaModels } from "../lib/aiProvider";
+import { AI_PROVIDERS, fetchOllamaModels, sanitizeOllamaBaseUrl } from "../lib/aiProvider";
 
 /** Persist a setting to the bridge so it's available when app runs from bridge origin */
 function persistAIConfigToBridge(key, value) {
@@ -798,9 +798,9 @@ const ZoneManagementSection = ({ setToast }) => {
 const GroqApiKeyInput = () => {
   const [aiProvider, setAiProvider] = useState(() => {
     try {
-      return localStorage.getItem("aiProvider") || AI_PROVIDERS.GROQ;
+      return localStorage.getItem("aiProvider") || AI_PROVIDERS.LOCAL;
     } catch {
-      return AI_PROVIDERS.GROQ;
+      return AI_PROVIDERS.LOCAL;
     }
   });
   const [value, setValue] = useState(() => {
@@ -823,9 +823,15 @@ const GroqApiKeyInput = () => {
   const [modelError, setModelError] = useState(null);
   const [localBaseUrl, setLocalBaseUrl] = useState(() => {
     try {
-      return localStorage.getItem("localAIBaseUrl") || "http://192.168.0.108:11434/v1";
+      const raw = localStorage.getItem("localAIBaseUrl") || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+      const sanitized = sanitizeOllamaBaseUrl(raw) || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+      if (sanitized !== raw) {
+        localStorage.setItem("localAIBaseUrl", sanitized);
+        persistAIConfigToBridge("localAIBaseUrl", sanitized);
+      }
+      return sanitized;
     } catch {
-      return "http://192.168.0.108:11434/v1";
+      return "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
     }
   });
   const [localModel, setLocalModel] = useState(() => {
@@ -849,6 +855,29 @@ const GroqApiKeyInput = () => {
       return "other-device";
     }
   });
+
+  // Bootstrap persisted "other device" URL on mount if we have one but haven't saved it yet
+  // Also migrate from old wrong Cloudflare URL to correct default
+  useEffect(() => {
+    try {
+      let current = localStorage.getItem("localAIBaseUrl") || "";
+      if (current.includes("tricks-actions-applied-clothing")) {
+        current = current.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        localStorage.setItem("localAIBaseUrl", current);
+        persistAIConfigToBridge("localAIBaseUrl", current);
+        setLocalBaseUrl(current);
+        window.dispatchEvent(new Event("storage"));
+      }
+      let saved = localStorage.getItem("localAIBaseUrlOtherDevice") || "";
+      if (saved.includes("tricks-actions-applied-clothing")) {
+        saved = saved.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        localStorage.setItem("localAIBaseUrlOtherDevice", saved);
+      }
+      if (current && !current.includes("localhost") && !current.includes("127.0.0.1") && !saved) {
+        localStorage.setItem("localAIBaseUrlOtherDevice", current);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const copyToClipboard = (text, label, stepKey) => {
     if (navigator.clipboard?.writeText) {
@@ -910,12 +939,15 @@ const GroqApiKeyInput = () => {
   };
 
   const handleLocalBaseUrlChange = (e) => {
-    const v = e.target.value.trim();
-    const def = "http://192.168.0.108:11434/v1";
-    setLocalBaseUrl(v || def);
+    const raw = e.target.value.trim();
+    const def = "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+    const val = sanitizeOllamaBaseUrl(raw || def) || def;
+    setLocalBaseUrl(val);
     try {
-      const val = v || def;
       localStorage.setItem("localAIBaseUrl", val);
+      if (ollamaLocation === "other-device" && val && !val.includes("localhost") && !val.includes("127.0.0.1")) {
+        localStorage.setItem("localAIBaseUrlOtherDevice", val);
+      }
       persistAIConfigToBridge("localAIBaseUrl", val);
       window.dispatchEvent(new Event("storage"));
     } catch { /* ignore */ }
@@ -933,7 +965,7 @@ const GroqApiKeyInput = () => {
 
   useEffect(() => {
     if (aiProvider !== AI_PROVIDERS.LOCAL) return;
-    const base = (localBaseUrl || "http://192.168.0.108:11434/v1").trim();
+    const base = (localBaseUrl || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1").trim();
     if (!base) return;
     let cancelled = false;
     setLoadingLocalModels(true);
@@ -1229,6 +1261,13 @@ const GroqApiKeyInput = () => {
               checked={ollamaLocation === "this-device"}
               onChange={() => {
                 setOllamaLocation("this-device");
+                // Preserve "other device" URL before switching, so it's restored when switching back
+                const current = localBaseUrl || "";
+                if (current && !current.includes("localhost") && !current.includes("127.0.0.1")) {
+                  try {
+                    localStorage.setItem("localAIBaseUrlOtherDevice", current);
+                  } catch { /* ignore */ }
+                }
                 const url = "http://localhost:11434/v1";
                 setLocalBaseUrl(url);
                 try {
@@ -1248,7 +1287,13 @@ const GroqApiKeyInput = () => {
               checked={ollamaLocation === "other-device"}
               onChange={() => {
                 setOllamaLocation("other-device");
-                const url = localBaseUrl && !localBaseUrl.includes("localhost") && !localBaseUrl.includes("127.0.0.1") ? localBaseUrl : "http://192.168.0.108:11434/v1";
+                // Restore persisted "other device" URL (Cloudflare tunnel, etc.) if we have it
+                const saved = localStorage.getItem("localAIBaseUrlOtherDevice") || "";
+                const sanitized = saved ? sanitizeOllamaBaseUrl(saved) : null;
+                const url =
+                  sanitized ||
+                  (localBaseUrl && !localBaseUrl.includes("localhost") && !localBaseUrl.includes("127.0.0.1") ? localBaseUrl : null) ||
+                  "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
                 setLocalBaseUrl(url);
                 try {
                   localStorage.setItem("localAIBaseUrl", url);
@@ -1270,7 +1315,7 @@ const GroqApiKeyInput = () => {
           type="url"
           value={localBaseUrl}
           onChange={handleLocalBaseUrlChange}
-          placeholder={ollamaLocation === "this-device" ? "http://localhost:11434/v1" : "http://192.168.0.108:11434/v1"}
+          placeholder={ollamaLocation === "this-device" ? "http://localhost:11434/v1" : "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1"}
           className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
           aria-label="Address of computer running Ollama"
         />

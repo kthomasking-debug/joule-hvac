@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, TrendingDown } from 'lucide-react';
 
-const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", compact = false }) => {
+const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", compact = false, contextSubtitle }) => {
   const padding = compact ? "p-3" : "p-5";
   const rounded = compact ? "rounded-xl" : "rounded-2xl";
   const titleSize = compact ? "text-sm" : "text-sm";
@@ -36,7 +36,7 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
               </span>
             </div>
           </div>
-          <div className="flex items-baseline gap-3">
+          <div className="flex items-baseline gap-3 flex-wrap">
             <span className={`${costSize} font-black bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent`}>
               ${(weeklyCost ?? 0).toFixed(2)}
             </span>
@@ -47,6 +47,11 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
               </span>
             )}
           </div>
+          {contextSubtitle && (
+            <p className={`${compact ? "text-xs" : "text-sm"} text-gray-500 dark:text-gray-400 mt-1`}>
+              {contextSubtitle}
+            </p>
+          )}
           {primarySystem === 'heatPump' && energyMode === 'heating' && roiSavings > 0 && (
             <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800">
               <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1">

@@ -40,6 +40,8 @@ Rules:
 • STRIP/AUX HEAT: Strip (auxiliary) heat kicks in below the balance point—the outdoor temperature where the heat pump can't meet the load. Balance point is typically 15-35°F. Never say strip heat kicks in at 54°F or above 40°F (that confuses capacity-percent with temperature).
 • FORMAT: Use single line breaks only. Do NOT add blank lines between paragraphs or sections. Keep output compact.
 
+BILL ANALYSIS & RATE COMPARISONS: When the user discusses utility bills or monthly costs, use the ENERGY RATE CONTEXT below (if provided) to say whether their electricity or natural gas rates are above or below average for their area. If electricity is expensive vs state average and they have a gas furnace option, you may suggest considering gas for heating—but only if annual savings would be meaningful (>$100–200/year). If natural gas is expensive vs state average and they have electric heat pump capability, you may suggest considering a heat pump—but only if savings would be meaningful. Do not suggest switching systems for marginal savings.
+
 AGENTIC ACTIONS: When the user asks you to apply your recommendation or "make the changes you recommend", you MUST output the exact setting changes at the end of your response (one per line). Use this format only when the user explicitly asks you to apply/set something:
 [JOULE_ACTION:winterThermostatNight=64]
 [JOULE_ACTION:winterThermostatDay=68]
@@ -77,7 +79,7 @@ export async function answerWithAgent(
 ) {
   const { systemPromptOverride = null, skipRAG = false } = options;
 
-  const { getAIConfig, callChatCompletions } = await import("./aiProvider.js");
+  const { getAIConfig, callLLM } = await import("./aiProvider.js");
   const config = getAIConfig();
   const effectiveApiKey = (apiKey || "").trim() || (config.provider === "groq" ? config.apiKey : null);
   const useLocal = config.provider === "local" && config.baseUrl;
@@ -168,6 +170,39 @@ export async function answerWithAgent(
     if (userLocation.elevation) locationParts.push(`- Elevation: ${userLocation.elevation} ft`);
     if (locationParts.length > 1) {
       contextParts.push(locationParts.join("\n"));
+    }
+  }
+
+  // Add energy rate context for bill analysis (compare user rates to state averages)
+  if (userLocation?.state && userSettings) {
+    try {
+      const { getStateElectricityRate, getStateGasRate } = await import("../data/stateRates.js");
+      const { US_STATES } = await import("./usStates.js");
+      const stateRaw = (userLocation.state || "").trim();
+      const stateName = stateRaw.length === 2 && US_STATES[stateRaw.toUpperCase()]
+        ? US_STATES[stateRaw.toUpperCase()]
+        : stateRaw;
+      if (stateName) {
+        const stateElecAvg = getStateElectricityRate(stateName);
+        const stateGasAvg = getStateGasRate(stateName);
+        const userElec = userSettings.utilityCost;
+        const userGas = userSettings.gasCost ?? userSettings.gasRate;
+        const rateParts = [];
+        rateParts.push("ENERGY RATE CONTEXT (for bill analysis—compare user rates to area averages):");
+        if (userElec !== undefined && userElec !== null && stateElecAvg) {
+          const elecVs = userElec > stateElecAvg * 1.05 ? "above" : userElec < stateElecAvg * 0.95 ? "below" : "about";
+          rateParts.push(`- Electricity: Your rate $${Number(userElec).toFixed(3)}/kWh is ${elecVs} the ${stateName} average of $${stateElecAvg.toFixed(3)}/kWh.`);
+        }
+        if (userGas !== undefined && userGas !== null && stateGasAvg) {
+          const gasVs = userGas > stateGasAvg * 1.05 ? "above" : userGas < stateGasAvg * 0.95 ? "below" : "about";
+          rateParts.push(`- Natural gas: Your rate $${Number(userGas).toFixed(2)}/therm is ${gasVs} the US/${stateName} average of $${stateGasAvg.toFixed(2)}/therm.`);
+        }
+        if (rateParts.length > 1) {
+          contextParts.push(rateParts.join("\n"));
+        }
+      }
+    } catch (e) {
+      console.warn("[groqAgent] Energy rate context failed:", e);
     }
   }
   
@@ -287,46 +322,11 @@ export async function answerWithAgent(
   ];
 
   try {
-    let content;
-    if (useLocal) {
-      const url = config.baseUrl.replace(/\/$/, "") + "/chat/completions";
-      content = await callChatCompletions({
-        url,
-        apiKey: null,
-        model: config.model,
-        messages,
-        temperature: 0.1,
-        maxTokens: 300,
-      });
-    } else {
-      const response = await fetch(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${effectiveApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: config.model || "llama-3.3-70b-versatile",
-            messages: messages,
-            temperature: 0.1,
-            max_tokens: 300,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error("No content in response");
-      }
-    }
+    const content = await callLLM({
+      messages,
+      temperature: 0.1,
+      maxTokens: 300,
+    });
 
     // Collapse multiple newlines to single (compact output)
     const compact = (typeof content === "string" ? content : "").replace(/\n{2,}/g, "\n").trim();

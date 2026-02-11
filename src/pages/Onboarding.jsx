@@ -24,6 +24,7 @@ import {
   Check,
   DollarSign,
   Cpu,
+  Upload,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -31,12 +32,12 @@ import needsCommaBetweenCityAndState from "../utils/validateLocation";
 import { WELCOME_THEMES, getWelcomeTheme } from "../data/welcomeThemes";
 import { setSetting, getAllSettings } from "../lib/unifiedSettingsManager";
 import { calculateHeatLoss } from "../lib/heatUtils";
-import UnitSystemToggle from "../components/UnitSystemToggle";
-import { useUnitSystem, UNIT_SYSTEMS } from "../lib/units";
 import { setBridgeBase } from "../lib/bridgeApi";
-import { AI_PROVIDERS } from "../lib/aiProvider";
+import { AI_PROVIDERS, warmLLM } from "../lib/aiProvider";
+import { getBillMonthForComparison, parseBillDateRange } from "../lib/bills/billParser";
+import { QRCodeSVG } from "qrcode.react";
 
-const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://tricks-actions-applied-clothing.trycloudflare.com/v1").trim();
+const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1").trim();
 import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
 import {
   defaultFixedChargesByState,
@@ -59,22 +60,23 @@ const STEPS = {
   WELCOME: 0,
   LOCATION: 1,
   BUILDING: 2,
-  COST_SETTINGS: 3,
-  BRIDGE: 4,
-  AI: 5,
-  CONFIRMATION: 6,
+  THERMOSTAT: 3,
+  COST_SETTINGS: 4,
+  BILL_UPLOAD: 5,
+  ANALYZING: 6,
+  PAYOFF: 7,
 };
 
 // Step labels for progress bar
-const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Costs', 'Bridge', 'AI', 'Done'];
+const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Thermostat', 'Costs', 'Bill', 'Analyzing', 'Done'];
 
 // Step benefits - what each step unlocks
 const STEP_BENEFITS = {
   [STEPS.LOCATION]: 'Enables local weather data and utility rates',
   [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
+  [STEPS.THERMOSTAT]: 'Makes your cost forecasts match how you actually live',
   [STEPS.COST_SETTINGS]: 'Used for 7-day forecasts, annual estimates, and gas vs heat pump comparisons',
-  [STEPS.BRIDGE]: 'Streams real-time data from your Ecobee thermostat',
-  [STEPS.AI]: 'Optional: set up Ask Joule — use Joule (free), Groq, or your computer',
+  [STEPS.BILL_UPLOAD]: 'Finally someone will explain this',
 };
 
 export default function Onboarding() {
@@ -119,8 +121,6 @@ export default function Onboarding() {
   const [buildingError, setBuildingError] = useState(null);
 
   // Unit system
-  const { unitSystem } = useUnitSystem();
-
   // Building state (for custom mode)
   const [squareFeet, setSquareFeet] = useState(userSettings.squareFeet || 1500);
   const [insulationLevel, setInsulationLevel] = useState(userSettings.insulationLevel || 1.0);
@@ -142,7 +142,7 @@ export default function Onboarding() {
   const [acTons, setAcTons] = useState(userSettings.primarySystem === "acPlusGas" ? Math.round(defaultAcTons * 10) / 10 : 3);
 
   // Multi-zone support
-  const [numberOfThermostats, setNumberOfThermostats] = useState(() => {
+  const [numberOfThermostats] = useState(() => {
     try {
       const zones = JSON.parse(localStorage.getItem("zones") || "[]");
       return zones.length > 0 ? zones.length : 1;
@@ -150,6 +150,17 @@ export default function Onboarding() {
       return 1;
     }
   });
+
+  // Bill upload state (optional — emotional hook before payoff)
+  const [billPasteText, setBillPasteText] = useState("");
+  const [billPdfExtracting, setBillPdfExtracting] = useState(false);
+  const [billPdfError, setBillPdfError] = useState("");
+  const billFileInputRef = React.useRef(null);
+
+  // Thermostat state (day/night temperatures — simple, no schedule)
+  const [daytimeTemp, setDaytimeTemp] = useState(userSettings.winterThermostatDay ?? 70);
+  const [nightTemp, setNightTemp] = useState(userSettings.winterThermostatNight ?? 66);
+  const [dropsAtNight, setDropsAtNight] = useState(true);
 
   // Cost settings state (for Cost Settings onboarding step)
   const [utilityCost, setUtilityCost] = useState(
@@ -163,7 +174,7 @@ export default function Onboarding() {
   );
 
   // Heat Loss Source
-  const [heatLossSource, setHeatLossSource] = useState(() => {
+  const [heatLossSource] = useState(() => {
     try {
       const settings = getAllSettings();
       if (settings.useAnalyzerHeatLoss) return "analyzer";
@@ -188,6 +199,34 @@ export default function Onboarding() {
     return 0;
   }, [squareFeet, insulationLevel, homeShape, ceilingHeight, hasLoft, heatLossSource]);
 
+  // Auto-populate furnace, heat pump, and AC sizes from building characteristics
+  useEffect(() => {
+    if (!squareFeet || squareFeet < 100) return;
+    const tonOptions = [1.5, 2, 2.5, 3, 3.5, 4, 5];
+    if (primarySystem === "heatPump" && calculatedHeatLoss > 0) {
+      const rawTons = calculatedHeatLoss / 12000;
+      const nearest = tonOptions.reduce((a, b) =>
+        Math.abs(a - rawTons) <= Math.abs(b - rawTons) ? a : b
+      );
+      setHeatPumpTons(nearest);
+    }
+    if ((primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && calculatedHeatLoss > 0) {
+      const standards = [40, 60, 80, 100, 120];
+      const hlK = calculatedHeatLoss / 1000;
+      const nearest = standards.reduce((a, b) =>
+        Math.abs(a - hlK) <= Math.abs(b - hlK) ? a : b
+      );
+      setFurnaceSizeKbtu(nearest);
+    }
+    if (primarySystem === "acPlusGas" && squareFeet) {
+      const rawAcTons = squareFeet / 500;
+      const nearest = tonOptions.reduce((a, b) =>
+        Math.abs(a - rawAcTons) <= Math.abs(b - rawAcTons) ? a : b
+      );
+      setAcTons(nearest);
+    }
+  }, [calculatedHeatLoss, squareFeet, primarySystem]);
+
   // Check if analyzer data exists
   const hasAnalyzerData = useMemo(() => {
     try {
@@ -199,7 +238,7 @@ export default function Onboarding() {
   }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
-  const totalSteps = 7; // Welcome, Location, Building, Cost Settings, Bridge, AI (optional), Confirmation
+  const totalSteps = 8; // Welcome, Location, Building, Thermostat, Cost Settings, Bill, Analyzing, Done
   
   // Bridge Setup State
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
@@ -214,14 +253,8 @@ export default function Onboarding() {
   const [pairedEcobeeInfo, setPairedEcobeeInfo] = useState(null);
 
   // AI step: "joule" = Use Joule (free, default), "groq" = Groq Cloud, "local" = Local (Ollama / your computer)
-  const [onboardingAiChoice, setOnboardingAiChoice] = useState(() => {
-    try {
-      const p = localStorage.getItem("aiProvider");
-      if (p === AI_PROVIDERS.LOCAL) return "local";
-      if (p === AI_PROVIDERS.GROQ && (localStorage.getItem("groqApiKey") || "").trim()) return "groq";
-    } catch { /* ignore */ }
-    return "joule";
-  });
+  // Always default to "joule" so most users get zero-config Ask Joule
+  const [onboardingAiChoice, setOnboardingAiChoice] = useState("joule");
   const [onboardingGroqKey, setOnboardingGroqKey] = useState(() => (localStorage.getItem("groqApiKey") || "").trim());
   const [onboardingLocalUrl, setOnboardingLocalUrl] = useState(() =>
     (localStorage.getItem("localAIBaseUrl") || "http://localhost:11434/v1").trim()
@@ -522,7 +555,26 @@ export default function Onboarding() {
       if (!currentSettings.insulationLevel || currentSettings.insulationLevel === 0.65) {
         setSetting("insulationLevel", insulationLevel || 1.0, { source: "onboarding" });
       }
+      // Thermostat (in case user skipped THERMOSTAT step via rerun)
+      const day = daytimeTemp;
+      const night = dropsAtNight ? nightTemp : daytimeTemp;
+      setSetting("winterThermostatDay", day, { source: "onboarding" });
+      setSetting("winterThermostatNight", night, { source: "onboarding" });
+      if (setUserSetting) {
+        setUserSetting("winterThermostatDay", day);
+        setUserSetting("winterThermostatNight", night);
+      }
       localStorage.setItem("hasCompletedOnboarding", "true");
+
+      // Default AI to Joule (no setup required) — Bridge/AI can be configured from home
+      try {
+        if (!localStorage.getItem("aiProvider")) {
+          localStorage.setItem("aiProvider", AI_PROVIDERS.LOCAL);
+          localStorage.setItem("localAIBaseUrl", JOULE_LLM_URL || "http://localhost:11434/v1");
+          localStorage.setItem("localAIModel", "llama3:latest");
+          window.dispatchEvent(new Event("storage"));
+        }
+      } catch { /* ignore */ }
       
       // Dispatch event to notify App.jsx to refresh settings and location
       window.dispatchEvent(new CustomEvent("userSettingsUpdated", {
@@ -533,18 +585,18 @@ export default function Onboarding() {
       // ignore
     }
     
+    // Warm local LLM in background so first bill analysis is instant (no cold-start)
+    warmLLM();
+
     // Check if there's a redirect path stored from Mission Control
     const redirectPath = sessionStorage.getItem("onboardingRedirectPath");
     if (redirectPath) {
       sessionStorage.removeItem("onboardingRedirectPath");
       navigate(redirectPath);
     } else {
-      // If pairing code was entered, go to monthly budget (needs bridge connection)
-      // Otherwise, go to weekly forecast (works without bridge)
-      const hasPairingCode = localStorage.getItem('pairingCode');
-      navigate(hasPairingCode ? "/analysis/monthly" : "/analysis/weekly");
+      navigate("/analysis/monthly#bill-analysis");
     }
-  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, userSettings]);
+  }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, daytimeTemp, nightTemp, dropsAtNight, userSettings]);
 
   // Handle next step
   const handleNext = useCallback(() => {
@@ -565,10 +617,6 @@ export default function Onboarding() {
       }
       if (!insulationLevel || insulationLevel <= 0) {
         setBuildingError("Please select an insulation quality");
-        return;
-      }
-      if (!numberOfThermostats || numberOfThermostats < 1) {
-        setBuildingError("Please select the number of thermostats");
         return;
       }
       if (!heatLossSource) {
@@ -629,6 +677,17 @@ export default function Onboarding() {
       }
       
       setBuildingError(null); // Clear any errors
+      setStep(STEPS.THERMOSTAT);
+    } else if (step === STEPS.THERMOSTAT) {
+      // Save thermostat settings (Joule uses weighted avg: 16h day + 8h night)
+      const day = daytimeTemp;
+      const night = dropsAtNight ? nightTemp : daytimeTemp;
+      if (setUserSetting) {
+        setUserSetting("winterThermostatDay", day);
+        setUserSetting("winterThermostatNight", night);
+      }
+      setSetting("winterThermostatDay", day, { source: "onboarding" });
+      setSetting("winterThermostatNight", night, { source: "onboarding" });
       setStep(STEPS.COST_SETTINGS);
     } else if (step === STEPS.COST_SETTINGS) {
       // Save cost settings
@@ -640,32 +699,84 @@ export default function Onboarding() {
         setUserSetting("gasCost", gasCost);
         setUserSetting("fixedElectricCost", fixedElectricCost);
       }
-      setStep(STEPS.BRIDGE);
-    } else if (step === STEPS.BRIDGE) {
-      setStep(STEPS.AI);
-    } else if (step === STEPS.AI) {
-      // Persist AI choice to localStorage
+      // Activate Joule server AI before bill upload/analyzing so LLM is ready
       try {
-        if (onboardingAiChoice === "local" || onboardingAiChoice === "joule") {
+        if (!localStorage.getItem("aiProvider")) {
           localStorage.setItem("aiProvider", AI_PROVIDERS.LOCAL);
-          const url = onboardingAiChoice === "joule"
-            ? (onboardingLocalUrl || JOULE_LLM_URL)
-            : (onboardingLocalUrl || "http://localhost:11434/v1");
-          localStorage.setItem("localAIBaseUrl", url);
-          localStorage.setItem("localAIModel", onboardingLocalModel || "llama3:latest");
-          localStorage.removeItem("groqApiKey");
-        } else {
-          localStorage.setItem("aiProvider", AI_PROVIDERS.GROQ);
-          if ((onboardingGroqKey || "").trim()) localStorage.setItem("groqApiKey", (onboardingGroqKey || "").trim());
-          else localStorage.removeItem("groqApiKey");
+          localStorage.setItem("localAIBaseUrl", JOULE_LLM_URL || "http://localhost:11434/v1");
+          localStorage.setItem("localAIModel", "llama3:latest");
+          window.dispatchEvent(new Event("storage"));
         }
-        window.dispatchEvent(new Event("storage"));
       } catch { /* ignore */ }
-      setStep(STEPS.CONFIRMATION);
-    } else if (step === STEPS.CONFIRMATION) {
+      setStep(STEPS.BILL_UPLOAD);
+    } else if (step === STEPS.BILL_UPLOAD) {
+      // Store bill text; extraction runs once on monthly page (avoids double extraction)
+      if (billPasteText.trim()) {
+        try {
+          const billMonth = getBillMonthForComparison(billPasteText.trim());
+          const dateRange = parseBillDateRange(billPasteText.trim());
+          localStorage.setItem("onboardingBillPaste", billPasteText.trim());
+          localStorage.setItem("onboardingBillMonth", String(billMonth.month));
+          localStorage.setItem("onboardingBillYear", String(billMonth.year));
+          if (dateRange) localStorage.setItem("onboardingBillDateRange", dateRange);
+          sessionStorage.setItem("onboardingBillAutoProcess", "extract");
+        } catch { /* ignore */ }
+      }
+      setStep(STEPS.ANALYZING);
+    } else if (step === STEPS.PAYOFF) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, numberOfThermostats, heatLossSource, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, onboardingAiChoice, onboardingGroqKey, onboardingLocalUrl, onboardingLocalModel]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText]);
+
+  // Extract text from PDF bill (for Bill step)
+  const extractBillPdf = useCallback(async (file) => {
+    if (!file?.name?.toLowerCase().endsWith(".pdf")) {
+      setBillPdfError("Please select a PDF file");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setBillPdfError("File too large. Please use a PDF under 50MB.");
+      return;
+    }
+    setBillPdfExtracting(true);
+    setBillPdfError("");
+    try {
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item) => item.str).join(" ");
+        fullText += (pageNum > 1 ? "\n" : "") + pageText;
+      }
+      const trimmed = fullText.trim();
+      if (!trimmed || trimmed.length < 20) {
+        setBillPdfError("No text found in PDF. Try pasting the bill text instead.");
+        return;
+      }
+      setBillPasteText(trimmed);
+    } catch (err) {
+      setBillPdfError(err.message || "Failed to extract text from PDF.");
+    } finally {
+      setBillPdfExtracting(false);
+      if (billFileInputRef.current) billFileInputRef.current.value = "";
+    }
+  }, []);
+
+  // Warm LLM as soon as user reaches Bill step so extraction is fast when they click Continue
+  useEffect(() => {
+    if (step === STEPS.BILL_UPLOAD) warmLLM();
+  }, [step]);
+
+  // ANALYZING step: auto-advance after 1.5–2 seconds so it feels real
+  useEffect(() => {
+    if (step !== STEPS.ANALYZING) return;
+    const t = setTimeout(() => setStep(STEPS.PAYOFF), 1800);
+    return () => clearTimeout(t);
+  }, [step]);
 
   // Skip onboarding removed - users must complete building details for Ask Joule to work
 
@@ -933,15 +1044,15 @@ export default function Onboarding() {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full p-8 text-center">
           <CheckCircle2 size={64} className="mx-auto text-green-600 dark:text-green-400 mb-4" />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
             You're all set!
           </h2>
-          <p className="text-lg text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
-            onClick={() => navigate("/analysis/weekly-forecast")}
-            className="btn btn-primary px-8 py-3 text-lg"
+            onClick={() => navigate("/analysis/monthly#bill-analysis")}
+            className="btn btn-primary px-8 py-3 text-xl"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />
           </button>
@@ -978,12 +1089,12 @@ export default function Onboarding() {
             {STEP_LABELS.map((label, i) => (
               <div
                 key={i}
-                className={`flex-1 text-center text-xs font-medium transition-colors ${
+                className={`flex-1 text-center text-lg font-medium transition-colors ${
                   i <= step ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-600"
                 }`}
               >
                 {i === step && <span className="hidden sm:inline">{label}</span>}
-                {i !== step && <span className="hidden sm:inline text-[10px]">{label}</span>}
+                {i !== step && <span className="hidden sm:inline text-base">{label}</span>}
               </div>
             ))}
           </div>
@@ -997,8 +1108,8 @@ export default function Onboarding() {
               />
             ))}
           </div>
-          {step > 0 && step < STEPS.CONFIRMATION && STEP_BENEFITS[step] && (
-            <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2 italic">
+          {step > 0 && step < STEPS.PAYOFF && STEP_BENEFITS[step] && (
+            <p className="text-lg text-center text-gray-500 dark:text-gray-400 mt-2 italic">
               {STEP_BENEFITS[step]}
             </p>
           )}
@@ -1022,27 +1133,24 @@ export default function Onboarding() {
               )}
             </div>
             
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-              Welcome — take a breath
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+              Welcome — let's figure out your bill
             </h2>
-            <p className="text-lg text-gray-500 dark:text-gray-400 mb-4">
-              to the Energy Cost Forecaster
-            </p>
-            <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-4 max-w-xl mx-auto">
+            <p className="text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-4 max-w-xl mx-auto">
               We'll guide you step by step. No rush, no jargon—just a simple path
               to understanding your energy costs.
             </p>
             
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <div className="flex items-center justify-center gap-2 text-lg text-gray-500 dark:text-gray-400 mb-4">
               <Clock size={16} />
               <span>Takes about 2 minutes</span>
             </div>
 
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+            <p className="text-lg text-gray-500 dark:text-gray-400 mb-6">
               Uses sensible defaults. You'll still confirm your home details for accurate estimates.
             </p>
 
-            <button onClick={handleNext} className="btn btn-primary px-8 py-3 text-lg">
+            <button onClick={handleNext} className="btn btn-primary px-8 py-3 text-xl">
               Let's Begin
             </button>
           </div>
@@ -1054,13 +1162,13 @@ export default function Onboarding() {
             <div className="mb-4">
               <MapPin size={48} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-2">
               STEP {step + 1} OF {totalSteps}
             </p>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
               Where do you live?
             </h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
               We use this for local weather and utility rate data.
             </p>
 
@@ -1077,23 +1185,23 @@ export default function Onboarding() {
                   }
                 }}
               />
-              <p className="text-xs text-gray-600 dark:text-gray-300 mb-3 mt-2">
+              <p className="text-lg text-gray-600 dark:text-gray-300 mb-3 mt-2">
                 Format: <span className="font-semibold">City, State</span>
               </p>
 
               {locationError && (
                 <div className="flex items-center gap-2 mt-3 mb-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200">
-                  <span className="text-sm font-medium">{locationError}</span>
+                  <span className="text-xl font-medium">{locationError}</span>
                 </div>
               )}
 
               {foundLocation && !locationLoading && (
                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-900/30 dark:border-green-700">
-                  <p className="text-green-800 text-sm dark:text-green-400 flex items-center justify-center gap-2">
+                  <p className="text-green-800 text-lg dark:text-green-400 flex items-center justify-center gap-2">
                     <Check size={16} className="text-green-600" />
                     Found: <strong>{foundLocation}</strong>
                     {locationElevation !== null && (
-                      <span className="text-xs">({Math.round(locationElevation)} ft elevation)</span>
+                      <span className="text-lg">({Math.round(locationElevation)} ft elevation)</span>
                     )}
                   </p>
                 </div>
@@ -1135,19 +1243,19 @@ export default function Onboarding() {
             <div className="mb-2">
               <Home size={36} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-1">
               STEP {step + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
               Tell us about your home
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            <p className="text-xl text-gray-600 dark:text-gray-400 mb-3">
               This helps estimate your energy usage and enables personalized answers.
             </p>
             
             {/* Validation error display */}
             {buildingError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200 text-sm max-w-md mx-auto">
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200 text-xl max-w-md mx-auto">
                 {buildingError}
               </div>
             )}
@@ -1155,7 +1263,7 @@ export default function Onboarding() {
             <div className="space-y-3 text-left max-w-md mx-auto">
               {/* Square Feet */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Home Size (sq ft)
                   {squareFeet >= 100 && squareFeet <= 20000 && (
                     <Check size={14} className="text-green-500" />
@@ -1165,7 +1273,7 @@ export default function Onboarding() {
                   type="number"
                   value={squareFeet}
                   onChange={(e) => setSquareFeet(Number(e.target.value))}
-                  className={fullInputClasses}
+                  className={`${fullInputClasses} text-2xl py-3`}
                   min="100"
                   max="20000"
                 />
@@ -1173,14 +1281,14 @@ export default function Onboarding() {
 
               {/* Insulation */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Insulation Quality
                   {insulationLevel > 0 && <Check size={14} className="text-green-500" />}
                 </label>
                 <select
                   value={insulationLevel}
                   onChange={(e) => setInsulationLevel(Number(e.target.value))}
-                  className={selectClasses}
+                  className={`${selectClasses} text-2xl py-3`}
                 >
                   <option value={1.4}>Poor (pre-1980, minimal upgrades)</option>
                   <option value={1.0}>Average (1990s-2000s, code-min)</option>
@@ -1190,13 +1298,13 @@ export default function Onboarding() {
 
               {/* Building Shape */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Building Shape
                 </label>
                 <select
                   value={homeShape}
                   onChange={(e) => setHomeShape(Number(e.target.value))}
-                  className={selectClasses}
+                  className={`${selectClasses} text-2xl py-3`}
                 >
                   <option value={0.9}>Two-Story</option>
                   <option value={1.0}>Split-Level</option>
@@ -1206,12 +1314,12 @@ export default function Onboarding() {
                 </select>
                 {/* Loft toggle - only show for Cabin */}
                 {homeShape >= 1.2 && homeShape < 1.3 && (
-                  <label className="flex items-center text-xs text-gray-700 dark:text-gray-300 cursor-pointer mt-1">
+                  <label className="flex items-center gap-3 text-xl text-gray-700 dark:text-gray-300 cursor-pointer mt-1">
                     <input
                       type="checkbox"
                       checked={hasLoft}
                       onChange={(e) => setHasLoft(e.target.checked)}
-                      className="form-checkbox h-3 w-3 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-1.5"
+                      className="form-checkbox h-6 w-6 text-blue-600 rounded border-2 border-gray-300 focus:ring-blue-500 focus:ring-2 shrink-0"
                     />
                     Has loft (reduces heat loss)
                   </label>
@@ -1220,13 +1328,13 @@ export default function Onboarding() {
 
               {/* Ceiling Height */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Ceiling Height
                 </label>
                 <select
                   value={ceilingHeight}
                   onChange={(e) => setCeilingHeight(Number(e.target.value))}
-                  className={selectClasses}
+                  className={`${selectClasses} text-2xl py-3`}
                 >
                   <option value={8}>8 ft</option>
                   <option value={9}>9 ft</option>
@@ -1238,36 +1346,36 @@ export default function Onboarding() {
 
               {/* Primary System */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Primary Heating System
                 </label>
                 <select
                   value={primarySystem}
                   onChange={(e) => setPrimarySystem(e.target.value)}
-                  className={selectClasses}
+                  className={`${selectClasses} text-2xl py-3`}
                 >
                   <option value="heatPump">Heat Pump</option>
                   <option value="gasFurnace">Gas Furnace</option>
                   <option value="acPlusGas">Central AC + Gas Furnace</option>
                 </select>
                 {primarySystem === "acPlusGas" && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Cooling in summer (condenser), gas heat in winter.</p>
+                  <p className="text-xl text-gray-500 dark:text-gray-400 mt-1">Cooling in summer (condenser), gas heat in winter.</p>
                 )}
               </div>
 
               {/* Heat Pump Size (only show if heat pump is selected) */}
               {primarySystem === "heatPump" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-                    Heat Pump Size
-                    <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Check outdoor unit label for BTU. 12k BTU = 1 ton.">
+                  <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                    Heat Pump Size (total system tonnage)
+                    <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total system capacity in tons. Check outdoor unit label — 12k BTU = 1 ton. Single or multi-zone: use the combined tonnage.">
                       <HelpCircle size={12} />
                     </span>
                   </label>
                   <select
                     value={heatPumpTons}
                     onChange={(e) => setHeatPumpTons(Number(e.target.value))}
-                    className={selectClasses}
+                    className={`${selectClasses} text-2xl py-3`}
                   >
                     <option value={1.5}>1.5 ton (18k)</option>
                     <option value={2.0}>2 ton (24k)</option>
@@ -1280,42 +1388,19 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && (
+              {primarySystem === "gasFurnace" && (
                 <>
-                  {primarySystem === "acPlusGas" && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-                        AC / Condenser Size (summer cooling)
-                        <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Outdoor unit cooling capacity. 12k BTU = 1 ton.">
-                          <HelpCircle size={12} />
-                        </span>
-                      </label>
-                      <select
-                        value={acTons}
-                        onChange={(e) => setAcTons(Number(e.target.value))}
-                        className={selectClasses}
-                      >
-                        <option value={1.5}>1.5 ton (18k)</option>
-                        <option value={2.0}>2 ton (24k)</option>
-                        <option value={2.5}>2.5 ton (30k)</option>
-                        <option value={3.0}>3 ton (36k)</option>
-                        <option value={3.5}>3.5 ton (42k)</option>
-                        <option value={4.0}>4 ton (48k)</option>
-                        <option value={5.0}>5 ton (60k)</option>
-                      </select>
-                    </div>
-                  )}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-                      Furnace Size {primarySystem === "acPlusGas" && "(winter heat)"}
-                      <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Heating capacity in BTU/hr. Check furnace nameplate or model.">
+                    <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                      Furnace Size (total BTUs)
+                      <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total furnace capacity in BTU/hr. Check furnace nameplate or model. Single or multi-zone: use the combined heating output.">
                         <HelpCircle size={12} />
                       </span>
                     </label>
                     <select
                       value={furnaceSizeKbtu}
                       onChange={(e) => setFurnaceSizeKbtu(Number(e.target.value))}
-                      className={selectClasses}
+                      className={`${selectClasses} text-2xl py-3`}
                     >
                       {furnaceSizeOptions.map((k) => (
                         <option key={k} value={k}>{k}k BTU</option>
@@ -1323,13 +1408,13 @@ export default function Onboarding() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
                       AFUE (efficiency)
                     </label>
                     <select
                       value={afue}
                       onChange={(e) => setAfue(Number(e.target.value))}
-                      className={selectClasses}
+                      className={`${selectClasses} text-2xl py-3`}
                     >
                       <option value={0.8}>80%</option>
                       <option value={0.9}>90%</option>
@@ -1339,72 +1424,29 @@ export default function Onboarding() {
                 </>
               )}
 
-              {/* Number of Thermostats/Zones */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Thermostats
-                </label>
-                <select
-                  value={numberOfThermostats}
-                  onChange={(e) => setNumberOfThermostats(Number(e.target.value))}
-                  className={selectClasses}
-                >
-                  <option value={1}>1 (single zone)</option>
-                  <option value={2}>2 (multi-zone)</option>
-                  <option value={3}>3 (multi-zone)</option>
-                  <option value={4}>4+ (multi-zone)</option>
-                </select>
-              </div>
-
-              {/* Heat Loss Source Selection Card */}
-              <div className="mt-3 p-3 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-xl border border-blue-200 dark:border-blue-800">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-                  Heat Loss Source
-                </h3>
-                <div className="space-y-2">
-                  {/* Calculated Option */}
-                  <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
-                    style={{ borderColor: heatLossSource === "calculated" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "calculated" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input type="radio" name="heatLossSource" value="calculated" checked={heatLossSource === "calculated"} onChange={(e) => setHeatLossSource(e.target.value)} />
-                    <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">Calculated</span>
-                      <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-emerald-500 text-white rounded">REC</span>
-                      {heatLossSource === "calculated" && calculatedHeatLoss > 0 && (
-                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{Math.round(calculatedHeatLoss / 70)} BTU/hr/°F</span>
-                      )}
-                    </div>
+              {primarySystem === "acPlusGas" && (
+                <div>
+                  <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                    AC / Condenser Size (total system tonnage, summer cooling)
+                    <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total system cooling capacity in tons. 12k BTU = 1 ton. Single or multi-zone: use combined tonnage — this must match your whole-house bill.">
+                      <HelpCircle size={12} />
+                    </span>
                   </label>
-
-                  {/* Manual Entry Option */}
-                  <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all hover:bg-white/50 dark:hover:bg-white/5"
-                    style={{ borderColor: heatLossSource === "manual" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "manual" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input type="radio" name="heatLossSource" value="manual" checked={heatLossSource === "manual"} onChange={(e) => setHeatLossSource(e.target.value)} />
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">Manual Entry</span>
-                  </label>
-
-                  {/* CSV Analyzer Option */}
-                  <label className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${hasAnalyzerData ? "cursor-pointer hover:bg-white/50 dark:hover:bg-white/5" : "cursor-not-allowed opacity-50"}`}
-                    style={{ borderColor: heatLossSource === "analyzer" ? "#3b82f6" : "#e5e7eb", backgroundColor: heatLossSource === "analyzer" ? "rgba(59, 130, 246, 0.1)" : "transparent" }}>
-                    <input type="radio" name="heatLossSource" value="analyzer" checked={heatLossSource === "analyzer"} onChange={(e) => hasAnalyzerData && setHeatLossSource(e.target.value)} disabled={!hasAnalyzerData} />
-                    <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">From CSV Analyzer</span>
-                      {hasAnalyzerData ? (
-                        <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">✓ {userSettings.analyzerHeatLoss?.toFixed(0)} BTU/hr/°F</span>
-                      ) : (
-                        <span className="ml-2 text-xs text-gray-400">No data</span>
-                      )}
-                    </div>
-                  </label>
+                  <select
+                    value={acTons}
+                    onChange={(e) => setAcTons(Number(e.target.value))}
+                    className={`${selectClasses} text-2xl py-3`}
+                  >
+                    <option value={1.5}>1.5 ton (18k)</option>
+                    <option value={2.0}>2 ton (24k)</option>
+                    <option value={2.5}>2.5 ton (30k)</option>
+                    <option value={3.0}>3 ton (36k)</option>
+                    <option value={3.5}>3.5 ton (42k)</option>
+                    <option value={4.0}>4 ton (48k)</option>
+                    <option value={5.0}>5 ton (60k)</option>
+                  </select>
                 </div>
-              </div>
-
-              {/* Unit System Selection */}
-              <div className="mt-3 p-3 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl border border-indigo-200 dark:border-indigo-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Units</span>
-                  <UnitSystemToggle />
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex gap-3 justify-center mt-4">
@@ -1423,6 +1465,88 @@ export default function Onboarding() {
           </div>
         )}
 
+        {/* Step 3: Thermostat — simple day/night temps, no schedule */}
+        {step === STEPS.THERMOSTAT && (
+          <div className="text-center space-y-8">
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+              STEP {STEPS.THERMOSTAT + 1} OF {totalSteps}
+            </p>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              About what temperature do you keep the house?
+            </h2>
+            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+              This helps Joule estimate heating demand. You can change it later.
+            </p>
+
+            <div className="max-w-md mx-auto space-y-6 text-left">
+              <div>
+                <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
+                  Daytime temperature
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={55}
+                    max={85}
+                    value={daytimeTemp}
+                    onChange={(e) => setDaytimeTemp(Math.min(85, Math.max(55, Number(e.target.value) || 70)))}
+                    className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
+                  />
+                  <span className="text-2xl text-gray-500 dark:text-gray-400">°F</span>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={dropsAtNight}
+                  onChange={(e) => setDropsAtNight(e.target.checked)}
+                  className="w-6 h-6 rounded border-gray-300 dark:border-gray-600"
+                />
+                <span className="text-xl text-gray-700 dark:text-gray-300">It drops at night</span>
+              </label>
+              {dropsAtNight && (
+                <p className="text-lg text-gray-500 dark:text-gray-400 -mt-2">
+                  Most homes drop 3–5°F overnight.
+                </p>
+              )}
+
+              {dropsAtNight && (
+                <div>
+                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
+                    Night temperature
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={80}
+                      value={nightTemp}
+                      onChange={(e) => setNightTemp(Math.min(80, Math.max(50, Number(e.target.value) || 66)))}
+                      className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
+                    />
+                    <span className="text-2xl text-gray-500 dark:text-gray-400">°F</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-center mt-8">
+              <button
+                onClick={() => setStep(STEPS.BUILDING)}
+                className="btn btn-outline px-6 py-3"
+              >
+                Back
+              </button>
+              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+                <span className="flex items-center gap-1">
+                  Continue <ChevronRight size={18} />
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Step 4: Cost Settings */}
         {step === STEPS.COST_SETTINGS && (() => {
           const stateElecRate = costStateName ? getStateElectricityRate(costStateName) : 0.10;
@@ -1433,28 +1557,28 @@ export default function Onboarding() {
           return (
             <div className="space-y-8">
               <div className="text-center mb-6">
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-2">
                   STEP {STEPS.COST_SETTINGS + 1} OF {totalSteps}
                 </p>
                 <DollarSign size={48} className="mx-auto text-emerald-600 dark:text-emerald-400 mb-4" />
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
                   Cost Settings
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-xl text-gray-600 dark:text-gray-400">
                   Used for 7-day cost forecasts, annual estimates, and gas vs heat pump comparisons.
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                <p className="text-lg text-gray-500 dark:text-gray-400 mt-2 italic">
                   These rates are used for budgeting and comparisons. They do not affect your utility bill or thermostat.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
                     Cost per kWh ($)
                   </label>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
                     <input
                       type="number"
                       min={0.05}
@@ -1462,20 +1586,20 @@ export default function Onboarding() {
                       step={0.01}
                       value={utilityCost}
                       onChange={(e) => setUtilityCost(Math.min(1.0, Math.max(0.05, Number(e.target.value) || 0.05)))}
-                      className={`${fullInputClasses} flex-1`}
+                      className={`${fullInputClasses} flex-1 text-4xl py-4`}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">/kWh</span>
+                    <span className="text-4xl text-gray-500 dark:text-gray-400">/kWh</span>
                   </div>
                   {costLocationDisplay && costStateName && (
                     <>
                       <button
                         type="button"
                         onClick={() => setUtilityCost(stateElecRate)}
-                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Use State Average
                       </button>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} average: ${stateElecRate.toFixed(2)}/kWh (EIA data)
                       </p>
                     </>
@@ -1483,11 +1607,11 @@ export default function Onboarding() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
                     Gas Cost per Therm ($)
                   </label>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1495,20 +1619,20 @@ export default function Onboarding() {
                       step={0.01}
                       value={gasCost}
                       onChange={(e) => setGasCost(Math.min(5.0, Math.max(0.5, Number(e.target.value) || 0.5)))}
-                      className={`${fullInputClasses} flex-1`}
+                      className={`${fullInputClasses} flex-1 text-4xl py-4`}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">/therm</span>
+                    <span className="text-4xl text-gray-500 dark:text-gray-400">/therm</span>
                   </div>
                   {costLocationDisplay && costStateName && (
                     <>
                       <button
                         type="button"
                         onClick={() => setGasCost(stateGasRate)}
-                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Use State Average
                       </button>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} average: ~${stateGasRate.toFixed(2)}/therm (EIA data)
                       </p>
                     </>
@@ -1516,11 +1640,11 @@ export default function Onboarding() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
                     Fixed Monthly Charge ($)
                   </label>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-gray-500 dark:text-gray-400">$</span>
+                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
                     <input
                       type="number"
                       min={0}
@@ -1528,20 +1652,20 @@ export default function Onboarding() {
                       step={0.01}
                       value={fixedElectricCost}
                       onChange={(e) => setFixedElectricCost(Math.min(50, Math.max(0, Number(e.target.value) || 0)))}
-                      className={`${fullInputClasses} flex-1 max-w-[140px]`}
+                      className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">/mo</span>
+                    <span className="text-2xl text-gray-500 dark:text-gray-400">/mo</span>
                   </div>
                   {costLocationDisplay && costStateName && (
                     <>
                       <button
                         type="button"
                         onClick={() => setFixedElectricCost(defaultFixed)}
-                        className="mb-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Use State Default
                       </button>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">
+                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} default: ${defaultFixed.toFixed(2)}/mo (typical service charge)
                       </p>
                     </>
@@ -1551,7 +1675,7 @@ export default function Onboarding() {
 
               <div className="flex gap-3 justify-center mt-8">
                 <button
-                  onClick={() => setStep(STEPS.BUILDING)}
+                  onClick={() => setStep(STEPS.THERMOSTAT)}
                   className="btn btn-outline px-6 py-3"
                 >
                   Back
@@ -1566,361 +1690,65 @@ export default function Onboarding() {
           );
         })()}
 
-        {/* Step 5: Bridge Setup (Optional) */}
-        {step === STEPS.BRIDGE && (
-          <div className="space-y-8">
-            <div className="text-center mb-8">
-              <Network size={48} className="mx-auto text-blue-600 dark:text-blue-400 mb-4" />
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                Connect Joule Bridge
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Set up your backup power monitoring system
+        {/* Step 5: Bill Upload — emotional hook */}
+        {step === STEPS.BILL_UPLOAD && (
+          <div className="text-center space-y-6">
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+              STEP {STEPS.BILL_UPLOAD + 1} OF {totalSteps}
+            </p>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              Upload or paste your last bill
+            </h2>
+            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+              Finally someone will explain this.
+            </p>
+
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 text-left max-w-lg mx-auto space-y-3">
+              <p className="text-xl text-gray-700 dark:text-gray-300">
+                Upload a PDF or paste the text from your utility bill. Joule will use it to compare your usage to similar homes in your area.
               </p>
-            </div>
-
-            <div className="space-y-6">
-              {/* Bridge IP Input */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
-                  <Network size={16} /> Bridge IP Address
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="192.168.1.100"
-                    value={bridgeIp}
-                    onChange={(e) => setBridgeIp(e.target.value)}
-                    className={`${fullInputClasses} flex-1`}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSearchBridge}
-                    disabled={searchingBridge}
-                    className="btn btn-outline px-4 flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Search for Joule-Bridge on your network (shows as Joule-Bridge in router)"
-                  >
-                    {searchingBridge ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      <Search size={18} />
-                    )}
-                    Search
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Go to the IP address shown on your bridge screen, or scan the QR code on the device.</p>
-              </div>
-
-              {/* Pairing Code Input - from Ecobee (hidden if already paired) */}
-              {!ecobeeAlreadyPaired ? (
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 flex items-center gap-2">
-                    <Lock size={16} /> Ecobee Pairing Code
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="XXX-XX-XXX"
-                    value={pairingCode}
-                    onChange={(e) => {
-                      let value = e.target.value.replace(/[^\d]/g, '');
-                      if (value.length > 8) value = value.slice(0, 8);
-                      if (value.length > 5) {
-                        value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
-                      } else if (value.length > 3) {
-                        value = value.slice(0, 3) + '-' + value.slice(3);
-                      }
-                      setPairingCode(value);
-                    }}
-                    className={fullInputClasses}
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Enter the 8-digit code from your Ecobee (Menu → Settings → Installation Settings → HomeKit)</p>
-                </div>
-              ) : (
-                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-green-700 dark:text-green-200 font-semibold">
-                    <CheckCircle2 size={18} />
-                    Ecobee Already Paired
-                  </div>
-                  {pairedEcobeeInfo && (
-                    <div className="mt-2 text-sm text-green-600 dark:text-green-300 space-y-1">
-                      <div>🌡️ Current: {pairedEcobeeInfo.currentTemp?.toFixed(1)}°C → Target: {pairedEcobeeInfo.targetTemp?.toFixed(1)}°C</div>
-                      <div>📍 Mode: {pairedEcobeeInfo.mode || 'Unknown'}</div>
-                      {pairedEcobeeInfo.humidity && <div>💧 Humidity: {pairedEcobeeInfo.humidity}%</div>}
-                    </div>
-                  )}
-                  <p className="text-xs text-green-600/70 dark:text-green-400/70 mt-2">Your Ecobee is connected and streaming live data.</p>
-                </div>
-              )}
-
-              {/* Error Message */}
-              {bridgeError && (
-                <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 rounded-lg p-4 flex gap-3 text-sm text-red-700 dark:text-red-200">
-                  <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-                  <span>{bridgeError}</span>
-                </div>
-              )}
-
-              {/* Connection Status */}
-              {bridgeConnected && (
-                <div className="bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 rounded-lg p-4 text-sm text-green-700 dark:text-green-200">
-                  <div className="flex gap-3 items-start">
-                    <CheckCircle2 size={18} className="flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="font-semibold">Bridge connected successfully!</div>
-                      {bridgeDeviceId && (
-                        <div className="mt-2 text-xs font-mono bg-green-200/50 dark:bg-green-800/30 px-2 py-1 rounded inline-block">
-                          Device ID: {bridgeDeviceId}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Device ID display when known but not yet connected */}
-              {bridgeDeviceId && !bridgeConnected && !bridgeError && (
-                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 text-sm text-blue-700 dark:text-blue-200">
-                  <span className="font-medium">Device ID:</span>{' '}
-                  <span className="font-mono">{bridgeDeviceId}</span>
-                </div>
-              )}
-
-              {/* Test Connection Button */}
-              <button
-                onClick={testBridgeConnection}
-                disabled={bridgeConnecting || !bridgeIp.trim()}
-                className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {bridgeConnecting ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" /> Connecting...
-                  </>
-                ) : (
-                  <>
-                    <Network size={20} /> Test Connection & Send Config
-                  </>
-                )}
-              </button>
-            </div>
-
-            {!pairingCode?.replace(/-/g, '') && !dismissedPairingNotice && !ecobeeAlreadyPaired && (
-              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-3">
-                <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="font-semibold">Pairing required for streamed data</div>
-                  <div className="mt-1">You can skip for now, but live Ecobee data won’t stream until a pairing code is entered.</div>
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={billFileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) extractBillPdf(f);
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => setDismissedPairingNotice(true)}
-                  className="text-amber-700 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100 font-medium"
+                  onClick={() => billFileInputRef.current?.click()}
+                  disabled={billPdfExtracting}
+                  className="flex items-center gap-2 px-4 py-2 text-lg font-semibold bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
                 >
-                  Got it
+                  {billPdfExtracting ? (
+                    <><Loader2 size={16} className="animate-spin" /> Extracting...</>
+                  ) : (
+                    <><Upload size={16} /> Upload PDF</>
+                  )}
                 </button>
+                <span className="text-lg text-gray-500 dark:text-gray-400 self-center">or paste below</span>
               </div>
-            )}
+              <textarea
+                value={billPasteText}
+                onChange={(e) => { setBillPasteText(e.target.value); setBillPdfError(""); }}
+                placeholder="Paste your bill text here... (or skip if you don't have it handy)"
+                className="w-full h-32 px-3 py-2 text-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              />
+              {billPdfError && (
+                <p className="text-lg text-red-600 dark:text-red-400">❌ {billPdfError}</p>
+              )}
+            </div>
 
-            <div className="flex gap-3 justify-center mt-8">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setStep(STEPS.COST_SETTINGS)}
                 className="btn btn-outline px-6 py-3"
               >
                 Back
-              </button>
-              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
-                <span className="flex items-center gap-1">
-                  {(bridgeConnected || (bridgeIp.trim() && pairingCode?.replace(/-/g, '').length >= 8)) ? 'Continue' : 'Skip & Continue'} <ChevronRight size={18} />
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 6: AI Integration (Optional, skippable) */}
-        {step === STEPS.AI && (
-          <div className="text-left">
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
-              STEP {step + 1} OF {totalSteps}
-            </p>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-              AI Integration
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Optional — you can set this up later in Settings.
-            </p>
-            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 md:p-6 max-h-[60vh] overflow-y-auto">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-                How do you want to run Ask Joule?
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOnboardingAiChoice("joule");
-                    setOnboardingOllamaOnThisDevice(false);
-                    setOnboardingLocalUrl(JOULE_LLM_URL || "");
-                    setOnboardingLocalModel("llama3:latest");
-                  }}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
-                    onboardingAiChoice === "joule"
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-                  }`}
-                >
-                  <Zap className="w-8 h-8 text-amber-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Use Joule (free)</span>
-                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Uses shared Joule LLM server via Cloudflare Tunnel — no setup, no credit card.</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOnboardingAiChoice("groq")}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
-                    onboardingAiChoice === "groq"
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-                  }`}
-                >
-                  <Cloud className="w-8 h-8 text-slate-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Groq Cloud</span>
-                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Bring your own API key for fast responses.</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOnboardingAiChoice("local")}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-left transition-colors ${
-                    onboardingAiChoice === "local"
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                      : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-                  }`}
-                >
-                  <Cpu className="w-8 h-8 text-indigo-500" />
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">Your computer</span>
-                  <span className="text-xs text-gray-600 dark:text-gray-400 text-center">Run Ollama on your gaming PC — nothing leaves your network.</span>
-                </button>
-              </div>
-
-              {onboardingAiChoice === "groq" && (
-                <div className="mt-4 space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Groq API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={onboardingGroqKey}
-                    onChange={(e) => setOnboardingGroqKey(e.target.value)}
-                    placeholder="gsk_..."
-                    className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
-                    aria-label="Groq API Key"
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">groq.com</a> — no credit card.
-                  </p>
-                </div>
-              )}
-
-              {(onboardingAiChoice === "joule" || onboardingAiChoice === "local") && (
-                <div className="mt-4 space-y-3">
-                  {onboardingAiChoice === "joule" ? (
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Using the shared Joule LLM server via Cloudflare Tunnel. No setup needed.
-                    </p>
-                  ) : (
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Do this once: install Ollama, start it, then download a model. Where is Ollama running?
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-4">
-                    {onboardingAiChoice === "local" && (
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="onboardingOllamaLocation"
-                          checked={onboardingOllamaOnThisDevice}
-                          onChange={() => {
-                            setOnboardingOllamaOnThisDevice(true);
-                            setOnboardingLocalUrl("http://localhost:11434/v1");
-                          }}
-                          className="rounded-full"
-                        />
-                        <span className="text-sm">On this device</span>
-                      </label>
-                    )}
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="onboardingOllamaLocation"
-                        checked={!onboardingOllamaOnThisDevice}
-                        onChange={() => {
-                          setOnboardingOllamaOnThisDevice(false);
-                          if (onboardingAiChoice === "local" && (onboardingLocalUrl.includes("localhost") || onboardingLocalUrl.includes("127.0.0.1"))) {
-                            setOnboardingLocalUrl("http://192.168.0.108:11434/v1");
-                          }
-                          if (onboardingAiChoice === "joule" && JOULE_LLM_URL) {
-                            setOnboardingLocalUrl(JOULE_LLM_URL);
-                          }
-                        }}
-                        className="rounded-full"
-                      />
-                      <span className="text-sm">{onboardingAiChoice === "joule" ? "Joule server (Cloudflare Tunnel)" : "On another device or shared server (local IP or public URL)"}</span>
-                    </label>
-                  </div>
-                  {!onboardingOllamaOnThisDevice && (
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                        {onboardingAiChoice === "joule" ? "Address of the Joule LLM server" : "Address of the computer running Ollama"}
-                      </label>
-                      <input
-                        type="url"
-                        value={onboardingLocalUrl}
-                        onChange={(e) => setOnboardingLocalUrl(e.target.value.trim())}
-                        placeholder={onboardingAiChoice === "joule" ? "https://your-subdomain.trycloudflare.com/v1" : "http://192.168.0.108:11434/v1"}
-                        className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
-                        aria-label={onboardingAiChoice === "joule" ? "Joule LLM URL" : "Ollama base URL"}
-                      />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {onboardingAiChoice === "joule"
-                          ? "Set VITE_JOULE_LLM_URL when building, or enter the Cloudflare Tunnel URL (e.g. https://your-subdomain.trycloudflare.com/v1). See "
-                          : "Same network: use the other computer's IP (e.g. 192.168.0.108). Add /v1 at the end. Shared server (off-network): use a public URL (ngrok/Cloudflare Tunnel). See "}
-                        <Link to="/tools/shared-llm-server" className="text-blue-600 dark:text-blue-400 hover:underline">Tools → Shared LLM Server Wizard</Link>
-                        {onboardingAiChoice === "joule" ? " for setup." : " for setup."}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      Model to use
-                    </label>
-                    <input
-                      type="text"
-                      value={onboardingLocalModel}
-                      onChange={(e) => setOnboardingLocalModel(e.target.value.trim())}
-                      placeholder="llama3:latest"
-                      className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-                      aria-label="Ollama model"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                🔒 All AI calls run from your browser. Groq keys stay local; local AI never leaves your machine.
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Want to share your LLM with others off-network? See <Link to="/tools/shared-llm-server" className="text-blue-600 dark:text-blue-400 hover:underline">Tools → Shared LLM Server Wizard</Link> after setup.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 justify-center">
-              <button
-                onClick={() => setStep(STEPS.BRIDGE)}
-                className="btn btn-outline px-6 py-3"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(STEPS.CONFIRMATION)}
-                className="btn btn-outline px-6 py-3"
-              >
-                Skip for now
               </button>
               <button onClick={handleNext} className="btn btn-primary px-8 py-3">
                 Continue <ChevronRight size={18} />
@@ -1929,220 +1757,58 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 6: Confirmation (Required for all modes) */}
-        {step === STEPS.CONFIRMATION && (
-          <div className="text-center">
-            <div className="mb-4">
-              <CheckCircle2 size={48} className="mx-auto text-green-600 dark:text-green-400" />
-            </div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
-              STEP {step + 1} OF {totalSteps}
-            </p>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-              You're all set!
+        {/* Step 6: Analyzing — 1–2 second pause so it feels real */}
+        {step === STEPS.ANALYZING && (
+          <div className="text-center py-16">
+            <Loader2 size={64} className="mx-auto text-blue-600 dark:text-blue-400 animate-spin mb-6" />
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              {localStorage.getItem("onboardingBillPaste") ? "Preparing your forecast" : "Joule is analyzing your home"}
             </h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mb-2">
-              Here's a summary of your setup:
+            <p className="text-xl text-gray-600 dark:text-gray-400">
+              {localStorage.getItem("onboardingBillPaste") ? "Preparing your monthly forecast..." : "Comparing to similar homes in your area..."}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Click any row to edit
+          </div>
+        )}
+
+        {/* Step 7: Payoff — the "oh… now I understand" moment */}
+        {step === STEPS.PAYOFF && (() => {
+          const heatLossFactor = calculatedHeatLoss > 0 ? Math.round(calculatedHeatLoss / 70) : 600;
+          const efficiencyPercentile = (() => {
+            if (heatLossFactor < 300) return 98;
+            if (heatLossFactor < 400) return 95;
+            if (heatLossFactor < 500) return 90;
+            if (heatLossFactor < 550) return 80;
+            if (heatLossFactor < 600) return 70;
+            if (heatLossFactor < 650) return 60;
+            if (heatLossFactor < 700) return 50;
+            if (heatLossFactor < 800) return 35;
+            if (heatLossFactor < 900) return 25;
+            if (heatLossFactor < 1100) return 15;
+            if (heatLossFactor < 1300) return 10;
+            if (heatLossFactor < 1800) return 5;
+            return 2;
+          })();
+          const costPercentile = 100 - efficiencyPercentile;
+          return (
+          <div className="text-center space-y-6">
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+              STEP {STEPS.PAYOFF + 1} OF {totalSteps}
             </p>
-
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
-              <div className="space-y-1">
-                <button
-                  onClick={() => setStep(STEPS.LOCATION)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Location</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {foundLocation}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Home Size</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {squareFeet.toLocaleString()} sq ft
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Insulation</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {insulationLevel >= 1.2 ? "Poor" : insulationLevel >= 0.9 ? "Average" : insulationLevel >= 0.6 ? "Good" : "Excellent"}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Building Shape</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {homeShape <= 0.9 ? "Two-Story" : homeShape <= 1.0 ? "Split-Level" : homeShape <= 1.1 ? "Ranch" : homeShape <= 1.15 ? "Manufactured" : "Cabin"}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Ceiling Height</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {ceilingHeight} ft
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Heating System</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {primarySystem === "heatPump" ? "Heat Pump" : primarySystem === "acPlusGas" ? "Central AC + Gas" : "Gas Furnace"}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                {primarySystem === "heatPump" && (
-                  <button
-                    onClick={() => setStep(STEPS.BUILDING)}
-                    className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                  >
-                    <span className="text-gray-600 dark:text-gray-400">Heat Pump Size</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                      {heatPumpTons} tons ({Math.round(heatPumpTons * 12)}k BTU)
-                      <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                    </span>
-                  </button>
-                )}
-                {(primarySystem === "gasFurnace" || primarySystem === "acPlusGas") && (
-                  <>
-                    {primarySystem === "acPlusGas" && (
-                      <button
-                        onClick={() => setStep(STEPS.BUILDING)}
-                        className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                      >
-                        <span className="text-gray-600 dark:text-gray-400">AC Size</span>
-                        <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                          {acTons} tons ({Math.round(acTons * 12)}k BTU)
-                          <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                        </span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setStep(STEPS.BUILDING)}
-                      className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                    >
-                      <span className="text-gray-600 dark:text-gray-400">Furnace Size</span>
-                      <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        {furnaceSizeKbtu}k BTU
-                        <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => setStep(STEPS.BUILDING)}
-                      className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                    >
-                      <span className="text-gray-600 dark:text-gray-400">AFUE</span>
-                      <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        {(afue * 100).toFixed(0)}%
-                        <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                      </span>
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => setStep(STEPS.BUILDING)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Thermostats/Zones</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {numberOfThermostats} {numberOfThermostats === 1 ? "zone" : "zones"}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.COST_SETTINGS)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Cost Settings</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    ${utilityCost.toFixed(2)}/kWh, ${gasCost.toFixed(2)}/therm, ${fixedElectricCost.toFixed(2)}/mo
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.BRIDGE)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">Bridge Connection</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {bridgeConnected ? (
-                      <span className="text-green-600 dark:text-green-400">Connected</span>
-                    ) : bridgeIp ? (
-                      <span className="text-yellow-600 dark:text-yellow-400">Configured</span>
-                    ) : (
-                      <span className="text-gray-400">Not set up</span>
-                    )}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <button
-                  onClick={() => setStep(STEPS.AI)}
-                  className="w-full flex justify-between items-center py-2 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
-                >
-                  <span className="text-gray-600 dark:text-gray-400">AI (Ask Joule)</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    {(() => {
-                      try {
-                        const provider = localStorage.getItem("aiProvider") || "groq";
-                        const hasKey = !!localStorage.getItem("groqApiKey")?.trim();
-                        const hasLocal = !!localStorage.getItem("localAIBaseUrl")?.trim();
-                        if (provider === "local" && hasLocal) return <span className="text-green-600 dark:text-green-400">Local (Ollama)</span>;
-                        if (provider === "groq" && hasKey) return <span className="text-green-600 dark:text-green-400">Groq</span>;
-                        return <span className="text-gray-400">Not set up</span>;
-                      } catch {
-                        return <span className="text-gray-400">Not set up</span>;
-                      }
-                    })()}
-                    <Edit3 size={14} className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity" />
-                  </span>
-                </button>
-                <div className="flex justify-between items-center py-2 px-2">
-                  <span className="text-gray-600 dark:text-gray-400">Unit System</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {unitSystem === UNIT_SYSTEMS.INTL ? "International" : "US"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              You can adjust these settings anytime in <Link to="/settings" className="text-blue-600 hover:underline">Settings</Link>.
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              Your heating cost is higher than {costPercentile}% of homes in your area.
+            </h2>
+            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+              Let's find out why.
             </p>
 
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => setStep(STEPS.AI)}
-                className="btn btn-outline px-6 py-3"
-              >
-                Back
-              </button>
-              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
-                <span className="flex items-center gap-1">
-                  {localStorage.getItem('pairingCode') ? 'Start Monthly Forecast' : 'Start Weekly Forecast'} <Zap size={18} />
-                </span>
+            <div className="flex justify-center pt-4">
+              <button onClick={handleNext} className="btn btn-primary px-10 py-3 text-xl">
+                Find Out Why <ArrowRight size={20} />
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

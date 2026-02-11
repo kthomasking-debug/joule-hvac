@@ -986,7 +986,7 @@ export const routes = [
     path: "/tools/bridge-remote-access-wizard",
     name: "Bridge Remote Access Wizard",
     label: "Bridge Remote Access Wizard",
-    icon: Server,
+    icon: Network,
     Component: BridgeRemoteAccessWizard,
     showInNav: false,
     inMobileNav: false,
