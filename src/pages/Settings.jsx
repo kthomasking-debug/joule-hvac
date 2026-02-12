@@ -823,15 +823,15 @@ const GroqApiKeyInput = () => {
   const [modelError, setModelError] = useState(null);
   const [localBaseUrl, setLocalBaseUrl] = useState(() => {
     try {
-      const raw = localStorage.getItem("localAIBaseUrl") || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
-      const sanitized = sanitizeOllamaBaseUrl(raw) || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+      const raw = localStorage.getItem("localAIBaseUrl") || "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
+      const sanitized = sanitizeOllamaBaseUrl(raw) || "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
       if (sanitized !== raw) {
         localStorage.setItem("localAIBaseUrl", sanitized);
         persistAIConfigToBridge("localAIBaseUrl", sanitized);
       }
       return sanitized;
     } catch {
-      return "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+      return "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
     }
   });
   const [localModel, setLocalModel] = useState(() => {
@@ -862,7 +862,7 @@ const GroqApiKeyInput = () => {
     try {
       let current = localStorage.getItem("localAIBaseUrl") || "";
       if (current.includes("tricks-actions-applied-clothing")) {
-        current = current.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        current = current.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "unexpected-helena-houston-develop.trycloudflare.com/v1");
         localStorage.setItem("localAIBaseUrl", current);
         persistAIConfigToBridge("localAIBaseUrl", current);
         setLocalBaseUrl(current);
@@ -870,7 +870,7 @@ const GroqApiKeyInput = () => {
       }
       let saved = localStorage.getItem("localAIBaseUrlOtherDevice") || "";
       if (saved.includes("tricks-actions-applied-clothing")) {
-        saved = saved.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        saved = saved.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "unexpected-helena-houston-develop.trycloudflare.com/v1");
         localStorage.setItem("localAIBaseUrlOtherDevice", saved);
       }
       if (current && !current.includes("localhost") && !current.includes("127.0.0.1") && !saved) {
@@ -940,7 +940,7 @@ const GroqApiKeyInput = () => {
 
   const handleLocalBaseUrlChange = (e) => {
     const raw = e.target.value.trim();
-    const def = "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+    const def = "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
     const val = sanitizeOllamaBaseUrl(raw || def) || def;
     setLocalBaseUrl(val);
     try {
@@ -965,7 +965,7 @@ const GroqApiKeyInput = () => {
 
   useEffect(() => {
     if (aiProvider !== AI_PROVIDERS.LOCAL) return;
-    const base = (localBaseUrl || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1").trim();
+    const base = (localBaseUrl || "https://unexpected-helena-houston-develop.trycloudflare.com/v1").trim();
     if (!base) return;
     let cancelled = false;
     setLoadingLocalModels(true);
@@ -1293,7 +1293,7 @@ const GroqApiKeyInput = () => {
                 const url =
                   sanitized ||
                   (localBaseUrl && !localBaseUrl.includes("localhost") && !localBaseUrl.includes("127.0.0.1") ? localBaseUrl : null) ||
-                  "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+                  "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
                 setLocalBaseUrl(url);
                 try {
                   localStorage.setItem("localAIBaseUrl", url);
@@ -1315,7 +1315,7 @@ const GroqApiKeyInput = () => {
           type="url"
           value={localBaseUrl}
           onChange={handleLocalBaseUrlChange}
-          placeholder={ollamaLocation === "this-device" ? "http://localhost:11434/v1" : "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1"}
+          placeholder={ollamaLocation === "this-device" ? "http://localhost:11434/v1" : "https://unexpected-helena-houston-develop.trycloudflare.com/v1"}
           className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
           aria-label="Address of computer running Ollama"
         />
@@ -1410,7 +1410,7 @@ const GroqApiKeyInput = () => {
               <button
                 type="button"
                 onClick={() => copyToClipboard(
-                  '$env:OLLAMA_HOST="0.0.0.0"; $env:OLLAMA_ORIGINS="*"; ollama serve',
+                  '$env:OLLAMA_KEEP_ALIVE="24h"; $env:OLLAMA_HOST="0.0.0.0"; $env:OLLAMA_ORIGINS="*"; ollama serve',
                   "Run command (Windows) copied",
                   "run-windows"
                 )}
@@ -1422,7 +1422,7 @@ const GroqApiKeyInput = () => {
               <button
                 type="button"
                 onClick={() => copyToClipboard(
-                  "OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve",
+                  "OLLAMA_KEEP_ALIVE=24h OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve",
                   "Run command (Linux/Mac) copied",
                   "run-linux"
                 )}
@@ -1491,11 +1491,11 @@ const GroqApiKeyInput = () => {
                 </p>
                 <div className="flex items-center gap-2 flex-wrap mb-3 p-2 bg-slate-100 dark:bg-slate-700 rounded">
                   <code className="flex-1 min-w-0 text-xs break-all">
-                    OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve
+                    OLLAMA_KEEP_ALIVE=24h OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve
                   </code>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard("OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve", "Run command (Linux/Mac) copied", null)}
+                    onClick={() => copyToClipboard("OLLAMA_KEEP_ALIVE=24h OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve", "Run command (Linux/Mac) copied", null)}
                     className="shrink-0 px-2 py-1.5 rounded border border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium"
                   >
                     Copy
@@ -1514,9 +1514,9 @@ const GroqApiKeyInput = () => {
                   </div>
                   <div className="flex items-center gap-2 flex-wrap p-2 bg-slate-100 dark:bg-slate-700 rounded">
                     <code className="flex-1 min-w-0 text-xs break-all">
-                      printf &apos;[Service]\nEnvironment=&quot;OLLAMA_HOST=0.0.0.0&quot;\nEnvironment=&quot;OLLAMA_ORIGINS=*&quot;\n&apos; | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+                      printf &apos;[Service]\nEnvironment=&quot;OLLAMA_KEEP_ALIVE=24h&quot;\nEnvironment=&quot;OLLAMA_HOST=0.0.0.0&quot;\nEnvironment=&quot;OLLAMA_ORIGINS=*&quot;\n&apos; | sudo tee /etc/systemd/system/ollama.service.d/override.conf
                     </code>
-                    <button type="button" onClick={() => copyToClipboard('printf \'[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n\' | sudo tee /etc/systemd/system/ollama.service.d/override.conf', "Linux override copied", null)} className="shrink-0 px-2 py-1 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs">Copy</button>
+                    <button type="button" onClick={() => copyToClipboard('printf \'[Service]\nEnvironment="OLLAMA_KEEP_ALIVE=24h"\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n\' | sudo tee /etc/systemd/system/ollama.service.d/override.conf', "Linux override copied", null)} className="shrink-0 px-2 py-1 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs">Copy</button>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap p-2 bg-slate-100 dark:bg-slate-700 rounded">
                     <code className="flex-1 min-w-0 text-xs break-all">
@@ -1543,11 +1543,11 @@ const GroqApiKeyInput = () => {
                 </p>
                 <div className="flex items-center gap-2 flex-wrap mb-3">
                   <code className="flex-1 min-w-0 text-xs bg-slate-200 dark:bg-slate-600 rounded px-2 py-1.5 break-all">
-                    powershell -NoExit -Command &quot;$env:OLLAMA_HOST=&#39;0.0.0.0&#39;; $env:OLLAMA_ORIGINS=&#39;*&#39;; ollama serve&quot;
+                    powershell -NoExit -Command &quot;$env:OLLAMA_KEEP_ALIVE=&#39;24h&#39;; $env:OLLAMA_HOST=&#39;0.0.0.0&#39;; $env:OLLAMA_ORIGINS=&#39;*&#39;; ollama serve&quot;
                   </code>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard("powershell -NoExit -Command \"$env:OLLAMA_HOST='0.0.0.0'; $env:OLLAMA_ORIGINS='*'; ollama serve\"", "Open PowerShell + serve copied", null)}
+                    onClick={() => copyToClipboard("powershell -NoExit -Command \"$env:OLLAMA_KEEP_ALIVE='24h'; $env:OLLAMA_HOST='0.0.0.0'; $env:OLLAMA_ORIGINS='*'; ollama serve\"", "Open PowerShell + serve copied", null)}
                     className="shrink-0 px-2 py-1.5 rounded border border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-800/50"
                   >
                     {copyFeedback === "Open PowerShell + serve copied" ? "Copied!" : "Copy"}
@@ -1557,11 +1557,11 @@ const GroqApiKeyInput = () => {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Using Command Prompt? Copy and run this there:</p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <code className="flex-1 min-w-0 text-xs bg-slate-200 dark:bg-slate-600 rounded px-2 py-1.5 break-all">
-                    set OLLAMA_HOST=0.0.0.0 &amp;&amp; set OLLAMA_ORIGINS=* &amp;&amp; ollama serve
+                    set OLLAMA_KEEP_ALIVE=24h &amp;&amp; set OLLAMA_HOST=0.0.0.0 &amp;&amp; set OLLAMA_ORIGINS=* &amp;&amp; ollama serve
                   </code>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard("set OLLAMA_HOST=0.0.0.0 && set OLLAMA_ORIGINS=* && ollama serve", "Command Prompt command copied", null)}
+                    onClick={() => copyToClipboard("set OLLAMA_KEEP_ALIVE=24h && set OLLAMA_HOST=0.0.0.0 && set OLLAMA_ORIGINS=* && ollama serve", "Command Prompt command copied", null)}
                     className="shrink-0 px-2 py-1.5 rounded border border-slate-500 dark:border-slate-400 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-600"
                   >
                     {copyFeedback === "Command Prompt command copied" ? "Copied!" : "Copy"}

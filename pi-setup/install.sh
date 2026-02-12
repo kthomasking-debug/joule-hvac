@@ -37,6 +37,14 @@ else
     echo "✅ Ollama already installed"
 fi
 
+# Configure Ollama to keep models loaded 24h and listen on all interfaces (for Pi HMI/onboarding)
+echo "⚙️  Configuring Ollama (OLLAMA_KEEP_ALIVE=24h, OLLAMA_HOST for network access)..."
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment="OLLAMA_KEEP_ALIVE=24h"\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n' | sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+echo "✅ Ollama configured and restarted"
+
 # Pull Llama 3.2 3B model
 echo "📥 Downloading Llama 3.2 3B model (this may take a few minutes)..."
 ollama pull llama3.2:3b

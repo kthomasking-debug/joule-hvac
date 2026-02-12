@@ -72,6 +72,7 @@ import {
 } from "./constants";
 import {
   getTypicalHDD,
+  getTypicalHDDForPeriod,
   estimateTypicalHDDCost,
   estimateTypicalCDDCost
 } from "./calculations";
@@ -82,7 +83,7 @@ import { isAIAvailable, callLLM, callLLMStreaming, warmLLM } from "../../lib/aiP
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
 import { extractBillToStorage, isOnboardingExtractionFromContinue, clearOnboardingExtractionFlag } from "../../lib/billExtractor";
-import { getBillMonthForComparison, parseBillDateRange } from "../../lib/bills/billParser";
+import { getBillMonthForComparison, parseBillDateRange, derivePeriodFromActualKeys, derivePeriodBounds, parseBillDateRangeToBounds, derivePeriodFromByMonth } from "../../lib/bills/billParser";
 import {
   defaultFixedChargesByState,
   defaultFallbackFixedCharges,
@@ -800,7 +801,6 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }
   }, [mode]);
   const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default — Got Your Bill? is the first thing users see
-  const [showDetails, setShowDetails] = useState(false); // Details dropdown (Quick Answer, schedule, table, settings, show me the math)
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
   const [_showHeatingCosts, _setShowHeatingCosts] = useState(false); // Collapsed by default
@@ -827,18 +827,6 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       setActualKwhEntries(stored);
     } catch { setActualKwhEntries({}); }
   }, [actualKwhStorageKey]);
-  const updateActualKwh = useCallback((dayKey, value) => {
-    setActualKwhEntries(prev => {
-      const next = { ...prev };
-      if (value === '' || value === null || value === undefined) {
-        delete next[dayKey];
-      } else {
-        next[dayKey] = Number(value);
-      }
-      localStorage.setItem(actualKwhStorageKey, JSON.stringify(next));
-      return next;
-    });
-  }, [actualKwhStorageKey]);
 
   // Bill parsing with Groq AI
   const [billPasteText, setBillPasteText] = useState('');
@@ -860,13 +848,91 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       return data.billDateRange ?? null;
     } catch { return null; }
   });
+  const [actualBillAmount, setActualBillAmount] = useState(() => {
+    try {
+      const raw = localStorage.getItem(billChatStorageKey);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      const amt = data.actualBillAmount;
+      return typeof amt === "number" && amt > 0 ? amt : null;
+    } catch { return null; }
+  });
 
-  // Pre-populate bill paste from onboarding; expand daily forecast so dailyMetricsRef populates for auto-analyze
-  // Also align to bill month (from parse or default last month) so weather comparison is correct
+  // When bill period spans two months (e.g. Jan 27 – Feb 10), compute the other month we need
+  const billPeriodOtherMonth = useMemo(() => {
+    const bounds = billDateRange
+      ? parseBillDateRangeToBounds(billDateRange, selectedYear)
+      : derivePeriodBounds(actualKwhEntries, selectedYear);
+    if (!bounds) return null;
+    const startM = bounds.startDate.getMonth() + 1;
+    const endM = bounds.endDate.getMonth() + 1;
+    if (startM === endM) return null;
+    const otherMonth = selectedMonth === startM ? endM : startM;
+    const otherYear = selectedMonth === startM ? bounds.endDate.getFullYear() : bounds.startDate.getFullYear();
+    return {
+      month: otherMonth,
+      year: otherYear,
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+    };
+  }, [billDateRange, actualKwhEntries, selectedYear, selectedMonth]);
+
+  const [otherMonthActualKwhEntries, setOtherMonthActualKwhEntries] = useState({});
+  useEffect(() => {
+    if (!billPeriodOtherMonth) {
+      setOtherMonthActualKwhEntries({});
+      return;
+    }
+    const key = `actualKwh_${billPeriodOtherMonth.year}_${billPeriodOtherMonth.month}`;
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      setOtherMonthActualKwhEntries(stored);
+    } catch {
+      setOtherMonthActualKwhEntries({});
+    }
+  }, [billPeriodOtherMonth]);
+
+  const effectiveActualKwhEntries = billPeriodOtherMonth ? { ...otherMonthActualKwhEntries, ...actualKwhEntries } : actualKwhEntries;
+
+  const updateActualKwh = useCallback((dayKey, value) => {
+    const parts = String(dayKey).split('-');
+    const dayMonth = parts.length >= 2 ? parseInt(parts[0], 10) : null;
+    const isOtherMonth = billPeriodOtherMonth && dayMonth === billPeriodOtherMonth.month;
+
+    if (isOtherMonth) {
+      const otherKey = `actualKwh_${billPeriodOtherMonth.year}_${billPeriodOtherMonth.month}`;
+      setOtherMonthActualKwhEntries(prev => {
+        const next = { ...prev };
+        if (value === '' || value === null || value === undefined) {
+          delete next[dayKey];
+        } else {
+          next[dayKey] = Number(value);
+        }
+        localStorage.setItem(otherKey, JSON.stringify(next));
+        return next;
+      });
+    } else {
+      setActualKwhEntries(prev => {
+        const next = { ...prev };
+        if (value === '' || value === null || value === undefined) {
+          delete next[dayKey];
+        } else {
+          next[dayKey] = Number(value);
+        }
+        localStorage.setItem(actualKwhStorageKey, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [actualKwhStorageKey, billPeriodOtherMonth]);
+
+  // Pre-populate from onboarding: either pre-extracted (bill extracted during onboarding) or paste for extraction
   useEffect(() => {
     try {
       const storedMonth = localStorage.getItem("onboardingBillMonth");
       const storedYear = localStorage.getItem("onboardingBillYear");
+      const storedDateRange = localStorage.getItem("onboardingBillDateRange");
+      const preExtracted = localStorage.getItem("onboardingBillExtracted") === "1";
+
       if (storedMonth && storedYear) {
         const m = parseInt(storedMonth, 10);
         const y = parseInt(storedYear, 10);
@@ -877,28 +943,84 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         localStorage.removeItem("onboardingBillMonth");
         localStorage.removeItem("onboardingBillYear");
       }
-      const stored = localStorage.getItem("onboardingBillPaste");
-      const storedDateRange = localStorage.getItem("onboardingBillDateRange");
-      if (stored && stored.trim()) {
-        setBillPasteText(stored.trim());
-        setShowBillPaste(true);
-        setShowDetails(true); // Expand Details so table renders
-        setShowDailyForecast(true); // Expand so dailyMetricsRef populates for auto-analyze
-        sessionStorage.setItem("onboardingBillAutoProcess", "extract");
-        localStorage.removeItem("onboardingBillPaste");
-        if (storedDateRange) {
-          setBillDateRange(storedDateRange);
+
+      if (preExtracted) {
+        // Bill was extracted during onboarding — data is already in localStorage
+        localStorage.removeItem("onboardingBillExtracted");
+        const targetMonth = storedMonth ? parseInt(storedMonth, 10) : selectedMonth;
+        const targetYear = storedYear ? parseInt(storedYear, 10) : selectedYear;
+        const primaryKey = `actualKwh_${targetYear}_${targetMonth}`;
+        const primaryStored = JSON.parse(localStorage.getItem(primaryKey) || "{}");
+        setActualKwhEntries(primaryStored);
+        // Build byMonth from localStorage to derive period if needed; load other month when spanning two months
+        const byMonth = {};
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].forEach((m) => {
+          const sk = `actualKwh_${targetYear}_${m}`;
+          const stored = JSON.parse(localStorage.getItem(sk) || "{}");
+          const days = Object.entries(stored).filter(([, v]) => typeof v === "number" && v > 0);
+          if (days.length > 0) {
+            byMonth[m] = Object.fromEntries(days.map(([k, v]) => {
+              const parts = k.split("-");
+              return [parts.length === 2 ? parts[1] : k, v];
+            }));
+          }
+        });
+        let dateRangeToUse = storedDateRange;
+        if (!dateRangeToUse && Object.keys(byMonth).length > 0) {
+          dateRangeToUse = derivePeriodFromByMonth(byMonth, targetYear);
+        }
+        if (dateRangeToUse) {
+          setBillDateRange(dateRangeToUse);
           localStorage.removeItem("onboardingBillDateRange");
+        }
+        const bounds = dateRangeToUse ? parseBillDateRangeToBounds(dateRangeToUse, targetYear) : null;
+        if (bounds) {
+          const startM = bounds.startDate.getMonth() + 1;
+          const endM = bounds.endDate.getMonth() + 1;
+          if (startM !== endM) {
+            const otherMonth = targetMonth === startM ? endM : startM;
+            const otherYear = otherMonth > targetMonth ? targetYear - 1 : targetYear;
+            const otherStored = JSON.parse(localStorage.getItem(`actualKwh_${otherYear}_${otherMonth}`) || "{}");
+            setOtherMonthActualKwhEntries(otherStored);
+          }
+        }
+        setShowDailyForecast(true);
+        setRunAutoAnalyzeAfterExtract(true);
+        const storedAmount = localStorage.getItem("onboardingBillAmount");
+        if (storedAmount && targetMonth && targetYear) {
+          try {
+            const key = `billAnalysisChat_${targetYear}_${targetMonth}`;
+            const raw = localStorage.getItem(key);
+            const data = raw ? JSON.parse(raw) : {};
+            const amt = parseFloat(storedAmount);
+            if (!Number.isNaN(amt)) {
+              data.actualBillAmount = amt;
+              localStorage.setItem(key, JSON.stringify(data));
+            }
+            localStorage.removeItem("onboardingBillAmount");
+          } catch { /* ignore */ }
+        }
+      } else {
+        const stored = localStorage.getItem("onboardingBillPaste");
+        if (stored && stored.trim()) {
+          setBillPasteText(stored.trim());
+          setShowBillPaste(true);
+          setShowDailyForecast(true);
+          sessionStorage.setItem("onboardingBillAutoProcess", "extract");
+          localStorage.removeItem("onboardingBillPaste");
+          if (storedDateRange) {
+            setBillDateRange(storedDateRange);
+            localStorage.removeItem("onboardingBillDateRange");
+          }
         }
       }
     } catch { /* ignore */ }
   }, [setSelectedMonth, setSelectedYear, setBillDateRange]);
 
-  // When user has bill data (actualKwhEntries), auto-expand Details so the forecast table renders and dailyMetricsRef populates for analysis
+  // When user has bill data (actualKwhEntries), auto-expand daily forecast so dailyMetricsRef populates for analysis
   const actualKwhCountForExpand = Object.values(actualKwhEntries).filter(v => typeof v === 'number').length;
   useEffect(() => {
     if (actualKwhCountForExpand > 0) {
-      setShowDetails(true);
       setShowDailyForecast(true);
     }
   }, [actualKwhCountForExpand]);
@@ -948,6 +1070,12 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     } catch { /* ignore */ }
   }, [billAnalysisSpeechEnabled]);
 
+  // Track which month is currently displayed — used to ignore stale AI results when user switches months mid-request
+  const currentBillMonthRef = useRef(null);
+  useEffect(() => {
+    currentBillMonthRef.current = `${selectedYear}-${selectedMonth}`;
+  }, [selectedYear, selectedMonth]);
+
   // Reload bill chat when user switches month/year so they see that month's conversation
   useEffect(() => {
     try {
@@ -956,29 +1084,34 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         setBillAnalysis(null);
         setBillConversationHistory([]);
         setBillDateRange(null);
+        setActualBillAmount(null);
         return;
       }
       const data = JSON.parse(raw);
       setBillAnalysis(data.billAnalysis ?? null);
       setBillConversationHistory(Array.isArray(data.billConversationHistory) ? data.billConversationHistory : []);
       setBillDateRange(data.billDateRange ?? null);
+      const amt = data.actualBillAmount;
+      setActualBillAmount(typeof amt === "number" && amt > 0 ? amt : null);
     } catch {
       setBillAnalysis(null);
       setBillConversationHistory([]);
       setBillDateRange(null);
+      setActualBillAmount(null);
     }
   }, [billChatStorageKey]);
 
   // Persist bill analysis and conversation so chat survives navigation (pick up where you left off)
   useEffect(() => {
     try {
-      if (!billAnalysis && !billDateRange && (!billConversationHistory || billConversationHistory.length === 0)) {
+      const hasData = billAnalysis || billDateRange || (billConversationHistory && billConversationHistory.length > 0) || actualBillAmount;
+      if (!hasData) {
         localStorage.removeItem(billChatStorageKey);
       } else {
-        localStorage.setItem(billChatStorageKey, JSON.stringify({ billAnalysis, billConversationHistory, billDateRange }));
+        localStorage.setItem(billChatStorageKey, JSON.stringify({ billAnalysis, billConversationHistory, billDateRange, actualBillAmount }));
       }
     } catch { /* ignore */ }
-  }, [billChatStorageKey, billAnalysis, billConversationHistory, billDateRange]);
+  }, [billChatStorageKey, billAnalysis, billConversationHistory, billDateRange, actualBillAmount]);
 
   const parseBillWithGroq = useCallback(async () => {
     if (!isAIAvailable()) {
@@ -1011,6 +1144,16 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const storageKey = `actualKwh_${targetYear}_${targetMonth}`;
       const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
       setActualKwhEntries(stored);
+      // Set other month's data synchronously so auto-analyze has full bill period before it runs
+      const otherMonths = Object.keys(byMonth || {}).map((m) => parseInt(m, 10)).filter((m) => m !== targetMonth);
+      if (otherMonths.length > 0) {
+        const otherMonth = otherMonths[0];
+        const otherYear = otherMonth > targetMonth ? targetYear - 1 : targetYear; // Dec→Jan spans year
+        const otherStored = JSON.parse(localStorage.getItem(`actualKwh_${otherYear}_${otherMonth}`) || '{}');
+        setOtherMonthActualKwhEntries(otherStored);
+      } else {
+        setOtherMonthActualKwhEntries({});
+      }
       setBillPasteText('');
       setShowBillPaste(false);
       setRunAutoAnalyzeAfterExtract(true);
@@ -1058,12 +1201,13 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }
   }, []);
 
-  const analyzeBillDiscrepancy = useCallback(async (dailyMetrics) => {
+  const analyzeBillDiscrepancy = useCallback(async (dailyMetrics, entriesOverride) => {
     if (!isAIAvailable()) {
       setBillAnalysis({ error: 'AI not configured. Add a Groq API key or enable Local AI (Ollama) in Settings → Bridge & AI.' });
       return;
     }
-    const actualValues = Object.entries(actualKwhEntries).filter(([, v]) => typeof v === 'number');
+    const entries = entriesOverride ?? actualKwhEntries;
+    const actualValues = Object.entries(entries).filter(([, v]) => typeof v === 'number');
     if (actualValues.length === 0) {
       setBillAnalysis({ error: 'Enter some actual kWh values first (paste a bill or type values).' });
       return;
@@ -1073,7 +1217,14 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     setBillConversationHistory([]);
     setBillFollowUpQuestion('');
     setBillFollowUpStreamingText('');
+    const requestKey = `${selectedYear}-${selectedMonth}`;
+    billAnalysisRequestMonthRef.current = requestKey;
     try {
+      // Bill period vs month: when user has a bill period (e.g. Jan 27 – Feb 10), AI must use "bill period" not "month"
+      const _hasBillPeriod = !!(billDateRange || derivePeriodFromActualKeys(entries, selectedYear));
+      const _displayPeriod = billDateRange || derivePeriodFromActualKeys(entries, selectedYear) || `${['January','February','March','April','May','June','July','August','September','October','November','December'][selectedMonth - 1]} ${selectedYear}`;
+      const _monthLabel = ['January','February','March','April','May','June','July','August','September','October','November','December'][selectedMonth - 1];
+
       // Bill month determines model mode: heating vs cooling (never announce mode — vocabulary carries context)
       const isCoolingMonth = [4, 5, 6, 7, 8, 9].includes(selectedMonth);
 
@@ -1081,7 +1232,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
       const allRows = (dailyMetrics || []).map((day, idx) => {
         const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
-        const actual = actualKwhEntries[dayKey];
+        const actual = entries[dayKey];
         return {
           day: day.day,
           estKwh: Math.round(day.energy * 10) / 10,
@@ -1100,6 +1251,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const fullMonthForecastKwh = allRows.reduce((s, r) => s + r.estKwh, 0);
       const fullMonthForecastCost = Math.round((fullMonthForecastKwh * utilityCost + fixedElectricCost) * 100) / 100;
       const isPartialMonth = comparisonRows.length > 0 && comparisonRows.length < daysInMonth;
+      // User entered only total bill — daily values are prorated (total÷days). Not real usage.
+      const isProratedOnly = typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1';
 
       // Build rich model context so AI knows exactly what parameters drive the estimate
       const ceilingMult = 1 + (ceilingHeight - 8) * 0.1;
@@ -1163,9 +1316,21 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
 
       const learnedMonths = userSettings?.learnedHeatLossMonths || [];
       const isHeatLossFromThisBill = auditHlfSource === 'learned' && learnedMonths.includes(`${selectedYear}-${String(selectedMonth).padStart(2, '0')}`);
+
+      // ONE ANCHOR: period expected vs actual for first-response consistency
+      const periodExpectedCost = Math.round(totalEst * elecRate * 100) / 100;
+      const periodActualCost = actualBillAmount != null ? actualBillAmount : Math.round(totalActual * elecRate * 100) / 100;
+      const diffDollars = Math.abs(periodActualCost - periodExpectedCost);
+      const diffPct = periodExpectedCost > 0 ? diffDollars / periodExpectedCost : 0;
+      const fixedFees = fixedElectricCost ?? 0;
+      const highFixedCostNote = fixedFees >= 20 ? `USER'S FIXED MONTHLY FEE: $${fixedFees.toFixed(2)}. This is higher than typical (~$15). Acknowledge this when explaining their bill — a significant portion is the fixed service charge (meter, delivery, etc.), not usage. Say something like "Your fixed fees alone are about $${fixedFees.toFixed(0)}/month" or "Roughly $${fixedFees.toFixed(0)} of your bill is the fixed service charge."` : null;
+      const proratedNote = isProratedOnly ? `CRITICAL - PRORATED DATA: User entered only total bill ($${(actualBillAmount != null ? actualBillAmount : totalActual * elecRate).toFixed(2)}). The per-day "actual" values are total÷days — NOT real usage. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total (expected vs actual). The daily breakdown is for display only.` : null;
       const homeContextStr = isCoolingMonth ? [
-        isPartialMonth ? `PARTIAL MONTH: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only.` : null,
-        billDateRange ? `BILL PERIOD: The user's bill covers ${billDateRange}. Refer to this exact period when explaining weather impact.` : null,
+        actualBillAmount != null ? `USER'S ACTUAL BILL TOTAL: $${actualBillAmount.toFixed(2)}. Use this exact amount when referring to their bill — do NOT use derived cost from kWh.` : null,
+        proratedNote,
+        highFixedCostNote,
+        isPartialMonth ? `PARTIAL ${_hasBillPeriod ? 'PERIOD' : 'MONTH'}: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only.` : null,
+        billDateRange ? `BILL PERIOD: The user's bill covers ${billDateRange}. This is a BILL PERIOD, not a calendar month. NEVER say "January", "this month", or "month" — always say "this bill period", "for ${_displayPeriod}", or "the period".` : null,
         avgOutdoorTemp ? `AVERAGE_TEMP: ${avgOutdoorTemp}°F during the bill period.` : null,
         `${squareFeet} sqft, ${primarySystem === 'heatPump' ? 'heat pump' : primarySystem === 'acPlusGas' ? 'Central AC + gas' : 'gas furnace'}`,
         `Summer thermostat: day ${summerThermostat ?? 76}°F, night ${summerThermostatNight ?? 78}°F, weighted avg ${coolingSetTemp.toFixed(1)}°F`,
@@ -1173,12 +1338,15 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         `Insulation multiplier: ${insulationLevel}x, Home shape: ${homeShape}x, Solar exposure: ${solarExposure ?? 1}x`,
         `Model's heat gain (BTU/hr per °F above balance): ${btuGainPerDegF.toFixed(0)} BTU/hr/°F`,
         `Electricity rate: $${elecRate}/kWh, Fixed monthly fees: $${fixedElectricCost}/mo`,
-        `Full month forecast: $${fullMonthForecastCost.toFixed(2)} total. User entered ${comparisonRows.length} days: ${totalActual.toFixed(1)} kWh actual vs ${totalEst.toFixed(1)} kWh forecast = $${Math.abs((totalEst - totalActual) * elecRate).toFixed(2)} ${totalEst > totalActual ? 'model overestimated' : 'model underestimated'}.`,
+        `${_hasBillPeriod ? 'Bill period' : 'Full month'} forecast: $${fullMonthForecastCost.toFixed(2)} total. User entered ${comparisonRows.length} days: ${totalActual.toFixed(1)} kWh actual vs ${totalEst.toFixed(1)} kWh forecast = $${Math.abs((totalEst - totalActual) * elecRate).toFixed(2)} ${totalEst > totalActual ? 'model overestimated' : 'model underestimated'}.`,
         `Cooling: no aux heat. Compressor capacity derates above 95°F.`,
         empiricalHeatGain ? `Empirical heat gain (back-calc from bill): ~${empiricalHeatGain.toFixed(0)} BTU/hr/°F` : '',
       ].filter(Boolean).join('\n') : [
-        isPartialMonth ? `PARTIAL MONTH: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only.` : null,
-        billDateRange ? `BILL PERIOD: The user's bill covers ${billDateRange}. Refer to this exact period when explaining weather impact.` : null,
+        actualBillAmount != null ? `USER'S ACTUAL BILL TOTAL: $${actualBillAmount.toFixed(2)}. Use this exact amount when referring to their bill — do NOT use derived cost from kWh.` : null,
+        proratedNote,
+        highFixedCostNote,
+        isPartialMonth ? `PARTIAL ${_hasBillPeriod ? 'PERIOD' : 'MONTH'}: The user has entered actual bill data for ${comparisonRows.length} of ${daysInMonth} days only.` : null,
+        billDateRange ? `BILL PERIOD: The user's bill covers ${billDateRange}. This is a BILL PERIOD, not a calendar month. NEVER say "January", "this month", or "month" — always say "this bill period", "for ${_displayPeriod}", or "the period".` : null,
         avgOutdoorTemp ? `AVERAGE_TEMP: ${avgOutdoorTemp}°F during the bill period.` : null,
         `${squareFeet} sqft, ${primarySystem === 'heatPump' ? 'heat pump' : primarySystem === 'acPlusGas' ? 'Central AC + gas' : 'gas furnace'}`,
         `Thermostat: day ${indoorTemp || winterThermostat}°F, night ${nighttimeTemp || winterThermostat}°F, weighted avg ${setTemp.toFixed(1)}°F`,
@@ -1188,7 +1356,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         `Model's BTU loss/°F: ${effectiveBtuLossPerDegF.toFixed(0)} BTU/hr/°F`,
         auditHlfSource !== 'calculated' ? '' : `Calculated building HLF (not used): ${calculatedBtuLossPerDegF.toFixed(0)} BTU/hr/°F`,
         `Electricity rate: $${elecRate}/kWh, Fixed monthly fees: $${fixedElectricCost}/mo`,
-        `Full month forecast: $${fullMonthForecastCost.toFixed(2)} total. User entered ${comparisonRows.length} days: ${totalActual.toFixed(1)} kWh actual vs ${totalEst.toFixed(1)} kWh forecast = $${Math.abs((totalEst - totalActual) * elecRate).toFixed(2)} ${totalEst > totalActual ? 'model overestimated' : 'model underestimated'}.`,
+        `${_hasBillPeriod ? 'Bill period' : 'Full month'} forecast: $${fullMonthForecastCost.toFixed(2)} total. User entered ${comparisonRows.length} days: ${totalActual.toFixed(1)} kWh actual vs ${totalEst.toFixed(1)} kWh forecast = $${Math.abs((totalEst - totalActual) * elecRate).toFixed(2)} ${totalEst > totalActual ? 'model overestimated' : 'model underestimated'}.`,
         `Aux heat (electric strip): ${useElectricAuxHeat ? 'Included (5kW strips)' : 'Excluded'}`,
         `CAPACITY CURVE (capacity degrades with cold): ${capacitySamples}`,
         empiricalHLF ? `Empirical HLF (back-calc from bill): ${empiricalHLF.toFixed(0)} BTU/hr/°F` : '',
@@ -1209,14 +1377,22 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         comparisonRows,
         homeContext: homeContextStr,
         isCoolingMonth,
+        hasBillPeriod: _hasBillPeriod,
+        displayPeriod: _displayPeriod,
+        onlyProratedTotal: isProratedOnly,
       });
 
       const billSystemPrompt = isCoolingMonth
         ? `You are Joule, the homeowner's advocate. You help people understand their energy bill and give them facts to stand on. Be warm, validating, and on their side — not the utility's.
 
-TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill was actually lower than the forecast; you\'re right to want to understand why the model overestimated."' : 'If their bill is high, say so plainly: "That\'s a lot for this period — you\'re right to want to understand why."'} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers. NEVER announce "cooling mode" or "heating mode" — speak in context (heat, sun, cooling demand).
+TERMINOLOGY - BILL PERIOD: ${_hasBillPeriod ? `The user's bill covers ${_displayPeriod} (a bill period, NOT a calendar month). NEVER say "January", "this month", or "month" — always say "this bill period", "for ${_displayPeriod}", or "the period".` : 'The user is viewing a full calendar month.'}
 
-CRITICAL - UNIFY NUMBERS: The page shows full month forecast exactly $${fullMonthForecastCost.toFixed(2)} (${fullMonthForecastKwh.toFixed(0)} kWh). Cite this exact amount. The ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) is for the ${comparisonRows.length} days the user entered only. When you mention the period numbers, ALWAYS say "for the ${comparisonRows.length} days you entered."
+TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill came in lower than expected; the model ran a little high."' : `If their bill is high, say so plainly: "That's a lot for ${_hasBillPeriod ? 'this bill period' : _monthLabel} — you're right to want to understand why."`} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers. NEVER announce "cooling mode" or "heating mode" — speak in context (heat, sun, cooling demand).
+
+CRITICAL - ONE ANCHOR: Use ONLY these two numbers in your first response: Expected (for this period): about $${periodExpectedCost.toFixed(0)}. Actual (user's bill): $${periodActualCost.toFixed(2)}. The dollar difference is exactly $${diffDollars.toFixed(2)} — use this number. Do NOT compute fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}) minus actual — that would be wrong. Do NOT mention fullMonthForecastCost — it will confuse the user.
+${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. You have NO real per-day usage. Do NOT cite specific days (e.g. "January 15th", "on the 15th"). Speak ONLY about the period total (expected vs actual).` : ''}
+MAGNITUDE: Diff is $${diffDollars.toFixed(2)} (${(diffPct * 100).toFixed(0)}%). Say "the model ran a little high — about $${diffDollars.toFixed(0)} higher than what you actually used" (NOT "overestimated by $X"). If diff <15%: "slightly" or "a bit" — NEVER "significantly". If 15-25%: "somewhat". If >25%: "significantly".
+VOICE: Use "I'm looking at your home", "For a house like yours", "That's usually a good sign", "If you're curious". Avoid: "various factors", "analysis indicates", "model discrepancy", "system suggests", "the model overestimated" — say "the model ran a little high" instead.
 
 CRITICAL: The MODEL estimates HVAC cooling only (compressor). The ACTUAL BILL is whole-house electricity (HVAC + baseload: water heater, fridge, lights, appliances). Typical baseload: 5–15 kWh/day.
 
@@ -1239,12 +1415,19 @@ ${homeContextStr}
 
 FORMAT: Write in friendly, conversational paragraph form. No bullet points, no numbered lists. VOICE: Joule is calm, observant, confident. Never announce modes — speak in context.
 
-STRUCTURE: When numbers are close, write: "I've been looking at your home and your bill. The numbers are lining up almost exactly with what I'd expect for a house like yours in this weather. That usually means nothing is wrong — your home is behaving normally. Want to take a closer look together?" When the difference is significant, lead with "I compared your bill to your home and the weather." End with "Want to take a closer look together?" on its own line. Then STOP.`
+STRUCTURE: Lead with reassurance, then orientation, then numbers, then invitation. First message answers: "Is something wrong?" Not "here are the numbers."
+When numbers look normal (diff <25%): "I'm looking at your home and this bill period. For a house like yours in this weather, the numbers are right where I'd expect. That usually means nothing is wrong — your home is behaving normally. For those ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. So you came in ${periodActualCost < periodExpectedCost ? (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' lower' : (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' higher'} than the model predicted. Want to take a closer look together, or just confirm everything looks normal?"
+When difference is large: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP.`
         : `You are Joule, the homeowner's advocate. You help people understand why their heating bill is high and give them facts to stand on. Be warm, validating, and on their side — not the utility's.
 
-TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill was actually lower than the forecast; you\'re right to want to understand why the model overestimated." Do NOT say "bill was high" or "higher than expected."' : 'If their bill is high, say so plainly: "That\'s a lot for January — you\'re right to want to understand why."'} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers.
+TERMINOLOGY - BILL PERIOD: ${_hasBillPeriod ? `The user's bill covers ${_displayPeriod} (a bill period, NOT a calendar month). NEVER say "January", "this month", or "month" — always say "this bill period", "for ${_displayPeriod}", or "the period".` : 'The user is viewing a full calendar month.'}
 
-CRITICAL - UNIFY NUMBERS: The page shows full month forecast exactly $${fullMonthForecastCost.toFixed(2)} (${fullMonthForecastKwh.toFixed(0)} kWh) — same as Quick Answer. Cite this exact amount; do not recalculate or round differently. The ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) is for the ${comparisonRows.length} days the user entered only. When you mention the period numbers, ALWAYS say "for the ${comparisonRows.length} days you entered" so it's not confused with the full month. Lead with the full month ($${fullMonthForecastCost.toFixed(2)}) as the main forecast; use period numbers only when explaining the day-by-day comparison.
+TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill came in lower than expected; the model ran a little high." Do NOT say "bill was high" or "higher than expected."' : `If their bill is high, say so plainly: "That's a lot for ${_hasBillPeriod ? 'this bill period' : _monthLabel} — you're right to want to understand why."`} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers.
+
+CRITICAL - ONE ANCHOR: Use ONLY these two numbers in your first response: Expected (for this period): about $${periodExpectedCost.toFixed(0)}. Actual (user's bill): $${periodActualCost.toFixed(2)}. The dollar difference is exactly $${diffDollars.toFixed(2)} — use this number. Do NOT compute fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}) minus actual — that would be wrong. Do NOT mention fullMonthForecastCost — it will confuse the user.
+${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. You have NO real per-day usage. Do NOT cite specific days (e.g. "January 15th", "on the 15th"). Speak ONLY about the period total (expected vs actual).` : ''}
+MAGNITUDE: Diff is $${diffDollars.toFixed(2)} (${(diffPct * 100).toFixed(0)}%). Say "the model ran a little high — about $${diffDollars.toFixed(0)} higher than what you actually used" (NOT "overestimated by $X"). If diff <15%: "slightly" or "a bit" — NEVER "significantly". If 15-25%: "somewhat". If >25%: "significantly".
+VOICE: Use "I'm looking at your home", "For a house like yours", "That's usually a good sign", "If you're curious". Avoid: "various factors", "analysis indicates", "model discrepancy", "system suggests", "the model overestimated" — say "the model ran a little high" instead.
 
 CRITICAL: The MODEL estimates HVAC heating only (heat pump + aux strips). The ACTUAL BILL is whole-house electricity (HVAC + baseload: water heater, fridge, lights, appliances). Typical baseload: 5–15 kWh/day.
 
@@ -1282,7 +1465,9 @@ ${homeContextStr}
 
 FORMAT: Write in friendly, conversational paragraph form — like a knowledgeable neighbor explaining things over coffee. No bullet points, no numbered lists, no bold section headers. Use flowing prose that’s easy to read. VOICE: Joule is calm, observant, confident — a thermostat that can explain itself. Never salesy, jokey, or robotic. Reassuring when nothing is wrong, with a touch of pride.
 
-STRUCTURE: When numbers are close (actual within ~15% of forecast), write: "I've been looking at your home and your bill. The numbers are lining up almost exactly with what I'd expect for a house like yours in this weather. That usually means nothing is wrong — your home is behaving normally. Want to take a closer look together?" When the difference is significant, lead with "I compared your bill to your home and the weather." One more sentence on whether things line up. End with "Want to take a closer look together?" on its own line. Then STOP. Do NOT include the full explanation or Shareable summary in this response — the user can say "Yes, dig deeper" in a follow-up to get the full explanation.
+STRUCTURE: Lead with reassurance, then orientation, then numbers, then invitation. First message answers: "Is something wrong?" Not "here are the numbers."
+When numbers look normal (diff <25%): "I'm looking at your home and this bill period. For a house like yours in this weather, the numbers are right where I'd expect. That usually means nothing is wrong — your home is behaving normally. For those ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. So you came in ${periodActualCost < periodExpectedCost ? (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' lower' : (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' higher'} than the model predicted. Want to take a closer look together, or just confirm everything looks normal?"
+When difference is large: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP. Do NOT include the full explanation or Shareable summary in this response — the user can say "Yes, dig deeper" in a follow-up to get the full explanation.
 
 When the user later says "Yes, dig deeper" or similar, you will be asked in a follow-up to provide the full explanation and a Shareable summary — do not include those in this first response.`;
 
@@ -1294,31 +1479,41 @@ When the user later says "Yes, dig deeper" or similar, you will be asked in a fo
           },
           {
             role: 'user',
-              content: `Full month forecast (matches Quick Answer): ${fullMonthForecastKwh.toFixed(0)} kWh, $${fullMonthForecastCost.toFixed(2)} total. For the ${comparisonRows.length} days I entered: model estimated ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) vs my actual ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference at $${elecRate}/kWh.${isPartialMonth ? ` (Partial month: only ${comparisonRows.length} of ${daysInMonth} days.)` : ''}\n\nDaily comparison:\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\nPerform a field audit. When citing numbers, use full month ($${fullMonthForecastCost.toFixed(2)}) as the main forecast; if you mention the period forecast ($${(totalEst * elecRate).toFixed(2)}), say "for the ${comparisonRows.length} days you entered" so it's clear. Consider baseload (whole-house vs HVAC-only), ${isCoolingMonth ? 'heat gain' : 'heat loss'}, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them. Include dollar amounts.`
+              content: `${actualBillAmount != null ? `My actual bill total: $${actualBillAmount.toFixed(2)}. ` : ''}For the ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. Model ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) vs my actual ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference at $${elecRate}/kWh.${isPartialMonth ? ` (Partial ${_hasBillPeriod ? 'period' : 'month'}: only ${comparisonRows.length} of ${daysInMonth} days.)` : ''}${isProratedOnly ? `\n\nIMPORTANT: I only entered my total bill — no per-day data. The per-day values you might see are prorated (total÷days) for display only. Do NOT cite specific days (e.g. "January 15th").` : ''}\n\n${!isProratedOnly ? `Daily comparison:\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\n` : ''}Perform a field audit. Use ONLY these two numbers in your first response: Expected ~$${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. Do NOT mention fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}). ${actualBillAmount != null ? `User's actual bill: $${actualBillAmount.toFixed(2)}. ` : ''}Consider baseload (whole-house vs HVAC-only), ${isCoolingMonth ? 'heat gain' : 'heat loss'}, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them. Include dollar amounts.`
             }
           ],
         temperature: 0.3,
         maxTokens: 400,
         onChunk: (chunk) => {
+          if (billAnalysisRequestMonthRef.current !== currentBillMonthRef.current) return;
           setBillAnalysis((prev) =>
             prev ? { ...prev, text: (prev.text || '') + chunk } : prev
           );
         },
       });
       const analysisContent = content || 'No analysis available.';
-      setBillAnalysis((prev) =>
-        prev ? { ...prev, text: analysisContent } : prev
-      );
+      if (billAnalysisRequestMonthRef.current === currentBillMonthRef.current) {
+        setBillAnalysis((prev) =>
+          prev ? { ...prev, text: analysisContent } : prev
+        );
+      }
     } catch (err) {
-      setBillAnalysis({ error: err.message });
+      if (billAnalysisRequestMonthRef.current === currentBillMonthRef.current) {
+        setBillAnalysis({ error: err.message });
+      }
     } finally {
-      setBillAnalysisLoading(false);
+      if (billAnalysisRequestMonthRef.current === currentBillMonthRef.current) {
+        setBillAnalysisLoading(false);
+      }
+      billAnalysisRequestMonthRef.current = null;
     }
-  }, [actualKwhEntries, billDateRange, squareFeet, primarySystem, insulationLevel, effectiveIndoorTemp, winterThermostat, hspf2, capacity, ceilingHeight, homeShape, utilityCost, useElectricAuxHeat, indoorTemp, nighttimeTemp, summerThermostat, summerThermostatNight, efficiency, solarExposure, coolingCapacity, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, selectedMonth, selectedYear]);
+  }, [actualKwhEntries, actualBillAmount, billDateRange, squareFeet, primarySystem, insulationLevel, effectiveIndoorTemp, winterThermostat, hspf2, capacity, ceilingHeight, homeShape, utilityCost, useElectricAuxHeat, indoorTemp, nighttimeTemp, summerThermostat, summerThermostatNight, efficiency, solarExposure, coolingCapacity, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, selectedMonth, selectedYear]);
 
   // Ref for follow-up prompt: updated in effect after getEffectiveHeatLossFactor/hlfSource exist (avoids TDZ)
   const billFollowUpContextRef = useRef({ effectiveHeatLoss: 0, hlfSource: 'calculated', squareFeet: 800, insulationLevel: 1, homeShape: 1, ceilingHeight: 8 });
   const billFollowUpScrollRef = useRef(null);
+  // Track which month the current bill analysis request is for — ignore results if user switched months
+  const billAnalysisRequestMonthRef = useRef(null);
 
   const sendBillFollowUp = useCallback(async (questionOverride) => {
     const question = (questionOverride != null ? String(questionOverride).trim() : billFollowUpQuestion.trim()) || '';
@@ -1345,15 +1540,18 @@ When the user later says "Yes, dig deeper" or similar, you will be asked in a fo
           role: 'system',
           content: `You are Joule, the homeowner's advocate. Be warm, validating, and on their side. If they're frustrated, acknowledge it first ("That's frustrating" or "You're right to ask") before explaining. Write in conversational paragraph form — no bullets, no numbered lists, no bold headers.
 
-CRITICAL - UNIFY NUMBERS: The page shows full month forecast $${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(2)} (${(billAnalysis.fullMonthForecast ?? 0).toFixed(0)} kWh) — same as Quick Answer. The period forecast ($${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(2)}) is for the ${billAnalysis.daysCompared ?? 0} days the user entered only. When you mention period numbers, ALWAYS say "for the ${billAnalysis.daysCompared ?? 0} days you entered." Lead with full month ($${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(2)}) as the main forecast.
+TERMINOLOGY: ${billAnalysis.hasBillPeriod ? `The user's bill covers ${billAnalysis.displayPeriod || billDateRange} (a BILL PERIOD, not a calendar month). NEVER say "January", "this month", or "month" — always say "this bill period", "for ${billAnalysis.displayPeriod || billDateRange}", or "the period".` : 'The user is viewing a full calendar month.'}
 
-CRITICAL: The MODEL estimates HVAC ${billAnalysis.isCoolingMonth ? 'cooling' : 'heating'} only. The ACTUAL BILL is whole-house (HVAC + baseload). Baseload makes the bill HIGHER. When actual < estimate: the bill was LOWER than the forecast. Baseload CANNOT explain a lower bill — never mention it. The model overestimated HVAC (${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} too high, etc). When actual > estimate: the gap is often baseload — do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}. If the user asks "why my bill was high" but actual < estimate, correct them: "Actually your bill was lower than the forecast. The forecast overestimated."
+ONE ANCHOR: For the ${billAnalysis.daysCompared ?? 0} days: Expected about $${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(0)}, Actual $${(actualBillAmount ?? (billAnalysis.totalActual ?? 0) * elecRate).toFixed(2)}. Use only these two numbers when citing the comparison. Do NOT mix in fullMonthForecastCost ($${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(2)}) — it will confuse the user.
+${billAnalysis.onlyProratedTotal ? 'CRITICAL - PRORATED DATA: User entered only total bill. Per-day values are total÷days — NOT real. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total.' : ''}
 
-${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? `THIS COMPARISON: Actual < estimate (model overestimated). Baseload CANNOT explain a lower bill. If empirical ${billAnalysis.isCoolingMonth ? 'heat gain BTU/°F' : 'BTU/°F'} from HOME context is lower than the model's, say: the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Recommend lowering insulation or ${billAnalysis.isCoolingMonth ? 'solar exposure' : 'switching to From Bill Data'}.` : `THIS COMPARISON: Actual > estimate (model underestimated). Baseload likely explains the gap. Do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}.`}
+CRITICAL: The MODEL estimates HVAC ${billAnalysis.isCoolingMonth ? 'cooling' : 'heating'} only. The ACTUAL BILL is whole-house (HVAC + baseload). Baseload makes the bill HIGHER. When actual < estimate: the bill was LOWER than the forecast. Baseload CANNOT explain a lower bill — never mention it. Say "the model ran a little high" — NOT "the model overestimated". When actual > estimate: the gap is often baseload — do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}. If the user asks "why my bill was high" but actual < estimate, correct them: "Actually your bill was lower than the forecast. The model ran a little high."
+
+${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? `THIS COMPARISON: Actual < estimate (model ran a little high). Say "the model ran a little high — about $X higher than what you actually used" using the exact diff. Baseload CANNOT explain a lower bill. If empirical ${billAnalysis.isCoolingMonth ? 'heat gain BTU/°F' : 'BTU/°F'} from HOME context is lower than the model's, say: the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Recommend lowering insulation or ${billAnalysis.isCoolingMonth ? 'solar exposure' : 'switching to From Bill Data'}.` : `THIS COMPARISON: Actual > estimate (model underestimated). Baseload likely explains the gap. Do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}.`}
 
 EMPIRICAL vs MODEL: When actual < estimate, if empirical from HOME context is lower than the model's, the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Say so plainly. NEVER mention baseload when actual < estimate. When actual > estimate, empirical can be distorted by baseload — lead with baseload.
 
-INSULATION: If recommending lower insulation when model overestimates, suggest a value BELOW the user's current (from CURRENT SETTINGS). Never suggest 0.65x when they already have 0.65x — use 0.55x or 0.5x instead.
+INSULATION: If recommending lower insulation when the model ran a little high, suggest a value BELOW the user's current (from CURRENT SETTINGS). Never suggest 0.65x when they already have 0.65x — use 0.55x or 0.5x instead.
 
 ${billAnalysis.isCoolingMonth ? 'COOLING: Use heat gain, cooling demand, compressor runtime, SEER2. Do NOT use heat loss, aux heat, HSPF. Compressor capacity derates above 95°F.' : 'HEAT LOSS vs TEMPERATURE: Heat loss (BTU/hr/°F) is NOT based on temperature. It comes from building characteristics, bill data, or manual/analyzer. Do NOT say heat loss is "based on temperature".'}
 
@@ -1373,12 +1571,11 @@ Do NOT use ${billAnalysis.isCoolingMonth ? 'heat gain or' : 'heat loss or'} buil
 ${billAnalysis.homeContext || 'HOME: unknown'}
 
 FULL MONTH FORECAST (Quick Answer): ${(billAnalysis.fullMonthForecast ?? 0).toFixed(0)} kWh, $${(billAnalysis.fullMonthForecastCost ?? ((billAnalysis.fullMonthForecast ?? 0) * elecRate + fixedElectricCost)).toFixed(2)} total
-PERIOD (${billAnalysis.daysCompared} days entered): Model ${billAnalysis.totalEst?.toFixed(1)} kWh ($${(billAnalysis.totalEst * elecRate).toFixed(2)}) vs Actual ${billAnalysis.totalActual?.toFixed(1)} kWh ($${(billAnalysis.totalActual * elecRate).toFixed(2)})
-DIFFERENCE (period): ${((billAnalysis.totalActual || 0) - (billAnalysis.totalEst || 0)).toFixed(1)} kWh ($${Math.abs(((billAnalysis.totalActual || 0) - (billAnalysis.totalEst || 0)) * elecRate).toFixed(2)}) — model ${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? 'overestimated' : 'underestimated'}
-ELECTRICITY RATE: $${elecRate}/kWh | FIXED FEES: $${fixedElectricCost}/mo
+PERIOD (${billAnalysis.daysCompared} days entered): Expected $${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(2)} (${billAnalysis.totalEst?.toFixed(1)} kWh) vs Actual ${actualBillAmount != null ? `$${actualBillAmount.toFixed(2)}` : `$${((billAnalysis.totalActual ?? 0) * elecRate).toFixed(2)}`} (${billAnalysis.totalActual?.toFixed(1)} kWh)
+DIFFERENCE (period): ${((billAnalysis.totalActual || 0) - (billAnalysis.totalEst || 0)).toFixed(1)} kWh ($${Math.abs(((billAnalysis.totalActual || 0) - (billAnalysis.totalEst || 0)) * elecRate).toFixed(2)}) — model ${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? 'ran a little high' : 'underestimated'}
+ELECTRICITY RATE: $${elecRate}/kWh | FIXED FEES: $${fixedElectricCost}/mo${(fixedElectricCost ?? 0) >= 20 ? ` (USER ENTERED — higher than typical; acknowledge this when explaining their bill)` : ''}
 
-DAILY COMPARISON (estimated vs actual${billAnalysis.isCoolingMonth ? '' : ', with modeled aux heat'}):
-${dailyBreakdown}
+${billAnalysis.onlyProratedTotal ? 'NO DAILY DATA: User entered only total bill — no per-day usage. Do NOT cite specific days (e.g. "January 15th"). Speak ONLY about the period total (expected vs actual).' : `DAILY COMPARISON (estimated vs actual${billAnalysis.isCoolingMonth ? '' : ', with modeled aux heat'}):\n${dailyBreakdown}`}
 
 DIG DEEPER: If the user asks to dig deeper (e.g. "Yes", "Yes please", "Dig deeper"), provide the full detailed explanation of why the forecast differs from their bill in conversational prose (no bullets, under 200 words), then end with "Shareable summary:" on its own line and a single paragraph they can copy (include dollar amount and main driver).
 
@@ -1527,25 +1724,60 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     { enabled: !!locationData, year: selectedYear }
   );
 
+  const { dailyForecast: otherMonthForecast } = useMonthlyForecast(
+    locationData?.latitude,
+    locationData?.longitude,
+    billPeriodOtherMonth?.month ?? null,
+    {
+      enabled: !!locationData && !!billPeriodOtherMonth,
+      year: billPeriodOtherMonth?.year ?? null,
+    }
+  );
+
+  // Merge forecasts when bill period spans two months (Jan 27 – Feb 10)
+  const mergedDailyForecast = useMemo(() => {
+    if (!dailyForecast || dailyForecast.length === 0) return dailyForecast;
+    if (!billPeriodOtherMonth || !otherMonthForecast?.length) return dailyForecast;
+    const startTime = billPeriodOtherMonth.startDate.getTime();
+    const endTime = billPeriodOtherMonth.endDate.getTime();
+    const fromPrimary = dailyForecast.filter((d) => {
+      const t = (d.date instanceof Date ? d.date : new Date(d.date)).getTime();
+      return t >= startTime && t <= endTime;
+    });
+    const fromOther = otherMonthForecast.filter((d) => {
+      const t = (d.date instanceof Date ? d.date : new Date(d.date)).getTime();
+      return t >= startTime && t <= endTime;
+    });
+    const combined = [...fromPrimary, ...fromOther];
+    combined.sort((a, b) => {
+      const ta = (a.date instanceof Date ? a.date : new Date(a.date)).getTime();
+      const tb = (b.date instanceof Date ? b.date : new Date(b.date)).getTime();
+      return ta - tb;
+    });
+    return combined;
+  }, [dailyForecast, otherMonthForecast, billPeriodOtherMonth]);
+
+  const effectiveDailyForecast = billPeriodOtherMonth && otherMonthForecast?.length ? mergedDailyForecast : dailyForecast;
+
   // Apply temperature adjustments based on forecast model
   const adjustedForecast = useMemo(() => {
-    if (!dailyForecast || dailyForecast.length === 0) return null;
+    if (!effectiveDailyForecast || effectiveDailyForecast.length === 0) return null;
     
     // Debug logging
     if (import.meta?.env?.DEV) {
-      const forecastCount = dailyForecast.filter(d => d.source === 'forecast' || d.source === 'forecast-adjusted').length;
-      const historicalCount = dailyForecast.filter(d => d.source === 'historical' || d.source === 'historical-adjusted').length;
-      console.log(`📊 MonthlyBudgetPlanner received ${dailyForecast.length} days (${forecastCount} forecast, ${historicalCount} historical)`);
+      const forecastCount = effectiveDailyForecast.filter(d => d.source === 'forecast' || d.source === 'forecast-adjusted').length;
+      const historicalCount = effectiveDailyForecast.filter(d => d.source === 'historical' || d.source === 'historical-adjusted').length;
+      console.log(`📊 MonthlyBudgetPlanner received ${effectiveDailyForecast.length} days (${forecastCount} forecast, ${historicalCount} historical)`);
     }
     
     if (forecastModel === "typical") {
       // No adjustment - use as-is (TMY3 baseline)
-      return dailyForecast;
+      return effectiveDailyForecast;
     }
     
     if (forecastModel === "polarVortex") {
       // Apply -5°F offset to all temperatures (worst case scenario)
-      return dailyForecast.map(day => ({
+      return effectiveDailyForecast.map(day => ({
         ...day,
         high: day.high - 5,
         low: day.low - 5,
@@ -1555,11 +1787,11 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     }
     
     // "current" - use forecast as-is (already using current forecast)
-    return dailyForecast;
-  }, [dailyForecast, forecastModel]);
+    return effectiveDailyForecast;
+  }, [effectiveDailyForecast, forecastModel]);
 
   // Auto-extract bill when arriving from onboarding with pasted bill (must be after parseBillWithGroq, adjustedForecast)
-  const actualKwhCount = Object.values(actualKwhEntries).filter((v) => typeof v === "number").length;
+  const actualKwhCount = Object.values(effectiveActualKwhEntries).filter((v) => typeof v === "number").length;
   useEffect(() => {
     const phase = sessionStorage.getItem("onboardingBillAutoProcess");
     if (phase !== "extract" || !billPasteText.trim() || billParsing) return;
@@ -1595,8 +1827,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     const metrics = dailyMetricsRef.current;
     if (!metrics || metrics.length === 0) return;
     sessionStorage.removeItem("onboardingBillAutoProcess");
-    analyzeBillDiscrepancy(metrics);
-  }, [actualKwhCount, billAnalysisLoading, adjustedForecast, analyzeBillDiscrepancy]);
+    analyzeBillDiscrepancy(metrics, effectiveActualKwhEntries);
+  }, [actualKwhCount, billAnalysisLoading, adjustedForecast, analyzeBillDiscrepancy, effectiveActualKwhEntries]);
 
   // After Extract with AI completes, auto-run "Why is my bill so high?" analysis
   // Must wait for adjustedForecast + dailyMetricsRef to be populated (Details table renders)
@@ -1606,8 +1838,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     const metrics = dailyMetricsRef.current;
     if (!metrics || metrics.length === 0) return;
     setRunAutoAnalyzeAfterExtract(false);
-    analyzeBillDiscrepancy(metrics);
-  }, [runAutoAnalyzeAfterExtract, actualKwhCount, billAnalysisLoading, adjustedForecast, analyzeBillDiscrepancy]);
+    analyzeBillDiscrepancy(metrics, effectiveActualKwhEntries);
+  }, [runAutoAnalyzeAfterExtract, actualKwhCount, billAnalysisLoading, adjustedForecast, analyzeBillDiscrepancy, effectiveActualKwhEntries]);
 
   // Calculate balance point for aux heat (heat pumps only)
   const balancePoint = useMemo(() => {
@@ -1954,7 +2186,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       const dayKey = day.date instanceof Date
         ? `${day.date.getMonth() + 1}-${day.date.getDate()}`
         : `${selectedMonth}-${day.day}`;
-      const actualKwh = actualKwhEntries[dayKey];
+      const actualKwh = effectiveActualKwhEntries[dayKey];
       if (actualKwh == null || actualKwh <= 0) return;
 
       const avgOutdoor = (day.low + day.high) / 2;
@@ -2003,7 +2235,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     setUserSetting('learnedHeatLossDays', filtered.length);
     setUserSetting('learnedHeatLossMonths', updatedMonths);
     setUserSetting('learnedHeatLossDate', new Date().toISOString());
-  }, [actualKwhEntries, adjustedForecast, effectiveIndoorTemp, selectedMonth, selectedYear, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, calculatedHeatLossFactor, setUserSetting]);
+  }, [effectiveActualKwhEntries, adjustedForecast, effectiveIndoorTemp, selectedMonth, selectedYear, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, calculatedHeatLossFactor, setUserSetting]);
 
   /**
    * Get location-aware baseline temperature for heating calculations
@@ -2059,6 +2291,38 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     () => allMonths, // Show all months in dropdown
     [allMonths]
   );
+
+  // When user has bill data, show the period (e.g. Jan 27 – Feb 10) instead of month name site-wide
+  const displayPeriod = useMemo(() => {
+    if (billDateRange) return billDateRange;
+    const derived = derivePeriodFromActualKeys(actualKwhEntries, selectedYear);
+    if (derived) return derived;
+    return `${activeMonths.find((m) => m.value === selectedMonth)?.label ?? ''} ${selectedYear}`;
+  }, [billDateRange, actualKwhEntries, selectedYear, selectedMonth, activeMonths]);
+
+  const hasBillPeriod = !!(billDateRange || derivePeriodFromActualKeys(actualKwhEntries, selectedYear));
+
+  // Bounds for filtering forecast to bill period (Jan 27 – Feb 10) when hasBillPeriod
+  const billPeriodBounds = useMemo(() => {
+    if (!hasBillPeriod) return null;
+    const fromRange = billDateRange ? parseBillDateRangeToBounds(billDateRange, selectedYear) : null;
+    if (fromRange) return fromRange;
+    return derivePeriodBounds(actualKwhEntries, selectedYear);
+  }, [hasBillPeriod, billDateRange, actualKwhEntries, selectedYear]);
+
+  // When hasBillPeriod, show only days within the bill period; otherwise full month
+  const displayForecast = useMemo(() => {
+    if (!adjustedForecast || adjustedForecast.length === 0) return adjustedForecast;
+    if (!billPeriodBounds) return adjustedForecast;
+    const { startDate, endDate } = billPeriodBounds;
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    return adjustedForecast.filter((day) => {
+      const d = day.date instanceof Date ? day.date : new Date(day.date);
+      const t = d.getTime();
+      return t >= startTime && t <= endTime;
+    });
+  }, [adjustedForecast, billPeriodBounds]);
 
   // Auto-determine energy mode based on selected month
   useEffect(() => {
@@ -3449,7 +3713,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-700 dark:to-indigo-700 rounded-xl p-5 shadow-lg border border-purple-500/30">
             <div className="flex items-start justify-between mb-3">
               <div>
-                {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length === 0 && !billPasteText.trim() && (
+                {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length === 0 && !billPasteText.trim() && (
                   <>
                     <h3 className="font-bold text-white drop-shadow-sm flex items-center gap-2" style={{ fontSize: '18pt' }}>
                       💡 Got Your Bill? Let's Compare.
@@ -3469,16 +3733,25 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   </>
                 )}
               </div>
-              {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
+              {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
                 <button
                   onClick={() => {
-                    if (confirm('Clear all entered bill data for this month?')) {
+                    if (confirm(`Clear all entered bill data for ${hasBillPeriod ? displayPeriod : 'this month'}?`)) {
                       setActualKwhEntries({});
+                      if (billPeriodOtherMonth) {
+                        setOtherMonthActualKwhEntries({});
+                        localStorage.removeItem(`actualKwh_${billPeriodOtherMonth.year}_${billPeriodOtherMonth.month}`);
+                      }
                       localStorage.removeItem(actualKwhStorageKey);
+                      localStorage.removeItem(`billProratedOnly_${selectedYear}_${selectedMonth}`);
+                      if (billPeriodOtherMonth) {
+                        localStorage.removeItem(`billProratedOnly_${billPeriodOtherMonth.year}_${billPeriodOtherMonth.month}`);
+                      }
                       localStorage.removeItem(billChatStorageKey);
                       setBillAnalysis(null);
                       setBillConversationHistory([]);
                       setBillDateRange(null);
+                      setActualBillAmount(null);
                       setBillFollowUpStreamingText('');
                     }
                   }}
@@ -3491,10 +3764,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               )}
             </div>
             <div className="flex flex-wrap gap-3 items-center">
-              {Object.values(actualKwhEntries).filter(v => typeof v === 'number').length > 0 && !billAnalysis && (
+              {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length > 0 && !billAnalysis && (
                 <>
                   <button
-                    onClick={() => analyzeBillDiscrepancy(dailyMetricsRef.current)}
+                    onClick={() => analyzeBillDiscrepancy(dailyMetricsRef.current, effectiveActualKwhEntries)}
                     disabled={billAnalysisLoading}
                     className="flex items-center gap-2 px-6 py-4 text-xl font-bold rounded-lg bg-red-600 text-white hover:bg-red-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -3512,7 +3785,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             </div>
             {(() => {
               // Primary: one number. Secondary: supporting detail when partial bill entered.
-              const withUsage = Object.entries(actualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
+              const withUsage = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
               const billDays = withUsage.length;
               const totalActualKwh = withUsage.reduce((s, [, v]) => s + v, 0);
               const actualEnergyCost = totalActualKwh * utilityCost;
@@ -3523,11 +3796,11 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               const hasBillData = billDays > 0;
               return (
               <div className="mt-4 space-y-2">
-                {/* Primary: Expected bill this month */}
+                {/* Primary: Expected bill for period or month */}
                 {expectedTotal != null && (
                   <div>
                     <p className="text-3xl font-bold text-white drop-shadow-sm" style={{ fontSize: '28pt' }}>
-                      Expected bill this month: ${Math.round(expectedTotal)}
+                      Expected bill{hasBillPeriod ? ` for ${displayPeriod}` : ' this month'}: ${expectedTotal.toFixed(2)}
                     </p>
                     <p className="text-white/95 mt-0.5" style={{ fontSize: '13pt' }}>
                       Based on your home, thermostat, and weather
@@ -3538,16 +3811,20 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 {hasBillData && (
                   <div className="pt-2 border-t border-white/20 space-y-0.5">
                     <p className="text-white/95 font-medium" style={{ fontSize: '14pt' }}>
-                      So far: ${actualEnergyCost.toFixed(2)} for {billDays} days
+                      {actualBillAmount != null ? (
+                        <>Your bill: ${actualBillAmount.toFixed(2)} for {billDays} days</>
+                      ) : (
+                        <>So far: ${actualEnergyCost.toFixed(2)} for {billDays} days</>
+                      )}
                     </p>
                     {expectedTotal != null && (
                       <p className="text-white/90" style={{ fontSize: '13pt' }}>
                         On track for: ${expectedTotal.toFixed(2)} total
                       </p>
                     )}
-                    {billDateRange && (
+                    {hasBillPeriod && (
                       <p className="text-white/85 text-sm mt-1">
-                        Your bill covers {billDateRange}
+                        Your bill covers {displayPeriod}
                       </p>
                     )}
                     <p className="text-white/80 text-sm">
@@ -3599,7 +3876,12 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     </h4>
                     {billAnalysis?.daysCompared > 0 && (
                       <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                        Comparing model vs your bill for {billAnalysis.daysCompared} days. Primary number above is full month.
+                        Comparing model vs your bill for {billAnalysis.daysCompared} days. Primary number above is full {hasBillPeriod ? 'bill period' : 'month'}.
+                        {billAnalysis.totalEst != null && billAnalysis.totalActual != null && (
+                          <span className="block mt-1">
+                            For those {billAnalysis.daysCompared} days: Model ${(billAnalysis.totalEst * (utilityCost ?? 0.1)).toFixed(2)} ({billAnalysis.totalEst.toFixed(1)} kWh) vs Actual {actualBillAmount != null ? `$${actualBillAmount.toFixed(2)}` : `$${(billAnalysis.totalActual * (utilityCost ?? 0.1)).toFixed(2)}`} ({billAnalysis.totalActual.toFixed(1)} kWh)
+                          </span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -3706,7 +3988,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         )}
                         <div className={`${billConversationHistory.length > 0 ? 'border-t border-gray-700' : ''} p-3`}>
                           {billConversationHistory.length === 0 && !billFollowUpLoading && !billFollowUpStreamingText && (() => {
-                              const displayActual = (billAnalysis.totalActual ?? 0) > 0 ? billAnalysis.totalActual : Object.values(actualKwhEntries).filter(v => typeof v === 'number').reduce((s, v) => s + v, 0);
+                              const displayActual = (billAnalysis.totalActual ?? 0) > 0 ? billAnalysis.totalActual : Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').reduce((s, v) => s + v, 0);
                               const displayEst = (billAnalysis.totalEst ?? 0) > 0 ? billAnalysis.totalEst : (totalForecastEnergyRef.current || monthlyEstimate?.energy);
                               return (
                             <div className="mb-3 space-y-3">
@@ -4256,26 +4538,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       )}
 
 
-      {/* Details dropdown - Quick Answer, schedule, table, settings, show me the math */}
-      {mode === "budget" && (
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => setShowDetails(!showDetails)}
-            className="w-full flex items-center justify-between p-4 rounded-xl border-2 border-slate-600/50 bg-slate-800/50 hover:bg-slate-700/50 transition-colors text-left"
-          >
-            <span className="text-2xl font-semibold text-white">Details</span>
-            {showDetails ? (
-              <ChevronUp className="w-5 h-5 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-slate-400" />
-            )}
-          </button>
-        </div>
-      )}
-
       {/* Quick Answer - Full month forecast (same as daily table total) */}
-      {mode === "budget" && showDetails && (
+      {mode === "budget" && (
         <div className="mb-2">
           <AnswerCard
             loading={!monthlyEstimate || loading}
@@ -4290,15 +4554,16 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             energyMode={energyMode}
             primarySystem={primarySystem}
             timePeriod="month"
+            periodLabel={hasBillPeriod ? displayPeriod : undefined}
             compact={false}
-            contextSubtitle="Total bill (energy + fixed fees) • Based on NWS forecast for the full month"
+            contextSubtitle={hasBillPeriod ? `Total bill (energy + fixed fees) • Based on NWS forecast for ${displayPeriod}` : "Total bill (energy + fixed fees) • Based on NWS forecast for the full month"}
           />
         </div>
       )}
 
 
       {/* Modeled Schedule Section - Match Weekly Forecast Layout */}
-      {mode === "budget" && showDetails && (
+      {mode === "budget" && (
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-4 mb-2 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
           {/* Subtle animated background */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
@@ -4592,7 +4857,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       )}
 
       {/* Aux Heat Toggle - Show for heat pumps */}
-      {mode === "budget" && showDetails && primarySystem === "heatPump" && energyMode === "heating" && (
+      {mode === "budget" && primarySystem === "heatPump" && energyMode === "heating" && (
         <div className="bg-slate-800/50 border border-amber-500/30 rounded-lg p-2.5 mb-2">
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div className="relative">
@@ -4683,7 +4948,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
         )}
 
       {/* Daily Forecast Breakdown - Monthly Forecast */}
-      {mode === "budget" && showDetails && adjustedForecast && adjustedForecast.length > 0 && (
+      {mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && (
         <div className="mt-12 pt-8 border-t-2 border-gray-300/30 dark:border-gray-700/30">
           <div className="glass-card p-6 mb-6 animate-fade-in-up border-gray-500/30">
             {/* Collapsible Header */}
@@ -4694,7 +4959,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               <div className="flex items-center gap-3">
                 <Cloud className="w-5 h-5 text-blue-500" />
                 <h3 className="text-lg font-bold text-high-contrast">
-                  Monthly Forecast
+                  {hasBillPeriod ? `Forecast (${displayPeriod})` : 'Monthly Forecast'}
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -4729,7 +4994,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <p className="text-gray-600 dark:text-gray-400 font-medium" style={{ fontSize: '24pt' }}>
-                {activeMonths.find((m) => m.value === selectedMonth)?.label} {selectedYear}{isPastMonth ? ' — Actual Weather' : ' — Forecast-Based Estimate'}
+                {displayPeriod}{hasBillPeriod ? ' — Comparing to weather during that period' : isPastMonth ? ' — Actual Weather' : ' — Forecast-Based Estimate'}
               </p>
               <button
                 onClick={goToNextMonth}
@@ -4740,11 +5005,6 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
-            {actualKwhCountForExpand > 0 && billDateRange && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Comparing bill period: {billDateRange}
-              </p>
-            )}
             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               {isPastMonth ? (
                 <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: '20pt' }}>
@@ -4763,7 +5023,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 <>
               <p className="text-gray-700 dark:text-gray-300 mb-2" style={{ fontSize: '20pt' }}>
                 <strong>⚠️ Note:</strong> The main estimate and this table both use the same forecast-based data: 
-                actual observed weather for past days this month, NWS forecast for the next 15 days, and 3-year historical average for days beyond the forecast range.
+                actual observed weather for past days {hasBillPeriod ? 'in this period' : 'this month'}, NWS forecast for the next 15 days, and 3-year historical average for days beyond the forecast range.
               </p>
               <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: '20pt' }}>
                 <strong>Data Sources:</strong> Daily forecast data is fetched from{" "}
@@ -4784,7 +5044,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 >
                   National Weather Service (NWS)
                 </a>
-                . <strong>Actual</strong> = observed weather for past days this month, <strong>Forecast</strong> = real-time forecast for upcoming days (up to 15 days), <strong>Historical</strong> = 3-year average for days beyond forecast range.
+                . <strong>Actual</strong> = observed weather for past days {hasBillPeriod ? 'in this period' : 'this month'}, <strong>Forecast</strong> = real-time forecast for upcoming days (up to 15 days), <strong>Historical</strong> = 3-year average for days beyond forecast range.
               </p>
               </>
               )}
@@ -4804,12 +5064,12 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
           )}
 
           {/* Sinusoidal Temperature Graph */}
-          {!forecastLoading && !forecastError && adjustedForecast && adjustedForecast.length > 0 && (
+          {!forecastLoading && !forecastError && displayForecast && displayForecast.length > 0 && (
             (() => {
-            // Generate hourly temperature data for the entire month using sinusoidal calculation
+            // Generate hourly temperature data for the bill period or full month
             const graphData = [];
             
-            adjustedForecast.forEach((day, dayIndex) => {
+            displayForecast.forEach((day, dayIndex) => {
               const lowTemp = day.low;
               const highTemp = day.high;
               const tempRange = highTemp - lowTemp;
@@ -4848,7 +5108,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-blue-500" />
                     <span className="font-semibold text-gray-900 dark:text-gray-100" style={{ fontSize: '14pt' }}>
-                      Sinusoidal Temperature Profile (Entire Month)
+                      Sinusoidal Temperature Profile ({hasBillPeriod ? displayPeriod : 'Entire Month'})
                     </span>
                   </div>
                   {showSinusoidalGraph ? (
@@ -4941,10 +5201,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             
             // Debug: log how many days we're processing
             if (import.meta?.env?.DEV) {
-              console.log(`📆 Processing ${adjustedForecast.length} days for daily metrics table`);
+              console.log(`📆 Processing ${displayForecast.length} days for daily metrics table`);
             }
             
-            const dailyMetrics = adjustedForecast.map((day) => {
+            const dailyMetrics = displayForecast.map((day) => {
               // In auto mode, determine which mode to use based on outdoor temperature
               const dayEffectiveTemp = isAutoMode ? getEffectiveTempForDay(day.avg) : effectiveIndoorTemp;
               const dayMode = isAutoMode 
@@ -5120,7 +5380,14 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               );
             };
             
+            const isProratedOnly = typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1';
             return (
+              <div className="space-y-2">
+                {isProratedOnly && (
+                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200 text-sm">
+                    You entered only your total bill. Daily values below are estimated (total ÷ days) — we don't have real per-day data from your utility.
+                  </div>
+                )}
               <div className="overflow-x-auto" data-no-swipe>
                 <table className="w-full border-collapse min-w-[640px]" style={{ fontSize: '18pt' }}>
                   <thead>
@@ -5132,8 +5399,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Aux Strip (kWh)</th>
                       )}
                       <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="HVAC heating/cooling only; your bill includes whole-house (baseload)" style={{ fontSize: '18pt' }}>Est. Cost ($) — Heating/Cooling only</th>
-                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Enter your actual kWh from your utility bill" style={{ fontSize: '18pt' }}>Your Bill (kWh)</th>
-                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Your bill kWh × electricity rate" style={{ fontSize: '18pt' }}>Actual Cost ($)</th>
+                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Prorated (total ÷ days) — not real daily usage. You entered only total bill." : "Enter your actual kWh from your utility bill"} style={{ fontSize: '18pt' }}>Your Bill (kWh){typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal" title="Prorated — not real daily data">*</span>}</th>
+                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Prorated (total ÷ days) — not real daily usage. You entered only total bill." : "Your bill kWh × electricity rate"} style={{ fontSize: '18pt' }}>Actual Cost ($){typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal" title="Prorated — not real daily data">*</span>}</th>
                       <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Your bill kWh − Forecast kWh" style={{ fontSize: '18pt' }}>Δ kWh</th>
                       <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Empirical BTU/hr/°F from bill: actual kWh × 3412 ÷ 24 ÷ ΔT (assumes all kWh is heating; includes baseload)" style={{ fontSize: '18pt' }}>BTU/°F (bill)</th>
                       <th className="text-left py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Data Source</th>
@@ -5184,7 +5451,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <td className="py-1 px-2 text-right">
                           {(() => {
                             const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
-                            const actualVal = actualKwhEntries[dayKey];
+                            const actualVal = effectiveActualKwhEntries[dayKey];
                             // Show "—" for 0 (no data) so it's not confused with actual usage
                             const displayVal = actualVal != null && actualVal > 0 ? actualVal : '';
                             return (
@@ -5204,7 +5471,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <td className="py-2 px-2 text-right">
                           {(() => {
                             const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
-                            const actualVal = actualKwhEntries[dayKey];
+                            const actualVal = effectiveActualKwhEntries[dayKey];
                             const elecRate = utilityCost ?? 0.1;
                             if (actualVal == null || actualVal <= 0) return <span className="text-gray-400">—</span>;
                             return (
@@ -5217,7 +5484,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <td className="py-2 px-2 text-center">
                           {(() => {
                             const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
-                            const actualVal = actualKwhEntries[dayKey];
+                            const actualVal = effectiveActualKwhEntries[dayKey];
                             // Only show delta when there is actual bill data (no delta for empty or 0 — that's "no data")
                             const hasActual = actualVal != null && actualVal > 0;
                             const diff = hasActual ? (actualVal - day.energy) : null;
@@ -5232,7 +5499,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <td className="py-2 px-2 text-center">
                           {(() => {
                             const dayKey = day.date instanceof Date ? `${day.date.getMonth()+1}-${day.date.getDate()}` : String(idx+1);
-                            const actualVal = actualKwhEntries[dayKey];
+                            const actualVal = effectiveActualKwhEntries[dayKey];
                             if (actualVal == null || actualVal <= 0) return <span className="text-gray-400">—</span>;
                             const avgOutdoor = (day.low + day.high) / 2;
                             const deltaT = Math.max(1, (effectiveIndoorTemp || 70) - avgOutdoor);
@@ -5260,7 +5527,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     })}
                     <tr className="border-t-2 border-gray-300 dark:border-gray-600 font-bold bg-gray-50 dark:bg-gray-900/50">
                       <td colSpan={2} className="py-3 px-2 text-left text-gray-900 dark:text-gray-100">
-                        Monthly Total
+                        {hasBillPeriod ? 'Period Total' : 'Monthly Total'}
                       </td>
                       <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
                         <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Forecast</span>
@@ -5273,7 +5540,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Est. cost (Heating/Cooling only)</span>
                         ${(Math.round(totalForecastCost * 100) / 100).toFixed(2)} variable
                         {(() => {
-                          const fixed = monthlyEstimate?.fixedCost ?? (energyMode === "heating" && isGasHeat ? fixedGasCost : fixedElectricCost) ?? 0;
+                          const fixed = (energyMode === "heating" && isGasHeat ? fixedGasCost : fixedElectricCost) ?? monthlyEstimate?.fixedCost ?? 0;
                           return fixed > 0 && (
                             <span className="text-gray-600 dark:text-gray-300 font-normal block" style={{ fontSize: '18pt' }}>
                               + ${fixed.toFixed(2)} fixed = ${(Math.round(totalForecastCost * 100) / 100 + fixed).toFixed(2)} total
@@ -5284,7 +5551,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
                         <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Your bill</span>
                         {(() => {
-                          const actualValues = Object.entries(actualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
+                          const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
                           const actualTotal = actualValues.reduce((sum, [, v]) => sum + v, 0);
                           return <span>{Math.round(actualTotal * 10) / 10} kWh</span>;
@@ -5293,18 +5560,21 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
                         <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Actual cost</span>
                         {(() => {
-                          const actualValues = Object.entries(actualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
+                          const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
                           const actualTotal = actualValues.reduce((sum, [, v]) => sum + v, 0);
                           const elecRate = utilityCost ?? 0.1;
-                          const actualCost = actualTotal * elecRate;
-                          return <span>${actualCost.toFixed(2)}</span>;
+                          const variableCost = actualTotal * elecRate;
+                          if (actualBillAmount != null) {
+                            return <span title="Your bill total (from onboarding)">${actualBillAmount.toFixed(2)}</span>;
+                          }
+                          return <span title="Variable only (kWh × rate)">${variableCost.toFixed(2)}</span>;
                         })()}
                       </td>
                       <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
                         <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Δ kWh</span>
                         {(() => {
-                          const actualValues = Object.entries(actualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
+                          const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
                           const actualTotal = actualValues.reduce((sum, [, v]) => sum + v, 0);
                           const diff = actualTotal - totalForecastEnergy;
@@ -5321,13 +5591,13 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           const setTemp = effectiveIndoorTemp || 70;
                           const daysWithBtu = dailyMetrics.filter((d, i) => {
                             const dayKey = d.date instanceof Date ? `${d.date.getMonth()+1}-${d.date.getDate()}` : String(i+1);
-                            const v = actualKwhEntries[dayKey];
+                            const v = effectiveActualKwhEntries[dayKey];
                             return v != null && v > 0;
                           });
                           if (daysWithBtu.length === 0) return <span className="text-gray-400">—</span>;
                           const hlfs = daysWithBtu.map((d) => {
                             const dayKey = d.date instanceof Date ? `${d.date.getMonth()+1}-${d.date.getDate()}` : String(dailyMetrics.indexOf(d)+1);
-                            const actualVal = actualKwhEntries[dayKey];
+                            const actualVal = effectiveActualKwhEntries[dayKey];
                             const avgOutdoor = (d.low + d.high) / 2;
                             const deltaT = Math.max(1, setTemp - avgOutdoor);
                             return (actualVal * 3412) / 24 / deltaT;
@@ -5341,6 +5611,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   </tbody>
                 </table>
               </div>
+              </div>
             );
           })()}
             </div>
@@ -5349,7 +5620,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       )}
 
       {/* Settings Section - Moved to bottom so cost stays visible */}
-      {mode !== "annual" && (mode !== "budget" || showDetails) && (
+      {mode !== "annual" && (
         <div className="mt-6 mb-4">
           <div className="flex items-center gap-2 mb-2">
             <Settings className="w-4 h-4 text-blue-500" />
@@ -5390,11 +5661,11 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
           {/* Month and Fixed Fees - Compact Layout */}
           <div className="glass-card p-2 animate-fade-in-up">
             <div className="grid grid-cols-2 gap-3">
-              {/* Month Selector */}
+              {/* Month / Bill period selector */}
               <div>
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <Calendar className="text-blue-500" size={12} />
-                  <span className="text-[10px] font-semibold text-high-contrast">Month</span>
+                  <span className="text-[10px] font-semibold text-high-contrast">{hasBillPeriod ? 'Bill period' : 'Month'}</span>
                 </div>
                 <select
                   value={selectedMonth}
@@ -8586,10 +8857,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 {monthlyEstimateB.cost > monthlyEstimate.cost
                   ? `💸 Moving to ${locationDataB.city} would cost $${(
                       monthlyEstimateB.cost - monthlyEstimate.cost
-                    ).toFixed(2)} more for ${activeMonths.find((m) => m.value === selectedMonth)?.label || "this month"}`
+                    ).toFixed(2)} more for ${hasBillPeriod ? displayPeriod : (activeMonths.find((m) => m.value === selectedMonth)?.label || "this month")}`
                   : `💰 Moving to ${locationDataB.city} would SAVE $${(
                       monthlyEstimate.cost - monthlyEstimateB.cost
-                    ).toFixed(2)} for ${activeMonths.find((m) => m.value === selectedMonth)?.label || "this month"}`}
+                    ).toFixed(2)} for ${hasBillPeriod ? displayPeriod : (activeMonths.find((m) => m.value === selectedMonth)?.label || "this month")}`}
               </p>
             </div>
             {typeof thermostatEquivalency === "number" && (
@@ -8598,7 +8869,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                   To match your cost in <strong>{locationData.city}</strong>,
                   you'd need to set the thermostat to{" "}
                   <strong>{thermostatEquivalency}°F</strong> in{" "}
-                  <strong>{locationDataB.city}</strong> for the same month.
+                  <strong>{locationDataB.city}</strong> for {hasBillPeriod ? "the same period" : "the same month"}.
                 </p>
               </div>
             )}
@@ -8931,7 +9202,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       )}
 
       {/* Live Math Calculations Pulldown - Monthly Mode Only */}
-      {mode !== "annual" && (mode !== "budget" || showDetails) && (
+      {mode !== "annual" && (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-8">
         <button
           onClick={() => setShowCalculations(!showCalculations)}
@@ -8941,7 +9212,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
               <GraduationCap size={24} className="text-white" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Show me the math (Monthly Forecast)</h3>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Show me the math ({hasBillPeriod ? 'Bill Period' : 'Monthly'} Forecast)</h3>
           </div>
           {showCalculations ? (
             <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
@@ -9279,7 +9550,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           <p className="font-semibold text-green-600 dark:text-green-400 mb-2">📊 Using Hourly Historical Data</p>
                           <div className="mb-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-300 dark:border-green-700">
                             <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                              <strong>Aux heat risk (varies by winter):</strong> Monthly costs use typical climate average, but aux heat depends on <em>cold snaps</em>.
+                              <strong>Aux heat risk (varies by winter):</strong> {hasBillPeriod ? 'Period' : 'Monthly'} costs use typical climate average, but aux heat depends on <em>cold snaps</em>.
                             </p>
                             <div className="flex items-center gap-2 flex-wrap mb-2">
                               <span className="text-xs text-gray-600 dark:text-gray-400">Choose a weather year:</span>
@@ -9329,7 +9600,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                               <li>Sum aux heat kWh for all hours below balance point in each month</li>
                             </ol>
                             <p className="mt-2 text-gray-500 dark:text-gray-400 italic">
-                              Monthly totals use typical-year HDD/CDD, but aux heat is based on {auxHeatYear} actual temperatures. 
+                              {hasBillPeriod ? 'Period totals' : 'Monthly totals'} use typical-year HDD/CDD, but aux heat is based on {auxHeatYear} actual temperatures. 
                               This keeps the <strong>annual budget stable</strong>, while showing how <strong>cold snaps</strong> change aux usage. 
                               Choose a different year to see how colder or milder winters affect aux heat.
                             </p>
@@ -9626,15 +9897,15 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             {/* Monthly Summary */}
             {monthlyEstimate && (
               <div className="bg-green-50 dark:bg-green-950 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Monthly Summary</h4>
+                <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">{hasBillPeriod ? `Summary (${displayPeriod})` : 'Monthly Summary'}</h4>
                 <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
                   <div className="flex justify-between">
-                    <span>Total Monthly Cost:</span>
+                    <span>{hasBillPeriod ? 'Total Period Cost:' : 'Total Monthly Cost:'}</span>
                     <span className="font-bold text-green-600 dark:text-green-400">${monthlyEstimate.cost.toFixed(2)}</span>
                   </div>
                   {monthlyEstimate.energy && (
                     <div className="flex justify-between">
-                      <span>Total Monthly Energy:</span>
+                      <span>{hasBillPeriod ? 'Total Period Energy:' : 'Total Monthly Energy:'}</span>
                       <span className="font-bold text-green-600 dark:text-green-400">{formatEnergyFromKwh(monthlyEstimate.energy, unitSystem, { decimals: 2 })}</span>
                     </div>
                   )}
@@ -9644,8 +9915,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       <span className="font-bold text-green-600 dark:text-green-400">
                         {(() => {
                           if (energyMode === "heating" && locationData) {
-                            // Use HDD-based scaling for variable cost only: Annual = (Monthly Variable / Monthly HDD) * Annual HDD
-                            const monthlyHDD = getTypicalHDD(selectedMonth);
+                            // Use HDD-based scaling for variable cost only: Annual = (Period Variable / Period HDD) * Annual HDD
+                            const monthlyHDD = hasBillPeriod && billPeriodBounds
+                              ? getTypicalHDDForPeriod(billPeriodBounds.startDate, billPeriodBounds.endDate)
+                              : getTypicalHDD(selectedMonth);
                             const annualHDD = getAnnualHDD(locationData.city, locationData.state);
                             if (monthlyHDD > 0 && annualHDD > 0) {
                               const monthlyVariableCost = (monthlyEstimate.cost || 0) - (monthlyEstimate.fixedCost || 0);
@@ -9689,7 +9962,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
 
             {/* Annual Cost Calculation Using Degree Days */}
             {monthlyEstimate && energyMode === "heating" && locationData && (() => {
-              const monthlyHDD = getTypicalHDD(selectedMonth);
+              // When bill period spans partial months, use period-typical HDD; otherwise full month
+              const monthlyHDD = hasBillPeriod && billPeriodBounds
+                ? getTypicalHDDForPeriod(billPeriodBounds.startDate, billPeriodBounds.endDate)
+                : getTypicalHDD(selectedMonth);
               const annualHDD = getAnnualHDD(locationData.city, locationData.state);
               
               if (monthlyHDD > 0 && annualHDD > 0) {
@@ -9921,11 +10197,11 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div className="bg-white dark:bg-gray-900 rounded p-3">
-                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Actual Month HDD</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{hasBillPeriod ? 'Actual Period HDD' : 'Actual Month HDD'}</div>
                             <div className="text-2xl font-bold">{Math.round(actualMonthHDD)}</div>
                           </div>
                           <div className="bg-white dark:bg-gray-900 rounded p-3">
-                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Normal Month HDD</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{hasBillPeriod ? 'Typical HDD (full bill period)' : 'Normal Month HDD'}</div>
                             <div className="text-2xl font-bold">{Math.round(typicalMonthHDD)}</div>
                           </div>
                           <div className="bg-white dark:bg-gray-900 rounded p-3">
@@ -9952,7 +10228,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                             <div className="bg-white dark:bg-gray-900 rounded p-3">
                               <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Heating Days</div>
                               <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{daysBelowBalance}</div>
-                              <div className="text-xs text-gray-500">{balancePointPercentage.toFixed(0)}% of month</div>
+                              <div className="text-xs text-gray-500">{balancePointPercentage.toFixed(0)}% of {hasBillPeriod ? 'period' : 'month'}</div>
                             </div>
                             <div className="bg-white dark:bg-gray-900 rounded p-3">
                               <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Temp on Heating Days</div>
@@ -9986,9 +10262,9 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       </div>
                       
                       {/* 8. Weekly Breakdown */}
-                      <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+                        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
                         <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white flex items-center gap-2">
-                          📅 Weekly Breakdown
+                          📅 Weekly Breakdown{hasBillPeriod ? ` (${displayPeriod})` : ''}
                         </h4>
                         <div className="space-y-2">
                           {weeks.map((week, idx) => (
@@ -10045,7 +10321,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           <div className="bg-white dark:bg-gray-900 rounded p-3">
                             <div className="flex justify-between items-center mb-2">
                               <span className="font-semibold text-gray-700 dark:text-gray-300">Night Setback Optimization</span>
-                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialSetbackSavings.toFixed(2)}/mo</span>
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialSetbackSavings.toFixed(2)}/{hasBillPeriod ? 'period' : 'mo'}</span>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400">
                               Optimizing night setback timing could save ~15% of nighttime heating costs.
@@ -10055,7 +10331,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                             <div className="bg-white dark:bg-gray-900 rounded p-3">
                               <div className="flex justify-between items-center mb-2">
                                 <span className="font-semibold text-gray-700 dark:text-gray-300">Aux Heat Reduction</span>
-                                <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialAuxReduction.toFixed(2)}/mo</span>
+                                <span className="text-lg font-bold text-green-600 dark:text-green-400">~${potentialAuxReduction.toFixed(2)}/{hasBillPeriod ? 'period' : 'mo'}</span>
                               </div>
                               <div className="text-xs text-gray-600 dark:text-gray-400">
                                 Pre-heating before cold snaps or adjusting setpoints could reduce aux heat usage.
@@ -10065,7 +10341,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           <div className="bg-white dark:bg-gray-900 rounded p-3">
                             <div className="flex justify-between items-center mb-2">
                               <span className="font-semibold text-gray-700 dark:text-gray-300">Rate Shopping Potential</span>
-                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${(totalForecastCost - costAtMinusTwenty).toFixed(2)}/mo</span>
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">~${(totalForecastCost - costAtMinusTwenty).toFixed(2)}/{hasBillPeriod ? 'period' : 'mo'}</span>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400">
                               If you could find a rate 20% lower, you'd save significantly. Check for time-of-use or off-peak rates.
@@ -10079,7 +10355,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800 mt-6">
                     <h4 className="font-bold text-lg mb-3 text-gray-900 dark:text-white">Annual Heating Cost (Simplified Example)</h4>
                     <div className="text-xs text-gray-600 dark:text-gray-400 mb-3 italic">
-                      This example just shows how degree-day scaling works for one month. The real annual estimate above uses all 12 months.
+                      This example just shows how degree-day scaling works for {hasBillPeriod ? 'one bill period' : 'one month'}. The real annual estimate above uses all 12 months.
                     </div>
                     <div className="space-y-2 text-sm font-mono text-gray-700 dark:text-gray-300">
                       <div className="space-y-3">
@@ -10087,14 +10363,14 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           <div className="font-semibold mb-2">Simplified Degree-Day Scaling:</div>
                           <div className="space-y-1 pl-4">
                             <div className="flex justify-between">
-                              <span>Selected Month ({activeMonths.find((m) => m.value === selectedMonth)?.label}) Variable Cost:</span>
+                              <span>{hasBillPeriod ? 'Selected Period' : `Selected Month (${activeMonths.find((m) => m.value === selectedMonth)?.label})`} Variable Cost:</span>
                               <span className="font-bold text-purple-600 dark:text-purple-400">${monthlyVariableCost.toFixed(2)}</span>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400">
                               (Total ${monthlyEstimate.cost.toFixed(2)} - Fixed ${(monthlyEstimate.fixedCost || 0).toFixed(2)})
                             </div>
                             <div className="flex justify-between pt-2">
-                              <span>Monthly HDD ({activeMonths.find((m) => m.value === selectedMonth)?.label}):</span>
+                              <span>{hasBillPeriod ? 'Period' : 'Monthly'} HDD ({hasBillPeriod ? displayPeriod : activeMonths.find((m) => m.value === selectedMonth)?.label}):</span>
                               <span className="font-bold text-purple-600 dark:text-purple-400">{monthlyHDD} HDD</span>
                             </div>
                             <div className="flex justify-between pt-2">
@@ -10102,7 +10378,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                               <span className="font-bold text-purple-600 dark:text-purple-400">{Math.round(annualHDD)} HDD</span>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400 pt-1">
-                              {activeMonths.find((m) => m.value === selectedMonth)?.label} represents {(monthlyRatio * 100).toFixed(1)}% of annual heating load
+                              {hasBillPeriod ? displayPeriod : activeMonths.find((m) => m.value === selectedMonth)?.label} represents {(monthlyRatio * 100).toFixed(1)}% of annual heating load
                             </div>
                           </div>
                         </div>

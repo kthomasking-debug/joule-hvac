@@ -208,10 +208,10 @@ export default function SharedLLMServerWizard() {
                     <p className="text-xl text-gray-600 dark:text-gray-400">Copy and run the whole command. <strong>Do not paste the text inside the command into the terminal by itself.</strong></p>
                     <div className="flex flex-wrap gap-2 items-start">
                       <code className="flex-1 min-w-0 text-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg font-mono overflow-x-auto break-all">
-                        printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+                        printf '[Service]\nEnvironment="OLLAMA_KEEP_ALIVE=24h"\nEnvironment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"\n' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
                       </code>
                       <CopyToClipboard className="text-lg px-4 py-2"
-                        text={'printf \'[Service]\\nEnvironment="OLLAMA_HOST=0.0.0.0"\\nEnvironment="OLLAMA_ORIGINS=*"\\n\' | sudo tee /etc/systemd/system/ollama.service.d/override.conf'}
+                        text={'printf \'[Service]\\nEnvironment="OLLAMA_KEEP_ALIVE=24h"\\nEnvironment="OLLAMA_HOST=0.0.0.0"\\nEnvironment="OLLAMA_ORIGINS=*"\\n\' | sudo tee /etc/systemd/system/ollama.service.d/override.conf'}
                         label="Copy"
                       />
                     </div>
@@ -553,7 +553,7 @@ credentials-file: /home/YOUR_USER/.cloudflared/TUNNEL_UUID.json`}
                   <p className="text-xl text-gray-500">Joule users: Settings → AI Integration → Local (Ollama) → On another device → enter the URL.</p>
                   <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 mt-4">
                     <p className="text-xl text-emerald-800 dark:text-emerald-200 font-semibold">QR code for off-network users</p>
-                    <p className="text-xl text-emerald-700 dark:text-emerald-300 mt-1">Paste your Cloudflare tunnel URL below (e.g. https://criteria-toolkit-certainly-representations.trycloudflare.com). The link will auto-configure Local Ollama when users open it. Create a QR code from the link.</p>
+                    <p className="text-xl text-emerald-700 dark:text-emerald-300 mt-1">Paste your Cloudflare tunnel URL below (e.g. https://unexpected-helena-houston-develop.trycloudflare.com). The link will auto-configure Local Ollama when users open it. Create a QR code from the link.</p>
                     <input
                       type="url"
                       value={cloudflareTunnelUrl}

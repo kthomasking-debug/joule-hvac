@@ -85,6 +85,98 @@ export function parseBillMonthFromText(text) {
 const MONTH_DISPLAY = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
+ * Derive bill period display from byMonth (extractBillToStorage format).
+ * byMonth: { "1": {"27": 57, "28": 37}, "2": {"1": 50} }
+ * Returns "Jan 27 – Feb 10" or null when no entries.
+ */
+export function derivePeriodFromByMonth(byMonth, year) {
+  if (!byMonth || typeof byMonth !== "object" || !year) return null;
+  const entries = {};
+  for (const [month, days] of Object.entries(byMonth)) {
+    if (typeof days !== "object") continue;
+    for (const [day, kwh] of Object.entries(days)) {
+      if (typeof kwh === "number" && kwh > 0) {
+        entries[`${month}-${day}`] = kwh;
+      }
+    }
+  }
+  return derivePeriodFromActualKeys(entries, year);
+}
+
+/**
+ * Derive bill period display from actualKwhEntries keys (format "month-day").
+ * Returns "Jan 27 – Feb 10" or null when no entries.
+ */
+export function derivePeriodFromActualKeys(actualKwhEntries, year) {
+  if (!actualKwhEntries || typeof actualKwhEntries !== "object" || !year) return null;
+  const keysWithValues = Object.entries(actualKwhEntries)
+    .filter(([, v]) => typeof v === "number" && v > 0)
+    .map(([k]) => k);
+  if (keysWithValues.length === 0) return null;
+  const parsed = keysWithValues
+    .map((k) => {
+      const parts = k.split("-");
+      if (parts.length !== 2) return null;
+      const m = parseInt(parts[0], 10);
+      const d = parseInt(parts[1], 10);
+      if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+      return { m, d, sort: m * 100 + d };
+    })
+    .filter(Boolean);
+  if (parsed.length === 0) return null;
+  const min = parsed.reduce((a, b) => (a.sort <= b.sort ? a : b));
+  const max = parsed.reduce((a, b) => (a.sort >= b.sort ? a : b));
+  const startStr = min.m !== max.m ? `${MONTH_DISPLAY[min.m - 1]} ${min.d}` : `${MONTH_DISPLAY[min.m - 1]} ${min.d}`;
+  const endStr = min.m !== max.m ? `${MONTH_DISPLAY[max.m - 1]} ${max.d}` : `${MONTH_DISPLAY[max.m - 1]} ${max.d}`;
+  return startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+}
+
+/**
+ * Derive bill period bounds (start/end Date) from actualKwhEntries keys.
+ * Returns { startDate, endDate } or null when no entries.
+ */
+export function derivePeriodBounds(actualKwhEntries, year) {
+  if (!actualKwhEntries || typeof actualKwhEntries !== "object" || !year) return null;
+  const keysWithValues = Object.entries(actualKwhEntries)
+    .filter(([, v]) => typeof v === "number" && v > 0)
+    .map(([k]) => k);
+  if (keysWithValues.length === 0) return null;
+  const parsed = keysWithValues
+    .map((k) => {
+      const parts = k.split("-");
+      if (parts.length !== 2) return null;
+      const m = parseInt(parts[0], 10);
+      const d = parseInt(parts[1], 10);
+      if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+      return { m, d, sort: m * 100 + d };
+    })
+    .filter(Boolean);
+  if (parsed.length === 0) return null;
+  const min = parsed.reduce((a, b) => (a.sort <= b.sort ? a : b));
+  const max = parsed.reduce((a, b) => (a.sort >= b.sort ? a : b));
+  const startDate = new Date(year, min.m - 1, min.d);
+  const endDate = new Date(year, max.m - 1, max.d);
+  return { startDate, endDate };
+}
+
+/**
+ * Parse bill date range display string (e.g. "Jan 27 – Feb 10") to { startDate, endDate }.
+ * Uses year for both dates when not specified in string.
+ */
+export function parseBillDateRangeToBounds(rangeStr, year) {
+  if (!rangeStr || typeof rangeStr !== "string" || !year) return null;
+  const t = rangeStr.trim().replace(/\s*,\s*\d{4}\s*$/, ""); // Strip optional ", 2026" suffix
+  const match = t.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*[-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/i);
+  if (!match) return null;
+  const startIdx = MONTH_ABBR.findIndex((mo) => match[1].toLowerCase().startsWith(mo));
+  const endIdx = MONTH_ABBR.findIndex((mo) => match[3].toLowerCase().startsWith(mo));
+  if (startIdx < 0 || endIdx < 0) return null;
+  const startDate = new Date(year, startIdx, parseInt(match[2], 10));
+  const endDate = new Date(year, endIdx, parseInt(match[4], 10));
+  return { startDate, endDate };
+}
+
+/**
  * Parse billing date range from bill text. Returns display string like "Jan 3 – Feb 1" or null.
  * Used to show "Comparing your bill (Jan 3 – Feb 1) to weather during that period."
  */

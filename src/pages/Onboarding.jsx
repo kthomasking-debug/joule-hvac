@@ -9,6 +9,8 @@ import {
   Thermometer,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Zap,
   ArrowRight,
   Network,
@@ -25,6 +27,7 @@ import {
   DollarSign,
   Cpu,
   Upload,
+  Calendar,
 } from "lucide-react";
 import { fullInputClasses, selectClasses } from "../lib/uiClasses";
 import { US_STATES } from "../lib/usStates";
@@ -34,10 +37,11 @@ import { setSetting, getAllSettings } from "../lib/unifiedSettingsManager";
 import { calculateHeatLoss } from "../lib/heatUtils";
 import { setBridgeBase } from "../lib/bridgeApi";
 import { AI_PROVIDERS, warmLLM } from "../lib/aiProvider";
-import { getBillMonthForComparison, parseBillDateRange } from "../lib/bills/billParser";
+import { getBillMonthForComparison, parseBillDateRange, derivePeriodFromByMonth } from "../lib/bills/billParser";
+import { extractBillToStorage } from "../lib/billExtractor";
 import { QRCodeSVG } from "qrcode.react";
 
-const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1").trim();
+const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://unexpected-helena-houston-develop.trycloudflare.com/v1").trim();
 import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
 import {
   defaultFixedChargesByState,
@@ -153,8 +157,22 @@ export default function Onboarding() {
 
   // Bill upload state (optional — emotional hook before payoff)
   const [billPasteText, setBillPasteText] = useState("");
+  const [billAmountManual, setBillAmountManual] = useState("");
+  const [billFlatFee, setBillFlatFee] = useState("");
+  const [billMonth, setBillMonth] = useState(() => {
+    const d = new Date();
+    const last = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    return last.getMonth() + 1;
+  });
+  const [billYear, setBillYear] = useState(() => {
+    const d = new Date();
+    const last = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    return last.getFullYear();
+  });
   const [billPdfExtracting, setBillPdfExtracting] = useState(false);
   const [billPdfError, setBillPdfError] = useState("");
+  const [billExtracting, setBillExtracting] = useState(false);
+  const [showBillExtractorBeta, setShowBillExtractorBeta] = useState(false);
   const billFileInputRef = React.useRef(null);
 
   // Thermostat state (day/night temperatures — simple, no schedule)
@@ -599,7 +617,7 @@ export default function Onboarding() {
   }, [setUserSetting, navigate, squareFeet, insulationLevel, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, daytimeTemp, nightTemp, dropsAtNight, userSettings]);
 
   // Handle next step
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     if (step === STEPS.WELCOME) {
       setStep(STEPS.LOCATION);
     } else if (step === STEPS.LOCATION) {
@@ -710,23 +728,86 @@ export default function Onboarding() {
       } catch { /* ignore */ }
       setStep(STEPS.BILL_UPLOAD);
     } else if (step === STEPS.BILL_UPLOAD) {
-      // Store bill text; extraction runs once on monthly page (avoids double extraction)
+      // Extract bill during onboarding so Monthly page opens with correct dates and full data
       if (billPasteText.trim()) {
+        setBillExtracting(true);
         try {
           const billMonth = getBillMonthForComparison(billPasteText.trim());
-          const dateRange = parseBillDateRange(billPasteText.trim());
+          const byMonth = await extractBillToStorage(billPasteText.trim(), billMonth.year, billMonth.month);
+          // Pick target month (most days); store metadata for Monthly page
+          let targetMonth = billMonth.month;
+          let targetYear = billMonth.year;
+          if (byMonth && Object.keys(byMonth).length > 0) {
+            const entries = Object.entries(byMonth).map(([m, days]) => ({ month: parseInt(m, 10), count: Object.keys(days).length }));
+            const best = entries.reduce((a, b) => (a.count >= b.count ? a : b));
+            targetMonth = best.month;
+            targetYear = billMonth.year;
+          }
+          // Use extracted data as source of truth for date range (covers Jan 27 – Feb 10 when bill spans two months)
+          const dateRange = parseBillDateRange(billPasteText.trim()) || derivePeriodFromByMonth(byMonth, targetYear);
+          localStorage.setItem("onboardingBillMonth", String(targetMonth));
+          localStorage.setItem("onboardingBillYear", String(targetYear));
+          if (dateRange) localStorage.setItem("onboardingBillDateRange", dateRange);
+          localStorage.setItem("onboardingBillExtracted", "1");
+        } catch (err) {
+          console.warn("Bill extraction failed:", err);
           localStorage.setItem("onboardingBillPaste", billPasteText.trim());
-          localStorage.setItem("onboardingBillMonth", String(billMonth.month));
-          localStorage.setItem("onboardingBillYear", String(billMonth.year));
+          localStorage.setItem("onboardingBillMonth", String(billMonth));
+          localStorage.setItem("onboardingBillYear", String(billYear));
+          const dateRange = parseBillDateRange(billPasteText.trim());
           if (dateRange) localStorage.setItem("onboardingBillDateRange", dateRange);
           sessionStorage.setItem("onboardingBillAutoProcess", "extract");
-        } catch { /* ignore */ }
+        } finally {
+          setBillExtracting(false);
+        }
+      } else if (billAmountManual.trim()) {
+        // Manual bill amount: variable portion. Add flat fee for total. Convert variable to prorated daily kWh.
+        const clean = billAmountManual.replace(/[$,]/g, "").trim();
+        const amount = parseFloat(clean);
+        const flatClean = billFlatFee.replace(/[$,]/g, "").trim();
+        const flatFee = parseFloat(flatClean);
+        const flatFeeNum = !Number.isNaN(flatFee) && flatFee >= 0 ? flatFee : 0;
+        const totalBillAmount = amount + flatFeeNum;
+        if (flatFeeNum > 0 && setUserSetting) {
+          setUserSetting("fixedElectricCost", flatFeeNum);
+        }
+        if (!Number.isNaN(amount) && amount > 0 && amount < 10000) {
+          const rate = utilityCost > 0 ? utilityCost : 0.10;
+          const totalKwh = rate > 0 ? amount / rate : 0;
+          const targetMonth = billMonth;
+          const targetYear = billYear;
+          const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+          const perDay = totalKwh > 0 && daysInMonth > 0 ? Math.round((totalKwh / daysInMonth) * 10) / 10 : 0;
+          if (perDay > 0) {
+            const byMonth = { [targetMonth]: {} };
+            for (let d = 1; d <= daysInMonth; d++) {
+              byMonth[targetMonth][String(d)] = perDay;
+            }
+            for (const [month, days] of Object.entries(byMonth)) {
+              const storageKey = `actualKwh_${targetYear}_${month}`;
+              const existing = JSON.parse(localStorage.getItem(storageKey) || "{}");
+              const updated = { ...existing };
+              for (const [day, kwh] of Object.entries(days)) {
+                updated[`${month}-${day}`] = kwh;
+              }
+              localStorage.setItem(storageKey, JSON.stringify(updated));
+            }
+            const dateRange = derivePeriodFromByMonth(byMonth, targetYear);
+            localStorage.setItem("onboardingBillMonth", String(targetMonth));
+            localStorage.setItem("onboardingBillYear", String(targetYear));
+            if (dateRange) localStorage.setItem("onboardingBillDateRange", dateRange);
+            localStorage.setItem("onboardingBillExtracted", "1");
+            localStorage.setItem("onboardingBillAmount", String(totalBillAmount.toFixed(2)));
+            // Flag: daily values are prorated from total — not real. AI must not cite specific days.
+            localStorage.setItem(`billProratedOnly_${targetYear}_${targetMonth}`, "1");
+          }
+        }
       }
       setStep(STEPS.ANALYZING);
     } else if (step === STEPS.PAYOFF) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText, billAmountManual, billFlatFee, billMonth, billYear]);
 
   // Extract text from PDF bill (for Bill step)
   const extractBillPdf = useCallback(async (file) => {
@@ -1697,61 +1778,131 @@ export default function Onboarding() {
               STEP {STEPS.BILL_UPLOAD + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              Upload or paste your last bill
+              Enter your last bill
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
               Finally someone will explain this.
             </p>
 
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 text-left max-w-lg mx-auto space-y-3">
-              <p className="text-xl text-gray-700 dark:text-gray-300">
-                Upload a PDF or paste the text from your utility bill. Joule will use it to compare your usage to similar homes in your area.
-              </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <p className="text-lg font-medium text-gray-700 dark:text-gray-300">Bill period</p>
+              </div>
+              <div className="flex flex-wrap gap-3 items-center">
+                <select
+                  value={billMonth}
+                  onChange={(e) => setBillMonth(parseInt(e.target.value, 10))}
+                  className={`${selectClasses} w-auto min-w-[140px]`}
+                  aria-label="Bill month"
+                >
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                    <option key={m} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  value={billYear}
+                  onChange={(e) => setBillYear(parseInt(e.target.value, 10))}
+                  className={`${selectClasses} w-auto min-w-[100px]`}
+                  aria-label="Bill year"
+                >
+                  {(() => {
+                    const y = new Date().getFullYear();
+                    const years = [];
+                    for (let i = y; i >= y - 3; i--) years.push(i);
+                    return years.map((yr) => <option key={yr} value={yr}>{yr}</option>);
+                  })()}
+                </select>
+              </div>
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-2">Bill amount (usage)</p>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl text-gray-700 dark:text-gray-300">$</span>
                 <input
-                  ref={billFileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) extractBillPdf(f);
-                  }}
+                  type="text"
+                  inputMode="decimal"
+                  value={billAmountManual}
+                  onChange={(e) => setBillAmountManual(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="e.g. 150"
+                  className="w-28 px-3 py-2 text-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Flat monthly fee (optional)</p>
+              <div className="flex items-center gap-2">
+                <span className="text-lg text-gray-600 dark:text-gray-400">$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={billFlatFee}
+                  onChange={(e) => setBillFlatFee(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder={fixedElectricCost != null ? `e.g. ${fixedElectricCost}` : "e.g. 15"}
+                  className="w-24 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-blue-200 dark:border-blue-800 mt-3">
                 <button
                   type="button"
-                  onClick={() => billFileInputRef.current?.click()}
-                  disabled={billPdfExtracting}
-                  className="flex items-center gap-2 px-4 py-2 text-lg font-semibold bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                  onClick={() => setShowBillExtractorBeta(!showBillExtractorBeta)}
+                  className="flex items-center gap-2 w-full text-left text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >
-                  {billPdfExtracting ? (
-                    <><Loader2 size={16} className="animate-spin" /> Extracting...</>
-                  ) : (
-                    <><Upload size={16} /> Upload PDF</>
-                  )}
+                  {showBillExtractorBeta ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  Beta: Extract from bill (PDF or paste)
                 </button>
-                <span className="text-lg text-gray-500 dark:text-gray-400 self-center">or paste below</span>
+                {showBillExtractorBeta && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        ref={billFileInputRef}
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) extractBillPdf(f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => billFileInputRef.current?.click()}
+                        disabled={billPdfExtracting}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                      >
+                        {billPdfExtracting ? (
+                          <><Loader2 size={14} className="animate-spin" /> Extracting...</>
+                        ) : (
+                          <><Upload size={14} /> Upload PDF</>
+                        )}
+                      </button>
+                      <span className="text-sm text-gray-500 dark:text-gray-400 self-center">or paste below</span>
+                    </div>
+                    <textarea
+                      value={billPasteText}
+                      onChange={(e) => { setBillPasteText(e.target.value); setBillPdfError(""); }}
+                      placeholder="Paste your bill text here..."
+                      className="w-full h-24 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                    />
+                    {billPdfError && (
+                      <p className="text-sm text-red-600 dark:text-red-400">❌ {billPdfError}</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <textarea
-                value={billPasteText}
-                onChange={(e) => { setBillPasteText(e.target.value); setBillPdfError(""); }}
-                placeholder="Paste your bill text here... (or skip if you don't have it handy)"
-                className="w-full h-32 px-3 py-2 text-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-              />
-              {billPdfError && (
-                <p className="text-lg text-red-600 dark:text-red-400">❌ {billPdfError}</p>
-              )}
             </div>
 
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setStep(STEPS.COST_SETTINGS)}
                 className="btn btn-outline px-6 py-3"
+                disabled={billExtracting}
               >
                 Back
               </button>
-              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
-                Continue <ChevronRight size={18} />
+              <button onClick={handleNext} disabled={billExtracting} className="btn btn-primary px-8 py-3">
+                {billExtracting ? (
+                  <><Loader2 size={18} className="animate-spin" /> Extracting...</>
+                ) : (
+                  <>Continue <ChevronRight size={18} /></>
+                )}
               </button>
             </div>
           </div>
@@ -1762,10 +1913,10 @@ export default function Onboarding() {
           <div className="text-center py-16">
             <Loader2 size={64} className="mx-auto text-blue-600 dark:text-blue-400 animate-spin mb-6" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-              {localStorage.getItem("onboardingBillPaste") ? "Preparing your forecast" : "Joule is analyzing your home"}
+              {localStorage.getItem("onboardingBillExtracted") || localStorage.getItem("onboardingBillPaste") ? "Preparing your forecast" : "Joule is analyzing your home"}
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-400">
-              {localStorage.getItem("onboardingBillPaste") ? "Preparing your monthly forecast..." : "Comparing to similar homes in your area..."}
+              {localStorage.getItem("onboardingBillExtracted") || localStorage.getItem("onboardingBillPaste") ? "Preparing your monthly forecast..." : "Comparing to similar homes in your area..."}
             </p>
           </div>
         )}

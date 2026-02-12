@@ -14,6 +14,28 @@ export function getTypicalHDD(month) {
 }
 
 /**
+ * Get typical HDD for a date range by prorating monthly values.
+ * Use when bill period spans partial months (e.g. Jan 27 – Feb 10).
+ */
+export function getTypicalHDDForPeriod(startDate, endDate) {
+  const typicalHDD = { 1: 1200, 2: 1000, 3: 600, 4: 200, 5: 50, 6: 10, 7: 0, 8: 0, 9: 20, 10: 200, 11: 500, 12: 1100 };
+  const daysInMonth = (m, y) => new Date(y, m, 0).getDate();
+  let total = 0;
+  const cur = new Date(startDate);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+  while (cur <= end) {
+    const m = cur.getMonth() + 1;
+    const y = cur.getFullYear();
+    const days = daysInMonth(m, y);
+    total += (typicalHDD[m] || 800) / days;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return Math.round(total);
+}
+
+/**
  * Get typical CDD for a month (legacy fallback)
  */
 export function getTypicalCDD(month) {

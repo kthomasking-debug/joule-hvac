@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, TrendingDown } from 'lucide-react';
 
-const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", compact = false, contextSubtitle }) => {
+const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", periodLabel, compact = false, contextSubtitle }) => {
   const padding = compact ? "p-3" : "p-5";
   const rounded = compact ? "rounded-xl" : "rounded-2xl";
   const titleSize = compact ? "text-sm" : "text-sm";
@@ -40,7 +40,7 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
             <span className={`${costSize} font-black bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent`}>
               ${(weeklyCost ?? 0).toFixed(2)}
             </span>
-            <span className={`${periodSize} text-gray-500 dark:text-gray-400 font-medium`}>for this {timePeriod}</span>
+            <span className={`${periodSize} text-gray-500 dark:text-gray-400 font-medium`}>{periodLabel ? `for ${periodLabel}` : `for this ${timePeriod}`}</span>
             {location && (
               <span className={`${locationSize} text-gray-500 dark:text-gray-400 ml-auto`}>
                 {location.split('(')[0].trim()} at {temp ?? 70}°F

@@ -454,6 +454,7 @@ async function fetchMonthlyForecast({ lat, lon, month, year, signal }) {
         return fallbackMonth;
       }
     } catch (err) {
+      if (err?.name === "AbortError") throw err; // React Query cancelled (e.g. unmount) — don't log
       console.error("Error fetching monthly forecast:", err);
       throw err;
     }

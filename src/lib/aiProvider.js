@@ -11,7 +11,7 @@ export const AI_PROVIDERS = {
   LOCAL: "local",
 };
 
-const DEFAULT_LOCAL_AI_BASE_URL = "https://criteria-toolkit-certainly-representations.trycloudflare.com/v1";
+const DEFAULT_LOCAL_AI_BASE_URL = "https://unexpected-helena-houston-develop.trycloudflare.com/v1";
 
 /**
  * Extract and normalize the Ollama base URL.
@@ -46,6 +46,27 @@ export function sanitizeOllamaBaseUrl(input) {
 function friendlyMessageForGroqError(status) {
   if (status !== 429) return null;
   return "Groq rate limit reached. Switch to Local LLM (Ollama) in Settings → Bridge & AI, or upgrade your Groq subscription at https://console.groq.com/settings/billing";
+}
+
+/** Convert raw LLM errors into user-friendly messages with what to do. */
+function friendlyMessageForLLMError(err, config) {
+  const msg = (err?.message || String(err)).toLowerCase();
+  const isLocal = config?.provider === AI_PROVIDERS.LOCAL;
+
+  if (isLocal) {
+    if (msg.includes("network") || msg.includes("connection") || msg.includes("failed to fetch") || msg.includes("cors") || msg.includes("connection lost") || msg.includes("connection refused")) {
+      return "Couldn't reach your Local AI. Check that Ollama is running, the address in Settings → Bridge & AI is correct (e.g. https://xxx.trycloudflare.com/v1), and the Cloudflare tunnel is up. Then try again.";
+    }
+    if (msg.includes("500") || msg.includes("502") || msg.includes("internal server")) {
+      return "Local AI server error. Restart Ollama and cloudflared (if using a tunnel), then try again. If it persists, check Settings → Bridge & AI for the correct address.";
+    }
+  } else {
+    if (msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+      return "Groq API is temporarily unavailable. Try again in a moment, or switch to Local AI in Settings → Bridge & AI.";
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -131,7 +152,7 @@ export async function callChatCompletions({ url, apiKey, model, messages, temper
   });
   if (!response.ok) {
     const text = await response.text();
-    const friendly = friendlyMessageForGroqError(response.status);
+    const friendly = friendlyMessageForGroqError(response.status) || friendlyMessageForLLMError(new Error(`${response.status} ${text}`), getAIConfig());
     throw new Error(friendly || `LLM request failed: ${response.status} ${text}`);
   }
   const data = await response.json();
@@ -204,13 +225,14 @@ export async function callLLMStreaming({
           : "Request timed out. Try again."
       );
     }
-    throw err;
+    const friendly = friendlyMessageForLLMError(err, config);
+    throw new Error(friendly || err.message);
   }
   clearTimeout(timeoutId);
 
   if (!response.ok) {
     const text = await response.text();
-    const friendly = friendlyMessageForGroqError(response.status);
+    const friendly = friendlyMessageForGroqError(response.status) || friendlyMessageForLLMError(new Error(`${response.status} ${text}`), config);
     throw new Error(friendly || `LLM request failed: ${response.status} ${text}`);
   }
 
@@ -253,8 +275,12 @@ export async function callLLMStreaming({
     if (import.meta.env?.DEV) {
       console.error("[aiProvider] Streaming read error:", streamErr);
     }
+    const isAbort = streamErr?.name === "AbortError" || /aborted/i.test(streamErr?.message || "");
+    const hint = isAbort
+      ? "This often happens when you left the page or navigated away before the response finished."
+      : "If this happens on Windows, try F12 → Console and report the error.";
     throw new Error(
-      `Reading stream failed: ${streamErr.message}. If this happens on Windows, try F12 → Console and report the error.`
+      `Reading stream failed: ${streamErr.message}. ${hint}`
     );
   }
 

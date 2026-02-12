@@ -81,12 +81,12 @@ function AppInner() {
     try {
       const url = localStorage.getItem("localAIBaseUrl") || "";
       if (url.includes("tricks-actions-applied-clothing")) {
-        const fixed = url.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        const fixed = url.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "unexpected-helena-houston-develop.trycloudflare.com/v1");
         localStorage.setItem("localAIBaseUrl", fixed);
       }
       const other = localStorage.getItem("localAIBaseUrlOtherDevice") || "";
       if (other.includes("tricks-actions-applied-clothing")) {
-        const fixed = other.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "criteria-toolkit-certainly-representations.trycloudflare.com/v1");
+        const fixed = other.replace(/tricks-actions-applied-clothing\.trycloudflare\.com\/?v1?/, "unexpected-helena-houston-develop.trycloudflare.com/v1");
         localStorage.setItem("localAIBaseUrlOtherDevice", fixed);
       }
     } catch { /* ignore */ }
