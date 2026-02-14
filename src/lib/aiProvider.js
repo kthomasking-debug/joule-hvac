@@ -52,13 +52,18 @@ function friendlyMessageForGroqError(status) {
 function friendlyMessageForLLMError(err, config) {
   const msg = (err?.message || String(err)).toLowerCase();
   const isLocal = config?.provider === AI_PROVIDERS.LOCAL;
+  const isLocalhost = (config?.baseUrl || "").includes("localhost") || (config?.baseUrl || "").includes("127.0.0.1");
 
   if (isLocal) {
     if (msg.includes("network") || msg.includes("connection") || msg.includes("failed to fetch") || msg.includes("cors") || msg.includes("connection lost") || msg.includes("connection refused")) {
-      return "Couldn't reach your Local AI. Check that Ollama is running, the address in Settings → Bridge & AI is correct (e.g. https://xxx.trycloudflare.com/v1), and the Cloudflare tunnel is up. Then try again.";
+      return isLocalhost
+        ? "Couldn't reach Ollama. Is it running? Start it with: ollama serve. If the app is on a different origin (e.g. deployed), use OLLAMA_ORIGINS=* and OLLAMA_HOST=0.0.0.0."
+        : "Couldn't reach your Local AI. Check that Ollama is running, the address in Settings → Bridge & AI is correct (e.g. https://xxx.trycloudflare.com/v1), and the Cloudflare tunnel is up. Then try again.";
     }
     if (msg.includes("500") || msg.includes("502") || msg.includes("internal server")) {
-      return "Local AI server error. Restart Ollama and cloudflared (if using a tunnel), then try again. If it persists, check Settings → Bridge & AI for the correct address.";
+      return isLocalhost
+        ? "Ollama returned 500/502. Try: 1) Restart Ollama. 2) If the app is deployed (not localhost), run Ollama with OLLAMA_ORIGINS=* OLLAMA_HOST=0.0.0.0 ollama serve. 3) Check the browser console (F12) for the actual error."
+        : "Local AI server error (500/502). If using a Cloudflare tunnel: the URL changes each time you restart cloudflared — get the new URL and update Settings. Otherwise: restart Ollama, ensure OLLAMA_ORIGINS=* and OLLAMA_HOST=0.0.0.0.";
     }
   } else {
     if (msg.includes("500") || msg.includes("502") || msg.includes("503")) {
@@ -208,14 +213,24 @@ export async function callLLMStreaming({
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  let response;
-  try {
-    response = await fetch(url, {
+  const doFetch = async () => {
+    const res = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    return res;
+  };
+
+  let response;
+  try {
+    response = await doFetch();
+    // Retry once on 500/502 for Local AI (often transient: model loading, tunnel hiccup)
+    if (!response.ok && config.provider === AI_PROVIDERS.LOCAL && (response.status === 500 || response.status === 502)) {
+      await new Promise((r) => setTimeout(r, 2000));
+      response = await doFetch();
+    }
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === "AbortError") {
@@ -232,8 +247,13 @@ export async function callLLMStreaming({
 
   if (!response.ok) {
     const text = await response.text();
+    if (import.meta.env?.DEV && text) {
+      console.error("[aiProvider] LLM error response:", response.status, text.slice(0, 500));
+    }
     const friendly = friendlyMessageForGroqError(response.status) || friendlyMessageForLLMError(new Error(`${response.status} ${text}`), config);
-    throw new Error(friendly || `LLM request failed: ${response.status} ${text}`);
+    // Append Ollama's actual error when it's short and actionable (e.g. "model not found", "context length")
+    const hint = text && text.length < 200 && !text.includes("<!DOCTYPE") ? ` — ${text.trim()}` : "";
+    throw new Error((friendly || `LLM request failed: ${response.status}`) + hint);
   }
 
   if (!response.body) {

@@ -112,6 +112,7 @@ class Status:
     # Bridge/Ecobee connection status: 'connected', 'no_ecobee', 'offline', 'error'
     bridge_status: str = 'offline'
     bridge_ip: str = ''  # Bridge's LAN IP (e.g., 192.168.0.103)
+    bridge_remote_url: str = ''  # Cloudflare tunnel URL (e.g., https://xxx.trycloudflare.com) for QR code
     device_id: str = ''  # Paired Ecobee device ID (e.g., a7:9f:60:3c:8a:b9)
     # Pairing status from wizard: 'idle', 'wizard_started', 'discovered', 'pairing', 'success', 'error', 'healthy', 'unhealthy'
     pairing_mode: str = 'idle'
@@ -124,6 +125,7 @@ class Status:
     # Cost estimate - prefer monthly_cost if available, otherwise weekly_cost * 4.33
     weekly_cost: float = 0.0
     monthly_cost: float = 0.0  # Direct monthly cost from Monthly Forecast
+    forecast_month: int = 0  # Month (1-12) for display as month name
     # Cost breakdown
     variable_cost: float = 0.0
     fixed_cost: float = 0.0
@@ -292,6 +294,7 @@ class EInkHMI:
         last_monthly_cost = 0.0
         last_target_temp = 0.0
         last_night_temp = 0.0
+        last_bridge_remote_url = ''
         while not self.stop:
             # Fetch thermostat status from bridge
             try:
@@ -353,16 +356,22 @@ class EInkHMI:
             settings_counter += 1
             if settings_counter >= 4:
                 settings_counter = 0
+                last_bridge_remote_url = self.status.bridge_remote_url
                 self._fetch_bridge_settings()
                 
                 # Check if data changed - trigger display update if so
                 if (self.status.monthly_cost != last_monthly_cost or 
                     self.status.target_temp != last_target_temp or
-                    self.status.night_temp != last_night_temp):
-                    print(f'[INFO] Data changed: ${self.status.monthly_cost:.2f}/mo Day {self.status.target_temp:.0f}°F Night {self.status.night_temp:.0f}°F')
+                    self.status.night_temp != last_night_temp or
+                    self.status.bridge_remote_url != last_bridge_remote_url):
+                    if self.status.bridge_remote_url != last_bridge_remote_url:
+                        print(f'[INFO] Tunnel URL updated: {self.status.bridge_remote_url or "(none)"}')
+                    else:
+                        print(f'[INFO] Data changed: ${self.status.monthly_cost:.2f}/mo Day {self.status.target_temp:.0f}°F Night {self.status.night_temp:.0f}°F')
                     last_monthly_cost = self.status.monthly_cost
                     last_target_temp = self.status.target_temp
                     last_night_temp = self.status.night_temp
+                    last_bridge_remote_url = self.status.bridge_remote_url
                     self._touch_pending_display = True  # Trigger display refresh
             
             # Fetch outdoor weather every 5 minutes (20 polls at 15s each)
@@ -387,6 +396,9 @@ class EInkHMI:
                     monthly = forecast.get('totalMonthlyCost')
                     if monthly and isinstance(monthly, (int, float)):
                         self.status.monthly_cost = float(monthly)
+                    month_num = forecast.get('month')
+                    if month_num and isinstance(month_num, (int, float)) and 1 <= int(month_num) <= 12:
+                        self.status.forecast_month = int(month_num)
                     
                     # Cost breakdown
                     variable = forecast.get('variableCost')
@@ -444,7 +456,7 @@ class EInkHMI:
                             self.status.forecast_timestamp = int(ts)
                         print(f'[INFO] Got {len(self.status.daily_forecast)} day(s) of forecast data')
                 
-                # Fetch bridge IP from /api/bridge/info
+                # Fetch bridge IP and Cloudflare tunnel URL from /api/bridge/info
                 try:
                     br = requests.get(f'{API_BASE.rstrip("/")}/api/bridge/info', timeout=2)
                     if br.ok:
@@ -452,8 +464,18 @@ class EInkHMI:
                         ip = info.get('local_ip')
                         if ip and isinstance(ip, str):
                             self.status.bridge_ip = ip
+                        # Prefer auto-captured tunnel URL (from cloudflared-tunnel.sh) over manual settings
+                        tunnel_url = info.get('cloudflare_tunnel_url')
+                        if tunnel_url and isinstance(tunnel_url, str) and tunnel_url.strip():
+                            self.status.bridge_remote_url = tunnel_url.strip().rstrip('/')
                 except Exception:
                     pass
+                # Fallback: Cloudflare tunnel URL from settings (manually entered in app)
+                if not self.status.bridge_remote_url:
+                    user_settings = settings.get('userSettings') or {}
+                    remote_url = user_settings.get('jouleBridgeRemoteUrl')
+                    if remote_url and isinstance(remote_url, str) and remote_url.strip():
+                        self.status.bridge_remote_url = remote_url.strip().rstrip('/')
         except Exception as e:
             print(f'[WARN] Bridge settings fetch: {e}')
 
@@ -508,6 +530,9 @@ class EInkHMI:
                     if monthly and isinstance(monthly, (int, float)):
                         self.status.monthly_cost = float(monthly)
                         print(f'[INFO] Monthly cost from bridge: ${self.status.monthly_cost:.2f}')
+                    month_num = forecast.get('month')
+                    if month_num and isinstance(month_num, (int, float)) and 1 <= int(month_num) <= 12:
+                        self.status.forecast_month = int(month_num)
                     
                     cost = (forecast.get('totalHPCostWithAux') or 
                            forecast.get('totalHPCost') or 
@@ -542,7 +567,7 @@ class EInkHMI:
                             self.status.forecast_timestamp = int(ts)
                         print(f'[INFO] Got {len(self.status.daily_forecast)} day(s) of forecast')
                 
-                # Fetch bridge IP
+                # Fetch bridge IP and Cloudflare tunnel URL from /api/bridge/info
                 try:
                     br = requests.get(f'{API_BASE.rstrip("/")}/api/bridge/info', timeout=2)
                     if br.ok:
@@ -550,8 +575,17 @@ class EInkHMI:
                         ip = info.get('local_ip')
                         if ip and isinstance(ip, str):
                             self.status.bridge_ip = ip
+                        tunnel_url = info.get('cloudflare_tunnel_url')
+                        if tunnel_url and isinstance(tunnel_url, str) and tunnel_url.strip():
+                            self.status.bridge_remote_url = tunnel_url.strip().rstrip('/')
                 except Exception:
                     pass
+                # Fallback: tunnel URL from settings (manually entered)
+                if not self.status.bridge_remote_url:
+                    user_settings = settings.get('userSettings') or {}
+                    remote_url = user_settings.get('jouleBridgeRemoteUrl')
+                    if remote_url and isinstance(remote_url, str) and remote_url.strip():
+                        self.status.bridge_remote_url = remote_url.strip().rstrip('/')
         except Exception as e:
             print(f'[WARN] Bridge settings fetch: {e}')
         
@@ -828,8 +862,12 @@ class EInkHMI:
             cost_x = (SCREEN_W - cost_width) // 2
             self.draw.text((cost_x, content_y + 5), cost_str, font=FONT_BIG, fill=0)
             
-            # "per month" label - centered below
-            self.draw.text((SCREEN_W // 2 - 28, content_y + 38), "per month", font=FONT_MED, fill=0)
+            # Month name or "per month" label - centered below
+            month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                           'July', 'August', 'September', 'October', 'November', 'December']
+            month_label = month_names[self.status.forecast_month - 1] if self.status.forecast_month else "per month"
+            label_width = len(month_label) * 8  # Approximate char width for FONT_MED
+            self.draw.text((SCREEN_W // 2 - label_width // 2, content_y + 38), month_label, font=FONT_MED, fill=0)
             
             # Weekly cost on left, below "per month"
             wk_val = weekly if weekly else (monthly / 4.33)
@@ -848,10 +886,13 @@ class EInkHMI:
             if temp_str:
                 self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
             
-            # Bridge IP:PORT at very bottom (user needs both to open app)
-            if self.status.bridge_ip:
+            # Bridge URL at very bottom (tunnel URL or IP:PORT)
+            if self.status.bridge_remote_url:
+                self.draw.text((4, content_y + 68), "Scan QR for remote app", font=FONT_SMALL, fill=0)
+            elif self.status.bridge_ip:
                 ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
                 self.draw.text((4, content_y + 68), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
+            if self.status.bridge_remote_url or self.status.bridge_ip:
                 if self.status.device_id:
                     short_id = self.status.device_id[-8:] if len(self.status.device_id) > 8 else self.status.device_id
                     self.draw.text((155, content_y + 68), f"ID:{short_id}", font=FONT_SMALL, fill=0)
@@ -879,10 +920,13 @@ class EInkHMI:
                 # Right-align temperature info
                 self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
             
-            # Bridge IP:PORT at very bottom (user needs both to open app)
-            if self.status.bridge_ip:
+            # Bridge URL at very bottom (tunnel URL or IP:PORT)
+            if self.status.bridge_remote_url:
+                self.draw.text((4, content_y + 68), "Scan QR for remote app", font=FONT_SMALL, fill=0)
+            elif self.status.bridge_ip:
                 ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
                 self.draw.text((4, content_y + 68), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
+            if self.status.bridge_remote_url or self.status.bridge_ip:
                 # Show device ID (last 8 chars) on right, or humidity if no device
                 if self.status.device_id:
                     # Show short device ID (last 8 chars: e.g., "3c:8a:b9")
@@ -1048,7 +1092,8 @@ class EInkHMI:
                 self.draw.text((10, row_y + 32), 'in the Joule app', font=FONT_SMALL, fill=0)
 
     def _draw_qr_in_content_area(self, label=None):
-        """Draw QR code centered in content area. label=None uses URL, else custom text (e.g. 'Open to get data')."""
+        """Draw QR code centered in content area. label=None uses URL, else custom text (e.g. 'Open to get data').
+        Prefers Cloudflare tunnel URL when configured, else local IP."""
         if not HAS_QRCODE:
             self.draw.text((10, 20), "QR code library", font=FONT_SMALL, fill=0)
             self.draw.text((10, 30), "not installed", font=FONT_SMALL, fill=0)
@@ -1056,7 +1101,12 @@ class EInkHMI:
             self.draw.text((10, 60), "qrcode[pil]", font=FONT_SMALL, fill=0)
             return
         try:
-            bridge_url = f"http://{self.status.bridge_ip}:{BRIDGE_PORT}/home" if self.status.bridge_ip else f"http://192.168.0.103:{BRIDGE_PORT}/home"
+            if self.status.bridge_remote_url:
+                bridge_url = f"{self.status.bridge_remote_url.rstrip('/')}/home"
+            elif self.status.bridge_ip:
+                bridge_url = f"http://{self.status.bridge_ip}:{BRIDGE_PORT}/home"
+            else:
+                bridge_url = f"http://192.168.0.103:{BRIDGE_PORT}/home"
             qr = qrcode.QRCode(
                 version=1,
                 error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -1075,7 +1125,12 @@ class EInkHMI:
             self.canvas.paste(qr_bw, (qr_x, qr_y))
             label_y = qr_y + target_size + 2
             if label_y + 8 < SCREEN_H - 20:
-                display_text = label if label else (bridge_url[:20] + "..." if len(bridge_url) > 20 else bridge_url)
+                if label:
+                    display_text = label
+                elif self.status.bridge_remote_url:
+                    display_text = "Remote app"
+                else:
+                    display_text = bridge_url[:20] + "..." if len(bridge_url) > 20 else bridge_url
                 text_x = (SCREEN_W - len(display_text) * 5) // 2
                 self.draw.text((text_x, label_y), display_text, font=FONT_SMALL, fill=0)
         except Exception as e:

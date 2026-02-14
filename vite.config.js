@@ -66,6 +66,7 @@ export default defineConfig({
     host: true, // Listen on all addresses
     allowedHosts: [
       "centrally-augmented-doreatha.ngrok-free.dev",
+      ".trycloudflare.com", // Cloudflare quick tunnels (e.g. https://xyz.trycloudflare.com)
       "localhost",
       "127.0.0.1"
     ],

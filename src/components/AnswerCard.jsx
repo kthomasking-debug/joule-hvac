@@ -1,12 +1,12 @@
 import React from 'react';
 import { Zap, TrendingDown } from 'lucide-react';
 
-const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", periodLabel, compact = false, contextSubtitle }) => {
-  const padding = compact ? "p-3" : "p-5";
+const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySystem, roiSavings, timePeriod = "week", periodLabel, compact = false, contextSubtitle, breakdown }) => {
+  const padding = compact ? "p-3" : "p-4 sm:p-5";
   const rounded = compact ? "rounded-xl" : "rounded-2xl";
   const titleSize = compact ? "text-sm" : "text-sm";
-  const costSize = compact ? "text-4xl" : "text-5xl";
-  const periodSize = compact ? "text-base" : "text-lg";
+  const costSize = compact ? "text-3xl sm:text-4xl" : "text-3xl sm:text-4xl md:text-5xl";
+  const periodSize = compact ? "text-base" : "text-base sm:text-lg";
   const locationSize = compact ? "text-sm" : "text-sm";
   
   return (
@@ -50,6 +50,13 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
           {contextSubtitle && (
             <p className={`${compact ? "text-xs" : "text-sm"} text-gray-500 dark:text-gray-400 mt-1`}>
               {contextSubtitle}
+            </p>
+          )}
+          {breakdown && (breakdown.hvac != null || breakdown.homeUsage != null || breakdown.fees != null) && (
+            <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400 mt-2 flex flex-wrap gap-x-3 gap-y-0`}>
+              {breakdown.hvac != null && <span>{breakdown.hvacLabel || 'HVAC'}: ${breakdown.hvac.toFixed(2)}</span>}
+              {breakdown.homeUsage != null && <span>Home usage: ${breakdown.homeUsage.toFixed(2)}</span>}
+              {breakdown.fees != null && <span>Fees: ${breakdown.fees.toFixed(2)}</span>}
             </p>
           )}
           {primarySystem === 'heatPump' && energyMode === 'heating' && roiSavings > 0 && (

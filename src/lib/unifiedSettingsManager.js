@@ -46,6 +46,11 @@ export const DEFAULT_SETTINGS = {
   energyMode: "heating",
   useElectricAuxHeat: true,
 
+  // Baseload (whole-house non-HVAC: fridge, water heater, lights, etc.)
+  // Default 10 kWh/day; learned from bills when actual > hvac forecast
+  baseloadKwhPerDay: 10,
+  learnedBaseloadKwhPerDay: null, // Learned from bills; when set, overrides default
+
   // Cost settings
   utilityCost: 0.1,
   gasCost: 1.2,
@@ -268,6 +273,40 @@ export const SETTING_VALIDATORS = {
         valid: false,
         error: "Utility cost must be between $0.05 and $1.00 per kWh",
       };
+    }
+    return { valid: true };
+  },
+
+  baseloadKwhPerDay: (value) => {
+    if (value === null || value === undefined) return { valid: true };
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0 || num > 100) {
+      return { valid: false, error: "Baseload must be between 0 and 100 kWh/day" };
+    }
+    return { valid: true };
+  },
+
+  learnedBaseloadKwhPerDay: (value) => {
+    if (value === null || value === undefined) return { valid: true };
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 5 || num > 25) {
+      return { valid: false, error: "Learned baseload must be between 5 and 25 kWh/day" };
+    }
+    return { valid: true };
+  },
+
+  budgetPlannerMonth: (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1 || num > 12) {
+      return { valid: false, error: "Month must be between 1 and 12" };
+    }
+    return { valid: true };
+  },
+
+  budgetPlannerYear: (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 2020 || num > 2100) {
+      return { valid: false, error: "Year must be between 2020 and 2100" };
     }
     return { valid: true };
   },

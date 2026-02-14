@@ -19,6 +19,7 @@ import {
   DollarSign,
   MapPin,
   Home,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { routes } from "./navConfig";
 import "./App.css"; // Retain any legacy specifics (can prune later)
@@ -945,9 +946,7 @@ function AppInner() {
   }, [location.pathname]);
   // Centralized onboarding redirect: When the terms are accepted and the app has loaded,
   // redirect first-time users (those who haven't completed onboarding) to /cost-forecaster.
-  // Onboarding is now handled by the landing page - users see landing page first,
-  // then go to /onboarding when they click "Launch App" if not completed
-  // No automatic redirect from landing page - let users explore first
+  // Root redirects to /onboarding (or /home if complete). Landing page moved to for-later.
 
   // Splash screen logic
   useEffect(() => {
@@ -1159,9 +1158,9 @@ function AppInner() {
           <AIMode />
         ) : (
           <>
-            {/* Mobile: prominent Home link so it's always visible on small screens */}
-            {(location.pathname !== "/" && location.pathname !== "/home") && (
-              <div className="md:hidden mb-2 -mt-1 -mx-1">
+            {/* Mobile: Home + Settings bar so both are always visible on small screens */}
+            <div className="md:hidden mb-2 -mt-1 -mx-1 flex items-center justify-between gap-2">
+              {(location.pathname !== "/" && location.pathname !== "/home") ? (
                 <NavLink
                   to="/home"
                   className="flex items-center gap-2 text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 py-2 px-2 rounded-lg touch-manipulation min-h-[44px]"
@@ -1171,8 +1170,24 @@ function AppInner() {
                   <Home className="w-5 h-5 shrink-0" aria-hidden />
                   <span className="text-sm font-medium">Home</span>
                 </NavLink>
-              </div>
-            )}
+              ) : (
+                <span className="w-1" aria-hidden />
+              )}
+              <NavLink
+                to="/settings"
+                onClick={() => mode === "ai" && setMode("traditional")}
+                className={`flex items-center gap-2 py-2 px-2 rounded-lg touch-manipulation min-h-[44px] ${
+                  location.pathname.startsWith("/settings")
+                    ? "text-blue-600 dark:text-blue-400 font-medium"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                }`}
+                style={{ WebkitTapHighlightColor: "transparent" }}
+                aria-label="Settings"
+              >
+                <SettingsIcon className="w-5 h-5 shrink-0" aria-hidden />
+                <span className="text-sm font-medium">Settings</span>
+              </NavLink>
+            </div>
             <Breadcrumbs />
             <Outlet
               context={{

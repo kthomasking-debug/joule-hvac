@@ -65,14 +65,6 @@ if [ -f "$SCRIPT_DIR/install-service.sh" ]; then
     fi
 fi
 
-if [ -f "$SCRIPT_DIR/joule-bridge.service" ]; then
-    if [ -n "$USE_SUDO" ]; then
-        $USE_SUDO cp "$SCRIPT_DIR/joule-bridge.service" "$USB_PATH/prostat-bridge/"
-    else
-        cp "$SCRIPT_DIR/joule-bridge.service" "$USB_PATH/prostat-bridge/"
-    fi
-fi
-
 # Make scripts executable
 echo "🔧 Setting permissions..."
 if [ -n "$USE_SUDO" ]; then

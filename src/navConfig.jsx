@@ -3,7 +3,7 @@ import { lazy } from "react";
 import { Navigate } from "react-router-dom";
 
 // Lazy load all page components for code splitting and faster initial load
-const LandingPage = lazy(() => import("./pages/LandingPage"));
+// LandingPage moved to src/for-later/ for use as separate website
 const SevenDayCostForecaster = lazy(() =>
   import("./pages/SevenDayCostForecaster")
 );
@@ -167,8 +167,8 @@ export const routes = [
   },
   {
     path: "/home",
-    name: "Mission Control",
-    label: "Mission Control",
+    name: "Dashboard",
+    label: "Dashboard",
     icon: HomeIcon,
     Component: HomeDashboard,
     showInNav: true,
@@ -353,14 +353,25 @@ export const routes = [
   },
   {
     path: "/analysis/monthly",
-    name: "Monthly Forecast",
-    label: "Monthly Forecast",
+    name: "Forecast",
+    label: "Forecast",
     icon: TrendingUp,
     Component: Analysis,
-    showInNav: false,
-    inMobileNav: false,
-    inPrimaryNav: false,
-    description: "Monthly cost forecast and budget planning",
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Monthly cost forecast and bill comparison",
+  },
+  {
+    path: "/analysis/compare-bill",
+    name: "Compare Bill",
+    label: "Compare Bill",
+    icon: FileText,
+    Component: () => { return <Navigate to="/analysis/monthly#bill-analysis" replace />; },
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "Compare your actual bill to forecast",
   },
   {
     path: "/analysis/budget",
@@ -768,9 +779,9 @@ export const routes = [
     label: "Tools",
     icon: Tool,
     Component: Tools,
-    showInNav: true,
-    inMobileNav: true,
-    inPrimaryNav: true,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
     description: "HVAC calculation, wiring, and troubleshooting tools",
   },
   {
@@ -1230,9 +1241,9 @@ export const routes = [
     label: "Optimizer",
     icon: Sparkles,
     Component: OptimizationHub,
-    showInNav: false,
-    inMobileNav: false,
-    inPrimaryNav: false,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
     description: "Smart optimization hub - save money with one-click optimizations",
   },
   {

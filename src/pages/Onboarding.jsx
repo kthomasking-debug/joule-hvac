@@ -43,11 +43,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 const JOULE_LLM_URL = (import.meta.env.VITE_JOULE_LLM_URL || "https://unexpected-helena-houston-develop.trycloudflare.com/v1").trim();
 import { getStateElectricityRate, getStateGasRate } from "../data/stateRates";
-import {
-  defaultFixedChargesByState,
-  defaultFallbackFixedCharges,
-  normalizeStateToAbbreviation,
-} from "../data/fixedChargesByState";
+import { normalizeStateToAbbreviation } from "../data/fixedChargesByState";
 
 // Build public path helper
 function buildPublicPath(path) {
@@ -187,10 +183,6 @@ export default function Onboarding() {
   const [gasCost, setGasCost] = useState(
     userSettings.gasCost != null ? Number(userSettings.gasCost) : 1.2
   );
-  const [fixedElectricCost, setFixedElectricCost] = useState(
-    userSettings.fixedElectricCost != null ? Number(userSettings.fixedElectricCost) : 15
-  );
-
   // Heat Loss Source
   const [heatLossSource] = useState(() => {
     try {
@@ -312,12 +304,8 @@ export default function Onboarding() {
     appliedCostStateDefaultsRef.current = true;
     const stateElec = getStateElectricityRate(costStateName);
     const stateGas = getStateGasRate(costStateName);
-    const defaultFixed = defaultFixedChargesByState[costStateAbbr]
-      ? defaultFixedChargesByState[costStateAbbr].electric
-      : defaultFallbackFixedCharges.electric;
     setUtilityCost(stateElec);
     setGasCost(stateGas);
-    setFixedElectricCost(defaultFixed);
   }, [step, costStateName, costStateAbbr]);
 
   // When entering AI step with "Use Joule (free)" selected, ensure Local config uses Joule server
@@ -708,14 +696,12 @@ export default function Onboarding() {
       setSetting("winterThermostatNight", night, { source: "onboarding" });
       setStep(STEPS.COST_SETTINGS);
     } else if (step === STEPS.COST_SETTINGS) {
-      // Save cost settings
+      // Save cost settings (fixed monthly charge is set when user enters their bill)
       setSetting("utilityCost", utilityCost, { source: "onboarding" });
       setSetting("gasCost", gasCost, { source: "onboarding" });
-      setSetting("fixedElectricCost", fixedElectricCost, { source: "onboarding" });
       if (setUserSetting) {
         setUserSetting("utilityCost", utilityCost);
         setUserSetting("gasCost", gasCost);
-        setUserSetting("fixedElectricCost", fixedElectricCost);
       }
       // Activate Joule server AI before bill upload/analyzing so LLM is ready
       try {
@@ -807,7 +793,7 @@ export default function Onboarding() {
     } else if (step === STEPS.PAYOFF) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, fixedElectricCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText, billAmountManual, billFlatFee, billMonth, billYear]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText, billAmountManual, billFlatFee, billMonth, billYear]);
 
   // Extract text from PDF bill (for Bill step)
   const extractBillPdf = useCallback(async (file) => {
@@ -958,20 +944,26 @@ export default function Onboarding() {
         }
       }
       
-      // Send location and forecast data to bridge settings (optional, won't fail if it doesn't work)
+      // Send location, userSettings, and forecast data to bridge (bridge runs forecast on schedule)
       try {
         const forecastData = localStorage.getItem('last_forecast_summary');
+        const userLocation = JSON.parse(localStorage.getItem('userLocation') || 'null');
+        const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
         const configPayload = {
           settings: {
             timestamp: new Date().toISOString(),
             forecast_summary: forecastData ? JSON.parse(forecastData) : null,
-            location: foundLocation ? {
+            last_forecast_summary: forecastData ? JSON.parse(forecastData) : null,
+            location: userLocation || (foundLocation && typeof foundLocation === 'object' ? {
               city: foundLocation.city,
               state: foundLocation.state,
               latitude: foundLocation.latitude,
               longitude: foundLocation.longitude,
               elevation: locationElevation,
-            } : null,
+            } : null),
+            userLocation,
+            ...(userLocation && { latitude: userLocation.latitude, longitude: userLocation.longitude }),
+            ...userSettings,
           }
         };
         
@@ -1632,9 +1624,6 @@ export default function Onboarding() {
         {step === STEPS.COST_SETTINGS && (() => {
           const stateElecRate = costStateName ? getStateElectricityRate(costStateName) : 0.10;
           const stateGasRate = costStateName ? getStateGasRate(costStateName) : 1.2;
-          const defaultFixed = costStateAbbr && defaultFixedChargesByState[costStateAbbr]
-            ? defaultFixedChargesByState[costStateAbbr].electric
-            : defaultFallbackFixedCharges.electric;
           return (
             <div className="space-y-8">
               <div className="text-center mb-6">
@@ -1715,39 +1704,6 @@ export default function Onboarding() {
                       </button>
                       <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} average: ~${stateGasRate.toFixed(2)}/therm (EIA data)
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
-                    Fixed Monthly Charge ($)
-                  </label>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={50}
-                      step={0.01}
-                      value={fixedElectricCost}
-                      onChange={(e) => setFixedElectricCost(Math.min(50, Math.max(0, Number(e.target.value) || 0)))}
-                      className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
-                    />
-                    <span className="text-2xl text-gray-500 dark:text-gray-400">/mo</span>
-                  </div>
-                  {costLocationDisplay && costStateName && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setFixedElectricCost(defaultFixed)}
-                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                      >
-                        Use State Default
-                      </button>
-                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
-                        💡 {costLocationDisplay} default: ${defaultFixed.toFixed(2)}/mo (typical service charge)
                       </p>
                     </>
                   )}
@@ -1834,7 +1790,7 @@ export default function Onboarding() {
                   inputMode="decimal"
                   value={billFlatFee}
                   onChange={(e) => setBillFlatFee(e.target.value.replace(/[^0-9.]/g, ""))}
-                  placeholder={fixedElectricCost != null ? `e.g. ${fixedElectricCost}` : "e.g. 15"}
+                  placeholder={userSettings.fixedElectricCost != null ? `e.g. ${userSettings.fixedElectricCost}` : "e.g. 15"}
                   className="w-24 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

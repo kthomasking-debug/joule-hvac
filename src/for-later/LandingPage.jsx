@@ -1,3 +1,7 @@
+/**
+ * Landing page - moved to for-later for use as a separate website.
+ * Original: src/pages/LandingPage.jsx
+ */
 import React from "react";
 import { Link } from "react-router-dom";
 import { EBAY_STORE_URL } from "../utils/rag/salesFAQ";

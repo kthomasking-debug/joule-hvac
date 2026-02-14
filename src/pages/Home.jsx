@@ -824,17 +824,35 @@ const HomeDashboard = () => {
           </div>
         )}
 
-        {/* Primary CTA: Why is my bill so high? */}
-        <div className="w-full">
+        {/* Primary CTAs: Always-available bill workflows */}
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
-            onClick={(e) => handleFeatureClick("/analysis", e)}
-            className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-8 hover:border-orange-400/60 transition-colors text-left w-full"
+            onClick={(e) => {
+              const now = new Date();
+              const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+              const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+              handleFeatureClick(`/analysis/monthly?month=${lastMonth}&year=${lastYear}`, e);
+            }}
+            className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-6 hover:border-orange-400/60 transition-colors text-left w-full"
           >
-            <div className="flex items-center gap-4 mb-3">
-              <Calendar className="w-10 h-10 text-orange-400" />
-              <h3 className="text-2xl font-semibold text-white">Why is my bill so high?</h3>
+            <div className="flex items-center gap-3 mb-2">
+              <Calendar className="w-8 h-8 text-orange-400" />
+              <h3 className="text-xl font-semibold text-white">Why is my bill so high?</h3>
             </div>
-            <p className="text-lg text-[#A7B0BA]">Weekly, monthly, and annual forecasts — plus bill comparison</p>
+            <p className="text-sm text-[#A7B0BA]">Compare last month&apos;s bill to forecast — runs onboarding if needed</p>
+          </button>
+          <button
+            onClick={(e) => {
+              const now = new Date();
+              handleFeatureClick(`/analysis/monthly?month=${now.getMonth() + 1}&year=${now.getFullYear()}`, e);
+            }}
+            className="bg-gradient-to-br from-emerald-600/20 to-teal-700/20 border-2 border-emerald-500/40 rounded-xl p-6 hover:border-emerald-400/60 transition-colors text-left w-full"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <DollarSign className="w-8 h-8 text-emerald-400" />
+              <h3 className="text-xl font-semibold text-white">This month&apos;s bill forecast</h3>
+            </div>
+            <p className="text-sm text-[#A7B0BA]">See expected cost for this month — runs onboarding if needed</p>
           </button>
         </div>
 

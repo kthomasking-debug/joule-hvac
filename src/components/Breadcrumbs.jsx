@@ -70,6 +70,10 @@ export default function Breadcrumbs() {
   if (breadcrumbs.length <= 1 || location.pathname === '/home' || location.pathname === '/') {
     return null;
   }
+  // Hide breadcrumbs on Forecast/Compare Bill — top nav is enough (no duplicate nav layer)
+  if (location.pathname.startsWith('/analysis/')) {
+    return null;
+  }
 
   return (
     <nav

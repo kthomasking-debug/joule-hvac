@@ -1,0 +1,20 @@
+[Unit]
+Description=Joule Cloudflare Tunnel (quick tunnel for remote access)
+After=network.target prostat-bridge.service
+# Start after bridge so localhost:8080 is ready
+Wants=prostat-bridge.service
+
+[Service]
+Type=simple
+User=pi
+# Adjust WorkingDirectory if your repo is elsewhere (e.g. /home/pi/git/joule-hvac)
+WorkingDirectory=/home/pi/git/joule-hvac/prostat-bridge
+ExecStart=/home/pi/git/joule-hvac/prostat-bridge/cloudflared-tunnel.sh
+Restart=always
+RestartSec=15
+# Cloudflared must be installed: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -6,15 +6,9 @@ set -e
 
 echo "🔧 Installing Joule Bridge systemd service..."
 
-# Get the directory where this script is located
+# Get the directory where this script is located (use this as bridge dir - works for dev and Pi)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SERVICE_FILE="$SCRIPT_DIR/joule-bridge.service"
-
-# Check if service file exists
-if [ ! -f "$SERVICE_FILE" ]; then
-    echo "❌ Error: Service file not found at $SERVICE_FILE"
-    exit 1
-fi
+BRIDGE_DIR="$SCRIPT_DIR"
 
 # Get the actual user (not root)
 if [ "$EUID" -eq 0 ]; then
@@ -22,15 +16,15 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# Get user's home directory
-USER_HOME=$(eval echo ~$USER)
-BRIDGE_DIR="$USER_HOME/prostat-bridge"
+if [ ! -f "$BRIDGE_DIR/server.py" ]; then
+    echo "❌ Error: server.py not found at $BRIDGE_DIR"
+    exit 1
+fi
 
-# Check if bridge directory exists
-if [ ! -d "$BRIDGE_DIR" ]; then
-    echo "⚠️  Bridge directory not found at $BRIDGE_DIR"
-    echo "   Using script directory: $SCRIPT_DIR"
-    BRIDGE_DIR="$SCRIPT_DIR"
+if [ ! -d "$BRIDGE_DIR/venv" ]; then
+    echo "❌ Error: venv not found at $BRIDGE_DIR/venv"
+    echo "   Create it with: python3 -m venv venv && venv/bin/pip install -r requirements.txt"
+    exit 1
 fi
 
 # Update service file with correct paths

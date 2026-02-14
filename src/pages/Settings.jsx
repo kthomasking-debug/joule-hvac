@@ -29,6 +29,7 @@ import {
   Info,
   AlertCircle,
   Copy,
+  Globe,
 } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
@@ -67,6 +68,7 @@ import {
 } from "../lib/userImages";
 import ThermostatSettingsPanel from "../components/ThermostatSettingsPanel";
 import JouleBridgeSettings from "../components/JouleBridgeSettings";
+import RemoteJouleSettings from "../components/RemoteJouleSettings";
 import BridgeUrlConfig from "../components/BridgeUrlConfig";
 import TTSServiceSettings from "../components/TTSServiceSettings";
 import StorageUsageIndicator from "../components/StorageUsageIndicator";
@@ -855,6 +857,39 @@ const GroqApiKeyInput = () => {
       return "other-device";
     }
   });
+  const [devMachineIp, setDevMachineIp] = useState(null);
+
+  // Detect this device's local IP via WebRTC (for "use on phone" / same-network setup)
+  useEffect(() => {
+    if (aiProvider !== AI_PROVIDERS.LOCAL) return;
+    let cancelled = false;
+    const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+    if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+      setDevMachineIp(hostname);
+      return;
+    }
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel("");
+      pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+      pc.onicecandidate = (e) => {
+        if (cancelled || !e.candidate) return;
+        const m = e.candidate.candidate.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+        if (m) {
+          const [a, b] = m[1].split(".").map(Number);
+          const isPrivate = (a === 192 && b === 168) || (a === 10) || (a === 172 && b >= 16 && b <= 31);
+          if (isPrivate) {
+            pc.close();
+            if (!cancelled) setDevMachineIp(m[1]);
+          }
+        }
+      };
+      const t = setTimeout(() => { pc.close(); }, 5000);
+      return () => { cancelled = true; clearTimeout(t); pc.close(); };
+    } catch {
+      return undefined;
+    }
+  }, [aiProvider]);
 
   // Bootstrap persisted "other device" URL on mount if we have one but haven't saved it yet
   // Also migrate from old wrong Cloudflare URL to correct default
@@ -1249,6 +1284,15 @@ const GroqApiKeyInput = () => {
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
         Do this once: install Ollama, start it, then download a model. Use the buttons below.
       </p>
+      {devMachineIp && (
+        <div className="mb-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-sm">
+          <span className="text-gray-600 dark:text-gray-400">This device&apos;s IP: </span>
+          <code className="font-mono text-gray-800 dark:text-gray-200">{devMachineIp}</code>
+          <button type="button" onClick={() => copyToClipboard(devMachineIp, "IP copied", null)} className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy IP">{copyFeedback === "IP copied" ? "Copied!" : <Copy size={12} />}</button>
+          <button type="button" onClick={() => copyToClipboard(`http://${devMachineIp}:11434/v1`, "Ollama URL copied", null)} className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy Ollama URL">{copyFeedback === "Ollama URL copied" ? "Copied!" : <Copy size={12} />}</button>
+          <span className="text-xs text-slate-500 dark:text-slate-400 ml-1">(Ollama URL)</span>
+        </div>
+      )}
       <div>
         <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
           Where is Ollama running?
@@ -1327,7 +1371,25 @@ const GroqApiKeyInput = () => {
         {ollamaLocation === "other-device" && (
           <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 space-y-2">
             <p>
-              <strong>Same network:</strong> On the device running Ollama, run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code> (Windows), <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">hostname -I</code> or <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ip addr</code> (Linux), or System Settings → Network (Mac). Use the IPv4 address (e.g. 192.168.0.108). Add <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">/v1</code> (e.g. http://192.168.0.108:11434/v1).
+              <strong>Same network:</strong> On the device running Ollama, run{" "}
+              <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ipconfig</code>
+              <button type="button" onClick={() => copyToClipboard("ipconfig", "ipconfig copied", null)} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy ipconfig">{copyFeedback === "ipconfig copied" ? "Copied!" : <Copy size={10} />}</button>
+              {" "}(Windows),{" "}
+              <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">hostname -I</code>
+              <button type="button" onClick={() => copyToClipboard("hostname -I", "hostname copied", null)} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy hostname -I">{copyFeedback === "hostname copied" ? "Copied!" : <Copy size={10} />}</button>
+              {" "}or{" "}
+              <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ip addr</code>
+              <button type="button" onClick={() => copyToClipboard("ip addr", "ip addr copied", null)} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy ip addr">{copyFeedback === "ip addr copied" ? "Copied!" : <Copy size={10} />}</button>
+              {" "}(Linux), or System Settings → Network (Mac). Use the IPv4 address (e.g. 192.168.0.108). Add <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">/v1</code> (e.g.{" "}
+              <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">http://192.168.0.108:11434/v1</code>
+              <button type="button" onClick={() => copyToClipboard("http://192.168.0.108:11434/v1", "URL format copied", null)} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy URL format">{copyFeedback === "URL format copied" ? "Copied!" : <Copy size={10} />}</button>
+              ).
+            </p>
+            <p>
+              <strong>Off-network (tunnel):</strong> On the device running Ollama, run{" "}
+              <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cloudflared tunnel --url http://localhost:11434</code>
+              <button type="button" onClick={() => copyToClipboard("cloudflared tunnel --url http://localhost:11434", "tunnel copied", null)} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy tunnel command">{copyFeedback === "tunnel copied" ? "Copied!" : <Copy size={10} />}</button>
+              {" "}— paste the tunnel URL here and add <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">/v1</code> (e.g. https://xyz.trycloudflare.com/v1).
             </p>
             <p>
               <strong>Shared server (off-network):</strong> If someone hosts a shared Joule LLM server, they can give you a public URL. See <Link to="/docs/SHARED-LLM-SERVER.md" className="text-blue-600 dark:text-blue-400 hover:underline">Shared LLM Server guide</Link> for setup.
@@ -3687,6 +3749,9 @@ const SettingsPage = () => {
           <div className="space-y-6">
             <Section title="Joule Bridge (Local HomeKit)" icon={<ThermometerSun size={20} />} id="joule-bridge">
               <JouleBridgeSettings />
+            </Section>
+            <Section title="Remote Joule" icon={<Globe size={20} />} id="remote-joule">
+              <RemoteJouleSettings />
             </Section>
             <Section title="AI Integration" icon={<Zap size={20} />} id="ai-integration">
               <GroqApiKeyInput />

@@ -50,8 +50,24 @@ export async function shareSettingsWithPi(piUrl) {
     const forecastData = localStorage.getItem('last_forecast_summary');
     const userSettings = localStorage.getItem('userSettings');
     
+    // Only send forecast if it's for the current month — avoid overwriting bridge with stale data
+    let lastForecast = null;
+    if (forecastData) {
+      try {
+        const parsed = JSON.parse(forecastData);
+        const now = new Date();
+        const forecastMonth = parsed?.month;
+        const forecastYear = parsed?.year ?? now.getFullYear();
+        if (forecastMonth === now.getMonth() + 1 && forecastYear === now.getFullYear()) {
+          lastForecast = parsed;
+        }
+      } catch {
+        lastForecast = null;
+      }
+    }
+    
     const payload = {
-      last_forecast_summary: forecastData ? JSON.parse(forecastData) : null,
+      last_forecast_summary: lastForecast,
       userSettings: userSettings ? JSON.parse(userSettings) : null,
       timestamp: new Date().toISOString(),
     };

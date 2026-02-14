@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useOutletContext, Link, useNavigate } from "react-router-dom";
+import { useOutletContext, Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Calendar,
   Thermometer,
@@ -29,6 +29,7 @@ import {
   Loader,
   Trash2,
   Copy,
+  Check,
   Upload,
   Mic,
   MicOff,
@@ -107,8 +108,10 @@ import {
 } from "../../data/stateRates";
 
 const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
-  // Route guard: redirect to onboarding if not completed
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Route guard: redirect to onboarding if not completed
   useEffect(() => {
     const hasCompletedOnboarding = localStorage.getItem("hasCompletedOnboarding") === "true";
     if (!hasCompletedOnboarding) {
@@ -164,6 +167,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     summerThermostatNight = 72,
     fixedElectricCost = 0,
     fixedGasCost = 0,
+    baseloadKwhPerDay = 10,
+    learnedBaseloadKwhPerDay,
   } = userSettings || {};
 
   // Gas heat in winter (gasFurnace or Central AC + Gas). Summer cooling always uses electric/coolingCapacity.
@@ -523,17 +528,28 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   
   const setSelectedMonth = useCallback((newMonth) => {
     setSelectedMonthState(newMonth);
-    if (setUserSetting) {
-      setUserSetting("budgetPlannerMonth", newMonth);
-    }
+    if (setUserSetting) setUserSetting("budgetPlannerMonth", newMonth);
   }, [setUserSetting]);
 
   const setSelectedYear = useCallback((newYear) => {
     setSelectedYearState(newYear);
-    if (setUserSetting) {
-      setUserSetting("budgetPlannerYear", newYear);
-    }
+    if (setUserSetting) setUserSetting("budgetPlannerYear", newYear);
   }, [setUserSetting]);
+
+  // Apply month/year from URL params (e.g. from Mission Control "Why is my bill so high?" → last month)
+  // Only update when URL differs from current — prevents infinite loop from setUserSetting → re-render
+  useEffect(() => {
+    const urlMonth = searchParams.get("month");
+    const urlYear = searchParams.get("year");
+    if (urlMonth && urlYear) {
+      const m = parseInt(urlMonth, 10);
+      const y = parseInt(urlYear, 10);
+      if (m >= 1 && m <= 12 && y >= 2020 && y <= 2100 && (selectedMonth !== m || selectedYear !== y)) {
+        setSelectedMonth(m);
+        setSelectedYear(y);
+      }
+    }
+  }, [searchParams, selectedMonth, selectedYear, setSelectedMonth, setSelectedYear]);
 
   // Month navigation handlers
   const goToPrevMonth = useCallback(() => {
@@ -668,21 +684,35 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     // Use cached version for Location A
     setMonthlyEstimateCached(estimate);
   }, [setMonthlyEstimateCached]);
+
+  // Effective baseload (kWh/day): learned from bills when actual > estimate, else default 10
+  const effectiveBaseloadKwhPerDay = useMemo(() => {
+    const learned = learnedBaseloadKwhPerDay;
+    if (typeof learned === 'number' && learned >= 5 && learned <= 25) return learned;
+    const base = typeof baseloadKwhPerDay === 'number' ? baseloadKwhPerDay : 10;
+    return Math.max(5, Math.min(25, base));
+  }, [baseloadKwhPerDay, learnedBaseloadKwhPerDay]);
   
   // Sync monthly estimate to bridge whenever it changes (including from cache)
+  // Only sync when viewing current month — Pi HMI should always show current month's expected bill
   useEffect(() => {
     if (!monthlyEstimate?.cost || !locationData?.city) return;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    if (selectedMonth !== currentMonth || selectedYear !== currentYear) return;
     
     const syncToBridge = async () => {
       try {
         const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
         if (!bridgeUrl) return;
         
-        // Use forecast-based cost (matches the Quick Answer card and forecast table)
-        // rather than the 30-year typical estimate, since it's more accurate for the current month
+        // total_bill = hvac + baseload + fixed_fees
         const fixedFees = monthlyEstimate.fixedCost || fixedElectricCost || 0;
-        const forecastVariableCost = totalForecastCostRef.current || monthlyEstimate.cost || 0;
-        const totalWithFees = forecastVariableCost + fixedFees;
+        const hvacCost = totalForecastCostRef.current || (monthlyEstimate.hvacCost ?? monthlyEstimate.cost) || 0;
+        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+        const baseloadCost = effectiveBaseloadKwhPerDay * daysInMonth * (monthlyEstimate.electricityRate || utilityCost || 0.10);
+        const totalWithFees = hvacCost + baseloadCost + fixedFees;
         
         // Energy breakdown (kWh)
         const totalEnergy = monthlyEstimate.energy || 0;
@@ -692,13 +722,15 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         const payload = {
           location: `${locationData.city}, ${locationData.state}`,
           totalMonthlyCost: totalWithFees,
-          variableCost: forecastVariableCost,
+          variableCost: hvacCost + baseloadCost,
+          hvacCost,
+          baseloadCost,
           fixedCost: fixedFees,
           totalHPCost: totalWithFees / 4.33,
           totalHPCostWithAux: totalWithFees / 4.33,
           timestamp: Date.now(),
           source: 'monthly_forecast',
-          month: selectedMonth,
+          month: currentMonth,
           targetTemp: indoorTemp,
           nightTemp: nighttimeTemp,
           mode: energyMode,
@@ -720,7 +752,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         });
         
         if (import.meta.env.DEV) {
-          console.log(`📡 Synced to bridge: $${totalWithFees.toFixed(2)}/month @ Day:${indoorTemp}°F Night:${nighttimeTemp}°F (variable: $${monthlyEstimate.cost.toFixed(2)} + fixed: $${fixedFees.toFixed(2)})`);
+          console.log(`📡 Synced to bridge: $${totalWithFees.toFixed(2)}/month @ Day:${indoorTemp}°F Night:${nighttimeTemp}°F (hvac: $${hvacCost.toFixed(2)} + baseload: $${baseloadCost.toFixed(2)} + fixed: $${fixedFees.toFixed(2)})`);
         } else {
           console.log(`📡 Synced to bridge: $${totalWithFees.toFixed(2)}/month @ Day:${indoorTemp}°F Night:${nighttimeTemp}°F`);
         }
@@ -730,19 +762,26 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     };
     
     syncToBridge();
-  }, [monthlyEstimate?.cost, monthlyEstimate?.fixedCost, monthlyEstimate?.energy, monthlyEstimate?.electricityRate, fixedElectricCost, utilityCost, locationData?.city, locationData?.state, selectedMonth, indoorTemp, nighttimeTemp, energyMode]);
+  }, [monthlyEstimate?.cost, monthlyEstimate?.fixedCost, monthlyEstimate?.energy, monthlyEstimate?.electricityRate, fixedElectricCost, utilityCost, locationData?.city, locationData?.state, selectedMonth, selectedYear, indoorTemp, nighttimeTemp, energyMode, effectiveBaseloadKwhPerDay]);
   
   // Periodic sync to bridge every 5 minutes (keeps HMI up to date even when page is idle)
+  // Only sync when viewing current month — Pi HMI should always show current month's expected bill
   useEffect(() => {
     const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
     if (!bridgeUrl) return;
     
     const syncInterval = setInterval(() => {
       if (!monthlyEstimate?.cost || !locationData?.city) return;
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      if (selectedMonth !== currentMonth || selectedYear !== currentYear) return;
       
       const fixedFees = monthlyEstimate.fixedCost || fixedElectricCost || 0;
-      const forecastVariableCost = totalForecastCostRef.current || monthlyEstimate.cost || 0;
-      const totalWithFees = forecastVariableCost + fixedFees;
+      const hvacCost = totalForecastCostRef.current || (monthlyEstimate.hvacCost ?? monthlyEstimate.cost) || 0;
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      const baseloadCost = effectiveBaseloadKwhPerDay * daysInMonth * (monthlyEstimate.electricityRate || utilityCost || 0.10);
+      const totalWithFees = hvacCost + baseloadCost + fixedFees;
       const totalEnergy = monthlyEstimate.energy || 0;
       const auxEnergy = monthlyEstimate.excludedAuxEnergy || 0;
       const electricityRate = monthlyEstimate.electricityRate || utilityCost || 0.10;
@@ -750,13 +789,15 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const payload = {
         location: `${locationData.city}, ${locationData.state}`,
         totalMonthlyCost: totalWithFees,
-        variableCost: forecastVariableCost,
+        variableCost: hvacCost + baseloadCost,
+        hvacCost,
+        baseloadCost,
         fixedCost: fixedFees,
         totalHPCost: totalWithFees / 4.33,
         totalHPCostWithAux: totalWithFees / 4.33,
         timestamp: Date.now(),
         source: 'monthly_forecast',
-        month: selectedMonth,
+        month: currentMonth,
         targetTemp: indoorTemp,
         nightTemp: nighttimeTemp,
         mode: energyMode,
@@ -778,7 +819,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }, 5 * 60 * 1000); // Every 5 minutes
     
     return () => clearInterval(syncInterval);
-  }, [monthlyEstimate, locationData, fixedElectricCost, utilityCost, selectedMonth, indoorTemp, nighttimeTemp, energyMode]);
+  }, [monthlyEstimate, locationData, fixedElectricCost, utilityCost, selectedMonth, selectedYear, indoorTemp, nighttimeTemp, energyMode, effectiveBaseloadKwhPerDay]);
   
   // Year selection for aux heat calculation
   const [auxHeatYear, setAuxHeatYear] = useState(() => new Date().getFullYear() - 1); // Default to previous year
@@ -801,6 +842,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }
   }, [mode]);
   const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default — Got Your Bill? is the first thing users see
+  const [showProratedDailyBreakdown, setShowProratedDailyBreakdown] = useState(false); // When prorated only: daily rows collapsed by default to avoid confusion
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
   const [_showHeatingCosts, _setShowHeatingCosts] = useState(false); // Collapsed by default
@@ -833,6 +875,9 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [billParsing, setBillParsing] = useState(false);
   const [billParseError, setBillParseError] = useState(null);
   const [showBillPaste, setShowBillPaste] = useState(false);
+  const [showBillExtractorBeta, setShowBillExtractorBeta] = useState(false);
+  const [billAmountManual, setBillAmountManual] = useState('');
+  const [billFlatFeeManual, setBillFlatFeeManual] = useState('');
   const [billPdfExtracting, setBillPdfExtracting] = useState(false);
   const [billPdfError, setBillPdfError] = useState('');
   const [runAutoAnalyzeAfterExtract, setRunAutoAnalyzeAfterExtract] = useState(false);
@@ -926,8 +971,20 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   }, [actualKwhStorageKey, billPeriodOtherMonth]);
 
   // Pre-populate from onboarding: either pre-extracted (bill extracted during onboarding) or paste for extraction
+  // Skip when URL has month/year — user came from "This month's bill forecast" and should see current month, not the bill month
   useEffect(() => {
     try {
+      const urlMonth = searchParams.get("month");
+      const urlYear = searchParams.get("year");
+      const hasUrlMonthYear = urlMonth && urlYear && parseInt(urlMonth, 10) >= 1 && parseInt(urlMonth, 10) <= 12 && parseInt(urlYear, 10) >= 2020;
+      if (hasUrlMonthYear) {
+        localStorage.removeItem("onboardingBillMonth");
+        localStorage.removeItem("onboardingBillYear");
+        localStorage.removeItem("onboardingBillExtracted");
+        localStorage.removeItem("onboardingBillDateRange");
+        return;
+      }
+
       const storedMonth = localStorage.getItem("onboardingBillMonth");
       const storedYear = localStorage.getItem("onboardingBillYear");
       const storedDateRange = localStorage.getItem("onboardingBillDateRange");
@@ -1015,7 +1072,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
         }
       }
     } catch { /* ignore */ }
-  }, [setSelectedMonth, setSelectedYear, setBillDateRange]);
+  }, [searchParams, setSelectedMonth, setSelectedYear, setBillDateRange]);
 
   // When user has bill data (actualKwhEntries), auto-expand daily forecast so dailyMetricsRef populates for analysis
   const actualKwhCountForExpand = Object.values(actualKwhEntries).filter(v => typeof v === 'number').length;
@@ -1047,6 +1104,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [complaintCopyFeedback, setComplaintCopyFeedback] = useState('');
   const [billFollowUpLoading, setBillFollowUpLoading] = useState(false);
   const [billFollowUpStreamingText, setBillFollowUpStreamingText] = useState('');
+  const [redditCopySuccess, setRedditCopySuccess] = useState(false);
 
   // Speech-to-text for follow-up questions
   const { supported: billRecSupported, isListening: billIsListening, startListening: billStartListening, stopListening: billStopListening } = useSpeechRecognition({
@@ -1201,6 +1259,77 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     }
   }, []);
 
+  // Save manual bill (month + amount) — allocates proportionally by forecast energy when available
+  const saveManualBill = useCallback(() => {
+    const clean = billAmountManual.replace(/[$,]/g, "").trim();
+    const amount = parseFloat(clean);
+    const flatClean = billFlatFeeManual.replace(/[$,]/g, "").trim();
+    const flatFee = parseFloat(flatClean);
+    const flatFeeNum = !Number.isNaN(flatFee) && flatFee >= 0 ? flatFee : 0;
+    const totalBillAmount = amount + flatFeeNum;
+    if (flatFeeNum > 0 && setUserSetting) {
+      setUserSetting("fixedElectricCost", flatFeeNum);
+    }
+    if (Number.isNaN(amount) || amount <= 0 || amount >= 10000) return;
+    const targetMonth = selectedMonth;
+    const targetYear = selectedYear;
+    const rate = utilityCost > 0 ? utilityCost : 0.10;
+    const totalKwh = rate > 0 ? amount / rate : 0;
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+    if (totalKwh <= 0 || daysInMonth <= 0) return;
+
+    // Allocate proportionally by forecast energy (cold days get more, warm days less)
+    const dailyMetrics = dailyMetricsRef.current || [];
+    const monthMetrics = dailyMetrics.filter(
+      (d) => d.date instanceof Date && d.date.getMonth() + 1 === targetMonth && d.date.getFullYear() === targetYear
+    );
+    const totalForecastEnergy = monthMetrics.reduce((s, d) => s + (d.energy || 0), 0);
+    const hasFullForecast = totalForecastEnergy > 0 && monthMetrics.length >= daysInMonth;
+
+    const byMonth = { [targetMonth]: {} };
+    if (hasFullForecast) {
+      for (const d of monthMetrics) {
+        const dayNum = d.date.getDate();
+        const proportion = (d.energy || 0) / totalForecastEnergy;
+        const dayKwh = Math.round(proportion * totalKwh * 10) / 10;
+        byMonth[targetMonth][String(dayNum)] = dayKwh;
+      }
+      // Reconcile rounding: ensure sum equals totalKwh
+      const allocated = Object.values(byMonth[targetMonth]).reduce((s, v) => s + v, 0);
+      const remainder = Math.round((totalKwh - allocated) * 10) / 10;
+      if (Math.abs(remainder) > 0.01) {
+        const maxDay = monthMetrics.reduce((best, d) =>
+          (d.energy || 0) > (best.energy || 0) ? d : best
+        );
+        const key = String(maxDay.date.getDate());
+        byMonth[targetMonth][key] = Math.round((byMonth[targetMonth][key] + remainder) * 10) / 10;
+      }
+    } else {
+      // Fallback: even split when no forecast data
+      const perDay = Math.round((totalKwh / daysInMonth) * 10) / 10;
+      for (let d = 1; d <= daysInMonth; d++) {
+        byMonth[targetMonth][String(d)] = perDay;
+      }
+    }
+    const storageKey = `actualKwh_${targetYear}_${targetMonth}`;
+    const existing = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    const updated = { ...existing };
+    for (const [day, kwh] of Object.entries(byMonth[targetMonth])) {
+      updated[`${targetMonth}-${day}`] = kwh;
+    }
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    setActualKwhEntries(updated);
+    if (billPeriodOtherMonth) {
+      setOtherMonthActualKwhEntries({});
+    }
+    const dateRange = derivePeriodFromByMonth(byMonth, targetYear);
+    setBillDateRange(dateRange);
+    setActualBillAmount(totalBillAmount);
+    localStorage.setItem(`billProratedOnly_${targetYear}_${targetMonth}`, "1");
+    setBillAmountManual("");
+    setBillFlatFeeManual("");
+  }, [billAmountManual, billFlatFeeManual, selectedMonth, selectedYear, utilityCost, billPeriodOtherMonth, setUserSetting]);
+
   const analyzeBillDiscrepancy = useCallback(async (dailyMetrics, entriesOverride) => {
     if (!isAIAvailable()) {
       setBillAnalysis({ error: 'AI not configured. Add a Groq API key or enable Local AI (Ollama) in Settings → Bridge & AI.' });
@@ -1249,9 +1378,10 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       const totalEst = comparisonRows.reduce((s, r) => s + r.estKwh, 0);
       const totalActual = comparisonRows.reduce((s, r) => s + r.actualKwh, 0);
       const fullMonthForecastKwh = allRows.reduce((s, r) => s + r.estKwh, 0);
-      const fullMonthForecastCost = Math.round((fullMonthForecastKwh * utilityCost + fixedElectricCost) * 100) / 100;
+      const baseloadKwhMonth = effectiveBaseloadKwhPerDay * daysInMonth;
+      const fullMonthForecastCost = Math.round((fullMonthForecastKwh * utilityCost + baseloadKwhMonth * utilityCost + fixedElectricCost) * 100) / 100;
       const isPartialMonth = comparisonRows.length > 0 && comparisonRows.length < daysInMonth;
-      // User entered only total bill — daily values are prorated (total÷days). Not real usage.
+      // User entered only total bill — daily values are estimated (allocated by forecast energy). Not real usage.
       const isProratedOnly = typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1';
 
       // Build rich model context so AI knows exactly what parameters drive the estimate
@@ -1320,11 +1450,16 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       // ONE ANCHOR: period expected vs actual for first-response consistency
       const periodExpectedCost = Math.round(totalEst * elecRate * 100) / 100;
       const periodActualCost = actualBillAmount != null ? actualBillAmount : Math.round(totalActual * elecRate * 100) / 100;
-      const diffDollars = Math.abs(periodActualCost - periodExpectedCost);
-      const diffPct = periodExpectedCost > 0 ? diffDollars / periodExpectedCost : 0;
+      // When user entered total bill only, compare total-to-total (forecast + fixed fees vs actual bill)
+      const expectedForDiff = actualBillAmount != null ? fullMonthForecastCost : periodExpectedCost;
+      const diffDollars = Math.abs(periodActualCost - expectedForDiff);
+      const diffPct = expectedForDiff > 0 ? diffDollars / expectedForDiff : 0;
+      const diffRounded = diffDollars < 50 ? Math.round(diffDollars) : Math.round(diffDollars / 5) * 5;
+      const diffPctRounded = Math.round(diffPct * 100);
+      const actualHigherThanModel = periodActualCost > expectedForDiff;
       const fixedFees = fixedElectricCost ?? 0;
       const highFixedCostNote = fixedFees >= 20 ? `USER'S FIXED MONTHLY FEE: $${fixedFees.toFixed(2)}. This is higher than typical (~$15). Acknowledge this when explaining their bill — a significant portion is the fixed service charge (meter, delivery, etc.), not usage. Say something like "Your fixed fees alone are about $${fixedFees.toFixed(0)}/month" or "Roughly $${fixedFees.toFixed(0)} of your bill is the fixed service charge."` : null;
-      const proratedNote = isProratedOnly ? `CRITICAL - PRORATED DATA: User entered only total bill ($${(actualBillAmount != null ? actualBillAmount : totalActual * elecRate).toFixed(2)}). The per-day "actual" values are total÷days — NOT real usage. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total (expected vs actual). The daily breakdown is for display only.` : null;
+      const proratedNote = isProratedOnly ? `CRITICAL - ESTIMATED DAILY DATA: User entered only total bill ($${(actualBillAmount != null ? actualBillAmount : totalActual * elecRate).toFixed(2)}). The per-day "actual" values are estimated by allocating the total proportionally to each day's forecast energy (cold days get more) — NOT real usage. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total (expected vs actual). The daily breakdown is for display only.` : null;
       const homeContextStr = isCoolingMonth ? [
         actualBillAmount != null ? `USER'S ACTUAL BILL TOTAL: $${actualBillAmount.toFixed(2)}. Use this exact amount when referring to their bill — do NOT use derived cost from kWh.` : null,
         proratedNote,
@@ -1389,10 +1524,15 @@ TERMINOLOGY - BILL PERIOD: ${_hasBillPeriod ? `The user's bill covers ${_display
 
 TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill came in lower than expected; the model ran a little high."' : `If their bill is high, say so plainly: "That's a lot for ${_hasBillPeriod ? 'this bill period' : _monthLabel} — you're right to want to understand why."`} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers. NEVER announce "cooling mode" or "heating mode" — speak in context (heat, sun, cooling demand).
 
-CRITICAL - ONE ANCHOR: Use ONLY these two numbers in your first response: Expected (for this period): about $${periodExpectedCost.toFixed(0)}. Actual (user's bill): $${periodActualCost.toFixed(2)}. The dollar difference is exactly $${diffDollars.toFixed(2)} — use this number. Do NOT compute fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}) minus actual — that would be wrong. Do NOT mention fullMonthForecastCost — it will confuse the user.
-${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. You have NO real per-day usage. Do NOT cite specific days (e.g. "January 15th", "on the 15th"). Speak ONLY about the period total (expected vs actual).` : ''}
-MAGNITUDE: Diff is $${diffDollars.toFixed(2)} (${(diffPct * 100).toFixed(0)}%). Say "the model ran a little high — about $${diffDollars.toFixed(0)} higher than what you actually used" (NOT "overestimated by $X"). If diff <15%: "slightly" or "a bit" — NEVER "significantly". If 15-25%: "somewhat". If >25%: "significantly".
-VOICE: Use "I'm looking at your home", "For a house like yours", "That's usually a good sign", "If you're curious". Avoid: "various factors", "analysis indicates", "model discrepancy", "system suggests", "the model overestimated" — say "the model ran a little high" instead.
+CRITICAL - ACTUAL vs ESTIMATE: ${totalActual > totalEst ? `ACTUAL > ESTIMATE (bill is higher than model). NEVER say "model ran a little high" or "numbers are right where I'd expect" or "your home is behaving normally" or "lower than expected" — those are WRONG. Say "higher than expected" and "${diffPctRounded}% over." Baseload likely explains the gap.` : `ACTUAL < ESTIMATE (bill is lower than model). Say "the model ran a little high." Do NOT mention baseload.`}
+
+CRITICAL - MATH: Expected total = $${fullMonthForecastCost.toFixed(0)}. Actual = $${periodActualCost.toFixed(2)}. Actual is ${periodActualCost > fullMonthForecastCost ? 'HIGHER' : 'LOWER'} by $${Math.abs(periodActualCost - fullMonthForecastCost).toFixed(0)}. NEVER flip direction. When actual > expected, always say "higher" and "over."
+
+MANDATORY when actual > expected: "The model expected about $${periodExpectedCost.toFixed(0)} in cooling energy. With fixed utility fees, that becomes the $${fullMonthForecastCost.toFixed(0)} total above. Your actual bill was $${periodActualCost.toFixed(2)} — about $${diffRounded} higher than expected, or ${diffPctRounded}% over. Because cooling looks normal, the extra usage likely came from whole-home electricity like water heating, laundry, cooking, or other appliances."
+
+${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. Speak ONLY about the period total (expected vs actual).` : ''}
+MAGNITUDE: ${actualHigherThanModel ? `"about $${diffRounded} higher than expected" or "roughly ${diffPctRounded}% over"` : `"about $${diffRounded} lower than expected" or "roughly ${diffPctRounded}% under"`} — match the direction (actual vs expected).
+VOICE: Use "I'm looking at your home", "For a house like yours". Avoid: "various factors", "analysis indicates". ${totalActual < totalEst ? 'Say "the model ran a little high."' : 'Say "higher than expected" and "X% over." NEVER say "lower than expected" when actual > expected.'}
 
 CRITICAL: The MODEL estimates HVAC cooling only (compressor). The ACTUAL BILL is whole-house electricity (HVAC + baseload: water heater, fridge, lights, appliances). Typical baseload: 5–15 kWh/day.
 
@@ -1400,34 +1540,48 @@ BASELOAD - DO NOT GET THIS WRONG: Baseload makes the actual bill HIGHER. When ac
 
 DIRECTION RULES:
 • When actual > estimate (model underestimates): The ${(totalActual - totalEst).toFixed(0)} kWh gap is likely BASELOAD first — water heater, appliances, etc. Do NOT recommend lowering heat gain factor; that would make the model predict even less. Consider: baseload (~${Math.round((totalActual - totalEst) / comparisonRows.length)} kWh/day), lower thermostat (more cooling), solar load.
-• When actual < estimate (model overestimates): The model predicted more cooling than your bill shows. Baseload does NOT explain this. Heat gain or solar exposure may be too high in the model. Recommend lowering insulation multiplier or solar exposure to match. NEVER mention baseload when actual < estimate.
+• When actual < estimate (model overestimates): The model predicted more cooling than your bill shows. Baseload does NOT explain this. Say: "We can refine your home profile in Settings to make future estimates more precise." Never say "insulation multiplier" or "solar exposure." NEVER mention baseload when actual < estimate.
 
-EMPIRICAL vs MODEL (when actual < estimate): The model uses ${btuGainPerDegF.toFixed(0)} BTU/hr/°F heat gain. ${empiricalHeatGain ? `Empirical from bill: ~${empiricalHeatGain.toFixed(0)} BTU/hr/°F. Since empirical (${empiricalHeatGain.toFixed(0)}) < model (${btuGainPerDegF.toFixed(0)}), the model's heat gain is TOO HIGH. Say: "The bill suggests ~${empiricalHeatGain.toFixed(0)} BTU/hr/°F but the model uses ${btuGainPerDegF.toFixed(0)} — so the model is overestimating. Lower the model's heat gain (insulation or solar exposure)."` : 'The bill shows less energy than the model predicts, so the model\'s heat gain is too high.'} NEVER say "baseload" when actual < estimate. The fix is: lower heat gain (insulation multiplier, solar exposure, or home shape).
+EMPIRICAL vs MODEL (when actual < estimate): The model uses ${btuGainPerDegF.toFixed(0)} BTU/hr/°F heat gain. ${empiricalHeatGain ? `Empirical from bill: ~${empiricalHeatGain.toFixed(0)} BTU/hr/°F. Since empirical (${empiricalHeatGain.toFixed(0)}) < model (${btuGainPerDegF.toFixed(0)}), the model's heat gain is TOO HIGH. Say: "The bill suggests your home uses less cooling than the model predicts — we can refine your home profile in Settings to make future estimates more precise."` : 'The bill shows less energy than the model predicts, so the model\'s heat gain is too high.'} NEVER say "baseload" when actual < estimate. Use consumer language: "We can refine your home profile in Settings." Never say insulation multiplier, solar exposure, or home shape.
+EMPIRICAL when actual > estimate: The empirical heat gain from the bill is DISTORTED by baseload. Do NOT suggest lowering heat gain to match empirical. Lead with baseload only. NEVER recommend lowering heat gain when actual > estimate.
 
 COOLING VOCABULARY: Use heat gain, cooling demand, compressor runtime, solar load, SEER2. Do NOT use heat loss, aux heat, or HSPF. Compressor capacity derates above 95°F.
 
-INSULATION: User's current insulation multiplier is ${insulationLevel}x. If recommending LOWER (when model overestimates), suggest a value BELOW their current — e.g. 0.55x or 0.5x if they're at 0.65x.
-
-HOW TO CHANGE: Settings → Building Characteristics → Insulation Quality, Solar Exposure, Home Shape.
+CONSUMER LANGUAGE: Never say "adjust insulation multiplier", "home shape factor", or "solar exposure." Use: "We can refine your home profile in Settings to make future estimates more accurate." Avoid engineering jargon.
 
 MODEL PARAMETERS:
 ${homeContextStr}
 
-FORMAT: Write in friendly, conversational paragraph form. No bullet points, no numbered lists. VOICE: Joule is calm, observant, confident. Never announce modes — speak in context.
+DIAGNOSIS (first line): Give ONE bold headline. Use one of: "Cooling normal" | "Cooling high" | "House inefficient" | "Baseload high". When actual > estimate and baseload explains it: "Your cooling system looks normal. The extra $${diffRounded} likely came from other appliances." When actual < estimate: "Your cooling looks normal — the model ran a little high."
 
-STRUCTURE: Lead with reassurance, then orientation, then numbers, then invitation. First message answers: "Is something wrong?" Not "here are the numbers."
-When numbers look normal (diff <25%): "I'm looking at your home and this bill period. For a house like yours in this weather, the numbers are right where I'd expect. That usually means nothing is wrong — your home is behaving normally. For those ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. So you came in ${periodActualCost < periodExpectedCost ? (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' lower' : (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' higher'} than the model predicted. Want to take a closer look together, or just confirm everything looks normal?"
-When difference is large: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP.`
+FORMAT: Short, scannable. Start with the diagnosis line. Then use bullets for "Why the bill is higher" (or lower). Example:
+**Why the bill is higher**
+• Cooling model: $${periodExpectedCost.toFixed(0)}
+• Your actual bill: $${periodActualCost.toFixed(2)}
+• Extra usage likely from: whole-house appliances, water heater, dryer, cooking
+Investigate usage →
+
+VOICE: Joule is calm, observant, confident. Never announce modes — speak in context.
+
+STRUCTURE: Lead with the ONE-LINE diagnosis. Then bullets. Then optional short paragraph. End with "Want to take a closer look together?" if applicable. Do NOT repeat "I'm looking at your home and this bill period" — say it once only. Less text = more trust.
+When actual < estimate AND diff <25%: "Your cooling looks normal — the model ran a little high." CRITICAL: When actual < estimate, there is NO "extra usage." NEVER say "extra usage" or "extra energy" or "extra came from appliances." End with: "This suggests your cooling system is behaving normally and overall usage was slightly lower than expected." Then: "Want to take a closer look together, or just confirm everything looks normal?"
+When actual > estimate (bill higher than model): Start with "Your cooling system looks normal. The extra $${diffRounded} likely came from other appliances." Then bullets for "Why the bill is higher" (model $ vs actual $, baseload sources). Do NOT say "numbers are right where I'd expect" or "model ran a little high." NEVER suggest lowering heat gain, insulation, or solar exposure — the gap is baseload.
+When difference is large (diff >=25%) and actual < estimate: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP.`
         : `You are Joule, the homeowner's advocate. You help people understand why their heating bill is high and give them facts to stand on. Be warm, validating, and on their side — not the utility's.
 
 TERMINOLOGY - BILL PERIOD: ${_hasBillPeriod ? `The user's bill covers ${_displayPeriod} (a bill period, NOT a calendar month). NEVER say "January", "this month", or "month" — always say "this bill period", "for ${_displayPeriod}", or "the period".` : 'The user is viewing a full calendar month.'}
 
 TONE: Lead with validation. ${totalActual < totalEst ? 'Your bill was LOWER than the forecast — say "Your bill came in lower than expected; the model ran a little high." Do NOT say "bill was high" or "higher than expected."' : `If their bill is high, say so plainly: "That's a lot for ${_hasBillPeriod ? 'this bill period' : _monthLabel} — you're right to want to understand why."`} Validate first, then educate. Write like a knowledgeable neighbor who's on their side, over coffee. No bullets, no numbered lists, no bold headers.
 
-CRITICAL - ONE ANCHOR: Use ONLY these two numbers in your first response: Expected (for this period): about $${periodExpectedCost.toFixed(0)}. Actual (user's bill): $${periodActualCost.toFixed(2)}. The dollar difference is exactly $${diffDollars.toFixed(2)} — use this number. Do NOT compute fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}) minus actual — that would be wrong. Do NOT mention fullMonthForecastCost — it will confuse the user.
-${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. You have NO real per-day usage. Do NOT cite specific days (e.g. "January 15th", "on the 15th"). Speak ONLY about the period total (expected vs actual).` : ''}
-MAGNITUDE: Diff is $${diffDollars.toFixed(2)} (${(diffPct * 100).toFixed(0)}%). Say "the model ran a little high — about $${diffDollars.toFixed(0)} higher than what you actually used" (NOT "overestimated by $X"). If diff <15%: "slightly" or "a bit" — NEVER "significantly". If 15-25%: "somewhat". If >25%: "significantly".
-VOICE: Use "I'm looking at your home", "For a house like yours", "That's usually a good sign", "If you're curious". Avoid: "various factors", "analysis indicates", "model discrepancy", "system suggests", "the model overestimated" — say "the model ran a little high" instead.
+CRITICAL - ACTUAL vs ESTIMATE: ${totalActual > totalEst ? `ACTUAL > ESTIMATE (bill is higher than model). NEVER say "model ran a little high" or "lower than expected" — those are WRONG. Say "higher than expected" and "${diffPctRounded}% over." Baseload likely explains the gap.` : `ACTUAL < ESTIMATE (bill is lower than model). Say "the model ran a little high." Do NOT mention baseload.`}
+
+CRITICAL - MATH: Expected total = $${fullMonthForecastCost.toFixed(0)}. Actual = $${periodActualCost.toFixed(2)}. Actual is ${periodActualCost > fullMonthForecastCost ? 'HIGHER' : 'LOWER'} by $${Math.abs(periodActualCost - fullMonthForecastCost).toFixed(0)}. NEVER flip direction. When actual > expected, always say "higher" and "over."
+
+MANDATORY when actual > expected: "The model expected about $${periodExpectedCost.toFixed(0)} in heating energy. With fixed utility fees, that becomes the $${fullMonthForecastCost.toFixed(0)} total above. Your actual bill was $${periodActualCost.toFixed(2)} — about $${diffRounded} higher than expected, or ${diffPctRounded}% over. Because heating looks normal, the extra usage likely came from whole-home electricity like water heating, laundry, cooking, or other appliances."
+
+${isProratedOnly ? `CRITICAL - NO PER-DAY DATA: User entered only total bill. Speak ONLY about the period total (expected vs actual).` : ''}
+MAGNITUDE: ${actualHigherThanModel ? `"about $${diffRounded} higher than expected" or "roughly ${diffPctRounded}% over"` : `"about $${diffRounded} lower than expected" or "roughly ${diffPctRounded}% under"`} — match the direction.
+VOICE: Use "I'm looking at your home", "For a house like yours". ${totalActual < totalEst ? 'Say "the model ran a little high."' : 'Say "higher than expected" and "X% over." NEVER say "lower than expected" when actual > expected.'}
 
 CRITICAL: The MODEL estimates HVAC heating only (heat pump + aux strips). The ACTUAL BILL is whole-house electricity (HVAC + baseload: water heater, fridge, lights, appliances). Typical baseload: 5–15 kWh/day.
 
@@ -1435,14 +1589,15 @@ BASELOAD - DO NOT GET THIS WRONG: Baseload (water heater, fridge, lights) makes 
 
 DIRECTION RULES:
 • When actual > estimate (model underestimates): The ${(totalActual - totalEst).toFixed(0)} kWh gap is likely BASELOAD first — water heater, appliances, etc. Do NOT recommend lowering Heat Loss Factor; that would make the model predict even less. Consider: baseload (~${Math.round((totalActual - totalEst) / comparisonRows.length)} kWh/day), higher thermostat use, aux heat not modeled.
+${primarySystem === 'heatPump' && totalActual > totalEst * 1.7 ? `AUX HEAT LIKELY: Actual usage is ${(totalActual / totalEst).toFixed(1)}x expected — backup resistance heat likely ran during cold periods. Mention: "Backup (aux) heat may have run during colder periods — this can happen when outdoor temps drop below ~30°F or after large thermostat setbacks."` : ''}
 • When actual < estimate (model overestimates): The model predicted more HVAC than your bill shows. Baseload does NOT explain this — the bill has everything. Heat loss or thermostat settings may be too high in the model. Recommend lowering insulation multiplier or HLF to match. NEVER mention baseload when actual < estimate.
 
 EMPIRICAL vs MODEL HLF (when actual < estimate): The model uses ${effectiveBtuLossPerDegF.toFixed(0)} BTU/hr/°F. ${empiricalHLF ? `Empirical from bill: ~${empiricalHLF.toFixed(0)} BTU/hr/°F. Since empirical (${empiricalHLF.toFixed(0)}) < model (${effectiveBtuLossPerDegF.toFixed(0)}), the model's heat loss is TOO HIGH — the bill shows less energy per degree than the model assumes. Say: "The bill suggests ~${empiricalHLF.toFixed(0)} BTU/hr/°F but the model uses ${effectiveBtuLossPerDegF.toFixed(0)} — so the model is overestimating. Lower the model's heat loss."` : 'The bill shows less energy than the model predicts, so the model\'s heat loss is too high.'} NEVER say "baseload" or "empirical suggests low heat loss" when actual < estimate — baseload makes bills HIGHER, not lower. The fix is always: lower the model's heat loss (insulation multiplier or switch to From Bill Data).
-EMPIRICAL HLF when actual > estimate: Formula assumes ALL kWh is heating; baseload inflates it. Use cautiously; lead with baseload as the main explanation.
+EMPIRICAL HLF when actual > estimate: Formula assumes ALL kWh is heating; baseload inflates it. The empirical BTU/°F from the bill is DISTORTED — do NOT suggest lowering heat loss to match empirical. When actual > model, the bill is higher because of baseload (whole-house), not because the model's heat loss is wrong. Lead with baseload only. NEVER recommend lowering heat loss when actual > estimate.
 
 HEAT LOSS FROM BILL: When heat loss source is "From Bill Data (Auto-learned)", the forecast is already using heat loss derived from bill data. Do NOT recommend adjusting heat loss — the forecast and bill share the same heat-loss basis. The gap is BASELOAD (whole-house: water heater, fridge, lights, appliances). If the prompt says "Heat loss is FROM THIS SAME BILL", emphasize that the model cannot match the bill because it estimates HVAC-only; the bill is whole-house.
 
-HEAT LOSS FROM DOE: When heat loss source is "Calculated (DOE)", the model uses building characteristics (insulation multiplier, home shape, ceiling height). Acknowledge this: e.g. "You're using Calculated (DOE) heat loss (${effectiveBtuLossPerDegF.toFixed(0)} BTU/hr/°F). To lower the forecast, adjust insulation multiplier or home shape in Settings → Building Characteristics." Do NOT suggest "From Bill Data" unless the user asks — DOE is a valid choice.
+HEAT LOSS FROM DOE: When heat loss source is "Calculated (DOE)", the model uses building characteristics. Say: "We can refine your home profile in Settings to make future estimates more precise." Never say "adjust insulation multiplier" or "home shape factor."
 
 HEAT LOSS vs TEMPERATURE: Heat loss (BTU/hr/°F) is NOT based on outdoor temperature. It comes from one of: building characteristics (DOE), bill data (auto-learned), or manual/analyzer. Temperature only affects how much energy is used each day (the forecast applies the same heat loss to each day's temperature). Do NOT say heat loss is "based on temperature" — that is incorrect.
 
@@ -1452,6 +1607,8 @@ OTHER RULES:
 3. If model overestimates: suggest which parameter to lower. If model underestimates: explain baseload and what would need to change to match (higher HLF only if HVAC is provably under-modeled; usually baseload explains it).
 
 INSULATION RECOMMENDATION: User's current insulation multiplier is ${insulationLevel}x. If recommending LOWER (when model overestimates), suggest a value BELOW their current — e.g. 0.55x or 0.5x if they're at 0.65x. NEVER suggest 0.65x or 0.6x when they already have 0.65x.
+
+CONSUMER LANGUAGE: Never say "adjust insulation multiplier" or "home shape factor." Use: "We can refine your home profile in Settings to make future estimates more accurate." Avoid engineering jargon.
 
 HOW TO CHANGE PARAMETERS (always include when recommending adjustments):
 • Insulation multiplier: Go to Settings → Building Characteristics → "Insulation Quality". Options: Poor 1.4×, Average 1.0×, Good 0.65×, or enter a custom value (lower = better insulation = less heat loss).
@@ -1463,11 +1620,12 @@ HOW TO CHANGE PARAMETERS (always include when recommending adjustments):
 MODEL PARAMETERS:
 ${homeContextStr}
 
-FORMAT: Write in friendly, conversational paragraph form — like a knowledgeable neighbor explaining things over coffee. No bullet points, no numbered lists, no bold section headers. Use flowing prose that’s easy to read. VOICE: Joule is calm, observant, confident — a thermostat that can explain itself. Never salesy, jokey, or robotic. Reassuring when nothing is wrong, with a touch of pride.
+FORMAT: Write in friendly, conversational paragraph form — like a knowledgeable neighbor explaining things over coffee. Start with ONE-LINE diagnosis, then bullets for "Why the bill is higher." Lead with "Your heating system looks normal. The extra $X likely came from other appliances" ONLY when actual > estimate (bill higher). When actual < estimate: NEVER say "extra usage" — end with "overall usage was slightly lower than expected." Use flowing prose that’s easy to read. VOICE: Joule is calm, observant, confident — a thermostat that can explain itself. Never salesy, jokey, or robotic. Reassuring when nothing is wrong, with a touch of pride.
 
-STRUCTURE: Lead with reassurance, then orientation, then numbers, then invitation. First message answers: "Is something wrong?" Not "here are the numbers."
-When numbers look normal (diff <25%): "I'm looking at your home and this bill period. For a house like yours in this weather, the numbers are right where I'd expect. That usually means nothing is wrong — your home is behaving normally. For those ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. So you came in ${periodActualCost < periodExpectedCost ? (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' lower' : (diffPct < 0.15 ? 'slightly' : 'somewhat') + ' higher'} than the model predicted. Want to take a closer look together, or just confirm everything looks normal?"
-When difference is large: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP. Do NOT include the full explanation or Shareable summary in this response — the user can say "Yes, dig deeper" in a follow-up to get the full explanation.
+STRUCTURE: Lead with reassurance, then orientation, then numbers, then invitation. First message answers: "Is something wrong?" Not "here are the numbers." Do NOT repeat "I'm looking at your home and this bill period" — say it once only. Less text = more trust.
+When actual < estimate AND diff <25%: "I'm looking at your home and this bill period. For a house like yours in this weather, the numbers are generally right where I'd expect. The model ran a little high, but not in a way that suggests anything is wrong — your home is behaving normally. For the energy used during these ${comparisonRows.length} days, the model expected about $${periodExpectedCost.toFixed(0)}. With fixed utility fees included, that becomes the $${fullMonthForecastCost.toFixed(0)} total you see above. Your actual bill came in at $${periodActualCost.toFixed(2)}, which is about $${diffRounded} lower than expected — roughly ${diffPctRounded}% under." CRITICAL: When actual < estimate, there is NO "extra usage." NEVER say "extra usage" or "extra energy" or "extra came from appliances." End with: "This suggests your heating system is behaving normally and overall usage was slightly lower than expected." Then: "Want to take a closer look together, or just confirm everything looks normal?"
+When actual > estimate (bill higher than model): Start with "Your heating system looks normal. The extra $${diffRounded} likely came from other appliances." Then explain: "For the energy used during these ${comparisonRows.length} days, the model expected about $${periodExpectedCost.toFixed(0)}. With fixed utility fees included, that becomes the $${fullMonthForecastCost.toFixed(0)} total you see above. Your actual bill came in at $${periodActualCost.toFixed(2)}, which is about $${diffRounded} higher than expected — roughly ${diffPctRounded}% over." Lead with baseload (whole-house vs HVAC-only). Do NOT say "numbers are right where I'd expect" or "model ran a little high" or "your home is behaving normally." NEVER suggest lowering heat loss, insulation, or HLF — the gap is baseload. Ignore empirical BTU/°F from the bill; it is distorted by baseload.
+When difference is large (diff >=25%) and actual < estimate: lead with "I compared this bill to how your house normally responds to weather like this." End with "Want to take a closer look together?" on its own line. Then STOP. Do NOT include the full explanation or Shareable summary in this response — the user can say "Yes, dig deeper" in a follow-up to get the full explanation.
 
 When the user later says "Yes, dig deeper" or similar, you will be asked in a follow-up to provide the full explanation and a Shareable summary — do not include those in this first response.`;
 
@@ -1479,7 +1637,7 @@ When the user later says "Yes, dig deeper" or similar, you will be asked in a fo
           },
           {
             role: 'user',
-              content: `${actualBillAmount != null ? `My actual bill total: $${actualBillAmount.toFixed(2)}. ` : ''}For the ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. Model ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) vs my actual ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference at $${elecRate}/kWh.${isPartialMonth ? ` (Partial ${_hasBillPeriod ? 'period' : 'month'}: only ${comparisonRows.length} of ${daysInMonth} days.)` : ''}${isProratedOnly ? `\n\nIMPORTANT: I only entered my total bill — no per-day data. The per-day values you might see are prorated (total÷days) for display only. Do NOT cite specific days (e.g. "January 15th").` : ''}\n\n${!isProratedOnly ? `Daily comparison:\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\n` : ''}Perform a field audit. Use ONLY these two numbers in your first response: Expected ~$${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. Do NOT mention fullMonthForecastCost ($${fullMonthForecastCost.toFixed(2)}). ${actualBillAmount != null ? `User's actual bill: $${actualBillAmount.toFixed(2)}. ` : ''}Consider baseload (whole-house vs HVAC-only), ${isCoolingMonth ? 'heat gain' : 'heat loss'}, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them. Include dollar amounts.`
+              content: `${actualBillAmount != null ? `My actual bill total: $${actualBillAmount.toFixed(2)}. ` : ''}For the ${comparisonRows.length} days: Expected about $${periodExpectedCost.toFixed(0)}, Actual $${periodActualCost.toFixed(2)}. Model ${totalEst.toFixed(1)} kWh ($${(totalEst * elecRate).toFixed(2)}) vs my actual ${totalActual.toFixed(1)} kWh ($${(totalActual * elecRate).toFixed(2)}) — ${(totalActual - totalEst) > 0 ? '+' : ''}${(totalActual - totalEst).toFixed(1)} kWh ($${Math.abs((totalActual - totalEst) * elecRate).toFixed(2)}) difference at $${elecRate}/kWh.${isPartialMonth ? ` (Partial ${_hasBillPeriod ? 'period' : 'month'}: only ${comparisonRows.length} of ${daysInMonth} days.)` : ''}${isProratedOnly ? `\n\nIMPORTANT: I only entered my total bill — no per-day data. The per-day values you might see are estimated (total allocated by forecast energy) for display only. Do NOT cite specific days (e.g. "January 15th").` : ''}\n\n${!isProratedOnly ? `Daily comparison:\n${comparisonRows.map(r => `${r.day}: est ${r.estKwh} kWh ($${(r.estKwh * elecRate).toFixed(2)})${r.auxKwh > 0 ? ` (incl ${r.auxKwh} aux)` : ''} vs actual ${r.actualKwh} kWh ($${(r.actualKwh * elecRate).toFixed(2)}) (${r.tempRange}, ${r.source})`).join('\n')}\n\n` : ''}Perform a field audit. Explain the connection: energy-only expected ~$${periodExpectedCost.toFixed(0)} for these ${comparisonRows.length} days; with fixed fees that becomes the $${fullMonthForecastCost.toFixed(0)} total above. Actual bill: $${periodActualCost.toFixed(2)}. ${actualBillAmount != null ? `User's actual bill: $${actualBillAmount.toFixed(2)}. ` : ''}Consider baseload (whole-house vs HVAC-only), ${isCoolingMonth ? 'heat gain' : 'heat loss'}, and thermostat behavior. If model parameters need adjustment, say which values to use AND exactly where in the app to change them. Include dollar amounts. Use conversational rounding (about $${diffRounded}, roughly ${diffPctRounded}%).`
             }
           ],
         temperature: 0.3,
@@ -1507,7 +1665,7 @@ When the user later says "Yes, dig deeper" or similar, you will be asked in a fo
       }
       billAnalysisRequestMonthRef.current = null;
     }
-  }, [actualKwhEntries, actualBillAmount, billDateRange, squareFeet, primarySystem, insulationLevel, effectiveIndoorTemp, winterThermostat, hspf2, capacity, ceilingHeight, homeShape, utilityCost, useElectricAuxHeat, indoorTemp, nighttimeTemp, summerThermostat, summerThermostatNight, efficiency, solarExposure, coolingCapacity, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, selectedMonth, selectedYear]);
+  }, [actualKwhEntries, actualBillAmount, billDateRange, squareFeet, primarySystem, insulationLevel, effectiveIndoorTemp, winterThermostat, hspf2, capacity, ceilingHeight, homeShape, utilityCost, useElectricAuxHeat, indoorTemp, nighttimeTemp, summerThermostat, summerThermostatNight, efficiency, solarExposure, coolingCapacity, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.useAnalyzerHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.useLearnedHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, selectedMonth, selectedYear, effectiveBaseloadKwhPerDay, fixedElectricCost]);
 
   // Ref for follow-up prompt: updated in effect after getEffectiveHeatLossFactor/hlfSource exist (avoids TDZ)
   const billFollowUpContextRef = useRef({ effectiveHeatLoss: 0, hlfSource: 'calculated', squareFeet: 800, insulationLevel: 1, homeShape: 1, ceilingHeight: 8 });
@@ -1542,14 +1700,14 @@ When the user later says "Yes, dig deeper" or similar, you will be asked in a fo
 
 TERMINOLOGY: ${billAnalysis.hasBillPeriod ? `The user's bill covers ${billAnalysis.displayPeriod || billDateRange} (a BILL PERIOD, not a calendar month). NEVER say "January", "this month", or "month" — always say "this bill period", "for ${billAnalysis.displayPeriod || billDateRange}", or "the period".` : 'The user is viewing a full calendar month.'}
 
-ONE ANCHOR: For the ${billAnalysis.daysCompared ?? 0} days: Expected about $${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(0)}, Actual $${(actualBillAmount ?? (billAnalysis.totalActual ?? 0) * elecRate).toFixed(2)}. Use only these two numbers when citing the comparison. Do NOT mix in fullMonthForecastCost ($${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(2)}) — it will confuse the user.
-${billAnalysis.onlyProratedTotal ? 'CRITICAL - PRORATED DATA: User entered only total bill. Per-day values are total÷days — NOT real. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total.' : ''}
+TWO NUMBERS, ONE CONNECTION: For the ${billAnalysis.daysCompared ?? 0} days, energy-only expected is about $${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(0)}. With fixed fees, that becomes the $${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(2)} total (primary number above). Actual bill: $${(actualBillAmount ?? (billAnalysis.totalActual ?? 0) * elecRate).toFixed(2)}. When citing numbers, explain this connection so the user understands why they see $${(billAnalysis.fullMonthForecastCost ?? 0).toFixed(0)} above vs ~$${((billAnalysis.totalEst ?? 0) * elecRate).toFixed(0)} in the comparison.
+${billAnalysis.onlyProratedTotal ? 'CRITICAL - ESTIMATED DATA: User entered only total bill. Per-day values are estimated (allocated by forecast energy) — NOT real. Do NOT cite specific days (e.g. "on January 15th you used X"). Speak ONLY about the period total.' : ''}
 
-CRITICAL: The MODEL estimates HVAC ${billAnalysis.isCoolingMonth ? 'cooling' : 'heating'} only. The ACTUAL BILL is whole-house (HVAC + baseload). Baseload makes the bill HIGHER. When actual < estimate: the bill was LOWER than the forecast. Baseload CANNOT explain a lower bill — never mention it. Say "the model ran a little high" — NOT "the model overestimated". When actual > estimate: the gap is often baseload — do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}. If the user asks "why my bill was high" but actual < estimate, correct them: "Actually your bill was lower than the forecast. The model ran a little high."
+CRITICAL: The MODEL estimates HVAC ${billAnalysis.isCoolingMonth ? 'cooling' : 'heating'} only. The ACTUAL BILL is whole-house (HVAC + baseload). Baseload makes the bill HIGHER. When actual < estimate: the bill was LOWER than the forecast. Baseload CANNOT explain a lower bill — never mention it. Say "the model ran a little high". When actual > estimate: the bill was HIGHER than the forecast. Say "the model ran a little low" or "your bill was higher than the model predicted" — NEVER say "model ran a little high". The gap is often baseload — do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}. If the user asks "why my bill was high" but actual < estimate, correct them: "Actually your bill was lower than the forecast. The model ran a little high."
 
-${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? `THIS COMPARISON: Actual < estimate (model ran a little high). Say "the model ran a little high — about $X higher than what you actually used" using the exact diff. Baseload CANNOT explain a lower bill. If empirical ${billAnalysis.isCoolingMonth ? 'heat gain BTU/°F' : 'BTU/°F'} from HOME context is lower than the model's, say: the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Recommend lowering insulation or ${billAnalysis.isCoolingMonth ? 'solar exposure' : 'switching to From Bill Data'}.` : `THIS COMPARISON: Actual > estimate (model underestimated). Baseload likely explains the gap. Do NOT recommend lowering ${billAnalysis.isCoolingMonth ? 'heat gain factor' : 'Heat Loss Factor'}.`}
+${(billAnalysis.totalEst || 0) > (billAnalysis.totalActual || 0) ? `THIS COMPARISON: Actual < estimate (model ran a little high). Say "the model ran a little high — about $X higher than what you actually used" using the exact diff. Baseload CANNOT explain a lower bill. If empirical ${billAnalysis.isCoolingMonth ? 'heat gain BTU/°F' : 'BTU/°F'} from HOME context is lower than the model's, say: the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Recommend lowering insulation or ${billAnalysis.isCoolingMonth ? 'solar exposure' : 'switching to From Bill Data'}.` : `THIS COMPARISON: Actual > estimate (model underestimated). Baseload likely explains the gap — whole-house (water heater, fridge, appliances) vs HVAC-only model. NEVER suggest lowering ${billAnalysis.isCoolingMonth ? 'heat gain, insulation, or solar exposure' : 'heat loss, insulation, or HLF'}. The empirical BTU/°F from the bill is distorted by baseload — ignore it. Lead with baseload only.`}
 
-EMPIRICAL vs MODEL: When actual < estimate, if empirical from HOME context is lower than the model's, the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Say so plainly. NEVER mention baseload when actual < estimate. When actual > estimate, empirical can be distorted by baseload — lead with baseload.
+EMPIRICAL vs MODEL: When actual < estimate, if empirical from HOME context is lower than the model's, the model's ${billAnalysis.isCoolingMonth ? 'heat gain' : 'heat loss'} is too high. Say so plainly. NEVER mention baseload when actual < estimate. When actual > estimate: empirical is DISTORTED by baseload — do NOT suggest lowering heat loss/gain to match empirical. Lead with baseload only.
 
 INSULATION: If recommending lower insulation when the model ran a little high, suggest a value BELOW the user's current (from CURRENT SETTINGS). Never suggest 0.65x when they already have 0.65x — use 0.55x or 0.5x instead.
 
@@ -1579,7 +1737,7 @@ ${billAnalysis.onlyProratedTotal ? 'NO DAILY DATA: User entered only total bill 
 
 DIG DEEPER: If the user asks to dig deeper (e.g. "Yes", "Yes please", "Dig deeper"), provide the full detailed explanation of why the forecast differs from their bill in conversational prose (no bullets, under 200 words), then end with "Shareable summary:" on its own line and a single paragraph they can copy (include dollar amount and main driver).
 
-FORMAT: Write in friendly, conversational paragraph form — like explaining to a homeowner in plain language. No bullet points, no numbered lists, no bold section headers. Use flowing prose that’s easy to read. Keep it under 250 words.
+FORMAT: Write in friendly, conversational paragraph form — like explaining to a homeowner in plain language. No bullet points, no numbered lists. Use flowing prose that’s easy to read. Keep it under 250 words.
 
 AGENTIC ACTIONS: When the user explicitly asks you to change a setting (e.g. "set heat loss to DOE", "switch to Calculated (DOE)", "use bill data", "please set heat loss source to ..."), you MUST perform it by outputting exactly one line at the very end of your response (after your prose, on a new line). Use this exact format — no other text on that line:
 [JOULE_ACTION:heatLossSource=doe]
@@ -1840,6 +1998,22 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     setRunAutoAnalyzeAfterExtract(false);
     analyzeBillDiscrepancy(metrics, effectiveActualKwhEntries);
   }, [runAutoAnalyzeAfterExtract, actualKwhCount, billAnalysisLoading, adjustedForecast, analyzeBillDiscrepancy, effectiveActualKwhEntries]);
+
+  // Auto-retry once when page loads with a cached error (Ollama cold start often fails first request)
+  const billAnalysisAutoRetryRef = useRef(false);
+  useEffect(() => {
+    if (!billAnalysis?.error || billAnalysisAutoRetryRef.current) return;
+    const hasBillData = Object.values(effectiveActualKwhEntries || {}).filter(v => typeof v === 'number').length > 0;
+    if (!hasBillData) return;
+    billAnalysisAutoRetryRef.current = true;
+    const timer = setTimeout(() => {
+      const metrics = dailyMetricsRef.current;
+      if (metrics?.length > 0) {
+        analyzeBillDiscrepancy(metrics, effectiveActualKwhEntries);
+      }
+    }, 3000); // Give warmLLM time to load the model
+    return () => clearTimeout(timer);
+  }, [billAnalysis?.error, effectiveActualKwhEntries, analyzeBillDiscrepancy]);
 
   // Calculate balance point for aux heat (heat pumps only)
   const balancePoint = useMemo(() => {
@@ -2175,6 +2349,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     // Don't overwrite manual or analyzer calibration
     if (userSettings?.useManualHeatLoss && userSettings?.manualHeatLoss > 0) return;
     if (userSettings?.analyzerHeatLoss > 0) return;
+    if ([4, 5, 6, 7, 8, 9].includes(selectedMonth)) return; // Cooling months — skip heat loss learning
 
     const setTemp = effectiveIndoorTemp || 70;
     const MIN_DAYS = 7;
@@ -2193,14 +2368,36 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       const deltaT = setTemp - avgOutdoor;
       if (deltaT < MIN_DELTA_T) return; // Skip mild/cooling days
 
+      // hvac_actual_day = whole-house - baseload (don't contaminate HLF with baseload)
+      const hvacActualDay = Math.max(0, actualKwh - effectiveBaseloadKwhPerDay);
+      if (hvacActualDay <= 0) return;
+
       // Back-calculate HLF for this day: kWh→BTU, then ÷ 24hr ÷ ΔT
-      const dayHLF = (actualKwh * 3412) / 24 / deltaT;
+      const dayHLF = (hvacActualDay * 3412) / 24 / deltaT;
       if (Number.isFinite(dayHLF) && dayHLF > 0 && dayHLF < 2000) {
         hlfSamples.push(dayHLF);
       }
     });
 
     if (hlfSamples.length < MIN_DAYS) return;
+
+    // Only learn when model overestimated HVAC (hvac_actual < hvac_estimate) — else gap is baseload
+    const totalActual = hlfSamples.length > 0 ? adjustedForecast.reduce((s, day) => {
+      const dayKey = day.date instanceof Date ? `${day.date.getMonth() + 1}-${day.date.getDate()}` : `${selectedMonth}-${day.day}`;
+      const v = effectiveActualKwhEntries[dayKey];
+      return (typeof v === 'number' && v > 0) ? s + v : s;
+    }, 0) : 0;
+    const daysWithData = adjustedForecast.filter(d => {
+      const dayKey = d.date instanceof Date ? `${d.date.getMonth() + 1}-${d.date.getDate()}` : null;
+      return dayKey && effectiveActualKwhEntries[dayKey] > 0;
+    }).length;
+    const hvacActual = Math.max(0, totalActual - effectiveBaseloadKwhPerDay * daysWithData);
+    const totalEst = dailyMetricsRef.current?.reduce((s, d) => {
+      const dayKey = d.date instanceof Date ? `${d.date.getMonth() + 1}-${d.date.getDate()}` : null;
+      const hasActual = dayKey && effectiveActualKwhEntries[dayKey] > 0;
+      return hasActual ? s + (d.energy || 0) : s;
+    }, 0) ?? 0;
+    if (totalEst <= 0 || hvacActual >= totalEst) return;
 
     // IQR outlier filter to remove bad data points
     const sorted = [...hlfSamples].sort((a, b) => a - b);
@@ -2235,7 +2432,40 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     setUserSetting('learnedHeatLossDays', filtered.length);
     setUserSetting('learnedHeatLossMonths', updatedMonths);
     setUserSetting('learnedHeatLossDate', new Date().toISOString());
-  }, [effectiveActualKwhEntries, adjustedForecast, effectiveIndoorTemp, selectedMonth, selectedYear, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, calculatedHeatLossFactor, setUserSetting]);
+  }, [effectiveActualKwhEntries, adjustedForecast, effectiveIndoorTemp, selectedMonth, selectedYear, userSettings?.useManualHeatLoss, userSettings?.manualHeatLoss, userSettings?.analyzerHeatLoss, userSettings?.learnedHeatLoss, userSettings?.learnedHeatLossMonths, calculatedHeatLossFactor, setUserSetting, effectiveBaseloadKwhPerDay]);
+
+  /** Auto-learn baseload when actual > estimate. baseload_new = 0.85*old + 0.15*measured, clamp 5-25 kWh/day. */
+  useEffect(() => {
+    if (!setUserSetting || !dailyMetricsRef.current?.length) return;
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+    const comparisonRows = dailyMetricsRef.current.filter((d) => {
+      const dayKey = d?.date instanceof Date ? `${d.date.getMonth() + 1}-${d.date.getDate()}` : null;
+      return dayKey && effectiveActualKwhEntries[dayKey] != null && effectiveActualKwhEntries[dayKey] > 0;
+    });
+    if (comparisonRows.length < 7) return;
+    const totalEst = comparisonRows.reduce((s, r) => s + (r.energy || 0), 0);
+    const totalActual = comparisonRows.reduce((s, r) => {
+      const dayKey = r.date instanceof Date ? `${r.date.getMonth() + 1}-${r.date.getDate()}` : null;
+      return s + (dayKey ? (effectiveActualKwhEntries[dayKey] || 0) : 0);
+    }, 0);
+    const daysInPeriod = comparisonRows.length;
+    const fixed = fixedElectricCost ?? 0;
+    const rate = utilityCost ?? 0.10;
+    const hvacEstCost = totalEst * rate;
+    const proratedFixed = (fixed * daysInPeriod) / daysInMonth;
+    const actualBillDollars = actualBillAmount ?? (totalActual * rate + proratedFixed);
+    const forecastTotal = hvacEstCost + effectiveBaseloadKwhPerDay * daysInPeriod * rate + proratedFixed;
+    if (actualBillDollars <= forecastTotal) return;
+    const baseloadCostFromBill = actualBillDollars - hvacEstCost - proratedFixed;
+    const baseloadKwhPerDayFromBill = Math.max(0, baseloadCostFromBill / rate) / daysInPeriod;
+    const clamped = Math.max(5, Math.min(25, baseloadKwhPerDayFromBill));
+    const oldBaseload = learnedBaseloadKwhPerDay ?? effectiveBaseloadKwhPerDay;
+    const finalBaseload = Math.max(5, Math.min(25, Math.round((0.85 * oldBaseload + 0.15 * clamped) * 10) / 10));
+    // Only update if value actually changed — prevents infinite loop from setUserSetting → re-render → effect → setUserSetting
+    if (Math.abs((learnedBaseloadKwhPerDay ?? oldBaseload) - finalBaseload) < 0.01) return;
+    if (import.meta?.env?.DEV) console.log(`🧠 Auto-learned baseload: ${finalBaseload} kWh/day`);
+    setUserSetting('learnedBaseloadKwhPerDay', finalBaseload);
+  }, [effectiveActualKwhEntries, actualBillAmount, selectedMonth, selectedYear, effectiveBaseloadKwhPerDay, learnedBaseloadKwhPerDay, fixedElectricCost, utilityCost, setUserSetting]);
 
   /**
    * Get location-aware baseline temperature for heating calculations
@@ -2848,24 +3078,26 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
   ]);
 
   // Align monthlyEstimate with daily table totals when we have forecast-based data
-  // The daily table uses heatUtils.computeHourlyPerformance + getEffectiveHeatLossFactor;
-  // calculateMonthlyEstimate uses a different formula. This sync ensures Quick Answer and
-  // Show me the math both use the same source (daily table).
+  // total_bill = hvac_forecast + baseload + fixed_fees (whole-house forecast)
   useEffect(() => {
     if (mode !== "budget" || forecastModel === "typical") return;
     if (!adjustedForecast?.length) return;
-    const variableCost = totalForecastCostRef.current;
+    const hvacCost = totalForecastCostRef.current;
     const energy = totalForecastEnergyRef.current;
-    if (variableCost == null || variableCost < 0 || energy == null) return;
+    if (hvacCost == null || hvacCost < 0 || energy == null) return;
     const isHeatingMode = energyMode === "heating";
     const fixedCost = isHeatingMode && isGasHeat ? fixedGasCost : fixedElectricCost;
-    const totalCost = variableCost + (fixedCost || 0);
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+    const baseloadCost = effectiveBaseloadKwhPerDay * daysInMonth * utilityCost;
+    const totalCost = hvacCost + baseloadCost + (fixedCost || 0);
     setMonthlyEstimateCached(prev => ({
       ...(prev || {}),
       cost: totalCost,
       fixedCost: fixedCost || 0,
       energy,
       electricityRate: utilityCost,
+      hvacCost,
+      baseloadCost,
     }));
   }, [
     mode,
@@ -2877,6 +3109,9 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
     fixedElectricCost,
     fixedGasCost,
     utilityCost,
+    effectiveBaseloadKwhPerDay,
+    selectedMonth,
+    selectedYear,
   ]);
 
   // Initialize Location B to Chicago, Illinois by default when in comparison mode
@@ -3710,16 +3945,16 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               </div>
             </div>
           )}
-          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-700 dark:to-indigo-700 rounded-xl p-5 shadow-lg border border-purple-500/30">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-700 dark:to-indigo-700 rounded-xl p-4 sm:p-5 shadow-lg border border-purple-500/30">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+              <div className="min-w-0">
                 {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length === 0 && !billPasteText.trim() && (
                   <>
                     <h3 className="font-bold text-white drop-shadow-sm flex items-center gap-2" style={{ fontSize: '18pt' }}>
                       💡 Got Your Bill? Let's Compare.
                     </h3>
                     <p className="text-white/95 mt-1" style={{ fontSize: '14pt' }}>
-                      Paste your utility bill and Joule will tell you exactly why it's different from the forecast — down to the dollar.
+                      Enter the month and bill amount — Joule will tell you exactly why it's different from the forecast — down to the dollar.
                     </p>
                     <p className="text-white/90 mt-1" style={{ fontSize: '14pt' }}>
                       For general questions about efficiency, settings, or savings, use {onOpenAskJoule ? (
@@ -3736,7 +3971,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length > 0 && (
                 <button
                   onClick={() => {
-                    if (confirm(`Clear all entered bill data for ${hasBillPeriod ? displayPeriod : 'this month'}?`)) {
+                    if (confirm(`Clear all entered bill data for ${displayPeriod}?`)) {
                       setActualKwhEntries({});
                       if (billPeriodOtherMonth) {
                         setOtherMonthActualKwhEntries({});
@@ -3764,15 +3999,17 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               )}
             </div>
             <div className="flex flex-wrap gap-3 items-center">
-              {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length > 0 && !billAnalysis && (
+              {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length > 0 && (!billAnalysis || billAnalysis?.error) && (
                 <>
                   <button
                     onClick={() => analyzeBillDiscrepancy(dailyMetricsRef.current, effectiveActualKwhEntries)}
                     disabled={billAnalysisLoading}
-                    className="flex items-center gap-2 px-6 py-4 text-xl font-bold rounded-lg bg-red-600 text-white hover:bg-red-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-4 sm:px-6 py-4 text-base sm:text-xl font-bold rounded-lg bg-red-600 text-white hover:bg-red-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] touch-manipulation"
                   >
                     {billAnalysisLoading ? (
-                      <><Loader className="w-5 h-5 animate-spin" /> Analyzing...</>
+                      <><Loader className="w-5 h-5 animate-spin shrink-0" /> Analyzing...</>
+                    ) : billAnalysis?.error ? (
+                      <>🔄 Retry analysis</>
                     ) : (
                       <>🔍 Why is my bill so high?</>
                     )}
@@ -3784,117 +4021,187 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
               )}
             </div>
             {(() => {
-              // Primary: one number. Secondary: supporting detail when partial bill entered.
+              // ONE canonical comparison when we have full bill: Expected | Actual | Difference. Hide the rest behind "Show details".
               const withUsage = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
               const billDays = withUsage.length;
               const totalActualKwh = withUsage.reduce((s, [, v]) => s + v, 0);
               const actualEnergyCost = totalActualKwh * utilityCost;
-              const variablePart = totalForecastCostRef.current ?? (monthlyEstimate?.cost != null ? monthlyEstimate.cost - (monthlyEstimate.fixedCost || 0) : null);
+              const hvacPart = totalForecastCostRef.current ?? monthlyEstimate?.hvacCost;
+              const daysInMonthForCompare = new Date(selectedYear, selectedMonth, 0).getDate();
+              const baseloadPart = effectiveBaseloadKwhPerDay * daysInMonthForCompare * (utilityCost ?? 0.10);
+              const variablePart = hvacPart != null ? hvacPart + baseloadPart : (monthlyEstimate?.cost != null ? monthlyEstimate.cost - (monthlyEstimate.fixedCost || 0) : null);
               const fixedPart = monthlyEstimate?.fixedCost ?? fixedElectricCost ?? 0;
               const fullMonthForecastCost = variablePart != null ? variablePart + fixedPart : null;
               const expectedTotal = fullMonthForecastCost != null ? Math.round(fullMonthForecastCost * 100) / 100 : null;
               const hasBillData = billDays > 0;
+              const hasFullBill = actualBillAmount != null;
+              const displayActual = hasFullBill ? actualBillAmount : (hasBillData ? Math.round(actualEnergyCost * 100) / 100 : null);
+              const diffDollars = expectedTotal != null && displayActual != null && hasFullBill ? Math.round((displayActual - expectedTotal) * 100) / 100 : null;
+              const diffPct = expectedTotal != null && displayActual != null && hasFullBill && expectedTotal > 0 ? Math.round(Math.abs(displayActual - expectedTotal) / expectedTotal * 100) : null;
+              const actualHigher = diffDollars != null && diffDollars > 0;
+              // Tiered verdict: 0–15% Normal, 15–35% Higher, 35–70% Significantly higher, 70%+ Unusual
+              const getVerdictTier = () => {
+                if (diffPct == null || diffDollars === 0) return { label: 'Normal', color: 'text-emerald-300', emoji: '🟢' };
+                if (actualHigher) {
+                  if (diffPct <= 15) return { label: 'Normal', color: 'text-emerald-300', emoji: '🟢' };
+                  if (diffPct <= 35) return { label: 'Higher than expected', color: 'text-amber-200', emoji: '🟡' };
+                  if (diffPct <= 70) return { label: 'Significantly higher than expected', color: 'text-amber-200', emoji: '🟡' };
+                  return { label: 'Unusual — usage much higher than expected', color: 'text-red-200', emoji: '🔴' };
+                }
+                if (diffPct <= 15) return { label: 'Normal', color: 'text-emerald-300', emoji: '🟢' };
+                if (diffPct <= 35) return { label: 'Lower than expected', color: 'text-emerald-300', emoji: '🟢' };
+                return { label: 'Significantly lower than expected', color: 'text-emerald-300', emoji: '🟢' };
+              };
+              const verdictTier = getVerdictTier();
+              const isCoolingMonth = [4, 5, 6, 7, 8, 9].includes(selectedMonth);
+              const systemLabel = isCoolingMonth ? 'Cooling' : 'Heating';
+              // Aux heat heuristic: heat pump + heating + usage >> expected → backup heat likely ran
+              const expectedHeatKwh = variablePart != null && (utilityCost || 0.1) > 0 ? variablePart / (utilityCost || 0.1) : null;
+              const actualKwh = hasFullBill && (utilityCost || 0.1) > 0
+                ? Math.max(0, (displayActual - (fixedPart || 0)) / (utilityCost || 0.1))
+                : (billDays > 0 ? totalActualKwh : null);
+              const auxHeatLikely = primarySystem === 'heatPump' && !isCoolingMonth && actualHigher
+                && expectedHeatKwh != null && expectedHeatKwh > 20
+                && actualKwh != null && actualKwh > expectedHeatKwh * 1.7;
+              const extraKwh = (expectedHeatKwh != null && actualKwh != null && actualKwh > expectedHeatKwh)
+                ? actualKwh - expectedHeatKwh : 0;
+              const estimatedAuxKwh = auxHeatLikely ? Math.round(extraKwh * 0.7) : 0;
               return (
               <div className="mt-4 space-y-2">
-                {/* Primary: Expected bill for period or month */}
-                {expectedTotal != null && (
+                {/* Canonical: Expected $92 | Actual $174 | Difference +$82 — when we have full bill */}
+                {hasFullBill && expectedTotal != null ? (
                   <div>
-                    <p className="text-3xl font-bold text-white drop-shadow-sm" style={{ fontSize: '28pt' }}>
-                      Expected bill{hasBillPeriod ? ` for ${displayPeriod}` : ' this month'}: ${expectedTotal.toFixed(2)}
-                    </p>
-                    <p className="text-white/95 mt-0.5" style={{ fontSize: '13pt' }}>
-                      Based on your home, thermostat, and weather
-                    </p>
-                  </div>
-                )}
-                {/* Secondary: when partial bill entered */}
-                {hasBillData && (
-                  <div className="pt-2 border-t border-white/20 space-y-0.5">
-                    <p className="text-white/95 font-medium" style={{ fontSize: '14pt' }}>
-                      {actualBillAmount != null ? (
-                        <>Your bill: ${actualBillAmount.toFixed(2)} for {billDays} days</>
-                      ) : (
-                        <>So far: ${actualEnergyCost.toFixed(2)} for {billDays} days</>
+                    <p className="text-2xl sm:text-3xl font-bold text-white drop-shadow-sm">
+                      Expected: ${expectedTotal.toFixed(0)} &nbsp; Actual: ${displayActual.toFixed(0)}
+                      {diffDollars != null && diffDollars !== 0 && (
+                        <span className={actualHigher ? 'text-amber-200' : 'text-emerald-200'}>
+                          {' '}({actualHigher ? `+$${Math.abs(diffDollars).toFixed(0)}, ${diffPct ?? 0}% over` : `−$${Math.abs(diffDollars).toFixed(0)}, ${diffPct ?? 0}% lower`})
+                        </span>
                       )}
                     </p>
-                    {expectedTotal != null && (
-                      <p className="text-white/90" style={{ fontSize: '13pt' }}>
-                        On track for: ${expectedTotal.toFixed(2)} total
-                      </p>
+                    <div className="mt-2 p-3 rounded-lg bg-white/10 border border-white/20" style={{ fontSize: '13pt' }}>
+                      <p className="font-bold text-white mb-1">Verdict</p>
+                      <p className={`font-semibold ${verdictTier.color}`}>{verdictTier.emoji} {verdictTier.label}</p>
+                      <p className="text-white/95 mt-1"><strong className="text-white">{systemLabel} system looks normal.</strong></p>
+                      {actualHigher && diffDollars > 0 && (
+                        <>
+                          <p className="text-white/90">Extra ~${Math.abs(diffDollars).toFixed(0)} likely from whole-home electricity (water heater, dryer, etc.)</p>
+                          {auxHeatLikely && (
+                            <p className="text-white/90 mt-1">Possible cause: Backup (aux) heat ran during cold weather. This can happen when outdoor temps drop below ~30°F or after large thermostat setbacks.</p>
+                          )}
+                          {auxHeatLikely && estimatedAuxKwh > 0 && (
+                            <p className="text-white/85 text-sm mt-0.5">Estimated aux heat usage: ~{estimatedAuxKwh} kWh this period.</p>
+                          )}
+                        </>
+                      )}
+                      <p className="text-white/90 mt-1">No {systemLabel.toLowerCase()} system problem detected.</p>
+                    </div>
+                    {billAnalysis && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const exp = billAnalysis.fullMonthForecastCost ?? (billAnalysis.totalEst != null ? (billAnalysis.totalEst * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0)) : 0);
+                            const act = actualBillAmount ?? (billAnalysis.totalActual != null ? (billAnalysis.totalActual * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0)) : 0);
+                            const diff = exp != null && act != null ? Math.round((act - exp) * 100) / 100 : 0;
+                            const actualHigher = diff > 0;
+                            const text = `Expected $${(exp ?? 0).toFixed(0)}, actual $${(act ?? 0).toFixed(0)}.
+${systemLabel} system looks normal.
+${actualHigher ? `Extra ~$${Math.abs(diff).toFixed(0)} likely from appliances or water heater.${auxHeatLikely ? '\nPossible cause: Backup (aux) heat ran during cold weather.' : ''}` : 'Your bill came in lower than expected.'}
+No signs of HVAC problem.`;
+                            navigator.clipboard.writeText(text).then(() => { setRedditCopySuccess(true); setTimeout(() => setRedditCopySuccess(false), 2000); });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/25 hover:bg-white/35 text-white font-medium text-sm transition-colors border border-white/30"
+                        >
+                          {redditCopySuccess ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          {redditCopySuccess ? 'Copied!' : 'Copy Reddit summary'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => document.querySelector('[data-bill-analysis-card]')?.scrollIntoView({ behavior: 'smooth' })}
+                          className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white font-medium text-sm transition-colors"
+                        >
+                          See why
+                        </button>
+                      </div>
                     )}
-                    {hasBillPeriod && (
-                      <p className="text-white/85 text-sm mt-1">
-                        Your bill covers {displayPeriod}
-                      </p>
-                    )}
-                    <p className="text-white/80 text-sm">
-                      Comparing to weather during that period.
-                    </p>
+                    <details className="mt-1 group">
+                      <summary className="text-white/70 text-sm cursor-pointer hover:text-white/90 list-none [&::-webkit-details-marker]:hidden">
+                        <span className="inline-flex items-center gap-1">▼ Show details</span>
+                      </summary>
+                      <div className="mt-4 pt-3 border-t border-white/20 space-y-0.5 text-sm text-white/85">
+                        {hasBillPeriod && <p>Bill covers {displayPeriod}</p>}
+                        <p>Based on your home, thermostat, and weather.</p>
+                      </div>
+                    </details>
                   </div>
+                ) : hasBillData && expectedTotal != null ? (
+                  <div>
+                    <p className="text-white/95 font-medium" style={{ fontSize: '14pt' }}>
+                      So far: ${Math.round(actualEnergyCost * 100) / 100} for {billDays} days
+                    </p>
+                    <p className="text-white/90" style={{ fontSize: '13pt' }}>On track for ${expectedTotal.toFixed(2)} total</p>
+                    {hasBillPeriod && <p className="text-white/85 text-sm mt-1">Your bill covers {displayPeriod}</p>}
+                  </div>
+                ) : (
+                  expectedTotal != null && (
+                    <div>
+                      <p className="text-2xl sm:text-3xl font-bold text-white drop-shadow-sm">
+                        Expected bill for ${displayPeriod}: ${expectedTotal.toFixed(2)}
+                      </p>
+                      <p className="text-white/95 mt-0.5" style={{ fontSize: '13pt' }}>
+                        Based on your home, thermostat, and weather
+                      </p>
+                    </div>
+                  )
                 )}
               </div>
             );})()}
           </div>
           <div className="space-y-3 mt-3">
             {billAnalysis && (
-              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 animate-fade-in" data-bill-analysis-card>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h4 className="font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2 flex-wrap" style={{ fontSize: '16pt' }}>
+              <div className="p-4 sm:p-5 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 animate-fade-in" data-bill-analysis-card>
+                <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-purple-900 dark:text-purple-100" style={{ fontSize: 'clamp(14pt, 4vw, 16pt)' }}>
                       Here's what I'm seeing
-                      <label className="flex items-center gap-1.5 cursor-pointer text-sm font-normal">
-                        <input
-                          type="checkbox"
-                          checked={billAnalysisSpeechEnabled}
-                          onChange={(e) => setBillAnalysisSpeechEnabled(e.target.checked)}
-                          className="rounded border-purple-400"
-                        />
-                        <span className="text-purple-700 dark:text-purple-300">Auto-read</span>
-                      </label>
-                      {billSpeak && (() => {
-                        const fullText = billAnalysis?.text || '';
-                        const summaryMatch = fullText.match(/\n\s*(?:Here'?s? a )?[Ss]hareable summary\s*:\s*\n?(.*)/is);
-                        const mainText = summaryMatch ? fullText.slice(0, fullText.indexOf(summaryMatch[0])).trim() : fullText;
-                        const digDeeperPhrase = mainText.includes('Want to take a closer look together?') ? 'Want to take a closer look together?' : 'Want to dig deeper?';
-                        const digDeeperIdx = mainText.indexOf(digDeeperPhrase);
-                        const textToSpeak = digDeeperIdx >= 0 ? mainText.slice(0, digDeeperIdx + digDeeperPhrase.length).trim() : mainText;
-                        const lastAi = billConversationHistory.filter(m => m.role === 'assistant').pop()?.content || '';
-                        const toSpeak = lastAi || textToSpeak;
-                        if (!toSpeak?.trim()) return null;
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => billIsSpeaking ? billStopSpeaking() : billSpeak(toSpeak, { force: true })}
-                            className={`p-1.5 rounded-lg transition-colors ${billIsSpeaking ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/40 dark:text-purple-400'}`}
-                            title={billIsSpeaking ? 'Stop speaking' : 'Read aloud'}
-                            aria-label={billIsSpeaking ? 'Stop speaking' : 'Read aloud'}
-                          >
-                            {billIsSpeaking ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                          </button>
-                        );
-                      })()}
                     </h4>
                     {billAnalysis?.daysCompared > 0 && (
-                      <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                        Comparing model vs your bill for {billAnalysis.daysCompared} days. Primary number above is full {hasBillPeriod ? 'bill period' : 'month'}.
-                        {billAnalysis.totalEst != null && billAnalysis.totalActual != null && (
-                          <span className="block mt-1">
-                            For those {billAnalysis.daysCompared} days: Model ${(billAnalysis.totalEst * (utilityCost ?? 0.1)).toFixed(2)} ({billAnalysis.totalEst.toFixed(1)} kWh) vs Actual {actualBillAmount != null ? `$${actualBillAmount.toFixed(2)}` : `$${(billAnalysis.totalActual * (utilityCost ?? 0.1)).toFixed(2)}`} ({billAnalysis.totalActual.toFixed(1)} kWh)
-                          </span>
-                        )}
-                      </p>
+                      <details className="mt-1 group">
+                        <summary className="text-xs text-purple-600 dark:text-purple-400 cursor-pointer hover:text-purple-700 dark:hover:text-purple-300 list-none [&::-webkit-details-marker]:hidden">
+                          <span className="inline-flex items-center gap-1">▼ Show comparison details</span>
+                        </summary>
+                        <p className="text-xs sm:text-sm text-purple-600 dark:text-purple-400 mt-1 break-words pl-0">
+                          Comparing model vs your bill for {billAnalysis.daysCompared} days. Primary number above is full {hasBillPeriod ? 'bill period' : 'month'} (energy + fixed fees).
+                          {billAnalysis.totalEst != null && billAnalysis.totalActual != null && (
+                            <span className="block mt-1">
+                              For those {billAnalysis.daysCompared} days: Model ${(billAnalysis.fullMonthForecastCost ?? (billAnalysis.totalEst * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0))).toFixed(2)} total ({billAnalysis.totalEst.toFixed(1)} kWh) vs Actual {actualBillAmount != null ? `$${actualBillAmount.toFixed(2)}` : `$${(billAnalysis.totalActual * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0)).toFixed(2)}`} total ({billAnalysis.totalActual.toFixed(1)} kWh)
+                            </span>
+                          )}
+                        </p>
+                      </details>
                     )}
                   </div>
                   <button
                     onClick={() => { setBillAnalysis(null); setBillConversationHistory([]); setBillFollowUpQuestion(''); setBillFollowUpStreamingText(''); }}
-                    className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 shrink-0 p-1 -m-1"
                     style={{ fontSize: '13pt' }}
                   >
                     ✕ Close
                   </button>
                 </div>
                 {billAnalysis.error ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">❌ {billAnalysis.error}</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-red-600 dark:text-red-400">❌ {billAnalysis.error}</p>
+                    <button
+                      type="button"
+                      onClick={() => analyzeBillDiscrepancy(dailyMetricsRef.current, effectiveActualKwhEntries)}
+                      disabled={billAnalysisLoading}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-500 font-medium text-sm disabled:opacity-50"
+                    >
+                      {billAnalysisLoading ? <><Loader className="w-4 h-4 animate-spin" /> Retrying...</> : <>🔄 Retry analysis</>}
+                    </button>
+                  </div>
                 ) : (
                   <>
                     {billAnalysisLoading && (!billAnalysis.text || billAnalysis.text.length < 3) ? (
@@ -3910,27 +4217,58 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       const mainText = summaryMatch ? fullText.slice(0, fullText.indexOf(summaryMatch[0])).trim() : fullText;
                       const digDeeperPhrase = mainText.includes('Want to take a closer look together?') ? 'Want to take a closer look together?' : 'Want to dig deeper?';
                       const digDeeperIdx = mainText.indexOf(digDeeperPhrase);
-                      const textToShow = digDeeperIdx >= 0
-                        ? mainText.slice(0, digDeeperIdx + digDeeperPhrase.length).trim()
-                        : mainText;
-                      const showDigDeeperButton = digDeeperIdx >= 0 && billConversationHistory.length === 0;
+                      const textToSpeak = digDeeperIdx >= 0 ? mainText.slice(0, digDeeperIdx + digDeeperPhrase.length).trim() : mainText;
+                      const lastAi = billConversationHistory.filter(m => m.role === 'assistant').pop()?.content || '';
+                      const toSpeak = lastAi || textToSpeak;
+                      const exp = billAnalysis.fullMonthForecastCost ?? (billAnalysis.totalEst != null ? (billAnalysis.totalEst * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0)) : 0);
+                      const act = actualBillAmount ?? (billAnalysis.totalActual != null ? (billAnalysis.totalActual * (utilityCost ?? 0.1) + (fixedElectricCost ?? 0)) : 0);
+                      const diff = exp != null && act != null ? Math.round((act - exp) * 100) / 100 : null;
+                      const actualHigher = diff != null && diff > 0;
+                      const billCardSystemLabel = [4, 5, 6, 7, 8, 9].includes(selectedMonth) ? 'Cooling' : 'Heating';
+                      const billCardAuxLikely = primarySystem === 'heatPump' && billCardSystemLabel === 'Heating' && actualHigher
+                        && (billAnalysis.totalEst ?? 0) > 20 && (billAnalysis.totalActual ?? 0) > (billAnalysis.totalEst ?? 0) * 1.7;
                       return (
                         <>
-                          <div className="text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none whitespace-pre-wrap" style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>
-                            {textToShow}
-                          </div>
-                          {showDigDeeperButton && (
-                            <div className="mt-4 flex flex-wrap gap-2">
+                          {/* Bullets first — scannable */}
+                          <div className="space-y-2">
+                            <h5 className="font-bold text-purple-900 dark:text-purple-100 text-base">{actualHigher ? 'Why your bill is higher' : 'Why your bill is lower'}</h5>
+                            <ul className="list-disc list-inside space-y-1 text-purple-800 dark:text-purple-200 text-sm">
+                              <li>Expected total: ${(exp ?? 0).toFixed(0)}</li>
+                              <li>Actual total: ${(act ?? 0).toFixed(0)}</li>
+                              <li>{billCardSystemLabel} looks normal</li>
+                              {actualHigher ? <li>Extra ~${Math.abs(diff ?? 0).toFixed(0)} likely from whole-home electricity (water heater, dryer, etc.)</li> : <li>Model ran a little high</li>}
+                              {billCardAuxLikely && <li>Possible cause: Backup (aux) heat ran during cold weather</li>}
+                              <li>No {billCardSystemLabel.toLowerCase()} system problem detected.</li>
+                            </ul>
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {billSpeak && toSpeak?.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => billIsSpeaking ? billStopSpeaking() : billSpeak(toSpeak, { force: true })}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${billIsSpeaking ? 'bg-purple-600 text-white' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60'}`}
+                                >
+                                  {billIsSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                                  Explain out loud
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => sendBillFollowUp('Yes, please give the full explanation and a shareable summary I can copy.')}
-                                disabled={billFollowUpLoading}
-                                className="px-4 py-2.5 text-base font-semibold rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                onClick={() => { setShowDailyForecast(true); setTimeout(() => document.getElementById('daily-forecast-breakdown')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-300 dark:border-purple-700 transition-colors"
                               >
-                                Yes, dig deeper
+                                See breakdown
                               </button>
                             </div>
-                          )}
+                          </div>
+                          {/* Full explanation — collapsed by default */}
+                          <details className="mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
+                            <summary className="cursor-pointer text-sm font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300">
+                              Read full explanation
+                            </summary>
+                            <div className="mt-3 text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none whitespace-pre-wrap" style={{ fontSize: '14pt', fontFamily: "'Times New Roman', Times, serif" }}>
+                              {fullText}
+                            </div>
+                          </details>
                         </>
                       );
                     })()}
@@ -3993,8 +4331,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                               return (
                             <div className="mb-3 space-y-3">
                               <div>
-                                <div className="text-lg text-gray-500 mb-2 uppercase tracking-wide font-semibold">Try asking:</div>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="text-sm sm:text-lg text-gray-500 mb-2 uppercase tracking-wide font-semibold">Try asking:</div>
+                                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                                   {[
                                     'Yes — show me what\'s going on',
                                     (displayActual < (displayEst || 0))
@@ -4007,8 +4345,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                                   ].map((q, i) => (
                                     <button
                                       key={i}
-                                      onClick={() => { setBillFollowUpQuestion(q); }}
-                                      className="text-lg px-4 py-3 rounded-xl bg-purple-800/60 hover:bg-purple-700/80 text-purple-200 hover:text-white border border-purple-700/40 hover:border-purple-500/60 transition-all cursor-pointer text-left leading-snug"
+                                      onClick={() => sendBillFollowUp(q)}
+                                      className="text-base sm:text-lg px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-purple-800/60 hover:bg-purple-700/80 text-purple-200 hover:text-white border border-purple-700/40 hover:border-purple-500/60 transition-all cursor-pointer text-left leading-snug break-words w-full sm:w-auto"
                                     >
                                       {q}
                                     </button>
@@ -4016,16 +4354,16 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                                 </div>
                               </div>
                               <div>
-                                <div className="text-base text-gray-500 mb-1.5 uppercase tracking-wide font-medium">More detailed questions</div>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="text-sm sm:text-base text-gray-500 mb-1.5 uppercase tracking-wide font-medium">More detailed questions</div>
+                                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                                   {[
                                     'What does this bill say about how fast my house loses heat?',
                                     'When does my system need backup heat?',
                                   ].map((q, i) => (
                                     <button
                                       key={i}
-                                      onClick={() => { setBillFollowUpQuestion(q); }}
-                                      className="text-lg px-4 py-3 rounded-xl bg-gray-700/60 hover:bg-gray-600/80 text-gray-300 hover:text-white border border-gray-600/40 hover:border-gray-500/60 transition-all cursor-pointer text-left leading-snug"
+                                      onClick={() => sendBillFollowUp(q)}
+                                      className="text-base sm:text-lg px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-gray-700/60 hover:bg-gray-600/80 text-gray-300 hover:text-white border border-gray-600/40 hover:border-gray-500/60 transition-all cursor-pointer text-left leading-snug break-words w-full sm:w-auto"
                                     >
                                       {q}
                                     </button>
@@ -4072,8 +4410,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                                   {toShow.map((q, i) => (
                                     <button
                                       key={i}
-                                      onClick={() => { setBillFollowUpQuestion(q); }}
-                                      className="text-lg px-4 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 transition-all cursor-pointer text-left leading-snug"
+                                      onClick={() => sendBillFollowUp(q)}
+                                      className="text-base sm:text-lg px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 transition-all cursor-pointer text-left leading-snug break-words"
                                     >
                                       {q}
                                     </button>
@@ -4082,13 +4420,13 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                               </div>
                             );
                           })()}
-                          <div className="flex gap-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
                             <input
                               type="text"
                               value={billFollowUpQuestion}
                               onChange={(e) => setBillFollowUpQuestion(e.target.value)}
                               placeholder="e.g. Could something besides heating explain the difference?"
-                              className="flex-1 px-4 py-3 rounded-lg text-base bg-gray-800 text-gray-100 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
+                              className="flex-1 min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base bg-gray-800 text-gray-100 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && billFollowUpQuestion.trim() && !billFollowUpLoading) {
                                   sendBillFollowUp();
@@ -4100,7 +4438,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                               <button
                                 type="button"
                                 onClick={() => billIsListening ? billStopListening() : billStartListening()}
-                                className={`px-4 py-3 rounded-lg font-semibold text-base transition-colors flex items-center gap-2 ${
+                                className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition-colors flex items-center gap-2 shrink-0 ${
                                   billIsListening ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
                                 }`}
                                 title={billIsListening ? 'Stop listening' : 'Speak your question'}
@@ -4112,7 +4450,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                             <button
                               onClick={() => sendBillFollowUp()}
                               disabled={!billFollowUpQuestion.trim() || billFollowUpLoading}
-                              className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-base transition-colors flex items-center gap-2"
+                              className="px-3 sm:px-4 py-2.5 sm:py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm sm:text-base transition-colors flex items-center gap-2 shrink-0"
                             >
                               {billFollowUpLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                             </button>
@@ -4124,25 +4462,92 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 )}
               </div>
             )}
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 overflow-hidden">
+            {/* Primary: Simple month + bill input (reliable, no AI) */}
+            {Object.values(effectiveActualKwhEntries).filter(v => typeof v === 'number').length === 0 && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-4 mb-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <p className="text-lg font-medium text-gray-800 dark:text-gray-200">Bill period</p>
+                </div>
+                <div className="flex flex-wrap gap-3 items-center mb-4">
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
+                    className={`${selectClasses} w-auto min-w-[140px]`}
+                    aria-label="Bill month"
+                  >
+                    {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                      <option key={m} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                    className={`${selectClasses} w-auto min-w-[100px]`}
+                    aria-label="Bill year"
+                  >
+                    {(() => {
+                      const y = new Date().getFullYear();
+                      const years = [];
+                      for (let i = y; i >= y - 3; i--) years.push(i);
+                      return years.map((yr) => <option key={yr} value={yr}>{yr}</option>);
+                    })()}
+                  </select>
+                </div>
+                <p className="text-base text-gray-700 dark:text-gray-300 mb-2">Bill amount (energy portion, before fixed fees)</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl text-gray-700 dark:text-gray-300">$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={billAmountManual}
+                    onChange={(e) => setBillAmountManual(e.target.value.replace(/[^0-9.]/g, ""))}
+                    placeholder="e.g. 150"
+                    className="w-28 px-3 py-2 text-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Flat monthly fee (optional)</p>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-lg text-gray-600 dark:text-gray-400">$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={billFlatFeeManual}
+                    onChange={(e) => setBillFlatFeeManual(e.target.value.replace(/[^0-9.]/g, ""))}
+                    placeholder={fixedElectricCost != null ? `e.g. ${fixedElectricCost}` : "e.g. 15"}
+                    className="w-24 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={saveManualBill}
+                  disabled={!billAmountManual.trim() || parseFloat(billAmountManual.replace(/[$,]/g, "")) <= 0}
+                  className="px-6 py-3 text-base font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Save Bill
+                </button>
+              </div>
+            )}
+
+            {/* Beta: Upload PDF or paste (AI extraction — less reliable) */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
               <button
                 type="button"
-                onClick={() => setShowBillPaste(!showBillPaste)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-blue-100/50 dark:hover:bg-blue-800/30 transition-colors"
+                onClick={() => setShowBillExtractorBeta(!showBillExtractorBeta)}
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
               >
-                <span className="font-medium text-gray-800 dark:text-gray-200" style={{ fontSize: '14pt' }}>
-                  📋 Upload a PDF or paste your utility bill or daily usage data
+                <span className="font-medium text-gray-700 dark:text-gray-300" style={{ fontSize: '13pt' }}>
+                  Beta: Upload PDF or paste your utility bill
                 </span>
-                {showBillPaste ? (
+                {showBillExtractorBeta ? (
                   <ChevronUp className="w-5 h-5 text-gray-500 shrink-0" />
                 ) : (
                   <ChevronDown className="w-5 h-5 text-gray-500 shrink-0" />
                 )}
               </button>
-              {showBillPaste && (
-              <div className="px-4 pb-4 pt-0 border-t border-blue-200/50 dark:border-blue-800/50">
-                <p className="text-gray-600 dark:text-gray-400 mb-3 mt-3" style={{ fontSize: '14pt' }}>
-                  Joule uses AI to extract daily kWh from your bill. Upload a PDF or paste raw text, a CSV table, or a summary — the AI will figure out the format.
+              {showBillExtractorBeta && (
+              <div className="px-4 pb-4 pt-0 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-gray-600 dark:text-gray-400 mb-3 mt-3" style={{ fontSize: '13pt' }}>
+                  Joule uses AI to extract daily kWh from your bill. Upload a PDF or paste raw text — the AI will figure out the format.
                   {!isAIAvailable() && (
                     <span className="text-amber-600 dark:text-amber-400 font-medium"> ⚠️ Requires Groq API key or Local AI (Ollama) — set in Settings → Bridge & AI.</span>
                   )}
@@ -4175,7 +4580,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 <textarea
                   value={billPasteText}
                   onChange={(e) => { setBillPasteText(e.target.value); setBillPdfError(''); }}
-                  placeholder={`Paste your bill data here...\n\nExamples:\n- "Feb 1: 45.2 kWh, Feb 2: 38.1 kWh..."\n- CSV with date and kWh columns\n- "Total: 651 kWh for 28 days"\n- Screenshot text from your utility portal`}
+                  placeholder={`Paste your bill data here...\n\nExamples:\n- "Feb 1: 45.2 kWh, Feb 2: 38.1 kWh..."\n- CSV with date and kWh columns\n- "Total: 651 kWh for 28 days"`}
                   className="w-full h-32 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
                 />
                 <div className="flex items-center gap-3 mt-2">
@@ -4267,8 +4672,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             {/* Subtle animated background */}
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
             <div className="relative z-10">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="mb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <h2 className="text-base font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                     Modeled Schedule (What-If)
                   </h2>
@@ -4277,11 +4682,11 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                     <span>Safe to experiment</span>
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <p className="text-xs text-slate-400 hidden sm:block">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+                  <p className="text-xs text-slate-400">
                     <strong className="text-blue-400">Hypothetical</strong> schedule for modeling only
                   </p>
-                  <div className="flex-shrink-0">
+                  <div className="w-full sm:w-auto sm:flex-shrink-0 min-w-0">
                     <OneClickOptimizer
                       currentDayTemp={userSettings?.winterThermostatDay ?? 70}
                       currentNightTemp={userSettings?.winterThermostatNight ?? 66}
@@ -4547,16 +4952,25 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             temp={Math.round(effectiveIndoorTemp)}
             weeklyCost={(() => {
               const fixed = monthlyEstimate?.fixedCost || 0;
-              const variableCost = totalForecastCostRef.current;
-              if (variableCost != null && variableCost >= 0) return variableCost + fixed;
+              const hvacCost = totalForecastCostRef.current ?? monthlyEstimate?.hvacCost;
+              const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+              const baseloadCost = effectiveBaseloadKwhPerDay * daysInMonth * (monthlyEstimate?.electricityRate ?? utilityCost ?? 0.10);
+              if (hvacCost != null && hvacCost >= 0) return hvacCost + baseloadCost + fixed;
               return monthlyEstimate?.cost ?? 0;
             })()}
             energyMode={energyMode}
             primarySystem={primarySystem}
             timePeriod="month"
-            periodLabel={hasBillPeriod ? displayPeriod : undefined}
+            periodLabel={displayPeriod}
             compact={false}
-            contextSubtitle={hasBillPeriod ? `Total bill (energy + fixed fees) • Based on NWS forecast for ${displayPeriod}` : "Total bill (energy + fixed fees) • Based on NWS forecast for the full month"}
+            contextSubtitle={`Total bill (energy + fixed fees) • Based on NWS forecast for ${displayPeriod}`}
+            breakdown={(() => {
+              const hvacCost = totalForecastCostRef.current ?? monthlyEstimate?.hvacCost ?? 0;
+              const fixed = monthlyEstimate?.fixedCost ?? fixedElectricCost ?? 0;
+              const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+              const baseloadCost = effectiveBaseloadKwhPerDay * daysInMonth * (monthlyEstimate?.electricityRate ?? utilityCost ?? 0.10);
+              return { hvac: hvacCost, hvacLabel: energyMode === 'heating' ? 'Heating' : energyMode === 'cooling' ? 'Cooling' : 'HVAC', homeUsage: baseloadCost, fees: fixed };
+            })()}
           />
         </div>
       )}
@@ -4564,23 +4978,23 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
 
       {/* Modeled Schedule Section - Match Weekly Forecast Layout */}
       {mode === "budget" && (
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-4 mb-2 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 sm:p-4 mb-2 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
           {/* Subtle animated background */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
           <div className="relative z-10">
-            {/* Header */}
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            {/* Header - stack on mobile so Smart Optimizer isn't cut off */}
+            <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                   Modeled Schedule (What-If)
                 </h2>
-                <p className="text-base text-slate-400 flex items-center gap-1 px-2 py-1 bg-slate-800/50 rounded border border-slate-700/50">
+                <p className="text-sm sm:text-base text-slate-400 flex items-center gap-1 px-2 py-1 bg-slate-800/50 rounded border border-slate-700/50">
                   <span>🔒</span>
                   <span>Safe to experiment</span>
                 </p>
               </div>
               {(energyMode === "heating" || energyMode === "cooling") && (
-                <div className="flex-shrink-0">
+                <div className="w-full sm:w-auto sm:flex-shrink-0 min-w-0">
                   <OneClickOptimizer
                     currentDayTemp={energyMode === "heating" ? (userSettings?.winterThermostatDay ?? 70) : (userSettings?.summerThermostat ?? 76)}
                     currentNightTemp={energyMode === "heating" ? (userSettings?.winterThermostatNight ?? 68) : (userSettings?.summerThermostatNight ?? 78)}
@@ -4609,7 +5023,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             </div>
 
             {/* Temperature and Time Controls - Horizontal Grid Layout (like Weekly) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Daytime Temperature */}
               {energyMode === "heating" && (
                 <div className="relative group">
@@ -4949,7 +5363,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
 
       {/* Daily Forecast Breakdown - Monthly Forecast */}
       {mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && (
-        <div className="mt-12 pt-8 border-t-2 border-gray-300/30 dark:border-gray-700/30">
+        <div id="daily-forecast-breakdown" className="mt-12 pt-8 border-t-2 border-gray-300/30 dark:border-gray-700/30 scroll-mt-4">
           <div className="glass-card p-6 mb-6 animate-fade-in-up border-gray-500/30">
             {/* Collapsible Header */}
             <button
@@ -5023,7 +5437,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 <>
               <p className="text-gray-700 dark:text-gray-300 mb-2" style={{ fontSize: '20pt' }}>
                 <strong>⚠️ Note:</strong> The main estimate and this table both use the same forecast-based data: 
-                actual observed weather for past days {hasBillPeriod ? 'in this period' : 'this month'}, NWS forecast for the next 15 days, and 3-year historical average for days beyond the forecast range.
+                actual observed weather for past days {hasBillPeriod ? 'in this period' : `in ${displayPeriod}`}, NWS forecast for the next 15 days, and 3-year historical average for days beyond the forecast range.
               </p>
               <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: '20pt' }}>
                 <strong>Data Sources:</strong> Daily forecast data is fetched from{" "}
@@ -5044,7 +5458,7 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                 >
                   National Weather Service (NWS)
                 </a>
-                . <strong>Actual</strong> = observed weather for past days {hasBillPeriod ? 'in this period' : 'this month'}, <strong>Forecast</strong> = real-time forecast for upcoming days (up to 15 days), <strong>Historical</strong> = 3-year average for days beyond forecast range.
+                . <strong>Actual</strong> = observed weather for past days {hasBillPeriod ? 'in this period' : `in ${displayPeriod}`}, <strong>Forecast</strong> = real-time forecast for upcoming days (up to 15 days), <strong>Historical</strong> = 3-year average for days beyond forecast range.
               </p>
               </>
               )}
@@ -5384,30 +5798,46 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             return (
               <div className="space-y-2">
                 {isProratedOnly && (
-                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200 text-sm">
-                    You entered only your total bill. Daily values below are estimated (total ÷ days) — we don't have real per-day data from your utility.
-                  </div>
+                  <>
+                    <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200 text-sm mb-3">
+                      You entered your total bill. Daily values are estimated by allocating your total proportionally to each day's forecast energy (cold days get more, warm days less). The comparison is in the summary below.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowProratedDailyBreakdown(!showProratedDailyBreakdown)}
+                      className="w-full flex items-center justify-between p-3 mb-3 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-600"
+                    >
+                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                        {showProratedDailyBreakdown ? 'Hide daily forecast breakdown' : 'Show daily forecast breakdown'}
+                      </span>
+                      {showProratedDailyBreakdown ? (
+                        <ChevronUp className="w-5 h-5 text-gray-500 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 text-gray-500 shrink-0" />
+                      )}
+                    </button>
+                  </>
                 )}
-              <div className="overflow-x-auto" data-no-swipe>
-                <table className="w-full border-collapse min-w-[640px]" style={{ fontSize: '18pt' }}>
+              <div className="overflow-x-auto -mx-2 sm:mx-0" data-no-swipe>
+                <table className="w-full border-collapse min-w-[640px] text-xs sm:text-sm md:text-base">
                   <thead>
                     <tr className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-700 dark:to-gray-800 border-b-2 border-gray-300 dark:border-gray-600 sticky top-0 z-10">
-                      <th className="text-left py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Day</th>
-                      <th className="text-left py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Outdoor Temp (°F)</th>
-                      <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Forecast Energy (kWh)</th>
+                      <th className="text-left py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col">Day</th>
+                      <th className="text-left py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col"><span className="hidden sm:inline">Outdoor Temp (°F)</span><span className="sm:hidden">Temp</span></th>
+                      <th className="text-center py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col"><span className="hidden md:inline">Forecast Energy (kWh)</span><span className="md:hidden">Forecast</span></th>
                       {primarySystem === "heatPump" && energyMode === "heating" && useElectricAuxHeat && (
-                        <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Aux Strip (kWh)</th>
+                        <th className="text-center py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col">Aux</th>
                       )}
-                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="HVAC heating/cooling only; your bill includes whole-house (baseload)" style={{ fontSize: '18pt' }}>Est. Cost ($) — Heating/Cooling only</th>
-                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Prorated (total ÷ days) — not real daily usage. You entered only total bill." : "Enter your actual kWh from your utility bill"} style={{ fontSize: '18pt' }}>Your Bill (kWh){typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal" title="Prorated — not real daily data">*</span>}</th>
-                      <th className="text-right py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Prorated (total ÷ days) — not real daily usage. You entered only total bill." : "Your bill kWh × electricity rate"} style={{ fontSize: '18pt' }}>Actual Cost ($){typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal" title="Prorated — not real daily data">*</span>}</th>
-                      <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Your bill kWh − Forecast kWh" style={{ fontSize: '18pt' }}>Δ kWh</th>
-                      <th className="text-center py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" title="Empirical BTU/hr/°F from bill: actual kWh × 3412 ÷ 24 ÷ ΔT (assumes all kWh is heating; includes baseload)" style={{ fontSize: '18pt' }}>BTU/°F (bill)</th>
-                      <th className="text-left py-2.5 px-2 font-semibold text-gray-900 dark:text-gray-100" scope="col" style={{ fontSize: '18pt' }}>Data Source</th>
+                      <th className="text-right py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm min-w-[100px]" scope="col" title="HVAC heating/cooling only; your bill includes whole-house (baseload)"><span className="hidden md:inline">Est. Cost ($) — H/C only</span><span className="md:hidden">Est $</span></th>
+                      <th className="text-right py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Estimated (total allocated by forecast energy — cold days get more). You entered only total bill." : "Enter your actual kWh from your utility bill"}>Your Bill (kWh){typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal" title="Estimated from total bill — not real daily data">*</span>}</th>
+                      <th className="text-right py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col" title={typeof localStorage !== 'undefined' && localStorage.getItem(`billProratedOnly_${selectedYear}_${selectedMonth}`) === '1' ? "Estimated (total allocated by forecast energy — cold days get more). You entered only total bill." : "Your bill kWh × electricity rate"}>Actual $</th>
+                      <th className="text-center py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col" title="Your bill kWh − Forecast kWh">Δ kWh</th>
+                      <th className="text-center py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col" title="Empirical BTU/hr/°F from bill: actual kWh × 3412 ÷ 24 ÷ ΔT (assumes all kWh is heating; includes baseload)">BTU/°F</th>
+                      <th className="text-left py-2 px-1.5 sm:py-2.5 sm:px-2 font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm whitespace-nowrap" scope="col"><span className="hidden sm:inline">Data Source</span><span className="sm:hidden">Source</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dailyMetrics.map((day, idx) => {
+                    {(!isProratedOnly || showProratedDailyBreakdown) && dailyMetrics.map((day, idx) => {
                       // Check if this day is today
                       const today = new Date();
                       const dayDate = new Date(day.date);
@@ -5536,20 +5966,24 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                       {primarySystem === "heatPump" && energyMode === "heating" && useElectricAuxHeat && (
                         <td className="py-3 px-2 text-center"></td>
                       )}
-                      <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Est. cost (Heating/Cooling only)</span>
-                        ${(Math.round(totalForecastCost * 100) / 100).toFixed(2)} variable
+                      <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-right text-gray-900 dark:text-gray-100 text-xs sm:text-base">
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block text-[10px] sm:text-sm">Est. bill</span>
                         {(() => {
                           const fixed = (energyMode === "heating" && isGasHeat ? fixedGasCost : fixedElectricCost) ?? monthlyEstimate?.fixedCost ?? 0;
-                          return fixed > 0 && (
-                            <span className="text-gray-600 dark:text-gray-300 font-normal block" style={{ fontSize: '18pt' }}>
-                              + ${fixed.toFixed(2)} fixed = ${(Math.round(totalForecastCost * 100) / 100 + fixed).toFixed(2)} total
+                          const daysInRow = dailyMetrics?.length ?? new Date(selectedYear, selectedMonth, 0).getDate();
+                          const baseloadRow = effectiveBaseloadKwhPerDay * daysInRow * (utilityCost ?? 0.10);
+                          const totalBill = Math.round((totalForecastCost + baseloadRow + fixed) * 100) / 100;
+                          const parts = [`$${(Math.round(totalForecastCost * 100) / 100).toFixed(2)} HVAC`, `$${baseloadRow.toFixed(2)} home`];
+                          if (fixed > 0) parts.push(`$${fixed.toFixed(2)} fees`);
+                          return (
+                            <span className="text-gray-600 dark:text-gray-300 font-normal block text-[10px] sm:text-sm">
+                              {parts.join(' + ')} = ${totalBill.toFixed(2)}
                             </span>
                           );
                         })()}
                       </td>
-                      <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Your bill</span>
+                      <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-right text-gray-900 dark:text-gray-100 text-xs sm:text-base">
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block text-[10px] sm:text-sm">Your bill</span>
                         {(() => {
                           const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
@@ -5557,8 +5991,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           return <span>{Math.round(actualTotal * 10) / 10} kWh</span>;
                         })()}
                       </td>
-                      <td className="py-3 px-2 text-right text-gray-900 dark:text-gray-100">
-                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Actual cost</span>
+                      <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-right text-gray-900 dark:text-gray-100 text-xs sm:text-base">
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block text-[10px] sm:text-sm">Actual cost</span>
                         {(() => {
                           const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
@@ -5571,8 +6005,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           return <span title="Variable only (kWh × rate)">${variableCost.toFixed(2)}</span>;
                         })()}
                       </td>
-                      <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
-                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>Δ kWh</span>
+                      <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-center text-gray-900 dark:text-gray-100 text-xs sm:text-base">
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block text-[10px] sm:text-sm">Δ kWh</span>
                         {(() => {
                           const actualValues = Object.entries(effectiveActualKwhEntries).filter(([, v]) => typeof v === 'number' && v > 0);
                           if (actualValues.length === 0) return <span className="text-gray-400">—</span>;
@@ -5585,8 +6019,8 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
                           );
                         })()}
                       </td>
-                      <td className="py-3 px-2 text-center text-gray-900 dark:text-gray-100">
-                        <span className="font-normal text-gray-500 dark:text-gray-400 block" style={{ fontSize: '18pt' }}>BTU/°F (avg)</span>
+                      <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-center text-gray-900 dark:text-gray-100 text-xs sm:text-base">
+                        <span className="font-normal text-gray-500 dark:text-gray-400 block text-[10px] sm:text-sm">BTU/°F</span>
                         {(() => {
                           const setTemp = effectiveIndoorTemp || 70;
                           const daysWithBtu = dailyMetrics.filter((d, i) => {
@@ -8227,10 +8661,10 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
             <div className="relative z-10">
               <div className="mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <h2 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                     Modeled Schedule (What-If)
-            </h2>
+                  </h2>
                   <p className="text-sm text-slate-400 flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg border border-slate-700/50">
                     <span>🔒</span>
                     <span>Safe to experiment</span>

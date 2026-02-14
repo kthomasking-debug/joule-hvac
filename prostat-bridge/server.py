@@ -28,7 +28,7 @@ from aiohttp import web, web_runner
 import aiohttp_cors
 import serial
 import serial.tools.list_ports
-from datetime import datetime
+from datetime import datetime, date
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
 from zeroconf import ServiceInfo
 import socket
@@ -38,6 +38,13 @@ try:
     BLUEAIR_AVAILABLE = True
 except ImportError:
     BLUEAIR_AVAILABLE = False
+
+# Bridge forecast engine (runs forecast on schedule for HMI)
+try:
+    from forecast_engine import fetch_weather_async, compute_monthly_forecast
+    FORECAST_ENGINE_AVAILABLE = True
+except ImportError:
+    FORECAST_ENGINE_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -3589,6 +3596,22 @@ async def handle_bridge_info(request):
         
         lan_ip = get_lan_ip()
         
+        # Get Cloudflare tunnel URL from cloudflared wrapper (auto-captured when running cloudflared-tunnel.sh)
+        cloudflare_tunnel_url = None
+        for path in [
+            '/tmp/joule-cloudflare-tunnel-url.txt',
+            os.path.join(get_data_directory(), 'cloudflare-tunnel-url.txt'),
+        ]:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        url = f.read().strip()
+                    if url and url.startswith('https://'):
+                        cloudflare_tunnel_url = url.rstrip('/')
+                        break
+            except Exception:
+                pass
+        
         # Get MAC address (device ID) from wlan0 or eth0
         device_id = None
         try:
@@ -3611,6 +3634,7 @@ async def handle_bridge_info(request):
             "lan_ip": lan_ip,
             "tailscale_ip": tailscale_ip,
             "tailscale": tailscale_status,
+            "cloudflare_tunnel_url": cloudflare_tunnel_url,
             "uptime": None,
             "memory": None,
             "disk": None,
@@ -4048,6 +4072,20 @@ def save_settings(settings):
         logger.error(f"Error saving settings: {e}")
         return False
 
+
+def save_forecast_summary(forecast_data):
+    """Save forecast summary to last_forecast_summary.json (used by HMI)"""
+    forecast_file = os.path.join(get_data_directory(), 'last_forecast_summary.json')
+    try:
+        os.makedirs(os.path.dirname(forecast_file), exist_ok=True)
+        with open(forecast_file, 'w') as f:
+            json.dump(forecast_data, f, indent=2)
+        logger.debug(f"Forecast summary saved to {forecast_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving forecast summary: {e}")
+        return False
+
 async def handle_get_settings(request):
     """GET /api/settings - Get all user settings
     
@@ -4138,6 +4176,10 @@ async def handle_set_setting(request):
         settings = load_settings()
         settings[key] = value
         
+        # When setting last_forecast_summary, also write to dedicated file (HMI reads from file first)
+        if key == 'last_forecast_summary' and isinstance(value, dict):
+            save_forecast_summary(value)
+        
         if save_settings(settings):
             return web.json_response({
                 'success': True,
@@ -4157,20 +4199,38 @@ async def handle_set_setting(request):
         }, status=500)
 
 async def handle_set_settings_batch(request):
-    """POST /api/settings - Set multiple settings at once"""
+    """POST /api/settings - Set multiple settings at once
+
+    Accepts two formats:
+    1. { settings: {...} } - standard batch update
+    2. { last_forecast_summary: {...}, userSettings: {...} } - from shareSettingsWithPi
+    """
     try:
         data = await request.json()
         settings_update = data.get('settings', {})
-        
+
+        # Accept shareSettingsWithPi format: flat last_forecast_summary + userSettings
         if not settings_update:
-            return web.json_response({
-                'success': False,
-                'error': 'Settings object is required'
-            }, status=400)
-        
+            last_forecast = data.get('last_forecast_summary')
+            user_settings = data.get('userSettings') or {}
+            if last_forecast is not None or user_settings:
+                settings_update = dict(user_settings) if isinstance(user_settings, dict) else {}
+                if last_forecast is not None:
+                    save_forecast_summary(last_forecast)
+                    settings_update['last_forecast_summary'] = last_forecast
+            else:
+                return web.json_response({
+                    'success': False,
+                    'error': 'Settings object or (last_forecast_summary, userSettings) required'
+                }, status=400)
+
         settings = load_settings()
         settings.update(settings_update)
-        
+
+        # If last_forecast_summary was in settings_update, also save to dedicated file
+        if 'last_forecast_summary' in settings_update:
+            save_forecast_summary(settings_update['last_forecast_summary'])
+
         if save_settings(settings):
             return web.json_response({
                 'success': True,
@@ -4810,6 +4870,58 @@ async def init_app():
     return app
 
 
+# Bridge forecast scheduler
+forecast_task_running = False
+FORECAST_INTERVAL_SEC = 3600  # Every hour
+
+async def forecast_scheduler_task():
+    """
+    Background task that fetches weather and computes monthly bill forecast every hour.
+    Uses settings from onboarding (location, building, system). App is only for onboarding.
+    """
+    global forecast_task_running
+    if not FORECAST_ENGINE_AVAILABLE:
+        logger.debug("Forecast engine not available, skipping forecast scheduler")
+        return
+    forecast_task_running = True
+    logger.info("Starting bridge forecast scheduler (every %ds)", FORECAST_INTERVAL_SEC)
+    import aiohttp
+    first_run = True
+    while forecast_task_running:
+        try:
+            if not first_run:
+                await asyncio.sleep(FORECAST_INTERVAL_SEC)
+            first_run = False
+            settings = load_settings()
+            # Resolve location: location, userLocation, or flat lat/lon (from onboarding)
+            loc = settings.get('location') or settings.get('userLocation') or {}
+            if isinstance(loc, dict):
+                lat = loc.get('latitude') or loc.get('lat')
+                lon = loc.get('longitude') or loc.get('lon') or loc.get('lng')
+            else:
+                lat = settings.get('latitude')
+                lon = settings.get('longitude')
+            if not (lat is not None and lon is not None):
+                logger.debug("Forecast skip: no latitude/longitude in settings")
+                continue
+            lat, lon = float(lat), float(lon)
+            today = date.today()
+            month, year = today.month, today.year
+            try:
+                async with aiohttp.ClientSession() as session:
+                    weather_days = await fetch_weather_async(session, lat, lon, month, year)
+                summary = compute_monthly_forecast(weather_days, settings, month, year)
+                if save_forecast_summary(summary):
+                    logger.info("Bridge forecast: $%.2f/month (source: bridge_forecast)", summary.get('totalMonthlyCost', 0))
+            except Exception as e:
+                logger.warning("Bridge forecast failed: %s", e)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning("Forecast scheduler error: %s", e)
+    forecast_task_running = False
+
+
 # Auto-reconnect background task
 auto_reconnect_running = False
 auto_reconnect_interval = 30  # Check every 30 seconds
@@ -5185,6 +5297,11 @@ async def main():
     # Start auto-reconnect background task
     reconnect_task = asyncio.create_task(auto_reconnect_task())
     logger.info("Auto-reconnect background task started")
+
+    # Start bridge forecast scheduler (fetches weather, computes bill every hour)
+    forecast_task = asyncio.create_task(forecast_scheduler_task())
+    if FORECAST_ENGINE_AVAILABLE:
+        logger.info("Bridge forecast scheduler started")
     
     # Keep running
     try:
@@ -5198,6 +5315,14 @@ async def main():
         reconnect_task.cancel()
         try:
             await reconnect_task
+        except asyncio.CancelledError:
+            pass
+        # Stop forecast task
+        global forecast_task_running
+        forecast_task_running = False
+        forecast_task.cancel()
+        try:
+            await forecast_task
         except asyncio.CancelledError:
             pass
         

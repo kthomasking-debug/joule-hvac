@@ -388,20 +388,20 @@ export default function OneClickOptimizer({
 
   return (
     <div className={`rounded-2xl overflow-hidden ${compact ? "" : "mb-4"}`}>
-      {/* Header with gradient */}
+      {/* Header with gradient - stack on mobile */}
       <div className="bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-fuchsia-600/20 p-4 border-b border-purple-500/30">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/30">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/30 shrink-0">
               <Sparkles className="text-white" size={20} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="font-bold text-white">Smart Optimizer</h3>
               <p className="text-sm text-purple-300">Savings opportunity detected</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {optimized && previousSettings && (
               <button
                 onClick={handleUndo}
@@ -474,12 +474,21 @@ export default function OneClickOptimizer({
           {/* Savings */}
           <div className="space-y-2">
             <div className="text-sm text-slate-400">Estimated Savings</div>
-            <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-400">
-              ${optimization.savings.monthlyDollars}/mo
-            </div>
-            <div className="text-xs text-slate-500">
-              ${optimization.savings.annualDollars}/year
-            </div>
+            {parseFloat(optimization.savings.monthlyDollars) > 0 ? (
+              <>
+                <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-400">
+                  ${optimization.savings.monthlyDollars}/mo
+                </div>
+                <div className="text-xs text-slate-500">
+                  ${optimization.savings.annualDollars}/year
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-400 ">
+                No thermostat savings detected.
+                <span className="block mt-0.5 text-slate-500">Biggest savings likely from non-heating usage.</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -516,7 +525,7 @@ export default function OneClickOptimizer({
         {optimization.reasoning && (
           <button
             onClick={() => setShowReasoning(!showReasoning)}
-            className="mt-3 text-sm text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+            className="mt-3 py-2 min-h-[44px] text-sm sm:text-base text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 touch-manipulation"
           >
             <Info size={14} />
             {showReasoning ? "Hide why this helps ▲" : "Why this helps ▼"}
@@ -545,7 +554,7 @@ export default function OneClickOptimizer({
         {/* Details toggle */}
         <button
           onClick={() => setShowDetails(!showDetails)}
-          className="mt-3 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+          className="mt-3 py-2 min-h-[44px] text-sm sm:text-base text-purple-400 hover:text-purple-300 transition-colors touch-manipulation"
         >
           {showDetails ? "Hide calculation details ▲" : "Show calculation details ▼"}
         </button>

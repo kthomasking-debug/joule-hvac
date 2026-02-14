@@ -1,14 +1,12 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { useNavigate, useLocation, Link, useOutletContext } from 'react-router-dom';
+import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import { 
   Calendar, 
   TrendingUp, 
   Search, 
   BarChart2,
   Activity,
-  MapPin,
-  Home,
-  FileText
+  MapPin
 } from 'lucide-react';
 import AIExplanation from '../components/AIExplanation';
 
@@ -88,9 +86,9 @@ const Analysis = () => {
   const AnnualForecast = () => <MonthlyBudgetPlanner initialMode="annual" />;
 
   const tabs = [
-    { id: 'forecast', label: 'Weekly Simulator', icon: Calendar, component: SevenDayCostForecaster },
-    { id: 'budget', label: 'Monthly Forecast', icon: TrendingUp, component: MonthlyBudgetPlanner },
-    { id: 'annual', label: 'Annual Forecast', icon: TrendingUp, component: AnnualForecast },
+    { id: 'forecast', label: 'Weekly', icon: Calendar, component: SevenDayCostForecaster },
+    { id: 'budget', label: 'Monthly', icon: TrendingUp, component: MonthlyBudgetPlanner },
+    { id: 'annual', label: 'Annual', icon: TrendingUp, component: AnnualForecast },
   ];
 
   const activeTabData = tabs.find(t => t.id === activeTab);
@@ -125,44 +123,8 @@ const Analysis = () => {
           </Suspense>
         ) : (
           <>
-            {/* Page Header - Always visible; Home link prominent on mobile */}
-            <header className="mb-2">
-              <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Link
-                    to="/home"
-                    className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors py-2 pr-2 -ml-2 rounded touch-manipulation shrink-0"
-                    style={{ minHeight: '44px' }}
-                    aria-label="Back to Home"
-                  >
-                    <Home className="w-5 h-5 shrink-0" />
-                    <span className="text-sm font-medium">Home</span>
-                  </Link>
-                  <h1 className="text-lg font-semibold text-white truncate">Cost Simulator</h1>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    to="/analysis/monthly#bill-analysis"
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors py-2 touch-manipulation"
-                  >
-                    <FileText className="w-3 h-3" />
-                    Compare Bill
-                  </Link>
-                  <Link
-                    to="/analysis/annual"
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors py-2 touch-manipulation"
-                  >
-                    <TrendingUp className="w-3 h-3" />
-                    Annual Forecast
-                  </Link>
-                </div>
-              </div>
-              <p className="text-xs text-[#A7B0BA] italic">
-                Simulate costs, track monthly spending, and explore what your thermostat data reveals — all in one place.
-              </p>
-            </header>
-
-            {/* Tab Navigation - Always visible */}
+            {/* Tabs only — no duplicate nav; sidebar has Dashboard, Forecast, Compare Bill, Optimizer, Settings */}
+            {/* Tab Navigation */}
             <div className="mb-2">
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {tabs.map((tab) => {
