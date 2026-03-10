@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,8 +9,6 @@ import "./styles/design-system.css";
 import "./styles/print.css";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { routes } from "./navConfig.jsx";
-
-const RootRedirect = lazy(() => import("./components/RootRedirect"));
 
 // Create React Query client with optimized settings for background fetching
 const queryClient = new QueryClient({
@@ -42,8 +40,8 @@ if (typeof window !== "undefined" &&
     });
 }
 
-// Loading fallback component for lazy-loaded routes
-const RouteLoadingFallback = () => (
+// Loading fallback UI for lazy-loaded routes
+const routeLoadingFallback = (
   <div className="flex items-center justify-center min-h-screen bg-white dark:bg-gray-900">
     <div className="text-center">
       <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
@@ -98,11 +96,7 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <RootRedirect />
-            </Suspense>
-          ),
+          element: <Navigate to="/home" replace />,
         },
         // Redirect old tool paths to new /tools/ paths for backward compatibility
         {
@@ -126,7 +120,7 @@ const router = createBrowserRouter(
           .map((route) => ({
             path: route.path.replace(/^\//, ""),
             element: (
-              <Suspense fallback={<RouteLoadingFallback />}>
+              <Suspense fallback={routeLoadingFallback}>
                 <route.Component />
               </Suspense>
             ),

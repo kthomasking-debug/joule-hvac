@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, {
   useState,
   useMemo,
@@ -662,7 +663,7 @@ const SevenDayCostForecaster = () => {
   // Utility and gas rates are now manually set or auto-populated from state averages during location selection.
   // Legacy rateSource tracking removed.
   const [localRates, setLocalRates] = useState([]); // TOU rate schedule
-  const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
+  // Forecast table is always open; dropdown removed
   const [showElevationAnalysis, setShowElevationAnalysis] = useState(false);
   const [showAfueTooltip, setShowAfueTooltip] = useState(false);
   const [showHeatLossTooltip, setShowHeatLossTooltip] = useState(false);
@@ -2181,25 +2182,14 @@ const SevenDayCostForecaster = () => {
                 </h3>
               </div>
               
-              {/* Weekly Forecast Table Dropdown */}
+              {/* Weekly Forecast Table - always open */}
               <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <button
-                  onClick={() => setShowDailyBreakdown(!showDailyBreakdown)}
-                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg">
-                      <BarChart2 size={24} className="text-white" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Daily Breakdown</h3>
+                <div className="flex items-center gap-3 p-6 pb-0">
+                  <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg">
+                    <BarChart2 size={24} className="text-white" />
                   </div>
-                  {showDailyBreakdown ? (
-                    <ChevronUp className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-                  ) : (
-                    <ChevronDown className="w-6 h-6 text-gray-600 dark:text-gray-400" />
-                  )}
-                </button>
-                {showDailyBreakdown && (
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Daily Breakdown</h3>
+                </div>
                 <div className="p-6 pt-0 border-t border-gray-200 dark:border-gray-700">
                   <DailyBreakdownTable
                     summary={weeklyMetrics.summary}
@@ -2208,7 +2198,6 @@ const SevenDayCostForecaster = () => {
                     unitSystem={unitSystem}
                   />
                 </div>
-                )}
               </div>
               
               {/* Show me the math section */}

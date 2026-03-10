@@ -4176,10 +4176,34 @@ async def handle_set_setting(request):
         settings = load_settings()
         settings[key] = value
         
-        # When setting last_forecast_summary, also write to dedicated file (HMI reads from file first)
+        # When settings change, recompute and save forecast immediately
         if key == 'last_forecast_summary' and isinstance(value, dict):
             save_forecast_summary(value)
-        
+        else:
+            # Recompute forecast after any settings change
+            try:
+                from forecast_engine import fetch_weather_async, compute_monthly_forecast
+                import aiohttp
+                loc = settings.get('location') or settings.get('userLocation') or {}
+                if isinstance(loc, dict):
+                    lat = loc.get('latitude') or loc.get('lat')
+                    lon = loc.get('longitude') or loc.get('lon') or loc.get('lng')
+                else:
+                    lat = settings.get('latitude')
+                    lon = settings.get('longitude')
+                if lat is not None and lon is not None:
+                    lat, lon = float(lat), float(lon)
+                    today = date.today()
+                    month, year = today.month, today.year
+                    async def _recompute_forecast():
+                        async with aiohttp.ClientSession() as session:
+                            weather_days = await fetch_weather_async(session, lat, lon, month, year)
+                        summary = compute_monthly_forecast(weather_days, settings, month, year)
+                        save_forecast_summary(summary)
+                    # Schedule the forecast recompute (don't block API response)
+                    asyncio.create_task(_recompute_forecast())
+            except Exception as e:
+                logger.warning(f"Could not recompute forecast after settings change: {e}")
         if save_settings(settings):
             return web.json_response({
                 'success': True,
@@ -4230,7 +4254,30 @@ async def handle_set_settings_batch(request):
         # If last_forecast_summary was in settings_update, also save to dedicated file
         if 'last_forecast_summary' in settings_update:
             save_forecast_summary(settings_update['last_forecast_summary'])
-
+        else:
+            # Recompute forecast after any settings batch change
+            try:
+                from forecast_engine import fetch_weather_async, compute_monthly_forecast
+                import aiohttp
+                loc = settings.get('location') or settings.get('userLocation') or {}
+                if isinstance(loc, dict):
+                    lat = loc.get('latitude') or loc.get('lat')
+                    lon = loc.get('longitude') or loc.get('lon') or loc.get('lng')
+                else:
+                    lat = settings.get('latitude')
+                    lon = settings.get('longitude')
+                if lat is not None and lon is not None:
+                    lat, lon = float(lat), float(lon)
+                    today = date.today()
+                    month, year = today.month, today.year
+                    async def _recompute_forecast():
+                        async with aiohttp.ClientSession() as session:
+                            weather_days = await fetch_weather_async(session, lat, lon, month, year)
+                        summary = compute_monthly_forecast(weather_days, settings, month, year)
+                        save_forecast_summary(summary)
+                    asyncio.create_task(_recompute_forecast())
+            except Exception as e:
+                logger.warning(f"Could not recompute forecast after settings batch change: {e}")
         if save_settings(settings):
             return web.json_response({
                 'success': True,
@@ -4901,18 +4948,28 @@ async def forecast_scheduler_task():
             else:
                 lat = settings.get('latitude')
                 lon = settings.get('longitude')
-            if not (lat is not None and lon is not None):
-                logger.debug("Forecast skip: no latitude/longitude in settings")
+            # Validate settings: skip if missing or using defaults
+            required_fields = [lat, lon, settings.get('squareFeet') or settings.get('square_feet'), settings.get('insulationLevel') or settings.get('insulation_level'), settings.get('utilityCost') or settings.get('utility_cost')]
+            if any(x is None for x in required_fields):
+                logger.debug("Forecast scheduler: skipping update due to incomplete or default settings.")
                 continue
-            lat, lon = float(lat), float(lon)
+            try:
+                lat, lon = float(lat), float(lon)
+            except Exception:
+                logger.debug("Forecast scheduler: invalid lat/lon values, skipping.")
+                continue
             today = date.today()
             month, year = today.month, today.year
             try:
                 async with aiohttp.ClientSession() as session:
                     weather_days = await fetch_weather_async(session, lat, lon, month, year)
                 summary = compute_monthly_forecast(weather_days, settings, month, year)
-                if save_forecast_summary(summary):
-                    logger.info("Bridge forecast: $%.2f/month (source: bridge_forecast)", summary.get('totalMonthlyCost', 0))
+                # Only save if the summary looks valid (not fallback values)
+                if summary and summary.get('hvacCost', 0) > 0 and summary.get('totalMonthlyCost', 0) > 0:
+                    if save_forecast_summary(summary):
+                        logger.info("Bridge forecast: $%.2f/month (source: bridge_forecast)", summary.get('totalMonthlyCost', 0))
+                else:
+                    logger.warning("Forecast scheduler: computed forecast looks invalid, not saving.")
             except Exception as e:
                 logger.warning("Bridge forecast failed: %s", e)
         except asyncio.CancelledError:

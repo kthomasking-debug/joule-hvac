@@ -12,25 +12,26 @@ const DEFAULT_BRIDGE_URL = 'http://joule-bridge.local:8080';
 
 /**
  * Get Joule Bridge URL from settings or environment variable
- * When "Use remote access" is enabled, uses jouleBridgeRemoteUrl (Cloudflare tunnel).
  * Falls back to mDNS hostname (joule-bridge.local:8080) if nothing configured
  */
 function getBridgeUrl() {
   try {
-    const useRemote = localStorage.getItem("useRemoteBridge") === "true";
-    const remoteUrl = (localStorage.getItem("jouleBridgeRemoteUrl") || "").trim();
-    if (useRemote && remoteUrl) {
-      return remoteUrl.replace(/\/$/, "");
-    }
     // Priority: localStorage > environment variable > default
     const savedUrl = localStorage.getItem("jouleBridgeUrl");
     const finalUrl = savedUrl || JOULE_BRIDGE_URL || DEFAULT_BRIDGE_URL;
     // Normalize URL - remove trailing slash
-    return finalUrl.replace(/\/$/, "");
+    return finalUrl.replace(/\/$/, '');
   } catch {
     // Fallback chain
-    return (JOULE_BRIDGE_URL || DEFAULT_BRIDGE_URL).replace(/\/$/, "");
+    return (JOULE_BRIDGE_URL || DEFAULT_BRIDGE_URL).replace(/\/$/, '');
   }
+}
+
+/**
+ * Export getBridgeInfo for RemoteJouleSettings.jsx
+ */
+export function getBridgeInfo() {
+  return getBridgeUrl();
 }
 
 /**
@@ -65,7 +66,7 @@ async function bridgeRequest(endpoint, options = {}) {
       let errorData = null;
       try {
         errorData = JSON.parse(errorText);
-      } catch (e) {
+      } catch {
         // Not JSON, use as-is
       }
       
@@ -334,7 +335,7 @@ export async function checkBridgeHealth() {
   // Validate URL format
   try {
     new URL(url);
-  } catch (e) {
+  } catch {
     throw new Error(`Invalid URL format: ${url}. Use format: http://hostname:port`);
   }
   
@@ -362,11 +363,11 @@ export async function checkBridgeHealth() {
     
     // Try to parse JSON to ensure it's a valid response
     try {
-      const data = await response.json();
+      await response.json();
       // Check if response has expected structure (status: 'ok' or 'healthy')
       // But also accept any valid JSON response with 200 status as success
       return true;
-    } catch (parseError) {
+    } catch {
       // If we can't parse JSON, but got a 200 response, still consider it ok
       return response.ok;
     }
@@ -390,19 +391,6 @@ export async function checkBridgeHealth() {
     
     // Re-throw with context for better error messages
     throw fetchError;
-  }
-}
-
-/**
- * Get bridge system info (IP, hostname, etc.) from the connected bridge.
- * Use this for the authoritative Pi IP when the bridge is connected.
- * @returns {Promise<{local_ip?: string, lan_ip?: string, hostname?: string, ...} | null>}
- */
-export async function getBridgeInfo() {
-  try {
-    return await bridgeRequest("/api/bridge/info");
-  } catch {
-    return null;
   }
 }
 
@@ -471,8 +459,6 @@ export async function getPrimaryDeviceId() {
     }
     
     // No devices paired - return null (don't use stale cache)
-    return null;
-    
     return null;
   } catch {
     return null;

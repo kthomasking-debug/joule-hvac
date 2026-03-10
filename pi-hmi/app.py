@@ -30,7 +30,7 @@ try:
         if _path and os.path.isdir(_path):
             sys.path.insert(0, _path)
             break
-    from TP_lib import epd2in13_V4 as epdmod
+    from TP_lib import epd2in13_V3 as epdmod
     from TP_lib import gt1151
     print("[INFO] Waveshare Touch e-Paper HAT library loaded")
 except Exception as e:
@@ -49,7 +49,7 @@ if epdmod is None:
                 import sys
                 sys.path.insert(0, _path)
                 break
-        from waveshare_epd import epd2in13_V4 as epdmod
+        from waveshare_epd import epd2in13_V3 as epdmod
         print("[INFO] Fallback to standard e-Paper library")
     except Exception as e:
         epdmod = None
@@ -124,7 +124,7 @@ class Status:
     weather_ok: bool = False
     # Cost estimate - prefer monthly_cost if available, otherwise weekly_cost * 4.33
     weekly_cost: float = 0.0
-    monthly_cost: float = 0.0  # Direct monthly cost from Monthly Forecast
+    monthly_cost: float = 0.0  # Direct monthly HVAC cost (no baseload)
     forecast_month: int = 0  # Month (1-12) for display as month name
     # Cost breakdown
     variable_cost: float = 0.0
@@ -138,6 +138,8 @@ class Status:
     daily_forecast: list = None
     # Timestamp when forecast was last updated (milliseconds)
     forecast_timestamp: int = 0
+    # Data source: 'doe', 'learned', etc.
+    forecast_source: str = ''
     
     def __post_init__(self):
         if self.daily_forecast is None:
@@ -393,12 +395,20 @@ class EInkHMI:
                 forecast = settings.get('last_forecast_summary')
                 if forecast and isinstance(forecast, dict):
                     # Check for direct monthly cost first (from Monthly Forecast)
-                    monthly = forecast.get('totalMonthlyCost')
-                    if monthly and isinstance(monthly, (int, float)):
-                        self.status.monthly_cost = float(monthly)
+                    # Only use HVAC cost (exclude baseload)
+                    hvac_cost = forecast.get('hvacCost')
+                    if hvac_cost and isinstance(hvac_cost, (int, float)):
+                        self.status.monthly_cost = float(hvac_cost)
+                    else:
+                        # Fallback: use variableCost if hvacCost not present
+                        variable = forecast.get('variableCost')
+                        if variable and isinstance(variable, (int, float)):
+                            self.status.monthly_cost = float(variable)
                     month_num = forecast.get('month')
                     if month_num and isinstance(month_num, (int, float)) and 1 <= int(month_num) <= 12:
                         self.status.forecast_month = int(month_num)
+                    # Get data source (doe/learned)
+                    self.status.forecast_source = forecast.get('source', '')
                     
                     # Cost breakdown
                     variable = forecast.get('variableCost')
@@ -857,23 +867,33 @@ class EInkHMI:
         if monthly > 0:
             # Large dollar amount - centered
             cost_str = f"${monthly:.0f}"
-            # Get text width for centering (approximate)
             cost_width = len(cost_str) * 18  # ~18px per char for big font
             cost_x = (SCREEN_W - cost_width) // 2
             self.draw.text((cost_x, content_y + 5), cost_str, font=FONT_BIG, fill=0)
-            
+
             # Month name or "per month" label - centered below
             month_names = ['January', 'February', 'March', 'April', 'May', 'June',
                            'July', 'August', 'September', 'October', 'November', 'December']
             month_label = month_names[self.status.forecast_month - 1] if self.status.forecast_month else "per month"
             label_width = len(month_label) * 8  # Approximate char width for FONT_MED
             self.draw.text((SCREEN_W // 2 - label_width // 2, content_y + 38), month_label, font=FONT_MED, fill=0)
-            
-            # Weekly cost on left, below "per month"
-            wk_val = weekly if weekly else (monthly / 4.33)
-            self.draw.text((4, content_y + 54), f"${wk_val:.2f}/wk", font=FONT_SMALL, fill=0)
-            
-            # Temps on right side: "In: 67° → 70°  Out: 33°"
+
+            # Clarify this is HVAC only (move up)
+            self.draw.text((4, content_y + 52), "HVAC cost only", font=FONT_SMALL, fill=0)
+
+            # Show data source (DOE/learned) (move up)
+            source = self.status.forecast_source.lower()
+            if source == 'doe' or source == 'doe_defaults':
+                src_label = 'DOE Defaults'
+            elif source == 'learned' or source == 'calculated' or source == 'bridge_forecast':
+                src_label = 'Learned/Calculated'
+            elif source:
+                src_label = source.capitalize()
+            else:
+                src_label = 'Unknown Source'
+            self.draw.text((4, content_y + 62), f"Source: {src_label}", font=FONT_SMALL, fill=0)
+
+            # Temps on right side: "In: 67° → 70°  Out: 33°" (move up)
             temp_str = ""
             if self.status.last_ok and self.status.temp > 0:
                 temp_str = f"In:{self.status.temp:.0f}°"
@@ -884,20 +904,21 @@ class EInkHMI:
                     temp_str += "  "
                 temp_str += f"Out:{self.status.outdoor_temp:.0f}°"
             if temp_str:
-                self.draw.text((130, content_y + 54), temp_str, font=FONT_SMALL, fill=0)
-            
-            # Bridge URL at very bottom (tunnel URL or IP:PORT)
+                self.draw.text((130, content_y + 52), temp_str, font=FONT_SMALL, fill=0)
+
+            # Bridge URL and device info at very bottom (y=74)
+            bottom_y = content_y + 74
             if self.status.bridge_remote_url:
-                self.draw.text((4, content_y + 68), "Scan QR for remote app", font=FONT_SMALL, fill=0)
+                self.draw.text((4, bottom_y), "Scan QR for remote app", font=FONT_SMALL, fill=0)
             elif self.status.bridge_ip:
                 ip_str = f"{self.status.bridge_ip}:{BRIDGE_PORT}"
-                self.draw.text((4, content_y + 68), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
+                self.draw.text((4, bottom_y), f"Go to {ip_str} or scan QR code", font=FONT_SMALL, fill=0)
             if self.status.bridge_remote_url or self.status.bridge_ip:
                 if self.status.device_id:
                     short_id = self.status.device_id[-8:] if len(self.status.device_id) > 8 else self.status.device_id
-                    self.draw.text((155, content_y + 68), f"ID:{short_id}", font=FONT_SMALL, fill=0)
+                    self.draw.text((155, bottom_y), f"ID:{short_id}", font=FONT_SMALL, fill=0)
                 elif self.status.weather_ok and self.status.outdoor_humidity:
-                    self.draw.text((200, content_y + 68), f"{self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
+                    self.draw.text((200, bottom_y), f"{self.status.outdoor_humidity}%", font=FONT_SMALL, fill=0)
         elif weekly > 0:
             # Have weekly but no monthly - show weekly only (avoids wrong $43 from weekly*4.33)
             cost_str = f"${weekly:.1f}/wk"

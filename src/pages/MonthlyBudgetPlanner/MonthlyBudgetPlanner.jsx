@@ -80,7 +80,7 @@ import {
 import * as heatUtils from "../../lib/heatUtils";
 import { getCached, setCached } from "../../utils/cachedStorage";
 import { shouldUseLearnedHeatLoss } from "../../utils/billDataUtils";
-import { isAIAvailable, callLLM, callLLMStreaming, warmLLM } from "../../lib/aiProvider";
+import { isAIAvailable, callLLMStreaming, warmLLM } from "../../lib/aiProvider";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
 import { extractBillToStorage, isOnboardingExtractionFromContinue, clearOnboardingExtractionFlag } from "../../lib/billExtractor";
@@ -167,7 +167,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
     summerThermostatNight = 72,
     fixedElectricCost = 0,
     fixedGasCost = 0,
-    baseloadKwhPerDay = 10,
+    baseloadKwhPerDay = 0,
     learnedBaseloadKwhPerDay,
   } = userSettings || {};
 
@@ -689,8 +689,8 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const effectiveBaseloadKwhPerDay = useMemo(() => {
     const learned = learnedBaseloadKwhPerDay;
     if (typeof learned === 'number' && learned >= 5 && learned <= 25) return learned;
-    const base = typeof baseloadKwhPerDay === 'number' ? baseloadKwhPerDay : 10;
-    return Math.max(5, Math.min(25, base));
+    const base = typeof baseloadKwhPerDay === 'number' ? baseloadKwhPerDay : 0;
+    return Math.max(0, Math.min(0, base));
   }, [baseloadKwhPerDay, learnedBaseloadKwhPerDay]);
   
   // Sync monthly estimate to bridge whenever it changes (including from cache)
@@ -841,7 +841,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       setShowAnnualPlanner(true);
     }
   }, [mode]);
-  const [showDailyForecast, setShowDailyForecast] = useState(false); // Collapsed by default — Got Your Bill? is the first thing users see
+  const [showDailyForecast, setShowDailyForecast] = useState(true); // Collapsed by default — Got Your Bill? is the first thing users see
   const [showProratedDailyBreakdown, setShowProratedDailyBreakdown] = useState(false); // When prorated only: daily rows collapsed by default to avoid confusion
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
@@ -874,7 +874,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   const [billPasteText, setBillPasteText] = useState('');
   const [billParsing, setBillParsing] = useState(false);
   const [billParseError, setBillParseError] = useState(null);
-  const [showBillPaste, setShowBillPaste] = useState(false);
+  const [, setShowBillPaste] = useState(false);
   const [showBillExtractorBeta, setShowBillExtractorBeta] = useState(false);
   const [billAmountManual, setBillAmountManual] = useState('');
   const [billFlatFeeManual, setBillFlatFeeManual] = useState('');
@@ -1101,7 +1101,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
       return Array.isArray(data.billConversationHistory) ? data.billConversationHistory : [];
     } catch { return []; }
   });
-  const [complaintCopyFeedback, setComplaintCopyFeedback] = useState('');
+  const [, _setComplaintCopyFeedback] = useState('');
   const [billFollowUpLoading, setBillFollowUpLoading] = useState(false);
   const [billFollowUpStreamingText, setBillFollowUpStreamingText] = useState('');
   const [redditCopySuccess, setRedditCopySuccess] = useState(false);
@@ -1115,7 +1115,7 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   });
   // Text-to-speech for bill analysis and AI responses
   const { speak: billSpeak, stop: billStopSpeaking, isSpeaking: billIsSpeaking } = useSpeechSynthesis({ enabled: true });
-  const [billAnalysisSpeechEnabled, setBillAnalysisSpeechEnabled] = useState(() => {
+  const [billAnalysisSpeechEnabled, _setBillAnalysisSpeechEnabled] = useState(() => {
     try {
       return localStorage.getItem("billAnalysisSpeechEnabled") !== "false";
     } catch {
@@ -4272,7 +4272,6 @@ No signs of HVAC problem.`;
                         </>
                       );
                     })()}
-                    )}
                     <div className="mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Ask a follow-up question</span>
@@ -10881,7 +10880,6 @@ No signs of HVAC problem.`;
 };
 
 export default MonthlyBudgetPlanner;
-
 
 
 

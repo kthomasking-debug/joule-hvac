@@ -23,6 +23,11 @@ sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "cd $PI_BRIDGE && [ ! -d ven
 sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "$PI_BRIDGE/install-service.sh" || echo "⚠️  Run install-service.sh manually if bridge service not yet installed"
 sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "sudo systemctl restart prostat-bridge"
 
+# Ensure only one instance of the bridge server is running after deployment
+echo "[Joule Deploy] Checking for duplicate prostat-bridge/server.py processes on Pi..."
+sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "pgrep -fl 'prostat-bridge/server.py' | grep -v grep | awk '{print \$1}' | xargs -r sudo kill -9"
+echo "[Joule Deploy] All duplicate bridge processes killed."
+
 echo "📺 Deploying Pi HMI..."
 sshpass -p "$PI_PASSWORD" scp pi-hmi/app.py ${PI_USER}@${PI_HOST}:/home/pi/git/joule-hvac/pi-hmi/
 sshpass -p "$PI_PASSWORD" ssh ${PI_USER}@${PI_HOST} "sudo systemctl restart pi-hmi.service"

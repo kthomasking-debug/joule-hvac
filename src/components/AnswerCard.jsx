@@ -54,9 +54,10 @@ const AnswerCard = ({ loading, location, temp, weeklyCost, energyMode, primarySy
           )}
           {breakdown && (breakdown.hvac != null || breakdown.homeUsage != null || breakdown.fees != null) && (
             <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400 mt-2 flex flex-wrap gap-x-3 gap-y-0`}>
-              {breakdown.hvac != null && <span>{breakdown.hvacLabel || 'HVAC'}: ${breakdown.hvac.toFixed(2)}</span>}
-              {breakdown.homeUsage != null && <span>Home usage: ${breakdown.homeUsage.toFixed(2)}</span>}
-              {breakdown.fees != null && <span>Fees: ${breakdown.fees.toFixed(2)}</span>}
+              {breakdown.hvac != null && <span>{breakdown.hvacLabel || 'HVAC-only'}: ${breakdown.hvac.toFixed(2)}</span>}
+              {breakdown.homeUsage != null && <span>{breakdown.homeUsageLabel || 'Baseload (non-HVAC)'}: ${breakdown.homeUsage.toFixed(2)}</span>}
+              {breakdown.fees != null && <span>{breakdown.feesLabel || 'Fixed Utility Fees'}: ${breakdown.fees.toFixed(2)}</span>}
+              {breakdown.hvac != null && breakdown.homeUsage != null && breakdown.fees != null && <span className="font-bold">{breakdown.totalLabel || 'Total Bill'}: ${(breakdown.hvac + breakdown.homeUsage + breakdown.fees).toFixed(2)}</span>}
             </p>
           )}
           {primarySystem === 'heatPump' && energyMode === 'heating' && roiSavings > 0 && (
