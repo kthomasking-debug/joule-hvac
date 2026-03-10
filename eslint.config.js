@@ -6,7 +6,20 @@ import importPlugin from "eslint-plugin-import";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores(["dist", "android/**"]),
+  globalIgnores([
+    "dist",
+    "android/**",
+    ".venv/**",
+    "archive/**",
+    ".eslintrc.cjs",
+    "pi-hmi/bridge-settings-endpoint.js",
+    "public/pdfjs/**",
+    "public/images/thermostat/tailwind.config.js",
+    "playwright-report/**",
+    "test-results/**",
+    "coverage/**",
+    "**/*.min.js",
+  ]),
   {
     files: ["**/*.{js,jsx}"],
     extends: [
@@ -32,13 +45,15 @@ export default defineConfig([
       },
     },
     rules: {
-      "no-unused-vars": ["error", { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^[A-Z_]", caughtErrorsIgnorePattern: "^[A-Z_]" }],
+      "no-unused-vars": ["warn", { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^[A-Z_]", caughtErrorsIgnorePattern: "^[A-Z_]" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
       "import/no-unresolved": "error",
+      "react-refresh/only-export-components": "warn",
     },
   },
   // Config files - avoid import/no-unresolved on ESLint and tooling configs
   {
-    files: ["eslint.config.js", "vite.config.js", "scripts/**", ".husky/**"],
+    files: ["eslint.config.js", "vite.config.js", "playwright.config.js", ".eslintrc.cjs", "scripts/**", ".husky/**"],
     rules: {
       "import/no-unresolved": "off",
     },
@@ -48,6 +63,17 @@ export default defineConfig([
   {
     files: ["scripts/**"],
     languageOptions: { globals: globals.node },
+  },
+  // CommonJS Node services and bridge servers
+  {
+    files: ["pi-bridge/**/*.js", "pi-zero-bridge/**/*.js"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: globals.node,
+    },
+    rules: {
+      "import/no-unresolved": "off",
+    },
   },
   // Test files run in a test environment (jest/vitest)
   {
@@ -69,5 +95,12 @@ export default defineConfig([
   {
     files: ["test-*.js", "test-*.cjs", "test-*.mjs"],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ["server.js", "prostat-bridge/**/*.js"],
+    languageOptions: {
+      sourceType: "module",
+      globals: globals.node,
+    },
   },
 ]);

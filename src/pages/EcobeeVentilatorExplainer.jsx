@@ -891,7 +891,7 @@ Thermostat cable:
 
 Ventilator is spliced into G:
   G from thermostat ---> HVAC G terminal
-                    \--> Ventilator "run" or damper input
+                    \\--> Ventilator "run" or damper input
 
 Result:
   Vent runs whenever fan runs (and often whenever heat/cool runs too).

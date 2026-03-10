@@ -12,7 +12,7 @@
   // Import the parser
   let parseAskJoule;
   try {
-    const module = await import("/src/utils/askJouleParser.js");
+    const module = await import("./src/utils/askJouleParser.js");
     parseAskJoule = module.parseAskJoule || module.default;
     console.log("✅ Parser loaded successfully\n");
   } catch (error) {

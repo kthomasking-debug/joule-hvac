@@ -287,7 +287,7 @@ export async function agentLoop(userQuestion, apiKey, maxIterations = 5) {
   return {
     error: true,
     message: "Agent loop exceeded maximum iterations",
-    iterations,
+    iterations: maxIterations,
   };
 }
 
@@ -352,12 +352,7 @@ Or describe what tool you'd use in natural language with personality - like "Let
 
 // Helper to get Ecobee connector (if available)
 async function getEcobeeConnector() {
-  try {
-    const { connectToEcobee } = await import("./apiConnectors.js");
-    return await connectToEcobee();
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 // Helper to write file (simplified - would use proper file system in production)

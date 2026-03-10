@@ -332,11 +332,6 @@ export async function classifyIntentWithLLM(userQuery, groqApiKey) {
       }
     }
     
-    // Extract value for temperature commands
-    if (parsed.intent === "setTemp" && params.value) {
-      params.value = params.value;
-    }
-    
     // Build result object
     const result = {
       action,

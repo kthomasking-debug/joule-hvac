@@ -500,11 +500,4 @@ export class EnergyOptimizer {
   }
 }
 
-// Export all enhancements
-export {
-  ConversationMemory,
-  ProactiveAlerts,
-  DailyBriefing,
-  PatternRecognition,
-  EnergyOptimizer,
-};
+

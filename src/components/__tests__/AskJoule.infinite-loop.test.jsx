@@ -89,8 +89,7 @@ describe("AskJoule - Infinite Loop Prevention", () => {
     mockIsSpeaking = false;
     mockIsEnabled = false;
     mockIsListening = false;
-    mockOnEndCallback = null;
-    
+
     vi.clearAllMocks();
   });
 

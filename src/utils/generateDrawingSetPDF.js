@@ -46,7 +46,7 @@ function markdownToText(markdown) {
     // Convert inline code
     .replace(/`([^`]+)`/g, "$1")
     // Convert links (keep text)
-    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     // Convert blockquotes
     .replace(/^> (.*$)/gim, "$1")
     // Convert horizontal rules

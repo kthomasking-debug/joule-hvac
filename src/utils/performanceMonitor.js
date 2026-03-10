@@ -1,3 +1,5 @@
+import React from "react";
+
 /**
  * Performance Monitoring Utility
  *
@@ -172,24 +174,11 @@ export const performanceMonitor = new PerformanceMonitor();
  * @requires React - Must be imported in the component using this hook
  */
 export function usePerformanceTracking(componentName) {
-  if (typeof window === "undefined") return;
-
-  // Note: React must be imported in the component using this hook
-  // This avoids adding React as a dependency to this utility
-  const React =
-    typeof window !== "undefined" && window.React
-      ? window.React
-      : (() => {
-          try {
-            return require("react");
-          } catch {
-            return null;
-          }
-        })();
-
-  if (!React || !React.useEffect) return;
-
   React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
     const startTime = performance.now();
 
     return () => {
@@ -206,19 +195,6 @@ export function usePerformanceTracking(componentName) {
  * @requires React - Must be imported in the file using this HOC
  */
 export function withPerformanceTracking(Component, componentName) {
-  const React =
-    typeof window !== "undefined" && window.React
-      ? window.React
-      : (() => {
-          try {
-            return require("react");
-          } catch {
-            return null;
-          }
-        })();
-
-  if (!React) return Component;
-
   return function TrackedComponent(props) {
     usePerformanceTracking(componentName);
     return React.createElement(Component, props);

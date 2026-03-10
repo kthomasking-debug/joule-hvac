@@ -58,6 +58,19 @@ const Analysis = () => {
 
   // City Cost Comparison wrapper components
   const CityComparison = () => {
+    const outletContext = useOutletContext() || {};
+    const { setUserSetting } = outletContext;
+
+    const isGasElectricRoute =
+      location.pathname.includes('/analysis/city-comparison/gas-electric') ||
+      location.pathname.includes('/tools/city-cost-comparison/gas-electric');
+
+    React.useEffect(() => {
+      if (isGasElectricRoute && setUserSetting) {
+        setUserSetting("primarySystem", "gasFurnace");
+      }
+    }, [isGasElectricRoute, setUserSetting]);
+
     // Check if we're on a sub-route (support both old /analysis and new /tools paths)
     if (location.pathname === '/analysis/city-comparison' || location.pathname === '/tools/city-cost-comparison') {
       return <CityComparisonLanding />;
@@ -65,17 +78,7 @@ const Analysis = () => {
     if (location.pathname.includes('/analysis/city-comparison/heat-pump') || location.pathname.includes('/tools/city-cost-comparison/heat-pump')) {
       return <MonthlyBudgetPlanner initialMode="comparison" />;
     }
-    if (location.pathname.includes('/analysis/city-comparison/gas-electric') || location.pathname.includes('/tools/city-cost-comparison/gas-electric')) {
-      const outletContext = useOutletContext() || {};
-      const { setUserSetting } = outletContext;
-      
-      // Force gas furnace for heating, electric for cooling
-      React.useEffect(() => {
-        if (setUserSetting) {
-          setUserSetting("primarySystem", "gasFurnace");
-        }
-      }, [setUserSetting]);
-      
+    if (isGasElectricRoute) {
       return <MonthlyBudgetPlanner initialMode="comparison" />;
     }
     // Default to landing page

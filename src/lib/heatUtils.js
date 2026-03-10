@@ -590,7 +590,7 @@ export function computeHourlyCoolingPerformance(
       seer2: _seer2,
       solarExposure: _solarExposure,
       outdoorTemp: _outdoorTemp,
-          humidity: rh,
+      humidity: _humidity,
     });
   }
 

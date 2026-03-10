@@ -269,7 +269,7 @@ describe('MonthlyBudgetPlanner', () => {
     await act(async () => { fireEvent.click(searchBtn); });
 
     // Wait for error message to appear
-    const errorMsg = await screen.findByText(/Could not find \"InvalidCityXYZ123\"/i);
+    const errorMsg = await screen.findByText(/Could not find "InvalidCityXYZ123"/i);
     expect(errorMsg).toBeInTheDocument();
   });
 
@@ -359,7 +359,7 @@ describe('MonthlyBudgetPlanner', () => {
     await act(async () => { fireEvent.click(searchBtn); });
 
     // Error appears
-    const errorMsg = await screen.findByText(/Could not find \"InvalidCity\"/i);
+    const errorMsg = await screen.findByText(/Could not find "InvalidCity"/i);
     expect(errorMsg).toBeInTheDocument();
 
     // Second search - succeeds

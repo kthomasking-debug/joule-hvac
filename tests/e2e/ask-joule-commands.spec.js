@@ -194,7 +194,7 @@ test.describe("Ask Joule Command Parser - 100 Commands Test", () => {
         // In production builds, source files aren't available, so we need to handle this gracefully
         let parseAskJoule;
         try {
-          const module = await import("/src/utils/askJouleParser.js");
+          const module = await import("../../src/utils/askJouleParser.js");
           parseAskJoule = module.parseAskJoule || module.default;
         } catch (error) {
           // In production builds, source files aren't available

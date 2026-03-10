@@ -627,7 +627,7 @@ export function useSpeechSynthesis(options = {}) {
         .replace(/\*/g, ", ") // Replace italic markers (*) with comma pause (short silence)
         .replace(/`/g, "") // Remove code markers (`)
         .replace(/#/g, "") // Remove header markers (#)
-        .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1") // Convert links [text](url) to just "text"
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Convert links [text](url) to just "text"
         // Replace symbols with spoken equivalents
         .replace(/→/g, " to ") // Right arrow → "to"
         .replace(/←/g, " from ") // Left arrow → "from"

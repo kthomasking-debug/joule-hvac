@@ -1780,7 +1780,7 @@ function cleanText(text) {
   // First, protect only actual mathematical expressions (must have numbers)
   const equationPatterns = [
     // Patterns like "28 = 24" or "0.2 x 5" or "8 / 2" (numbers with operators)
-    /(\d+\.?\d*\s*[xX×\/=+\-]\s*\d+\.?\d*)/g,
+    /(\d+\.?\d*\s*[xX×/=+-]\s*\d+\.?\d*)/g,
     // Patterns like "voltage = 28" or "current = 0.2" (variable = number)
     /([a-zA-Z]+\s*=\s*\d+\.?\d*)/g,
     // Patterns with minus between numbers only "28 - 8"
