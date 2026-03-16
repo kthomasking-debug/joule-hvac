@@ -26,6 +26,7 @@ const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
 const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Tools = lazy(() => import("./pages/Tools"));
+const WellnessTools = lazy(() => import("./pages/WellnessTools"));
 const NWSSnowfallChart = lazy(() => import("./pages/NWSSnowfallChart"));
 const EnergyPlusLoadCalc = lazy(() => import("./pages/EnergyPlusLoadCalc"));
 const WiringDiagramGenerator = lazy(() => import("./pages/WiringDiagramGenerator"));
@@ -94,6 +95,15 @@ const BridgeRemoteAccessWizard = lazy(() => import("./pages/BridgeRemoteAccessWi
 const GeneratorCalculator = lazy(() => import("./pages/GeneratorCalculator"));
 const EcobeeSettingsSandbox = lazy(() => import("./pages/EcobeeSettingsSandbox"));
 const BridgePerformance = lazy(() => import("./pages/BridgePerformance"));
+const CaffeineTracker = lazy(() => import("./pages/CaffeineTracker"));
+const ClonazepamTracker = lazy(() => import("./pages/ClonazepamTracker"));
+const VilazodoneTracker = lazy(() => import("./pages/VilazodoneTracker"));
+const LamotrigineTracker = lazy(() => import("./pages/LamotrigineTracker"));
+const DoxylamineTracker = lazy(() => import("./pages/DoxylamineTracker"));
+const TrazodoneTracker = lazy(() => import("./pages/TrazodoneTracker"));
+const LevothyroxineTracker = lazy(() => import("./pages/LevothyroxineTracker"));
+const MedicationMixModel = lazy(() => import("./pages/MedicationMixModel"));
+const MedicationVisualModels = lazy(() => import("./pages/MedicationVisualModels"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfUse = lazy(() => import("./legal/TermsOfUse"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
@@ -136,6 +146,8 @@ import {
   Shield,
   Scale,
   ReceiptText,
+  Coffee,
+  Pill,
 } from "lucide-react";
 
 export const routes = [
@@ -273,6 +285,105 @@ export const routes = [
     inMobileNav: false,
     inPrimaryNav: false,
     description: "Fix for Ecobee thermostat frost control settings disappearing. Interactive guide to resolve the AC Overcooling bug.",
+  },
+  {
+    path: "/tools/caffeine-tracker",
+    name: "Caffeine Tracker",
+    label: "Caffeine Tracker",
+    icon: Coffee,
+    Component: CaffeineTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track caffeine intake from green tea, Earl Grey, and coffee by body weight with adenosine receptor impact estimates.",
+  },
+  {
+    path: "/tools/clonazepam-tracker",
+    name: "Clonazepam Tracker",
+    label: "Clonazepam Tracker",
+    icon: Pill,
+    Component: ClonazepamTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track clonazepam doses and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/vilazodone-tracker",
+    name: "Vilazodone Tracker",
+    label: "Vilazodone Tracker",
+    icon: Pill,
+    Component: VilazodoneTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track vilazodone dose timing and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/lamotrigine-tracker",
+    name: "Lamotrigine Tracker",
+    label: "Lamotrigine Tracker",
+    icon: Pill,
+    Component: LamotrigineTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track lamotrigine dose timing and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/doxylamine-tracker",
+    name: "Doxylamine Tracker",
+    label: "Doxylamine Tracker",
+    icon: Pill,
+    Component: DoxylamineTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track doxylamine dose timing and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/trazodone-tracker",
+    name: "Trazodone Tracker",
+    label: "Trazodone Tracker",
+    icon: Pill,
+    Component: TrazodoneTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track trazodone dose timing and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/levothyroxine-tracker",
+    name: "Levothyroxine Tracker",
+    label: "Levothyroxine Tracker",
+    icon: Pill,
+    Component: LevothyroxineTracker,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Track levothyroxine dose timing and estimated active amount over time using a configurable half-life model.",
+  },
+  {
+    path: "/tools/medication-visual-models",
+    name: "Medication Visual Models",
+    label: "Medication Visual Models",
+    icon: Activity,
+    Component: MedicationVisualModels,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Animated visual models for clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine.",
+  },
+  {
+    path: "/tools/medication-mix-model",
+    name: "Medication Mix Model",
+    label: "Medication Mix Model",
+    icon: Activity,
+    Component: MedicationMixModel,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "Estimate combined CNS load from clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine using existing tracker logs.",
   },
   {
     path: "/tools/hot-tub-wire-calculator",
@@ -779,10 +890,21 @@ export const routes = [
     label: "Tools",
     icon: Tool,
     Component: Tools,
+    showInNav: true,
+    inMobileNav: true,
+    inPrimaryNav: true,
+    description: "HVAC calculation, wiring, and troubleshooting tools",
+  },
+  {
+    path: "/tools/wellness",
+    name: "Wellness Hub",
+    label: "Wellness Hub",
+    icon: Heart,
+    Component: WellnessTools,
     showInNav: false,
     inMobileNav: false,
     inPrimaryNav: false,
-    description: "HVAC calculation, wiring, and troubleshooting tools",
+    description: "Wellness-only hub for medication, caffeine, and interaction modeling tools.",
   },
   {
     path: "/tools/energyplus",

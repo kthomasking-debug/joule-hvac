@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap, CloudSnow, Monitor, Droplets } from "lucide-react";
+import { Calculator, Cable, Settings as SettingsIcon, Wrench, FileAudio, Network, FileText, Image, MessageSquare, Server, Chrome, Search, MapPin, Thermometer, Moon, Gauge, X, Zap, CloudSnow, Monitor, Droplets, Coffee, Pill } from "lucide-react";
 
 const sections = [
   {
@@ -128,8 +128,8 @@ const sections = [
     ],
   },
   {
-    title: "Electrical",
-    description: "Electrical wiring and troubleshooting tools",
+    title: "Electrical & Wiring",
+    description: "Electrical calculations, wire sizing, and wiring visualizers",
     tools: [
       {
         path: "/tools/generator-calculator",
@@ -174,8 +174,8 @@ const sections = [
     ],
   },
   {
-    title: "Search Engine",
-    description: "Search HVAC knowledge base and documentation",
+    title: "Data & Resources",
+    description: "Knowledge base search, weather forecasts, and reference data",
     tools: [
       {
         path: "/tools/knowledge-base-search",
@@ -185,12 +185,6 @@ const sections = [
         description: "Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.",
         color: "purple",
       },
-    ],
-  },
-  {
-    title: "Weather & Climate",
-    description: "Weather forecasts and climate data visualization",
-    tools: [
       {
         path: "/tools/snowfall-forecast",
         name: "NWS Snowfall Forecast",
@@ -198,6 +192,92 @@ const sections = [
         icon: CloudSnow,
         description: "7-day snowfall forecast from the National Weather Service. View predicted snowfall amounts and probabilities for your location.",
         color: "blue",
+      },
+    ],
+  },
+  {
+    title: "Wellness",
+    description: "Personal health and lifestyle tracking tools",
+    tools: [
+      {
+        path: "/tools/wellness",
+        name: "Wellness Hub",
+        label: "Wellness Hub",
+        icon: Thermometer,
+        description: "Open the wellness-only hub with medication trackers, mix model, and visual models.",
+        color: "purple",
+      },
+      {
+        path: "/tools/caffeine-tracker",
+        name: "Caffeine Tracker",
+        label: "Caffeine Tracker",
+        icon: Coffee,
+        description: "Track green tea, Earl Grey black tea, and coffee intake using your body weight to estimate active caffeine and adenosine receptor impact.",
+        color: "green",
+      },
+      {
+        path: "/tools/clonazepam-tracker",
+        name: "Clonazepam Tracker",
+        label: "Clonazepam Tracker",
+        icon: Pill,
+        description: "Track clonazepam dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/vilazodone-tracker",
+        name: "Vilazodone Tracker",
+        label: "Vilazodone Tracker",
+        icon: Pill,
+        description: "Track vilazodone dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/lamotrigine-tracker",
+        name: "Lamotrigine Tracker",
+        label: "Lamotrigine Tracker",
+        icon: Pill,
+        description: "Track lamotrigine dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/doxylamine-tracker",
+        name: "Doxylamine Tracker",
+        label: "Doxylamine Tracker",
+        icon: Pill,
+        description: "Track doxylamine dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/trazodone-tracker",
+        name: "Trazodone Tracker",
+        label: "Trazodone Tracker",
+        icon: Pill,
+        description: "Track trazodone dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/levothyroxine-tracker",
+        name: "Levothyroxine Tracker",
+        label: "Levothyroxine Tracker",
+        icon: Pill,
+        description: "Track levothyroxine dose timing and estimated active amount over time using a configurable half-life model.",
+        color: "purple",
+      },
+      {
+        path: "/tools/medication-visual-models",
+        name: "Medication Visual Models",
+        label: "Medication Visual Models",
+        icon: Thermometer,
+        description: "Animated visual model cards for clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine.",
+        color: "purple",
+      },
+      {
+        path: "/tools/medication-mix-model",
+        name: "Medication Mix Model",
+        label: "Medication Mix Model",
+        icon: Thermometer,
+        description: "Estimate combined CNS load from clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine using your existing tracker logs.",
+        color: "purple",
       },
     ],
   },
@@ -243,7 +323,7 @@ export default function Tools() {
           Tools
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          HVAC calculation, wiring, and troubleshooting tools
+          HVAC calculation, wiring, troubleshooting, and wellness tools
         </p>
       </div>
 
