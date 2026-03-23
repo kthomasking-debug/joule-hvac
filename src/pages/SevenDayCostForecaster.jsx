@@ -2301,7 +2301,7 @@ const SevenDayCostForecaster = () => {
                           <div className="text-xs text-gray-400">Total Energy</div>
                         </div>
                         <div className="bg-gradient-to-br from-cyan-900/30 to-teal-900/30 rounded-lg p-3 text-center border border-cyan-700/50">
-                          <div className="text-2xl font-bold text-cyan-400">{formatEnergyFromKwh(weeklyMetrics.totalHPEnergy || 0, unitSystem, { decimals: 1 })}</div>
+                          <div className="text-2xl font-bold text-cyan-400">{formatEnergyFromKwh(weeklyMetrics.totalEnergy || 0, unitSystem, { decimals: 1 })}</div>
                           <div className="text-xs text-gray-400">Heat Pump</div>
                         </div>
                         <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 rounded-lg p-3 text-center border border-orange-700/50">
@@ -2361,9 +2361,9 @@ const SevenDayCostForecaster = () => {
                                 <div>
                                   <div className="font-medium text-white">{day.day}</div>
                                   <div className="text-xs text-gray-400">
-                                    {day.minTemp !== undefined && day.maxTemp !== undefined 
-                                      ? `${formatTemperatureFromF(day.minTemp, unitSystem, { decimals: 0, withUnit: false })} - ${formatTemperatureFromF(day.maxTemp, unitSystem, { decimals: 0 })}`
-                                      : `Avg: ${formatTemperatureFromF(day.avgTemp || 35, unitSystem, { decimals: 0 })}`
+                                    {day.lowTemp !== undefined && day.highTemp !== undefined 
+                                      ? `${formatTemperatureFromF(day.lowTemp, unitSystem, { decimals: 0, withUnit: false })} - ${formatTemperatureFromF(day.highTemp, unitSystem, { decimals: 0 })}`
+                                      : `Avg: ${formatTemperatureFromF((day.lowTemp + day.highTemp) / 2, unitSystem, { decimals: 0 })}`
                                     }
                                   </div>
                                 </div>
@@ -2380,10 +2380,10 @@ const SevenDayCostForecaster = () => {
                   
                   {/* Weather Analysis */}
                   {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (() => {
-                    const temps = weeklyMetrics.summary.map(d => d.avgTemp || ((d.minTemp + d.maxTemp) / 2) || 40);
+                    const temps = weeklyMetrics.summary.map(d => (d.lowTemp + d.highTemp) / 2);
                     const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
-                    const minTemps = weeklyMetrics.summary.map(d => d.minTemp || d.avgTemp || 40);
-                    const maxTemps = weeklyMetrics.summary.map(d => d.maxTemp || d.avgTemp || 40);
+                    const minTemps = weeklyMetrics.summary.map(d => d.lowTemp);
+                    const maxTemps = weeklyMetrics.summary.map(d => d.highTemp);
                     const coldestLow = Math.min(...minTemps);
                     const warmestHigh = Math.max(...maxTemps);
                     const coldDays = temps.filter(t => t < 32).length;
@@ -2453,10 +2453,10 @@ const SevenDayCostForecaster = () => {
                   {/* Example Day Calculation */}
                   {weeklyMetrics && weeklyMetrics.summary && weeklyMetrics.summary.length > 0 && (() => {
                     // Pick the coldest day as the example
-                    const temps = weeklyMetrics.summary.map(d => d.avgTemp || ((d.minTemp + d.maxTemp) / 2) || 40);
+                    const temps = weeklyMetrics.summary.map(d => (d.lowTemp + d.highTemp) / 2);
                     const coldestIdx = temps.indexOf(Math.min(...temps));
                     const exampleDay = weeklyMetrics.summary[coldestIdx];
-                    const exampleAvgTemp = exampleDay.avgTemp || ((exampleDay.minTemp + exampleDay.maxTemp) / 2) || 35;
+                    const exampleAvgTemp = (exampleDay.lowTemp + exampleDay.highTemp) / 2;
                     const deltaT = indoorTemp - exampleAvgTemp;
                     const heatLossBtuHr = (effectiveHeatLoss / 70) * deltaT;
                     
@@ -2487,14 +2487,14 @@ const SevenDayCostForecaster = () => {
                           <div className="h-px bg-slate-700 my-2"></div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">Daily Energy:</span>
-                            <span className="text-blue-400">{formatEnergyFromKwh(exampleDay.totalKwh || exampleDay.hpKwh || 0, unitSystem, { decimals: 1 })}</span>
+                            <span className="text-blue-400">{formatEnergyFromKwh(exampleDay.energyWithAux || 0, unitSystem, { decimals: 1 })}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-400">Daily Cost:</span>
-                            <span className="text-green-400 font-bold">${(exampleDay.costWithAux || exampleDay.dailyCost || 0).toFixed(2)}</span>
+                            <span className="text-green-400 font-bold">${(exampleDay.costWithAux || 0).toFixed(2)}</span>
                           </div>
                           <div className="text-xs text-gray-500 ml-4">
-                            = {(exampleDay.totalKwh || exampleDay.hpKwh || 0).toFixed(1)} kWh × ${utilityCost.toFixed(3)}/kWh
+                            = {(exampleDay.energyWithAux || 0).toFixed(1)} kWh × ${utilityCost.toFixed(3)}/kWh
                           </div>
                         </div>
                       </div>

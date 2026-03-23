@@ -1124,6 +1124,11 @@ const GroqApiKeyInput = () => {
     setValue(val);
     try {
       if (val) {
+        if (aiProvider !== AI_PROVIDERS.GROQ) {
+          setAiProvider(AI_PROVIDERS.GROQ);
+          localStorage.setItem("aiProvider", AI_PROVIDERS.GROQ);
+          persistAIConfigToBridge("aiProvider", AI_PROVIDERS.GROQ);
+        }
         localStorage.setItem("groqApiKey", val);
         persistAIConfigToBridge("groqApiKey", val);
         // Dispatch custom event for same-tab sync (Ask Joule)
@@ -1200,6 +1205,12 @@ const GroqApiKeyInput = () => {
           </label>
         </div>
       </div>
+
+      {aiProvider === AI_PROVIDERS.GROQ && !!value?.trim() && (
+        <div className="p-3 rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-sm text-green-800 dark:text-green-300">
+          ✅ Groq is active. Ask Joule will use Groq by default.
+        </div>
+      )}
 
       {aiProvider === AI_PROVIDERS.GROQ && (
       <>

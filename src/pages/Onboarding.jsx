@@ -62,13 +62,14 @@ const STEPS = {
   BUILDING: 2,
   THERMOSTAT: 3,
   COST_SETTINGS: 4,
-  BILL_UPLOAD: 5,
-  ANALYZING: 6,
-  PAYOFF: 7,
+  AI: 5,
+  BILL_UPLOAD: 6,
+  ANALYZING: 7,
+  PAYOFF: 8,
 };
 
 // Step labels for progress bar
-const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Thermostat', 'Costs', 'Bill', 'Analyzing', 'Done'];
+const STEP_LABELS = ['Welcome', 'Location', 'Building', 'Thermostat', 'Costs', 'AI', 'Bill', 'Analyzing', 'Done'];
 
 // Step benefits - what each step unlocks
 const STEP_BENEFITS = {
@@ -76,6 +77,7 @@ const STEP_BENEFITS = {
   [STEPS.BUILDING]: 'Calculates your home\'s heat loss for accurate costs',
   [STEPS.THERMOSTAT]: 'Makes your cost forecasts match how you actually live',
   [STEPS.COST_SETTINGS]: 'Used for 7-day forecasts, annual estimates, and gas vs heat pump comparisons',
+  [STEPS.AI]: 'Enables Ask Joule bill analysis and explanations',
   [STEPS.BILL_UPLOAD]: 'Finally someone will explain this',
 };
 
@@ -88,16 +90,16 @@ export default function Onboarding() {
   // Check if this is a forced re-run
   const isRerun = searchParams.get("rerun") === "true";
 
-  // Check if onboarding should be shown
-  // ONLY show onboarding if explicitly triggered with rerun=true parameter
-  // This means onboarding is skipped on app startup but can be manually triggered from Mission Control
+  // Check if onboarding has actually been completed
   const hasCompletedOnboarding = useMemo(() => {
     if (isRerun) {
       return false; // Force show onboarding flow if rerun parameter is present
     }
-    // For all other cases (direct navigation without rerun param), skip onboarding
-    // Users will be redirected to home via the conditional render below
-    return true;
+    try {
+      return localStorage.getItem("hasCompletedOnboarding") === "true";
+    } catch {
+      return false;
+    }
   }, [isRerun]);
 
   // Onboarding state
@@ -248,7 +250,7 @@ export default function Onboarding() {
   }, []);
 
   // Building details are now REQUIRED in all modes for Ask Joule to work properly
-  const totalSteps = 8; // Welcome, Location, Building, Thermostat, Cost Settings, Bill, Analyzing, Done
+  const totalSteps = 9; // Welcome, Location, Building, Thermostat, Cost Settings, AI, Bill, Analyzing, Done
   
   // Bridge Setup State
   const [bridgeIp, setBridgeIp] = useState(localStorage.getItem('bridgeIp') || '');
@@ -712,6 +714,18 @@ export default function Onboarding() {
           window.dispatchEvent(new Event("storage"));
         }
       } catch { /* ignore */ }
+      setStep(STEPS.AI);
+    } else if (step === STEPS.AI) {
+      const trimmedGroqKey = onboardingGroqKey.trim();
+      try {
+        if (trimmedGroqKey) {
+          localStorage.setItem("groqApiKey", trimmedGroqKey);
+          localStorage.setItem("aiProvider", AI_PROVIDERS.GROQ);
+        }
+        window.dispatchEvent(new Event("storage"));
+      } catch {
+        // ignore
+      }
       setStep(STEPS.BILL_UPLOAD);
     } else if (step === STEPS.BILL_UPLOAD) {
       // Extract bill during onboarding so Monthly page opens with correct dates and full data
@@ -793,7 +807,7 @@ export default function Onboarding() {
     } else if (step === STEPS.PAYOFF) {
       completeOnboarding();
     }
-  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, setUserSetting, calculatedHeatLoss, completeOnboarding, billPasteText, billAmountManual, billFlatFee, billMonth, billYear]);
+  }, [step, foundLocation, squareFeet, insulationLevel, homeShape, hasLoft, ceilingHeight, primarySystem, heatPumpTons, furnaceSizeKbtu, afue, acTons, heatLossSource, daytimeTemp, nightTemp, dropsAtNight, utilityCost, gasCost, setUserSetting, calculatedHeatLoss, completeOnboarding, onboardingGroqKey, billPasteText, billAmountManual, billFlatFee, billMonth, billYear]);
 
   // Extract text from PDF bill (for Bill step)
   const extractBillPdf = useCallback(async (file) => {
@@ -1727,7 +1741,65 @@ export default function Onboarding() {
           );
         })()}
 
-        {/* Step 5: Bill Upload — emotional hook */}
+        {/* Step 5: AI setup (Groq key optional but recommended) */}
+        {step === STEPS.AI && (
+          <div className="text-center space-y-6">
+            <div className="mb-2">
+              <Cpu size={36} className="mx-auto text-blue-600 dark:text-blue-400" />
+            </div>
+            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+              STEP {STEPS.AI + 1} OF {totalSteps}
+            </p>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              Add your Groq API key
+            </h2>
+            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Entering a key enables cloud AI immediately and sets Groq as your default model provider.
+            </p>
+
+            <div className="max-w-2xl mx-auto text-left p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">How to get your key</p>
+              <ol className="list-decimal pl-5 text-sm text-gray-700 dark:text-gray-300 space-y-1">
+                <li>Go to <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">console.groq.com/keys</a>.</li>
+                <li>Sign in, then click <strong>Create API Key</strong>.</li>
+                <li>Copy the key and paste it below.</li>
+              </ol>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Groq API key
+                </label>
+                <input
+                  type="password"
+                  value={onboardingGroqKey}
+                  onChange={(e) => setOnboardingGroqKey(e.target.value)}
+                  placeholder="gsk_..."
+                  className={fullInputClasses}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Optional: leave blank to keep local AI defaults for now.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setStep(STEPS.COST_SETTINGS)}
+                className="btn btn-outline px-6 py-3"
+              >
+                Back
+              </button>
+              <button onClick={handleNext} className="btn btn-primary px-8 py-3">
+                <span className="flex items-center gap-1">
+                  Continue <ChevronRight size={18} />
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Bill Upload — emotional hook */}
         {step === STEPS.BILL_UPLOAD && (
           <div className="text-center space-y-6">
             <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
@@ -1847,7 +1919,7 @@ export default function Onboarding() {
 
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => setStep(STEPS.COST_SETTINGS)}
+                onClick={() => setStep(STEPS.AI)}
                 className="btn btn-outline px-6 py-3"
                 disabled={billExtracting}
               >

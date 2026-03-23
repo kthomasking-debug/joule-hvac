@@ -9,6 +9,7 @@ export default function DoxylamineTracker() {
       storagePrefix="doxylamineTracker"
       halfLifeOptions={[8, 10, 12]}
       defaultHalfLifeHours={10}
+      defaultDoseMg={25}
       showToleranceTracking
       toleranceMaxReduction={0.25}
       toleranceTauDays={8}

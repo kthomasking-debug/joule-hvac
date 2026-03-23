@@ -51,6 +51,7 @@ import { JouleBridgeProvider } from "./contexts/JouleBridgeContext";
 import { indexMarkdownDocs } from "./utils/rag/loadMarkdownDocs";
 import { shouldUseLearnedHeatLoss } from "./utils/billDataUtils";
 import { warmLLM, sanitizeOllamaBaseUrl } from "./lib/aiProvider";
+import { isBridgeBackedOff, setBridgeBackoff, clearBridgeBackoff, shouldAttemptBridgeConnection } from "./lib/jouleBridgeApi";
 
 function AppInner() {
   // Splash screen state - skip in test mode
@@ -220,6 +221,8 @@ function AppInner() {
   // Background sync: keep bridge HMI updated with forecast data every 5 minutes
   React.useEffect(() => {
     const syncToBridge = () => {
+      if (!shouldAttemptBridgeConnection()) return;
+      if (isBridgeBackedOff()) return;
       const bridgeUrl = localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL;
       if (!bridgeUrl) return;
       
@@ -239,7 +242,17 @@ function AppInner() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value: payload }),
-        }).catch(() => {});
+        })
+          .then((response) => {
+            if (!response.ok) {
+              setBridgeBackoff();
+              return;
+            }
+            clearBridgeBackoff();
+          })
+          .catch(() => {
+            setBridgeBackoff();
+          });
         
         if (import.meta.env.DEV) {
           console.log(`🔄 Background sync to bridge: $${(payload.totalMonthlyCost || payload.totalHPCost * 4.33).toFixed(2)}/month`);

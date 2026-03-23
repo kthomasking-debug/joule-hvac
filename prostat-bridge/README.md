@@ -218,6 +218,45 @@ Body: {
 ### Get Thermostat Status
 
 ```
+
+### ESP32 / E-Paper Summary (Recommended)
+
+For low-memory display clients (e.g., Waveshare ESP32-S3 e-paper), use:
+
+```
+GET /api/hmi/summary
+```
+
+Example:
+
+```bash
+curl http://localhost:8080/api/hmi/summary
+```
+
+Typical response:
+
+```json
+{
+  "success": true,
+  "updatedAt": 1763078400000,
+  "location": "Blairsville, Georgia",
+  "month": 3,
+  "monthName": "March",
+  "mode": "heating",
+  "targetTemp": 70,
+  "nightTemp": 66,
+  "totalMonthlyCost": 57.8,
+  "variableCost": 42.8,
+  "fixedCost": 15,
+  "totalEnergyKwh": 307.9,
+  "hpEnergyKwh": 307.9,
+  "auxEnergyKwh": 0,
+  "electricityRate": 0.139,
+  "source": "monthly_forecast"
+}
+```
+
+This payload is derived from `last_forecast_summary` and is intended to be stable and small for embedded displays.
 GET /api/status?device_id=XX:XX:XX:XX:XX:XX
 ```
 

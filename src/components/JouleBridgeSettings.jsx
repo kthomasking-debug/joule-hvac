@@ -12,6 +12,9 @@ import {
   getBlueairCredentials,
   setBlueairCredentials,
   getHomeKitBridgePairingInfo,
+  getBridgeInfo,
+  isBridgeBackedOff,
+  enableBridgeChecks,
 } from '../lib/jouleBridgeApi';
 import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw, Trash2, ExternalLink, Info, FileText, Eye, EyeOff, Home, Copy, ChevronDown, ChevronUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -65,6 +68,7 @@ export default function JouleBridgeSettings() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
+    enableBridgeChecks();
     loadState();
     checkHealth();
     runDiagnostics();
@@ -78,19 +82,12 @@ export default function JouleBridgeSettings() {
     // Don't check bridgeAvailable here - we might be calling this after setting it to true
     try {
       const urlToCheck = bridgeUrl || localStorage.getItem('jouleBridgeUrl') || import.meta.env.VITE_JOULE_BRIDGE_URL || 'http://joule-bridge.local:8080';
-      if (!urlToCheck) {
+      if (!urlToCheck || isBridgeBackedOff()) {
         setBridgeInfo(null);
         return;
       }
-      const response = await fetch(`${urlToCheck}/api/bridge/info`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) {
-        const info = await response.json();
-        setBridgeInfo(info);
-      } else {
-        setBridgeInfo(null);
-      }
+      const info = await getBridgeInfo();
+      setBridgeInfo(info || null);
     } catch (error) {
       console.debug('Error loading bridge info:', error);
       setBridgeInfo(null);
@@ -247,6 +244,12 @@ export default function JouleBridgeSettings() {
     setDuplicateProcesses(null);
     
     try {
+      if (isBridgeBackedOff()) {
+        setBridgeAvailable(false);
+        setHealthError('Bridge is temporarily unavailable. Retrying shortly.');
+        return;
+      }
+
       // Validate URL format
       try {
         new URL(urlToCheck);
@@ -254,40 +257,16 @@ export default function JouleBridgeSettings() {
         throw new Error(`Invalid URL format: ${urlToCheck}. Use format: http://hostname:port (e.g., http://192.168.0.106:8080)`);
       }
 
-      // Create AbortController for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      try {
-        const response = await fetch(`${urlToCheck}/health`, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-          credentials: 'omit',
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const available = true;
-          setBridgeAvailable(available);
-          // Load HomeKit bridge info after confirming bridge is available
-          loadHomeKitBridgeInfo();
-          setHealthError(null);
-          // Check for duplicate processes
-          await checkDuplicateProcesses();
-          // Load bridge info (hostname, IP, etc.)
-          await loadBridgeInfo();
-        } else {
-          setBridgeAvailable(false);
-          setHealthError('Bridge did not respond. Make sure it is running and accessible.');
-        }
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          throw new Error('Connection timeout. The bridge may be slow to respond or not running.');
-        }
-        throw fetchError;
+      const available = await checkBridgeHealth();
+      if (available) {
+        setBridgeAvailable(true);
+        loadHomeKitBridgeInfo();
+        setHealthError(null);
+        await checkDuplicateProcesses();
+        await loadBridgeInfo();
+      } else {
+        setBridgeAvailable(false);
+        setHealthError('Bridge did not respond. Make sure it is running and accessible.');
       }
     } catch (error) {
       console.error('Health check error:', error);

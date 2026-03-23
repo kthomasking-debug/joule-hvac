@@ -4154,6 +4154,77 @@ async def handle_get_setting(request):
             'error': str(e)
         }, status=500)
 
+async def handle_hmi_summary(request):
+    """GET /api/hmi/summary - Compact display payload for low-resource clients (ESP32/e-paper)
+
+    Returns a small, stable payload derived from last_forecast_summary and user settings.
+    This is intentionally flatter and lighter than /api/settings for microcontroller use.
+    """
+    try:
+        settings = load_settings()
+
+        forecast_data = None
+        forecast_file = os.path.join(get_data_directory(), 'last_forecast_summary.json')
+        if os.path.exists(forecast_file):
+            with open(forecast_file, 'r') as f:
+                forecast_data = json.load(f)
+        elif isinstance(settings.get('last_forecast_summary'), dict):
+            forecast_data = settings.get('last_forecast_summary')
+
+        if not isinstance(forecast_data, dict):
+            return web.json_response({
+                'success': False,
+                'error': 'No forecast summary available yet'
+            }, status=404)
+
+        user_settings = settings if isinstance(settings, dict) else {}
+        location = (
+            user_settings.get('location')
+            or user_settings.get('userLocation')
+            or {}
+        )
+
+        city = location.get('city')
+        state = location.get('state')
+        location_label = forecast_data.get('location')
+        if not location_label and city and state:
+            location_label = f"{city}, {state}"
+
+        month_num = forecast_data.get('month')
+        month_name = None
+        if isinstance(month_num, int) and 1 <= month_num <= 12:
+            month_name = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ][month_num - 1]
+
+        payload = {
+            'success': True,
+            'updatedAt': forecast_data.get('timestamp'),
+            'location': location_label,
+            'month': month_num,
+            'monthName': month_name,
+            'mode': forecast_data.get('mode'),
+            'targetTemp': forecast_data.get('targetTemp'),
+            'nightTemp': forecast_data.get('nightTemp'),
+            'totalMonthlyCost': forecast_data.get('totalMonthlyCost'),
+            'variableCost': forecast_data.get('variableCost'),
+            'fixedCost': forecast_data.get('fixedCost'),
+            'totalEnergyKwh': forecast_data.get('totalEnergyKwh'),
+            'hpEnergyKwh': forecast_data.get('hpEnergyKwh'),
+            'auxEnergyKwh': forecast_data.get('auxEnergyKwh'),
+            'electricityRate': forecast_data.get('electricityRate'),
+            'source': forecast_data.get('source'),
+        }
+
+        return web.json_response(payload)
+    except Exception as e:
+        logger.error(f"Error getting HMI summary: {e}")
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
 async def handle_set_setting(request):
     """POST /api/settings/{key} - Set a specific setting"""
     try:
@@ -4864,6 +4935,7 @@ async def init_app():
     # Settings management endpoints (remote configuration via Tailscale)
     app.router.add_get('/api/settings', handle_get_settings)
     app.router.add_get('/api/settings/{key}', handle_get_setting)
+    app.router.add_get('/api/hmi/summary', handle_hmi_summary)
     app.router.add_post('/api/settings', handle_set_settings_batch)
     app.router.add_post('/api/settings/{key}', handle_set_setting)
     app.router.add_delete('/api/settings/{key}', handle_delete_setting)

@@ -64,4 +64,21 @@ describe("Agent endpoint basic streaming", () => {
     expect(jouleResult).toBeTruthy();
     expect(jouleResult.output).toHaveProperty("jouleScore");
   });
+
+  it("runs calorie tool and returns recommended calories", async () => {
+    const events = await postSSE("/api/agent", {
+      goal: "Calculate daily calories unitSystem imperial, height 70, weight 180, steps 8000, age 30, sex male, goal maintain",
+    });
+
+    const calorieResult = events.find(
+      (e) => e.type === "tool_result" && e.tool === "calculateDailyCalories"
+    );
+
+    expect(calorieResult).toBeTruthy();
+    expect(calorieResult.output).toHaveProperty("recommendedCalories");
+    expect(calorieResult.output.recommendedCalories).toBeGreaterThan(1200);
+    expect(calorieResult.output).toHaveProperty("macroTargets");
+    expect(calorieResult.output.macroTargets).toHaveProperty("proteinG");
+    expect(Array.isArray(calorieResult.output.warnings)).toBe(true);
+  });
 });

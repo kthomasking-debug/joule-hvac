@@ -9,6 +9,63 @@ const JOULE_BRIDGE_URL = import.meta.env.VITE_JOULE_BRIDGE_URL;
 
 // Default bridge URL (mDNS hostname) - used when nothing is saved
 const DEFAULT_BRIDGE_URL = 'http://joule-bridge.local:8080';
+const BRIDGE_BACKOFF_UNTIL_KEY = "jouleBridgeBackoffUntil";
+const BRIDGE_CHECKS_ENABLED_KEY = "jouleBridgeChecksEnabled";
+const DEFAULT_BRIDGE_BACKOFF_MS = 2 * 60 * 1000;
+
+function getBridgeBackoffUntil() {
+  try {
+    return parseInt(localStorage.getItem(BRIDGE_BACKOFF_UNTIL_KEY) || "0", 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function isBridgeBackedOff() {
+  return Date.now() < getBridgeBackoffUntil();
+}
+
+export function setBridgeBackoff(durationMs = DEFAULT_BRIDGE_BACKOFF_MS) {
+  try {
+    const until = Date.now() + Math.max(1000, durationMs);
+    localStorage.setItem(BRIDGE_BACKOFF_UNTIL_KEY, String(until));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function clearBridgeBackoff() {
+  try {
+    localStorage.removeItem(BRIDGE_BACKOFF_UNTIL_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function enableBridgeChecks() {
+  try {
+    localStorage.setItem(BRIDGE_CHECKS_ENABLED_KEY, "true");
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function shouldAttemptBridgeConnection() {
+  try {
+    if (localStorage.getItem(BRIDGE_CHECKS_ENABLED_KEY) === "true") return true;
+    if ((localStorage.getItem("jouleBridgeUrl") || "").trim()) return true;
+    if ((localStorage.getItem("joulePrimaryDeviceId") || "").trim()) return true;
+    const pairedRaw = localStorage.getItem("joulePairedDevices");
+    if (pairedRaw) {
+      const paired = JSON.parse(pairedRaw);
+      if (Array.isArray(paired) && paired.length > 0) return true;
+    }
+    if (typeof window !== "undefined" && window.location?.port === "8080") return true;
+  } catch {
+    // ignore parse/storage errors
+  }
+  return false;
+}
 
 /**
  * Get Joule Bridge URL from settings or environment variable
@@ -30,8 +87,8 @@ function getBridgeUrl() {
 /**
  * Export getBridgeInfo for RemoteJouleSettings.jsx
  */
-export function getBridgeInfo() {
-  return getBridgeUrl();
+export async function getBridgeInfo() {
+  return bridgeRequest("/api/bridge/info");
 }
 
 /**
@@ -49,6 +106,14 @@ export class BridgeConnectionError extends Error {
  * Make API request to Joule Bridge
  */
 async function bridgeRequest(endpoint, options = {}) {
+  if (!shouldAttemptBridgeConnection()) {
+    throw new BridgeConnectionError("Bridge checks are disabled until bridge features are used.");
+  }
+
+  if (isBridgeBackedOff()) {
+    throw new BridgeConnectionError("Joule Bridge is temporarily unavailable. Retrying shortly.");
+  }
+
   const url = getBridgeUrl();
   try {
     const { headers, ...restOptions } = options;
@@ -79,7 +144,9 @@ async function bridgeRequest(endpoint, options = {}) {
       throw errorObj;
     }
 
-    return response.json();
+    const data = await response.json();
+    clearBridgeBackoff();
+    return data;
   } catch (error) {
     // Check if it's a connection refused error (Bridge not available)
     if (
@@ -88,6 +155,7 @@ async function bridgeRequest(endpoint, options = {}) {
         error.message.includes("ERR_CONNECTION_REFUSED") ||
         error.message.includes("NetworkError"))
     ) {
+      setBridgeBackoff();
       throw new BridgeConnectionError("Joule Bridge is not available");
     }
     throw error;
@@ -330,6 +398,14 @@ export async function setMode(deviceId, mode) {
  * @throws {Error} If there's a specific error that should be displayed to the user
  */
 export async function checkBridgeHealth() {
+  if (!shouldAttemptBridgeConnection()) {
+    return false;
+  }
+
+  if (isBridgeBackedOff()) {
+    return false;
+  }
+
   const url = getBridgeUrl();
   
   // Validate URL format
@@ -366,9 +442,11 @@ export async function checkBridgeHealth() {
       await response.json();
       // Check if response has expected structure (status: 'ok' or 'healthy')
       // But also accept any valid JSON response with 200 status as success
+      clearBridgeBackoff();
       return true;
     } catch {
       // If we can't parse JSON, but got a 200 response, still consider it ok
+      clearBridgeBackoff();
       return response.ok;
     }
   } catch (fetchError) {
@@ -386,6 +464,7 @@ export async function checkBridgeHealth() {
       fetchError.message.includes('NetworkError') ||
       fetchError.message.includes('ERR_NETWORK')
     )) {
+      setBridgeBackoff();
       throw new Error(`Cannot connect to bridge at ${url}. Make sure the bridge is running and the URL is correct.`);
     }
     

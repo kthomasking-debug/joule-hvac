@@ -9,6 +9,7 @@ export default function TrazodoneTracker() {
       storagePrefix="trazodoneTracker"
       halfLifeOptions={[5, 7, 9]}
       defaultHalfLifeHours={7}
+      defaultDoseMg={50}
       showToleranceTracking
       toleranceMaxReduction={0.28}
       toleranceTauDays={10}

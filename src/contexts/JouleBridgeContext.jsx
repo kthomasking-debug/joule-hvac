@@ -6,6 +6,7 @@ import {
   getPrimaryDeviceId,
   checkBridgeHealth,
   BridgeConnectionError,
+  shouldAttemptBridgeConnection,
 } from "../lib/jouleBridgeApi";
 import { cToF } from "../lib/units";
 
@@ -158,6 +159,10 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
 
   // Fetch primary device ID on mount
   useEffect(() => {
+    if (!shouldAttemptBridgeConnection()) {
+      setPrimaryId(null);
+      return;
+    }
     getPrimaryDeviceId().then(id => {
       setPrimaryId(id);
     });
@@ -166,6 +171,15 @@ export function JouleBridgeProvider({ children, deviceId = null, pollInterval = 
   // Initialize and start polling - only once
   useEffect(() => {
     if (initialized) return;
+
+    if (!shouldAttemptBridgeConnection()) {
+      setBridgeAvailable(false);
+      setConnected(false);
+      setError(null);
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
     
     let interval = null;
     let mounted = true;

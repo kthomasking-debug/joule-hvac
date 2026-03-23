@@ -6,6 +6,15 @@ export default function AgentConsole() {
   const { events, isRunning, lastFinal, run, abort } = useAgentRunner();
   const [goal, setGoal] = useState("");
   const [rememberSettings, setRememberSettings] = useState(true);
+  const [calorieForm, setCalorieForm] = useState({
+    unitSystem: "imperial",
+    height: "70",
+    weight: "180",
+    steps: "8000",
+    age: "30",
+    sex: "male",
+    goal: "maintain",
+  });
 
   const examplePrompts = [
     {
@@ -28,6 +37,11 @@ export default function AgentConsole() {
       text: "Joule score efficiency improvement suggestions",
       category: "Optimization",
     },
+    {
+      icon: Bot,
+      text: "Calculate daily calories: unitSystem imperial, height 70, weight 180, steps 8000, age 30, sex male, goal maintain",
+      category: "Wellness",
+    },
   ];
 
   const handleRun = () => {
@@ -35,6 +49,32 @@ export default function AgentConsole() {
       ? window.__APP_SETTINGS__ || null
       : null;
     run(goal, settingsSnapshot);
+  };
+
+  const handleCalorieFieldChange = (key, value) => {
+    setCalorieForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const buildCalorieGoal = () => {
+    return [
+      "Calculate daily calories",
+      `unitSystem ${calorieForm.unitSystem}`,
+      `height ${calorieForm.height}`,
+      `weight ${calorieForm.weight}`,
+      `steps ${calorieForm.steps}`,
+      `age ${calorieForm.age}`,
+      `sex ${calorieForm.sex}`,
+      `goal ${calorieForm.goal}`,
+    ].join(", ");
+  };
+
+  const handleRunCalorieTool = () => {
+    const settingsSnapshot = rememberSettings
+      ? window.__APP_SETTINGS__ || null
+      : null;
+    const calorieGoal = buildCalorieGoal();
+    setGoal(calorieGoal);
+    run(calorieGoal, settingsSnapshot);
   };
 
   return (
@@ -129,6 +169,101 @@ export default function AgentConsole() {
               className="px-4 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50 hover:bg-red-700 transition-colors"
             >
               Stop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+          Quick Tool: Daily Calorie Intake
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Unit System
+            <select
+              value={calorieForm.unitSystem}
+              onChange={(e) =>
+                handleCalorieFieldChange("unitSystem", e.target.value)
+              }
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            >
+              <option value="imperial">Imperial (in, lb)</option>
+              <option value="metric">Metric (cm, kg)</option>
+            </select>
+          </label>
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Height ({calorieForm.unitSystem === "metric" ? "cm" : "in"})
+            <input
+              type="number"
+              min="1"
+              value={calorieForm.height}
+              onChange={(e) => handleCalorieFieldChange("height", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            />
+          </label>
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Weight ({calorieForm.unitSystem === "metric" ? "kg" : "lb"})
+            <input
+              type="number"
+              min="1"
+              value={calorieForm.weight}
+              onChange={(e) => handleCalorieFieldChange("weight", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            />
+          </label>
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Steps / day
+            <input
+              type="number"
+              min="0"
+              value={calorieForm.steps}
+              onChange={(e) => handleCalorieFieldChange("steps", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Age
+            <input
+              type="number"
+              min="1"
+              value={calorieForm.age}
+              onChange={(e) => handleCalorieFieldChange("age", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            />
+          </label>
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Sex
+            <select
+              value={calorieForm.sex}
+              onChange={(e) => handleCalorieFieldChange("sex", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            >
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </label>
+          <label className="text-xs text-amber-900 dark:text-amber-100">
+            Goal
+            <select
+              value={calorieForm.goal}
+              onChange={(e) => handleCalorieFieldChange("goal", e.target.value)}
+              className="mt-1 w-full p-2 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800"
+            >
+              <option value="maintain">Maintain</option>
+              <option value="lose">Lose</option>
+              <option value="gain">Gain</option>
+            </select>
+          </label>
+          <div className="flex items-end">
+            <button
+              onClick={handleRunCalorieTool}
+              disabled={isRunning}
+              className="w-full px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold disabled:opacity-50 hover:bg-amber-700 transition-colors"
+            >
+              {isRunning ? "Running..." : "Run Calorie Tool"}
             </button>
           </div>
         </div>
@@ -304,6 +439,30 @@ export default function AgentConsole() {
                             {new Date(output.time).toLocaleString()}
                           </span>
                         </div>
+                      ) : e.tool === "calculateDailyCalories" &&
+                        output.recommendedCalories !== undefined ? (
+                        <div className="text-sm space-y-1">
+                          <div>
+                            Daily Calories:{" "}
+                            <span className="font-bold text-green-700 dark:text-green-300">
+                              {output.recommendedCalories}
+                            </span>
+                          </div>
+                          <div>Maintenance: {output.maintenanceCalories} kcal/day</div>
+                          <div>
+                            BMR: {output.bmr} kcal/day | Activity: {output.activityMultiplier}
+                          </div>
+                          {output.macroTargets && (
+                            <div>
+                              Macros: P {output.macroTargets.proteinG}g | C {output.macroTargets.carbsG}g | F {output.macroTargets.fatG}g
+                            </div>
+                          )}
+                          {Array.isArray(output.warnings) && output.warnings.length > 0 && (
+                            <div className="text-amber-700 dark:text-amber-300 text-xs pt-1">
+                              {output.warnings.join(" | ")}
+                            </div>
+                          )}
+                        </div>
                       ) : e.tool === "rememberFact" ? (
                         <div className="text-sm">
                           <span className="text-green-700 dark:text-green-300">
@@ -421,6 +580,9 @@ export default function AgentConsole() {
           </div>
           <div>
             • <strong>getJouleAnalysis</strong> - Score + upgrade suggestions
+          </div>
+          <div>
+            • <strong>calculateDailyCalories</strong> - BMR/TDEE calorie estimate
           </div>
           <div>
             • <strong>rememberFact</strong> - Store information

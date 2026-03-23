@@ -458,6 +458,129 @@ export function calculateEnergyImpact(params) {
 }
 
 /**
+ * Tool: Calculate daily caloric intake estimate
+ * Uses Mifflin-St Jeor BMR + activity estimate from daily steps
+ */
+export function calculateDailyCalories(params) {
+  const {
+    height,
+    weight,
+    steps = 0,
+    age = 30,
+    sex = "male",
+    unitSystem = "imperial",
+    goal = "maintain",
+  } = params || {};
+
+  if (height == null || weight == null) {
+    return {
+      error: true,
+      message: "height and weight are required",
+    };
+  }
+
+  const heightNum = Number(height);
+  const weightNum = Number(weight);
+  const stepsNum = Math.max(0, Number(steps) || 0);
+  const ageNum = Math.max(1, Number(age) || 30);
+
+  if (!Number.isFinite(heightNum) || !Number.isFinite(weightNum)) {
+    return {
+      error: true,
+      message: "height and weight must be valid numbers",
+    };
+  }
+
+  // Convert inputs to metric for the BMR equation.
+  const heightCm =
+    unitSystem === "metric" ? heightNum : Math.max(0, heightNum) * 2.54;
+  const weightKg =
+    unitSystem === "metric" ? weightNum : Math.max(0, weightNum) * 0.453592;
+
+  if (heightCm <= 0 || weightKg <= 0) {
+    return {
+      error: true,
+      message: "height and weight must be greater than zero",
+    };
+  }
+
+  const sexNormalized = String(sex).toLowerCase();
+  const warnings = [];
+
+  if (unitSystem === "metric") {
+    if (heightNum < 120 || heightNum > 230)
+      warnings.push("Height looks outside a typical adult range (120-230 cm)");
+    if (weightNum < 35 || weightNum > 230)
+      warnings.push("Weight looks outside a typical adult range (35-230 kg)");
+  } else {
+    if (heightNum < 48 || heightNum > 90)
+      warnings.push("Height looks outside a typical adult range (48-90 in)");
+    if (weightNum < 80 || weightNum > 500)
+      warnings.push("Weight looks outside a typical adult range (80-500 lb)");
+  }
+  if (ageNum < 16 || ageNum > 90)
+    warnings.push("Age is outside a typical adult range (16-90)");
+  if (stepsNum > 40000)
+    warnings.push("Steps value is unusually high; double-check daily step count");
+
+  const sexOffset = sexNormalized === "female" ? -161 : 5;
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageNum + sexOffset;
+
+  // Step-based activity multiplier approximation.
+  let activityMultiplier = 1.2;
+  if (stepsNum >= 12000) activityMultiplier = 1.75;
+  else if (stepsNum >= 10000) activityMultiplier = 1.6;
+  else if (stepsNum >= 7500) activityMultiplier = 1.45;
+  else if (stepsNum >= 5000) activityMultiplier = 1.35;
+
+  const maintenanceCalories = bmr * activityMultiplier;
+
+  let adjustment = 0;
+  const goalNormalized = String(goal).toLowerCase();
+  if (goalNormalized === "lose") adjustment = -500;
+  if (goalNormalized === "gain") adjustment = 300;
+
+  const recommendedCalories = Math.max(1200, maintenanceCalories + adjustment);
+  const weightLb = weightKg * 2.20462;
+  const proteinPerLb =
+    goalNormalized === "lose" ? 1.0 : goalNormalized === "gain" ? 0.9 : 0.8;
+  const fatRatio =
+    goalNormalized === "maintain" ? 0.3 : goalNormalized === "lose" ? 0.28 : 0.27;
+  const proteinG = Math.round(weightLb * proteinPerLb);
+  const fatG = Math.round((recommendedCalories * fatRatio) / 9);
+  const carbsG = Math.max(
+    0,
+    Math.round((recommendedCalories - proteinG * 4 - fatG * 9) / 4)
+  );
+
+  if (recommendedCalories < 1400)
+    warnings.push("Estimated calories are low; verify values and consider professional guidance");
+
+  return {
+    success: true,
+    inputs: {
+      height,
+      weight,
+      steps: stepsNum,
+      age: ageNum,
+      sex: sexNormalized,
+      unitSystem,
+      goal: goalNormalized,
+    },
+    bmr: Math.round(bmr),
+    activityMultiplier,
+    maintenanceCalories: Math.round(maintenanceCalories),
+    recommendedCalories: Math.round(recommendedCalories),
+    macroTargets: {
+      proteinG,
+      carbsG,
+      fatG,
+    },
+    warnings,
+  };
+}
+
+/**
  * Tool: Check system policy
  * Validates proposed actions against safety constraints
  */
@@ -937,6 +1060,11 @@ export const AVAILABLE_TOOLS = {
   calculateEnergyImpact: {
     description: "Calculate energy savings or cost for temperature changes",
     params: ["tempChange", "systemType", "utilityCost"],
+  },
+  calculateDailyCalories: {
+    description:
+      "Estimate daily calorie needs from height, weight, and daily steps",
+    params: ["height", "weight", "steps", "age (optional)", "sex (optional)", "unitSystem (optional)", "goal (optional)"],
   },
   checkPolicy: {
     description: "Validate an action against safety policies",

@@ -836,11 +836,12 @@ export function computeWeeklyMetrics(
   });
 
   const totalEnergy = summary.reduce((acc, day) => acc + day.energy, 0);
+  const totalAuxEnergy = summary.reduce((acc, day) => acc + day.auxEnergy, 0);
   const totalCost = summary.reduce((acc, day) => acc + day.cost, 0);
   const totalCostWithAux = summary.reduce(
     (acc, day) => acc + day.costWithAux,
     0
   );
 
-  return { summary, totalEnergy, totalCost, totalCostWithAux };
+  return { summary, totalEnergy, totalAuxEnergy, totalCost, totalCostWithAux };
 }

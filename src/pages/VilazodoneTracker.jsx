@@ -9,6 +9,7 @@ export default function VilazodoneTracker() {
       storagePrefix="vilazodoneTracker"
       halfLifeOptions={[20, 25, 30]}
       defaultHalfLifeHours={25}
+      defaultDoseMg={40}
       showToleranceTracking
       toleranceMaxReduction={0.15}
       toleranceTauDays={18}

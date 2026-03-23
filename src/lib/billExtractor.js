@@ -18,13 +18,35 @@ function parseBillTotalsOnly(text) {
   let startDate = null;
   let endDate = null;
 
+  const parseNumber = (value) => {
+    if (!value) return null;
+    const n = parseFloat(String(value).replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // Prefer explicit compare block values over generic "usage" labels which often hold dollars.
+  const compareCurrentMatch = text.match(/compare\s+your\s+usage[\s\S]{0,220}?current\s*[:\-]?\s*(\d{2,5}(?:\.\d+)?)/i);
+  const standaloneCurrentMatch = text.match(/\bcurrent\b[^\d]{0,20}(\d{2,5}(?:\.\d+)?)/i);
+  const usageMatch = text.match(/\busage(?:\s*\(kwh\))?\b[^\d]{0,20}(\d{2,5}(?:\.\d+)?)/i);
+
+  const compareCurrentKwh = parseNumber(compareCurrentMatch?.[1]);
+  const standaloneCurrentKwh = parseNumber(standaloneCurrentMatch?.[1]);
+  const usageKwh = parseNumber(usageMatch?.[1]);
+
+  if (compareCurrentKwh && compareCurrentKwh >= 10) {
+    kwh = compareCurrentKwh;
+  } else if (standaloneCurrentKwh && standaloneCurrentKwh >= 10) {
+    kwh = standaloneCurrentKwh;
+  }
+
   if (!kwh || kwh < 10) {
+    if (usageKwh && usageKwh >= 10) kwh = usageKwh;
     const currentMatch = text.match(/(?:current|usage|usage\s*\(kwh\))\s*(\d{2,})/i);
-    if (currentMatch) kwh = parseFloat(currentMatch[1]);
+    if (currentMatch && (!kwh || kwh < 10)) kwh = parseFloat(currentMatch[1]);
     const compareMatch = text.match(/compare\s+your\s+usage[\s\S]{0,120}?current\s*(\d{2,})/i);
-    if (compareMatch && !kwh) kwh = parseFloat(compareMatch[1]);
+    if (compareMatch && (!kwh || kwh < 10)) kwh = parseFloat(compareMatch[1]);
     const compareFirstNum = text.match(/compare\s+your\s+usage[\s\S]{0,200}?(\d{3,})\s+\d{2,}\s+\d{2,}/i);
-    if (compareFirstNum && !kwh) kwh = parseFloat(compareFirstNum[1]);
+    if (compareFirstNum && (!kwh || kwh < 10)) kwh = parseFloat(compareFirstNum[1]);
   }
   if (!kwh || kwh < 10) return null;
 

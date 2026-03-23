@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pill, Trash2 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -13,6 +13,7 @@ import {
 
 const PROFILE_STORAGE_KEY = "caffeineTrackerProfilesV1";
 const ACTIVE_PROFILE_ID_STORAGE_KEY = "caffeineTrackerActiveProfileId";
+const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
 
 function getNowLocalDateTimeValue() {
   const d = new Date();
@@ -100,6 +101,10 @@ export default function MedicationHalfLifeTracker({
   storagePrefix,
   halfLifeOptions,
   defaultHalfLifeHours,
+  defaultDoseMg = 0.25,
+  doseUnit = "mg",
+  doseStep = "0.125",
+  doseMin = "0.125",
   showToleranceTracking = false,
   toleranceMaxReduction = 0.25,
   toleranceTauDays = 10,
@@ -109,8 +114,17 @@ export default function MedicationHalfLifeTracker({
 
   const [profiles, setProfiles] = useState(() => loadProfiles());
   const [activeProfileId, setActiveProfileId] = useState(() => {
-    const saved = localStorage.getItem(ACTIVE_PROFILE_ID_STORAGE_KEY);
+    const globalUserName = localStorage.getItem(WELLNESS_GLOBAL_USER_NAME_KEY);
     const loaded = loadProfiles();
+
+    if (globalUserName) {
+      const existingProfile = loaded.find((p) => p.name === globalUserName);
+      if (existingProfile) {
+        return existingProfile.id;
+      }
+    }
+
+    const saved = localStorage.getItem(ACTIVE_PROFILE_ID_STORAGE_KEY);
     if (saved && loaded.some((p) => p.id === saved)) return saved;
     return loaded[0]?.id || "default";
   });
@@ -131,12 +145,32 @@ export default function MedicationHalfLifeTracker({
   };
 
   const initialState = loadStateForUser(activeProfileId);
-  const [doseMg, setDoseMg] = useState(0.25);
+  const [doseMg, setDoseMg] = useState(defaultDoseMg);
   const [time, setTime] = useState(getNowLocalDateTimeValue());
   const [entries, setEntries] = useState(initialState.entries);
   const [halfLifeHours, setHalfLifeHours] = useState(initialState.halfLifeHours);
   const [daysAtCurrentDose, setDaysAtCurrentDose] = useState(initialState.daysAtCurrentDose);
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
+
+  const activeProfile = useMemo(
+    () => profiles.find((profile) => profile.id === activeProfileId) || profiles[0] || null,
+    [profiles, activeProfileId],
+  );
+
+  useEffect(() => {
+    const refreshStartTimeToNow = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      setTime(getNowLocalDateTimeValue());
+    };
+
+    window.addEventListener("focus", refreshStartTimeToNow);
+    document.addEventListener("visibilitychange", refreshStartTimeToNow);
+
+    return () => {
+      window.removeEventListener("focus", refreshStartTimeToNow);
+      document.removeEventListener("visibilitychange", refreshStartTimeToNow);
+    };
+  }, []);
 
   const saveUserState = (
     nextEntries,
@@ -162,6 +196,7 @@ export default function MedicationHalfLifeTracker({
     setActiveProfileId(nextProfileId);
     localStorage.setItem(ACTIVE_PROFILE_ID_STORAGE_KEY, nextProfileId);
     const nextState = loadStateForUser(nextProfileId);
+    setTime(getNowLocalDateTimeValue());
     setEntries(nextState.entries);
     setHalfLifeHours(nextState.halfLifeHours);
     setDaysAtCurrentDose(nextState.daysAtCurrentDose);
@@ -191,7 +226,7 @@ export default function MedicationHalfLifeTracker({
 
     setEntries(nextEntries);
     saveUserState(nextEntries);
-    setDoseMg(0.25);
+    setDoseMg(defaultDoseMg);
     setTime(getNowLocalDateTimeValue());
     setRecalcAt(Date.now());
   };
@@ -270,6 +305,31 @@ export default function MedicationHalfLifeTracker({
     return out;
   }, [chartData]);
 
+  const liveMath = useMemo(() => {
+    const now = recalcAt;
+    const toleranceFactor = toleranceFactorFromDays(daysAtCurrentDose, toleranceMaxReduction, toleranceTauDays);
+    const realEntries = [...entries]
+      .map((entry) => ({ ...entry, takenAt: getEntryTakenAtMs(entry, now) }))
+      .sort((a, b) => b.takenAt - a.takenAt);
+    const mostRecentEntry = realEntries[0] || null;
+    const mostRecentElapsedHours = mostRecentEntry ? Math.max(0, (now - mostRecentEntry.takenAt) / (1000 * 60 * 60)) : null;
+    const mostRecentRemaining = mostRecentEntry ? activeMgAtTime(mostRecentEntry, now, now) : null;
+
+    return {
+      totalLogged: Number(metrics.totalMg.toFixed(3)),
+      activeNow: Number(metrics.activeMg.toFixed(3)),
+      halfLifeHours: Number(halfLifeHours),
+      toleranceFactor: Number(toleranceFactor.toFixed(3)),
+      toleranceReductionPercent: Number(metrics.effectReductionPercent.toFixed(1)),
+      realDoseCount: entries.length,
+      modeledDoseCount: modeledEntries.length,
+      syntheticDoseCount: Math.max(0, modeledEntries.length - entries.length),
+      mostRecentDose: mostRecentEntry ? Number((mostRecentEntry.doseMg || 0).toFixed(3)) : null,
+      mostRecentElapsedHours: mostRecentElapsedHours !== null ? Number(mostRecentElapsedHours.toFixed(2)) : null,
+      mostRecentRemaining: mostRecentRemaining !== null ? Number(mostRecentRemaining.toFixed(3)) : null,
+    };
+  }, [recalcAt, daysAtCurrentDose, toleranceMaxReduction, toleranceTauDays, entries, modeledEntries, metrics, halfLifeHours]);
+
   const primaryDrug = title.replace(/\s*Tracker\s*$/i, "");
 
   return (
@@ -285,26 +345,21 @@ export default function MedicationHalfLifeTracker({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
           <h2 className="font-semibold text-gray-900 dark:text-white">Dose Input</h2>
-          <label className="space-y-1 block">
-            <span className="text-sm text-gray-700 dark:text-gray-300">User</span>
-            <select
-              value={activeProfileId}
-              onChange={(e) => switchUser(e.target.value)}
-              className="w-full sm:w-72 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-            >
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>{profile.name || "User"}</option>
-              ))}
-            </select>
-          </label>
+          {activeProfile && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">Saving to:</span>
+              <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-sm font-semibold">{activeProfile.name || "User"}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">Manage users in Wellness Hub</span>
+            </div>
+          )}
           <form onSubmit={addEntry} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="space-y-1">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Dose (mg)</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">Dose ({doseUnit})</span>
                 <input
                   type="number"
-                  min="0.125"
-                  step="0.125"
+                  min={doseMin}
+                  step={doseStep}
                   value={doseMg}
                   onChange={(e) => setDoseMg(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
@@ -361,8 +416,8 @@ export default function MedicationHalfLifeTracker({
             </button>
           </div>
           <div className="space-y-1 text-gray-900 dark:text-white">
-            <p>Total logged: <strong>{metrics.totalMg.toFixed(3)} mg</strong></p>
-            <p>Estimated active now: <strong>{metrics.activeMg.toFixed(3)} mg</strong></p>
+            <p>Total logged: <strong>{metrics.totalMg.toFixed(3)} {doseUnit}</strong></p>
+            <p>Estimated active now: <strong>{metrics.activeMg.toFixed(3)} {doseUnit}</strong></p>
             {showToleranceTracking && (
               <>
                 <p>Days at current dose: <strong>{daysAtCurrentDose}</strong></p>
@@ -383,8 +438,8 @@ export default function MedicationHalfLifeTracker({
         {chartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
         ) : (
-          <div className="w-full h-72">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full h-72 min-w-0 min-h-[18rem]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
                 <XAxis
@@ -403,7 +458,7 @@ export default function MedicationHalfLifeTracker({
                   labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
                   itemStyle={{ color: "#d1d5db" }}
                   labelFormatter={(value) => `🕐 ${new Date(value).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}`}
-                  formatter={(value) => [`${value} mg`, "Estimated active"]}
+                  formatter={(value) => [`${value} ${doseUnit}`, "Estimated active"]}
                 />
                 <ReferenceLine
                   x={recalcAt}
@@ -448,7 +503,7 @@ export default function MedicationHalfLifeTracker({
                 className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
               >
                 <div className="text-sm text-gray-900 dark:text-white">
-                  <strong>{entry.doseMg} mg</strong> · {formatDoseTimestamp(entry, recalcAt)}
+                  <strong>{entry.doseMg} {doseUnit}</strong> · {formatDoseTimestamp(entry, recalcAt)}
                 </div>
                 <button
                   type="button"
@@ -473,6 +528,17 @@ export default function MedicationHalfLifeTracker({
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Math Model</h2>
+        <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-2 text-xs sm:text-sm text-indigo-950 dark:text-indigo-100">
+          <h3 className="font-semibold">Live calculations using your current tracker inputs</h3>
+          <p><strong>Logged doses:</strong> {liveMath.realDoseCount} real, {liveMath.syntheticDoseCount} synthetic carryover, {liveMath.modeledDoseCount} total modeled doses.</p>
+          <p><strong>Current elimination inputs:</strong> half-life {liveMath.halfLifeHours} h, active now {liveMath.activeNow} {doseUnit}, total logged {liveMath.totalLogged} {doseUnit}.</p>
+          {liveMath.mostRecentDose !== null && (
+            <p><strong>Most recent dose contribution:</strong> {liveMath.mostRecentDose} {doseUnit} logged {liveMath.mostRecentElapsedHours} h ago → {liveMath.mostRecentRemaining} {doseUnit} remaining by Dose × 0.5^(elapsed/halfLife).</p>
+          )}
+          {showToleranceTracking && (
+            <p><strong>Tolerance right now:</strong> factor {liveMath.toleranceFactor} → {liveMath.toleranceReductionPercent}% modeled reduction from {daysAtCurrentDose} days at dose.</p>
+          )}
+        </div>
         <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 space-y-2">
           <p><strong>Elimination model:</strong> Active(t) = Dose × 0.5^((t − t_dose) / halfLifeHours)</p>
           <p><strong>Total active level:</strong> Active_total(t) = Σ Active_i(t) over all logged doses</p>

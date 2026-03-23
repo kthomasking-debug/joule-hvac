@@ -148,6 +148,8 @@ export default function RemoteJouleSettings() {
           setBridgeInfoIp(trimmed);
         }
       }
+    }).catch(() => {
+      // Bridge may be offline; keep UI functional without surfacing noisy promise errors.
     });
     return () => { cancelled = true; };
   }, []);
@@ -282,18 +284,12 @@ export default function RemoteJouleSettings() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        Access your Joule Bridge (Pi) from outside your home network using a
-        Cloudflare Tunnel.{" "}
-        <strong>Each person needs their own Cloudflare address for their own
-        Pi.</strong> Run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cloudflared</code> on your Pi to get your URL.
+        Access your Pi from outside your home network via a Cloudflare Tunnel. Run <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cloudflared</code> on your Pi to get a URL.
       </p>
 
       {/* Pi IP discovery */}
       <div className="p-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
         <p className="font-semibold mb-2 text-sm text-gray-700 dark:text-gray-300">Your Pi&apos;s IP address</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-          Find your Pi on the local network to SSH in or configure the bridge URL.
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -349,11 +345,7 @@ export default function RemoteJouleSettings() {
           aria-label="Cloudflare tunnel address for Joule Bridge"
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Enter the address: a Cloudflare Tunnel URL (e.g.{" "}
-          <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">
-            https://xyz.trycloudflare.com
-          </code>
-          ) or a custom domain if you use one. No trailing slash.
+          Cloudflare Tunnel URL or custom domain. No trailing slash.
         </p>
       </div>
 
@@ -379,13 +371,10 @@ export default function RemoteJouleSettings() {
       <div className="p-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
         <p className="font-semibold mb-2 text-sm text-gray-700 dark:text-gray-300">Scan to open app (from any network)</p>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-          Run a Cloudflare tunnel on your dev machine so you can open the app from your phone when away from home. On your dev machine:{" "}
+          Run{" "}
           <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cloudflared tunnel --url http://localhost:5173</code>
-          <button type="button" onClick={() => { navigator.clipboard?.writeText("cloudflared tunnel --url http://localhost:5173"); setCopyFeedback("app-tunnel"); setTimeout(() => setCopyFeedback(""), 2000); }} className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-400 dark:border-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300" title="Copy command">{copyFeedback === "app-tunnel" ? "Copied!" : <Copy size={10} />}</button>
-          {" "}— then paste the tunnel URL below.
-        </p>
-        <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-          Use the <strong>app</strong> tunnel (port 5173), not the Ollama tunnel (port 11434). If you see &quot;Ollama is running&quot; when scanning, you used the wrong URL.
+          <CopyButton text="cloudflared tunnel --url http://localhost:5173" feedbackKey="app-tunnel" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
+          {" "}on your dev machine, then paste the URL below.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 items-start">
           <div className="flex-shrink-0 p-2 bg-white dark:bg-slate-900 rounded-lg">
@@ -401,7 +390,7 @@ export default function RemoteJouleSettings() {
               aria-label="App Cloudflare tunnel URL for QR code"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              {appUrlForQr ? "QR encodes your app tunnel. Scan from any network to open the app." : useRemote && remoteUrl ? "Using Pi tunnel URL." : "Enter the tunnel URL from cloudflared --url http://localhost:5173 (not the Ollama tunnel)."}
+              {appUrlForQr ? "Scan from any network to open the app." : useRemote && remoteUrl ? "Using Pi tunnel URL." : "App tunnel (port 5173), not Ollama (port 11434)."}
             </p>
           </div>
         </div>
@@ -420,46 +409,31 @@ export default function RemoteJouleSettings() {
           </span>
         </label>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
-          When enabled, the app uses your Cloudflare address instead of the
-          local network URL. Turn this on when you&apos;re away from home.
+          Use when away from home — routes through your Cloudflare tunnel instead of the local URL.
         </p>
       </div>
 
-      <div className="p-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-        <p className="font-semibold mb-1">Plug-and-play remote access</p>
-        <p className="mb-2">
-          Run the tunnel script on your Pi once. The display QR code updates automatically — no manual entry needed.
-        </p>
-        <p className="mb-2">
-          <strong>One-time setup:</strong> SSH into your Pi (e.g.{" "}
-          <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ssh pi@192.168.0.103</code>
-          <CopyButton text="ssh pi@192.168.0.103" feedbackKey="ssh-ip" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          {" "}or{" "}
+      <div className="p-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-gray-600 dark:text-gray-400 space-y-2">
+        <p className="font-semibold">Pi auto-tunnel setup (one time)</p>
+        <div>
+          <span className="text-gray-500 dark:text-gray-400">SSH in: </span>
           <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">ssh pi@joule-bridge.local</code>
           <CopyButton text="ssh pi@joule-bridge.local" feedbackKey="ssh-mdns" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          ),{" "}
-          <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cd /home/pi/git/joule-hvac/prostat-bridge</code>
-          <CopyButton text="cd /home/pi/git/joule-hvac/prostat-bridge" feedbackKey="cd" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          , then run{" "}
-          <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">./cloudflared-tunnel.sh</code>
-          <CopyButton text="./cloudflared-tunnel.sh" feedbackKey="tunnel-script" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          {" "}(or{" "}
+        </div>
+        <div>
+          <span className="text-gray-500 dark:text-gray-400">Run tunnel: </span>
           <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">cloudflared tunnel --url http://localhost:8080</code>
           <CopyButton text="cloudflared tunnel --url http://localhost:8080" feedbackKey="tunnel-manual" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          {" "}for manual run). The script captures the URL and the display QR updates within ~1 min. For auto-start at boot:{" "}
+        </div>
+        <div>
+          <span className="text-gray-500 dark:text-gray-400">Auto-start at boot: </span>
           <code className="bg-slate-200 dark:bg-slate-600 px-1 rounded">sudo ./install-cloudflared-service.sh</code>
           <CopyButton text="sudo ./install-cloudflared-service.sh" feedbackKey="install-service" copyFeedback={copyFeedback} setCopyFeedback={setCopyFeedback} />
-          .
-        </p>
+        </div>
         <p>
-          For a persistent setup with a custom domain, see{" "}
-          <Link
-            to="/tools/bridge-remote-access-wizard"
-            className="text-blue-600 dark:text-blue-400 hover:underline"
-          >
+          <Link to="/tools/bridge-remote-access-wizard" className="text-blue-600 dark:text-blue-400 hover:underline">
             Bridge Remote Access
-          </Link>
-          .
+          </Link>{" "}for custom domain setup.
         </p>
       </div>
     </div>

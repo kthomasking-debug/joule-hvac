@@ -9,6 +9,7 @@ export default function LamotrigineTracker() {
       storagePrefix="lamotrigineTracker"
       halfLifeOptions={[24, 29, 35]}
       defaultHalfLifeHours={29}
+      defaultDoseMg={150}
       showToleranceTracking
       toleranceMaxReduction={0.08}
       toleranceTauDays={24}

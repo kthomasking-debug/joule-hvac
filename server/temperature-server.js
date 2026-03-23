@@ -87,6 +87,70 @@ setInterval(persistAgentMemory, 30000).unref();
 const activeAgentRuns = new Map(); // runId -> { goal, startTs, abortController }
 let runIdCounter = 0;
 
+function parseLabeledNumber(input, label) {
+  const rx = new RegExp(`${label}\\s*(?:is|=|:)?\\s*(-?\\d+(?:\\.\\d+)?)`, "i");
+  const match = input.match(rx);
+  return match ? Number(match[1]) : null;
+}
+
+function parseCalorieArgs(goalText) {
+  const lower = goalText.toLowerCase();
+  const args = {};
+
+  args.unitSystem = /\bmetric\b|\bcm\b|\bkg\b/.test(lower)
+    ? "metric"
+    : "imperial";
+
+  const heightLabeled = parseLabeledNumber(goalText, "height");
+  const weightLabeled = parseLabeledNumber(goalText, "weight");
+  const stepsLabeled = parseLabeledNumber(goalText, "steps");
+  const ageLabeled = parseLabeledNumber(goalText, "age");
+
+  if (heightLabeled != null) args.height = heightLabeled;
+  if (weightLabeled != null) args.weight = weightLabeled;
+  if (stepsLabeled != null) args.steps = stepsLabeled;
+  if (ageLabeled != null) args.age = ageLabeled;
+
+  if (args.height == null) {
+    if (args.unitSystem === "metric") {
+      const cmMatch = lower.match(/(\d+(?:\.\d+)?)\s*cm\b/);
+      if (cmMatch) args.height = Number(cmMatch[1]);
+    } else {
+      const inMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:in|inch|inches)\b/);
+      const ftInMatch = lower.match(/(\d+)\s*(?:ft|')\s*(\d{1,2})\s*(?:in|"|inches)?/);
+      if (ftInMatch) {
+        args.height = Number(ftInMatch[1]) * 12 + Number(ftInMatch[2]);
+      } else if (inMatch) {
+        args.height = Number(inMatch[1]);
+      }
+    }
+  }
+
+  if (args.weight == null) {
+    if (args.unitSystem === "metric") {
+      const kgMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilogram|kilograms)\b/);
+      if (kgMatch) args.weight = Number(kgMatch[1]);
+    } else {
+      const lbMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|pound|pounds)\b/);
+      if (lbMatch) args.weight = Number(lbMatch[1]);
+    }
+  }
+
+  if (args.steps == null) {
+    const stepMatch = lower.match(/(\d{3,6})\s*steps?\b/);
+    if (stepMatch) args.steps = Number(stepMatch[1]);
+  }
+
+  if (/\bfemale\b/.test(lower)) args.sex = "female";
+  else if (/\bmale\b/.test(lower)) args.sex = "male";
+
+  if (/\blose|weight loss|cut\b/.test(lower)) args.goal = "lose";
+  else if (/\bgain|bulk\b/.test(lower)) args.goal = "gain";
+  else if (/\bmaintain|maintenance\b/.test(lower)) args.goal = "maintain";
+
+  return args;
+}
+
 // Tool definitions (minimal initial set)
 const agentTools = {
   getTime: async () => ({ time: new Date().toISOString() }),
@@ -170,6 +234,120 @@ const agentTools = {
       upgrades,
     };
   },
+  calculateDailyCalories: async ({
+    height,
+    weight,
+    steps = 0,
+    age = 30,
+    sex = "male",
+    unitSystem = "imperial",
+    goal = "maintain",
+  }) => {
+    if (height == null || weight == null) {
+      return {
+        error: true,
+        message: "height and weight are required",
+      };
+    }
+
+    const heightNum = Number(height);
+    const weightNum = Number(weight);
+    const stepsNum = Math.max(0, Number(steps) || 0);
+    const ageNum = Math.max(1, Number(age) || 30);
+
+    if (!Number.isFinite(heightNum) || !Number.isFinite(weightNum)) {
+      return {
+        error: true,
+        message: "height and weight must be valid numbers",
+      };
+    }
+
+    const heightCm =
+      unitSystem === "metric" ? heightNum : Math.max(0, heightNum) * 2.54;
+    const weightKg =
+      unitSystem === "metric" ? weightNum : Math.max(0, weightNum) * 0.453592;
+
+    if (heightCm <= 0 || weightKg <= 0) {
+      return {
+        error: true,
+        message: "height and weight must be greater than zero",
+      };
+    }
+
+    const sexNormalized = String(sex).toLowerCase();
+    const warnings = [];
+
+    if (unitSystem === "metric") {
+      if (heightNum < 120 || heightNum > 230)
+        warnings.push("Height looks outside a typical adult range (120-230 cm)");
+      if (weightNum < 35 || weightNum > 230)
+        warnings.push("Weight looks outside a typical adult range (35-230 kg)");
+    } else {
+      if (heightNum < 48 || heightNum > 90)
+        warnings.push("Height looks outside a typical adult range (48-90 in)");
+      if (weightNum < 80 || weightNum > 500)
+        warnings.push("Weight looks outside a typical adult range (80-500 lb)");
+    }
+    if (ageNum < 16 || ageNum > 90)
+      warnings.push("Age is outside a typical adult range (16-90)");
+    if (stepsNum > 40000)
+      warnings.push("Steps value is unusually high; double-check daily step count");
+
+    const sexOffset = sexNormalized === "female" ? -161 : 5;
+    const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageNum + sexOffset;
+
+    let activityMultiplier = 1.2;
+    if (stepsNum >= 12000) activityMultiplier = 1.75;
+    else if (stepsNum >= 10000) activityMultiplier = 1.6;
+    else if (stepsNum >= 7500) activityMultiplier = 1.45;
+    else if (stepsNum >= 5000) activityMultiplier = 1.35;
+
+    const maintenanceCalories = bmr * activityMultiplier;
+
+    let adjustment = 0;
+    const goalNormalized = String(goal).toLowerCase();
+    if (goalNormalized === "lose") adjustment = -500;
+    if (goalNormalized === "gain") adjustment = 300;
+
+    const recommendedCalories = Math.max(1200, maintenanceCalories + adjustment);
+    const weightLb = weightKg * 2.20462;
+    const proteinPerLb =
+      goalNormalized === "lose" ? 1.0 : goalNormalized === "gain" ? 0.9 : 0.8;
+    const fatRatio =
+      goalNormalized === "maintain" ? 0.3 : goalNormalized === "lose" ? 0.28 : 0.27;
+    const proteinG = Math.round(weightLb * proteinPerLb);
+    const fatG = Math.round((recommendedCalories * fatRatio) / 9);
+    const carbsG = Math.max(
+      0,
+      Math.round((recommendedCalories - proteinG * 4 - fatG * 9) / 4)
+    );
+
+    if (recommendedCalories < 1400)
+      warnings.push("Estimated calories are low; verify values and consider professional guidance");
+
+    return {
+      success: true,
+      inputs: {
+        height,
+        weight,
+        steps: stepsNum,
+        age: ageNum,
+        sex: sexNormalized,
+        unitSystem,
+        goal: goalNormalized,
+      },
+      bmr: Math.round(bmr),
+      activityMultiplier,
+      maintenanceCalories: Math.round(maintenanceCalories),
+      recommendedCalories: Math.round(recommendedCalories),
+      macroTargets: {
+        proteinG,
+        carbsG,
+        fatG,
+      },
+      warnings,
+    };
+  },
 };
 
 // Very small heuristic planner choosing tools based on goal keywords
@@ -190,6 +368,12 @@ async function runHeuristicAgent(goal, push, runId = null, abortSignal = null) {
     } else {
       planned.push({ name: "getJouleScore", args: {} });
     }
+  }
+  if (/calori|calorie|caloric|intake|steps|weight|height|bmr|tdee/.test(lower)) {
+    planned.push({
+      name: "calculateDailyCalories",
+      args: parseCalorieArgs(goal),
+    });
   }
   if (/remember/.test(lower)) {
     // Extract fact, handling "and" clauses - take text before "and" if present

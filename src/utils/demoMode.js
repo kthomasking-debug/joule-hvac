@@ -12,6 +12,13 @@
  * - Stops loading demoData.json, starts fetching from /api/ecobee
  */
 
+import {
+  getPairedDevices,
+  checkBridgeHealth,
+  isBridgeBackedOff,
+  shouldAttemptBridgeConnection,
+} from "../lib/jouleBridgeApi";
+
 /**
  * Check if we're in demo mode (no Ecobee connection)
  * Also checks for Joule Bridge connection
@@ -36,19 +43,12 @@ export async function isDemoMode() {
     // Check for Joule Bridge connection
     try {
       const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || import.meta.env.VITE_JOULE_BRIDGE_URL;
-      if (!bridgeUrl) {
-        // No bridge URL configured, skip check
+      if (!bridgeUrl || isBridgeBackedOff() || !shouldAttemptBridgeConnection()) {
         return true;
       }
-      const response = await fetch(`${bridgeUrl}/api/paired`, {
-        signal: AbortSignal.timeout(2000), // 2 second timeout
-      });
-      if (response.ok) {
-        const data = await response.json();
-        // If we have paired devices, we're not in demo mode
-        if (data.devices && data.devices.length > 0) {
-          return false;
-        }
+      const paired = await getPairedDevices();
+      if (Array.isArray(paired) && paired.length > 0) {
+        return false;
       }
     } catch (error) {
       // Bridge not available - that's fine, continue with demo mode check
@@ -130,40 +130,17 @@ export async function loadDemoData() {
  * Checks the configured bridge URL from localStorage
  */
 export async function checkBridgePresence() {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-
   try {
     // Check the configured bridge URL from localStorage
     const bridgeUrl = localStorage.getItem("jouleBridgeUrl") || import.meta.env.VITE_JOULE_BRIDGE_URL;
-    if (!bridgeUrl) {
+    if (!bridgeUrl || isBridgeBackedOff() || !shouldAttemptBridgeConnection()) {
       // No bridge URL configured, skip check
       return false;
     }
-    
-    const response = await fetch(`${bridgeUrl}/health`, {
-      method: "GET",
-      signal: controller.signal,
-    });
-    
-    if (response.ok) {
-      return true;
-    }
-    
-    return false;
+
+    return await checkBridgeHealth();
   } catch (error) {
-    // Network error means bridge is not present or not reachable
-    // This is expected when running locally - suppress console errors
-    // Only log if it's not a name resolution or network error
-    if (error.name !== 'AbortError' && 
-        !error.message?.includes('ERR_NAME_NOT_RESOLVED') &&
-        !error.message?.includes('Failed to fetch') &&
-        !error.message?.includes('NetworkError')) {
-      console.debug('Bridge presence check:', error.message);
-    }
     return false;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
