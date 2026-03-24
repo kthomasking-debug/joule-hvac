@@ -58,6 +58,7 @@
     "generate:tts": "node scripts/generate-tts-responses.js"
   },
   "dependencies": {
+    "@netlify/blobs": "^8.1.0",
     "@ai-sdk/groq": "^2.0.29",
     "@capacitor/android": "^6.2.1",
     "@capacitor/cli": "^6.2.1",

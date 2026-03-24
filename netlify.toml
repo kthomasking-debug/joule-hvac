@@ -9,6 +9,9 @@
   # Directory with the built files to deploy
   publish = "dist"
 
+[functions]
+  directory = "netlify/functions"
+
 # SPA redirect rule - makes React Router work on all routes
 [[redirects]]
   from = "/*"

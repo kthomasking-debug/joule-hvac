@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Search, X, Coffee, Pill, Thermometer, Heart, Scale, UserPlus, Trash2 } from "lucide-react";
 
@@ -18,6 +18,247 @@ const TRACKER_USER_STORAGE_KEYS = [
   "trazodoneTrackerByUserV1",
   "levothyroxineTrackerByUserV1",
 ];
+
+const WELLNESS_EXPORT_VERSION = 1;
+const WELLNESS_CLOUD_SYNC_ENABLED_KEY = "wellnessCloudSyncEnabledV1";
+const WELLNESS_CLOUD_SYNC_SECRET_KEY = "wellnessCloudSyncSecretV1";
+const WELLNESS_CLOUD_SYNC_ENDPOINT = "/.netlify/functions/wellness-sync";
+const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+const WELLNESS_AI_QUICK_PROMPTS = [
+  "Summarize my current wellness snapshot.",
+  "Which tracker changed most recently?",
+  "Which tracker looks most active this week?",
+  "Do I have any overdue or reminder-style signals right now?",
+  "What trends should I discuss with my clinician?",
+];
+
+function sanitizeUserName(value) {
+  return String(value || "").trim();
+}
+
+function uniqueNonEmptyStrings(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map(sanitizeUserName).filter(Boolean)));
+}
+
+function createImportedCaffeineProfile(userName, importedProfile) {
+  const profile = importedProfile && typeof importedProfile === "object" ? importedProfile : {};
+  return {
+    id: `caffeine-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: userName,
+    weight: Number(profile.weight) || 170,
+    weightUnit: profile.weightUnit === "kg" ? "kg" : "lb",
+    halfLifeHours: Number(profile.halfLifeHours) > 0 ? Number(profile.halfLifeHours) : 5,
+    daysAtDose: Math.max(0, Number(profile.daysAtDose) || 0),
+    entries: Array.isArray(profile.entries) ? profile.entries : [],
+  };
+}
+
+function createImportedCalorieProfile(userName, importedProfile) {
+  const profile = importedProfile && typeof importedProfile === "object" ? importedProfile : {};
+  return {
+    id: `calorie-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: userName,
+    form: profile?.form && typeof profile.form === "object" ? profile.form : {},
+    createdAt: profile.createdAt || new Date().toISOString(),
+    lastModified: new Date().toISOString(),
+    weightHistory: Array.isArray(profile.weightHistory) ? profile.weightHistory : [],
+    mealLog: Array.isArray(profile.mealLog) ? profile.mealLog : [],
+  };
+}
+
+function buildWellnessExportPayload({ savedUsers, globalUserName }) {
+  const userNames = uniqueNonEmptyStrings([...savedUsers, globalUserName]);
+  return {
+    type: "joule-wellness-export",
+    version: WELLNESS_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    activeUserName: sanitizeUserName(globalUserName),
+    savedUsers: uniqueNonEmptyStrings(savedUsers),
+    users: userNames.map((userName) => buildUserSavedDataSnapshot(userName)),
+  };
+}
+
+function hasMeaningfulWellnessData() {
+  const savedUsers = loadSavedUsers();
+  const globalUserName = sanitizeUserName(localStorage.getItem(WELLNESS_GLOBAL_USER_NAME_KEY) || "");
+  const caffeineProfiles = safeParseJson(PROFILE_STORAGE_KEY, []);
+  const calorieProfiles = safeParseJson(CALORIE_PROFILES_STORAGE_KEY, []);
+
+  if (savedUsers.length > 0 || globalUserName) return true;
+
+  const hasCaffeineData = Array.isArray(caffeineProfiles) && caffeineProfiles.some((profile) => {
+    return sanitizeUserName(profile?.name) || (Array.isArray(profile?.entries) && profile.entries.length > 0);
+  });
+  if (hasCaffeineData) return true;
+
+  const hasCalorieData = Array.isArray(calorieProfiles) && calorieProfiles.some((profile) => {
+    return sanitizeUserName(profile?.name)
+      || (Array.isArray(profile?.weightHistory) && profile.weightHistory.length > 0)
+      || (Array.isArray(profile?.mealLog) && profile.mealLog.length > 0);
+  });
+  if (hasCalorieData) return true;
+
+  return TRACKER_USER_STORAGE_KEYS.some((storageKey) => {
+    const trackerMap = safeParseJson(storageKey, {});
+    return Object.values(trackerMap || {}).some((state) => {
+      return Array.isArray(state?.entries) && state.entries.length > 0;
+    });
+  });
+}
+
+function createCloudSyncSecret() {
+  try {
+    if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+      return `${globalThis.crypto.randomUUID()}${globalThis.crypto.randomUUID()}`.replace(/-/g, "");
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
+async function pullWellnessFromCloud(syncKey) {
+  const response = await fetch(WELLNESS_CLOUD_SYNC_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "pull",
+      syncKey,
+    }),
+  });
+
+  if (response.status === 404) {
+    return { found: false, payload: null };
+  }
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body?.error || "Could not restore cloud data.");
+  }
+
+  return body;
+}
+
+async function pushWellnessToCloud(syncKey, payload) {
+  const response = await fetch(WELLNESS_CLOUD_SYNC_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "push",
+      syncKey,
+      payload,
+    }),
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body?.error || "Could not sync cloud data.");
+  }
+
+  return body;
+}
+
+function importWellnessPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Import file is not valid JSON data.");
+  }
+
+  if (payload.type !== "joule-wellness-export") {
+    throw new Error("Import file is not a wellness export.");
+  }
+
+  const importedUsers = Array.isArray(payload.users) ? payload.users : [];
+  if (!importedUsers.length) {
+    throw new Error("Import file does not contain any users.");
+  }
+
+  const existingCaffeineProfiles = safeParseJson(PROFILE_STORAGE_KEY, []);
+  const existingCalorieProfiles = safeParseJson(CALORIE_PROFILES_STORAGE_KEY, []);
+  const trackerMaps = TRACKER_USER_STORAGE_KEYS.reduce((acc, storageKey) => {
+    acc[storageKey] = safeParseJson(storageKey, {});
+    return acc;
+  }, {});
+
+  const nextCaffeineProfiles = Array.isArray(existingCaffeineProfiles) ? [...existingCaffeineProfiles] : [];
+  const nextCalorieProfiles = Array.isArray(existingCalorieProfiles) ? [...existingCalorieProfiles] : [];
+  const nextSavedUsers = uniqueNonEmptyStrings([...(safeParseJson(WELLNESS_SAVED_USERS_KEY, [])), ...(payload.savedUsers || []), ...importedUsers.map((user) => user?.userName)]);
+
+  let lastImportedCaffeineProfileId = "";
+  let lastImportedCalorieProfileId = "";
+
+  for (const importedUser of importedUsers) {
+    const userName = sanitizeUserName(importedUser?.userName);
+    if (!userName) continue;
+
+    const filteredCaffeineProfiles = nextCaffeineProfiles.filter((profile) => sanitizeUserName(profile?.name) !== userName);
+    const filteredCalorieProfiles = nextCalorieProfiles.filter((profile) => sanitizeUserName(profile?.name) !== userName);
+
+    nextCaffeineProfiles.length = 0;
+    nextCaffeineProfiles.push(...filteredCaffeineProfiles);
+    nextCalorieProfiles.length = 0;
+    nextCalorieProfiles.push(...filteredCalorieProfiles);
+
+    const caffeineProfile = createImportedCaffeineProfile(userName, importedUser?.caffeineTracker);
+    const calorieProfile = createImportedCalorieProfile(userName, importedUser?.dailyCalorieIntake);
+
+    nextCaffeineProfiles.push(caffeineProfile);
+    nextCalorieProfiles.push(calorieProfile);
+
+    for (const storageKey of TRACKER_USER_STORAGE_KEYS) {
+      const currentMap = trackerMaps[storageKey] && typeof trackerMaps[storageKey] === "object" ? trackerMaps[storageKey] : {};
+      const nextMap = { ...currentMap };
+
+      delete nextMap[caffeineProfile.id];
+      delete nextMap[calorieProfile.id];
+
+      const importedState = importedUser?.medicationTrackersByUserState?.[storageKey];
+      if (importedState && typeof importedState === "object") {
+        nextMap[caffeineProfile.id] = importedState;
+        nextMap[calorieProfile.id] = importedState;
+      }
+
+      trackerMaps[storageKey] = nextMap;
+    }
+
+    lastImportedCaffeineProfileId = caffeineProfile.id;
+    lastImportedCalorieProfileId = calorieProfile.id;
+  }
+
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextCaffeineProfiles));
+  localStorage.setItem(CALORIE_PROFILES_STORAGE_KEY, JSON.stringify(nextCalorieProfiles));
+  for (const storageKey of TRACKER_USER_STORAGE_KEYS) {
+    localStorage.setItem(storageKey, JSON.stringify(trackerMaps[storageKey] || {}));
+  }
+
+  localStorage.setItem(WELLNESS_SAVED_USERS_KEY, JSON.stringify(nextSavedUsers));
+
+  const activeUserName = sanitizeUserName(payload.activeUserName) || sanitizeUserName(importedUsers[0]?.userName);
+  localStorage.setItem(WELLNESS_GLOBAL_USER_NAME_KEY, activeUserName);
+  if (lastImportedCaffeineProfileId) {
+    localStorage.setItem(ACTIVE_PROFILE_ID_STORAGE_KEY, lastImportedCaffeineProfileId);
+  }
+  if (lastImportedCalorieProfileId) {
+    localStorage.setItem(CALORIE_ACTIVE_PROFILE_STORAGE_KEY, lastImportedCalorieProfileId);
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(WELLNESS_USER_CHANGED_EVENT, {
+      detail: { userName: activeUserName },
+    }));
+    window.dispatchEvent(new Event("storage"));
+  }
+
+  return {
+    savedUsers: nextSavedUsers,
+    activeUserName,
+    importedUserCount: importedUsers.length,
+  };
+}
 
 function loadSavedUsers() {
   try {
@@ -284,6 +525,25 @@ function detectPotentialMissedRepeatedDose(entries, nowMs = Date.now()) {
   };
 }
 
+function summarizeMedicationState(storageKey, state) {
+  const entries = Array.isArray(state?.entries) ? state.entries : [];
+  const latestEntryMs = entries.reduce((maxMs, entry) => {
+    const ts = getEntryTakenAtMs(entry, 0);
+    if (!Number.isFinite(ts) || ts <= 0) return maxMs;
+    return Math.max(maxMs, ts);
+  }, 0);
+
+  return {
+    tracker: storageKey.replace("TrackerByUserV1", ""),
+    entriesCount: entries.length,
+    latestEntryAt: latestEntryMs > 0 ? new Date(latestEntryMs).toISOString() : null,
+    halfLifeHours: Number.isFinite(Number(state?.halfLifeHours)) ? Number(state.halfLifeHours) : null,
+    daysAtCurrentDose: Number.isFinite(Number(state?.daysAtCurrentDose)) ? Number(state.daysAtCurrentDose) : null,
+    maintenanceDoseMg: Number.isFinite(Number(state?.maintenanceDoseMg)) ? Number(state.maintenanceDoseMg) : null,
+    carryoverCadence: typeof state?.carryoverCadence === "string" ? state.carryoverCadence : null,
+  };
+}
+
 export default function WellnessTools() {
   const [searchQuery, setSearchQuery] = useState("");
   const [globalUserName, setGlobalUserName] = useState(() => {
@@ -291,6 +551,18 @@ export default function WellnessTools() {
   });
   const [savedUsers, setSavedUsers] = useState(() => loadSavedUsers());
   const [newUserInput, setNewUserInput] = useState("");
+  const [transferMessage, setTransferMessage] = useState("");
+  const [transferError, setTransferError] = useState("");
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(() => localStorage.getItem(WELLNESS_CLOUD_SYNC_ENABLED_KEY) === "1");
+  const [cloudSyncSecret, setCloudSyncSecret] = useState(() => localStorage.getItem(WELLNESS_CLOUD_SYNC_SECRET_KEY) || "");
+  const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
+  const [wellnessAiInput, setWellnessAiInput] = useState("");
+  const [wellnessAiMessages, setWellnessAiMessages] = useState([]);
+  const [wellnessAiBusy, setWellnessAiBusy] = useState(false);
+  const [wellnessAiError, setWellnessAiError] = useState("");
+  const importInputRef = useRef(null);
+  const cloudSyncInitializedRef = useRef(false);
+  const lastCloudSyncedPayloadRef = useRef("");
 
   useEffect(() => {
     localStorage.setItem(WELLNESS_GLOBAL_USER_NAME_KEY, globalUserName);
@@ -305,9 +577,21 @@ export default function WellnessTools() {
     localStorage.setItem(WELLNESS_SAVED_USERS_KEY, JSON.stringify(savedUsers));
   }, [savedUsers]);
 
+  useEffect(() => {
+    localStorage.setItem(WELLNESS_CLOUD_SYNC_ENABLED_KEY, cloudSyncEnabled ? "1" : "0");
+  }, [cloudSyncEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(WELLNESS_CLOUD_SYNC_SECRET_KEY, cloudSyncSecret);
+    cloudSyncInitializedRef.current = false;
+    lastCloudSyncedPayloadRef.current = "";
+  }, [cloudSyncSecret]);
+
   const saveCurrentUser = () => {
     const name = newUserInput.trim() || globalUserName.trim();
     if (!name) return;
+    setTransferMessage("");
+    setTransferError("");
     setSavedUsers((prev) =>
       prev.includes(name) ? prev : [...prev, name]
     );
@@ -316,13 +600,134 @@ export default function WellnessTools() {
   };
 
   const removeUser = (name) => {
+    setTransferMessage("");
+    setTransferError("");
     setSavedUsers((prev) => prev.filter((u) => u !== name));
     if (globalUserName === name) setGlobalUserName("");
   };
 
   const selectUser = (name) => {
+    setTransferMessage("");
+    setTransferError("");
     setGlobalUserName(name);
     setNewUserInput("");
+  };
+
+  const downloadWellnessJson = () => {
+    const payload = buildWellnessExportPayload({ savedUsers, globalUserName });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `wellness-users-${dateStamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    setTransferError("");
+    setTransferMessage(`Downloaded ${payload.users.length} user${payload.users.length === 1 ? "" : "s"} as JSON.`);
+  };
+
+  const triggerImportPicker = () => {
+    setTransferMessage("");
+    setTransferError("");
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const result = importWellnessPayload(payload);
+      setSavedUsers(result.savedUsers);
+      setGlobalUserName(result.activeUserName);
+      setTransferError("");
+      setTransferMessage(`Imported ${result.importedUserCount} user${result.importedUserCount === 1 ? "" : "s"} from JSON.`);
+    } catch (error) {
+      setTransferMessage("");
+      setTransferError(error?.message || "Could not import the selected JSON file.");
+    } finally {
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  };
+
+  const syncSnapshotPayload = useMemo(() => {
+    return buildWellnessExportPayload({ savedUsers, globalUserName });
+  }, [savedUsers, globalUserName]);
+
+  const syncSnapshotString = useMemo(() => {
+    return JSON.stringify(syncSnapshotPayload);
+  }, [syncSnapshotPayload]);
+
+  const runCloudSync = async ({ forcePull = false, forcePush = false } = {}) => {
+    const secret = cloudSyncSecret.trim();
+    if (!cloudSyncEnabled || !secret) return;
+
+    setCloudSyncBusy(true);
+    setTransferError("");
+
+    try {
+      const localHasData = hasMeaningfulWellnessData();
+
+      if (forcePull || (!cloudSyncInitializedRef.current && !localHasData)) {
+        const response = await pullWellnessFromCloud(secret);
+        if (response?.found && response?.payload) {
+          const result = importWellnessPayload(response.payload);
+          setSavedUsers(result.savedUsers);
+          setGlobalUserName(result.activeUserName);
+          lastCloudSyncedPayloadRef.current = JSON.stringify(response.payload);
+          setTransferMessage(`Cloud restore complete for ${result.importedUserCount} user${result.importedUserCount === 1 ? "" : "s"}.`);
+        } else if (forcePull) {
+          setTransferMessage("No cloud backup was found for this sync key.");
+        }
+        cloudSyncInitializedRef.current = true;
+        return;
+      }
+
+      if (forcePush || !cloudSyncInitializedRef.current || lastCloudSyncedPayloadRef.current !== syncSnapshotString) {
+        await pushWellnessToCloud(secret, syncSnapshotPayload);
+        lastCloudSyncedPayloadRef.current = syncSnapshotString;
+        setTransferMessage("Automatic cloud sync is up to date.");
+      }
+
+      cloudSyncInitializedRef.current = true;
+    } catch (error) {
+      setTransferError(error?.message || "Cloud sync failed.");
+    } finally {
+      setCloudSyncBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!cloudSyncEnabled || !cloudSyncSecret.trim()) return;
+
+    runCloudSync();
+    const intervalId = window.setInterval(() => {
+      runCloudSync();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [cloudSyncEnabled, cloudSyncSecret, syncSnapshotString]);
+
+  const generateCloudSyncSecret = () => {
+    const nextSecret = createCloudSyncSecret();
+    setCloudSyncSecret(nextSecret);
+    setTransferError("");
+    setTransferMessage("Generated a new cloud sync key. Save it somewhere safe so another browser can restore your wellness data.");
+  };
+
+  const toggleCloudSync = () => {
+    setCloudSyncEnabled((prev) => !prev);
+    setTransferError("");
+    setTransferMessage("");
   };
 
   const doseAlertsByPath = useMemo(() => {
@@ -377,6 +782,133 @@ export default function WellnessTools() {
       };
     });
   }, [userSavedDataSnapshot]);
+
+  const wellnessAiContext = useMemo(() => {
+    const caffeineEntries = Array.isArray(userSavedDataSnapshot.caffeineTracker?.entries)
+      ? userSavedDataSnapshot.caffeineTracker.entries
+      : [];
+    const latestCaffeineMs = caffeineEntries.reduce((maxMs, entry) => {
+      const ts = getEntryTakenAtMs(entry, 0);
+      if (!Number.isFinite(ts) || ts <= 0) return maxMs;
+      return Math.max(maxMs, ts);
+    }, 0);
+
+    const medicationSummaries = TRACKER_USER_STORAGE_KEYS.map((storageKey) => {
+      const state = userSavedDataSnapshot.medicationTrackersByUserState?.[storageKey] || null;
+      return summarizeMedicationState(storageKey, state);
+    });
+
+    const calorieForm = userSavedDataSnapshot.dailyCalorieIntake?.form || {};
+    return {
+      userName: userSavedDataSnapshot.userName || "",
+      generatedAt: new Date().toISOString(),
+      caffeineTracker: {
+        entriesCount: caffeineEntries.length,
+        latestEntryAt: latestCaffeineMs > 0 ? new Date(latestCaffeineMs).toISOString() : null,
+        weight: Number.isFinite(Number(userSavedDataSnapshot.caffeineTracker?.weight))
+          ? Number(userSavedDataSnapshot.caffeineTracker.weight)
+          : null,
+        weightUnit: userSavedDataSnapshot.caffeineTracker?.weightUnit || null,
+        halfLifeHours: Number.isFinite(Number(userSavedDataSnapshot.caffeineTracker?.halfLifeHours))
+          ? Number(userSavedDataSnapshot.caffeineTracker.halfLifeHours)
+          : null,
+      },
+      dailyCalorieIntake: {
+        unitSystem: calorieForm.unitSystem || null,
+        weight: Number.isFinite(Number(calorieForm.weight)) ? Number(calorieForm.weight) : null,
+        steps: Number.isFinite(Number(calorieForm.steps)) ? Number(calorieForm.steps) : null,
+        goal: calorieForm.goal || null,
+        currentCalories: Number.isFinite(Number(calorieForm.currentCalories)) ? Number(calorieForm.currentCalories) : null,
+      },
+      medicationTrackers: medicationSummaries,
+      doseReminders: Object.entries(doseAlertsByPath).map(([path, detail]) => ({ path, detail })),
+    };
+  }, [userSavedDataSnapshot, doseAlertsByPath]);
+
+  const clearWellnessAiChat = () => {
+    setWellnessAiMessages([]);
+    setWellnessAiError("");
+  };
+
+  const sendWellnessAiMessage = async (promptOverride = "") => {
+    const prompt = String(promptOverride || wellnessAiInput).trim();
+    if (!prompt || wellnessAiBusy) return;
+
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) {
+      setWellnessAiError("Groq API key not found. Add it in Settings/Onboarding first.");
+      return;
+    }
+
+    const userMessage = {
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: "user",
+      content: prompt,
+    };
+
+    const nextHistory = [...wellnessAiMessages, userMessage].slice(-8);
+    setWellnessAiMessages((prev) => [...prev, userMessage]);
+    if (!promptOverride) {
+      setWellnessAiInput("");
+    }
+    setWellnessAiBusy(true);
+    setWellnessAiError("");
+
+    try {
+      const model = (localStorage.getItem("groqModel") || DEFAULT_GROQ_MODEL).trim() || DEFAULT_GROQ_MODEL;
+      const contextJson = JSON.stringify(wellnessAiContext);
+
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content: "You are a wellness assistant inside Joule Wellness Hub. Use ONLY the provided user context JSON to answer. Be concise, clearly separate observations from suggestions, and include a safety note that this is not medical advice.",
+            },
+            {
+              role: "system",
+              content: `Current user context JSON:\n${contextJson}`,
+            },
+            ...nextHistory.map((message) => ({
+              role: message.role,
+              content: message.content,
+            })),
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq API error ${response.status}: ${errorText.slice(0, 200)}`);
+      }
+
+      const payload = await response.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) {
+        throw new Error("The AI assistant returned an empty response.");
+      }
+
+      setWellnessAiMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: "assistant",
+          content,
+        },
+      ]);
+    } catch (error) {
+      setWellnessAiError(error?.message || "Failed to get an AI response.");
+    } finally {
+      setWellnessAiBusy(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -450,6 +982,104 @@ export default function WellnessTools() {
             Active user: <strong>{globalUserName}</strong> · All wellness tools will use this user's settings.
           </p>
         )}
+
+        <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Backup / Transfer</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Download saved wellness users and their linked data as JSON, or upload a previous export to restore it into this browser.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={downloadWellnessJson}
+              className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-medium"
+              title="Download saved wellness users, calorie profiles, caffeine profiles, and medication tracker data as a JSON backup file."
+            >
+              Download JSON
+            </button>
+            <button
+              type="button"
+              onClick={triggerImportPicker}
+              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
+              title="Upload a previously exported wellness JSON file and restore it into this browser's local storage."
+            >
+              Upload JSON
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+          </div>
+          {transferMessage && (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">{transferMessage}</p>
+          )}
+          {transferError && (
+            <p className="text-xs text-red-700 dark:text-red-300">{transferError}</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Automatic Cloud Sync</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Stores your wellness JSON bundle in Netlify cloud storage using a private sync key. Any browser with the same key can restore and keep syncing automatically.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleCloudSync}
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${cloudSyncEnabled ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"}`}
+              title="Enable or disable automatic cloud sync for wellness data in this browser."
+            >
+              {cloudSyncEnabled ? "Cloud Sync On" : "Cloud Sync Off"}
+            </button>
+            <button
+              type="button"
+              onClick={generateCloudSyncSecret}
+              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
+              title="Generate a new sync key for automatic cloud sync. You need the same key on another browser to restore the same wellness data."
+            >
+              Generate Sync Key
+            </button>
+            <button
+              type="button"
+              onClick={() => runCloudSync({ forcePush: true })}
+              disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
+              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Push the current browser's wellness data to cloud storage immediately."
+            >
+              {cloudSyncBusy ? "Syncing..." : "Sync Now"}
+            </button>
+            <button
+              type="button"
+              onClick={() => runCloudSync({ forcePull: true })}
+              disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
+              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Restore wellness data from cloud storage using the current sync key. This is useful on a new browser or device."
+            >
+              Restore From Cloud
+            </button>
+          </div>
+          <label className="space-y-1 block">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Sync key</span>
+            <input
+              type="text"
+              value={cloudSyncSecret}
+              onChange={(e) => setCloudSyncSecret(e.target.value.trim())}
+              placeholder="Paste or generate a sync key"
+              className="w-full px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            />
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Keep this key private. Anyone with the same key can restore the synced wellness JSON bundle.
+          </p>
+        </div>
 
         <details className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">
@@ -595,6 +1225,103 @@ export default function WellnessTools() {
             </Link>
           );
         })}
+      </div>
+
+      <div className="mt-10 rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/50 dark:bg-fuchsia-950/20 p-4 space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">AI Wellness Chat</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Ask questions about the active user&apos;s tracker data. Responses are grounded in this page&apos;s current user snapshot.
+          </p>
+          <p className="text-xs text-fuchsia-700 dark:text-fuchsia-300 mt-1">
+            Active user context: <strong>{wellnessAiContext.userName || "No active user"}</strong> · {wellnessAiContext.medicationTrackers.filter((item) => item.entriesCount > 0).length} trackers with entries · {wellnessAiContext.caffeineTracker.entriesCount} caffeine entries.
+          </p>
+        </div>
+
+        {wellnessAiError && (
+          <p className="text-xs text-red-700 dark:text-red-300">{wellnessAiError}</p>
+        )}
+
+        <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white dark:bg-gray-900 p-3 h-72 overflow-y-auto space-y-3">
+          {wellnessAiMessages.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Try: "Summarize my current wellness snapshot", "Which tracker looks most active this week?", or "What trends should I discuss with my clinician?"
+            </p>
+          ) : (
+            wellnessAiMessages.map((message) => (
+              <div
+                key={message.id}
+                className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${message.role === "assistant"
+                  ? "bg-fuchsia-100/70 dark:bg-fuchsia-900/30 text-gray-900 dark:text-gray-100"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"}`}
+              >
+                <p className="text-[11px] uppercase tracking-wide font-semibold mb-1 text-fuchsia-700 dark:text-fuchsia-300">
+                  {message.role === "assistant" ? "Assistant" : "You"}
+                </p>
+                <p>{message.content}</p>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {WELLNESS_AI_QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                disabled={wellnessAiBusy}
+                onClick={() => sendWellnessAiMessage(prompt)}
+                className="px-2.5 py-1.5 rounded-full border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-xs font-medium disabled:opacity-50"
+                title={prompt}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={wellnessAiInput}
+            onChange={(event) => setWellnessAiInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                sendWellnessAiMessage();
+              }
+            }}
+            placeholder="Ask about this user's wellness trends, reminders, and tracker summaries..."
+            className="w-full min-h-[92px] px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 text-sm"
+            disabled={wellnessAiBusy}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={sendWellnessAiMessage}
+              disabled={wellnessAiBusy || !wellnessAiInput.trim()}
+              className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white text-sm font-medium"
+            >
+              {wellnessAiBusy ? "Thinking..." : "Send"}
+            </button>
+            <button
+              type="button"
+              onClick={clearWellnessAiChat}
+              disabled={wellnessAiBusy || wellnessAiMessages.length === 0}
+              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50"
+            >
+              Clear chat
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            <a
+              href="https://console.groq.com/keys"
+              target="_blank"
+              rel="noreferrer"
+              className="text-fuchsia-700 dark:text-fuchsia-300 hover:underline"
+            >
+              Requires a configured Groq API key.
+            </a>{" "}
+            AI responses are informational only and not medical advice.
+          </p>
+        </div>
       </div>
     </div>
   );

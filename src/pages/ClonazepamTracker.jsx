@@ -53,6 +53,124 @@ const SEDATION_EC50_MG = 0.5;
 const SEDATION_EC50_MG_PER_KG = SEDATION_EC50_MG / SEDATION_REFERENCE_WEIGHT_KG;
 const CAFFEINE_STIM_KD_MG_PER_KG = 2.0;
 
+const RESEARCH_REFERENCE_GROUPS = [
+  {
+    title: "1) 30-hour half-life and withdrawal timing",
+    summary: "Long elimination half-life supports multi-day carryover and delayed withdrawal onset windows.",
+    links: [
+      {
+        label: "Clonazepam (StatPearls, NCBI Bookshelf)",
+        url: "https://www.ncbi.nlm.nih.gov/books/NBK556010/",
+        evidence: "Reference",
+      },
+      {
+        label: "Klonopin prescribing information (FDA label)",
+        url: "https://www.accessdata.fda.gov/drugsatfda_docs/label/2017/017533s059lbl.pdf",
+        evidence: "Regulatory",
+      },
+      {
+        label: "Klonopin Withdrawal: Symptoms, Timeline, and Treatment (Verywell Mind)",
+        url: "https://www.verywellmind.com/klonopin-withdrawal-symptoms-timeline-and-treatment-4176203",
+        evidence: "Patient education",
+      },
+    ],
+  },
+  {
+    title: "2) GABA-A receptor downregulation and tolerance",
+    summary: "Neuroadaptation and receptor-level changes explain tolerance and withdrawal vulnerability.",
+    links: [
+      {
+        label: "Benzodiazepine dependence, toxicity and abuse (PubMed)",
+        url: "https://pubmed.ncbi.nlm.nih.gov/7841856/",
+        evidence: "Review",
+      },
+      {
+        label: "GABA-A receptor overview (ScienceDirect Topics)",
+        url: "https://www.sciencedirect.com/topics/neuroscience/gabaa-receptor",
+        evidence: "Reference",
+      },
+      {
+        label: "Benzodiazepines: uses, dangers, and clinical considerations (PubMed Central)",
+        url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8629021/",
+        evidence: "Review",
+      },
+    ],
+  },
+  {
+    title: "3) Taper schedules and outcomes",
+    summary: "Guideline-consistent tapering often uses slower reductions with symptom-guided pacing.",
+    links: [
+      {
+        label: "Benzodiazepine Tapering Guideline (ASAM)",
+        url: "https://www.asam.org/quality-care/clinical-guidelines/benzodiazepine-tapering",
+        evidence: "Guideline",
+      },
+      {
+        label: "How to approach a benzodiazepine taper (Oregon Health Authority)",
+        url: "https://www.oregon.gov/oha/HPA/DSI-Pharmacy/MHCAGDocs/Tapering-Benzodiazepines.pdf",
+        evidence: "Protocol",
+      },
+      {
+        label: "Slow tapering clonazepam in panic disorder patients after long-term treatment (PubMed)",
+        url: "https://pubmed.ncbi.nlm.nih.gov/20473065/",
+        evidence: "Clinical study",
+      },
+      {
+        label: "Benzodiazepine tapering strategies (Benzodiazepine Information Coalition)",
+        url: "https://www.benzoinfo.com/benzodiazepine-tapering-strategies/",
+        evidence: "Advocacy resource",
+      },
+    ],
+  },
+  {
+    title: "4) Rebound effects and withdrawal symptom patterns",
+    summary: "Distinguishes short-term rebound from broader withdrawal syndrome progression.",
+    links: [
+      {
+        label: "Chapter 3: Benzodiazepine withdrawal symptoms (Ashton Manual)",
+        url: "https://www.benzo.org.uk/manual/bzcha03.htm",
+        evidence: "Clinical resource",
+      },
+      {
+        label: "Benzodiazepine withdrawal and rebound resources (withdrawal.net)",
+        url: "https://withdrawal.net/benzodiazepine-withdrawal/",
+        evidence: "Community resource",
+      },
+      {
+        label: "Benzodiazepine withdrawal syndrome (review article, PubMed)",
+        url: "https://pubmed.ncbi.nlm.nih.gov/7841856/",
+        evidence: "Review",
+      },
+      {
+        label: "Ashton Manual taper schedules and individualized pacing",
+        url: "https://www.benzo.org.uk/manual/bzsched.htm",
+        evidence: "Clinical resource",
+      },
+    ],
+  },
+  {
+    title: "5) Low-dose taper protocols and supportive care",
+    summary: "Late-stage low-dose reductions and behavioral support are commonly discussed for long-term users.",
+    links: [
+      {
+        label: "Discontinuation of benzodiazepine treatment: CBT for panic disorder patients (PubMed)",
+        url: "https://pubmed.ncbi.nlm.nih.gov/14754783/",
+        evidence: "Clinical study",
+      },
+      {
+        label: "Benzodiazepine tapering and deprescribing guidance (NCBI Bookshelf)",
+        url: "https://www.ncbi.nlm.nih.gov/books/NBK310652/",
+        evidence: "Reference",
+      },
+      {
+        label: "Benzodiazepines: uses, dangers, and clinical considerations (PubMed Central)",
+        url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8629021/",
+        evidence: "Review",
+      },
+    ],
+  },
+];
+
 function toKg(weight, unit) {
   if (!weight || weight <= 0) return 0;
   return unit === "lb" ? weight * 0.45359237 : weight;
@@ -242,6 +360,28 @@ function localDayKeyFromMs(valueMs) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeLastMaintenanceToPast({
+  anchorMs,
+  referenceMs = Date.now(),
+  cadence = "once",
+}) {
+  if (!Number.isFinite(anchorMs) || anchorMs <= 0) return null;
+
+  const cadenceIntervalMs = cadence === "twice"
+    ? 12 * 60 * 60 * 1000
+    : 24 * 60 * 60 * 1000;
+  const safeReferenceMs = Number.isFinite(referenceMs) && referenceMs > 0 ? referenceMs : Date.now();
+
+  let normalizedMs = anchorMs;
+  let safetyGuard = 0;
+  while (normalizedMs > safeReferenceMs && safetyGuard < 2000) {
+    normalizedMs -= cadenceIntervalMs;
+    safetyGuard += 1;
+  }
+
+  return normalizedMs;
+}
+
 function acuteSedationFromEntry(entry, atMs, referenceMs = Date.now()) {
   const takenAtMs = getEntryTakenAtMs(entry, referenceMs);
   if (atMs < takenAtMs) return 0;
@@ -337,6 +477,8 @@ function estimateWithdrawalThresholdMg({
 
   const intervalHours = carryoverCadence === "twice" ? 12 : 24;
   const decayPerInterval = Math.pow(0.5, intervalHours / halfLifeHours);
+
+  if (decayPerInterval >= 0.95) return null;
 
   const estimatedSteadyStateTroughMg = doseMg * (decayPerInterval / (1 - decayPerInterval));
   const thresholdFraction = 0.45;
@@ -504,7 +646,12 @@ function sanitizeClonazepamState(raw) {
   const safeLastMaintenanceDoseAtMs = Number.isFinite(parsedLastMaintenanceDoseAtMs) && parsedLastMaintenanceDoseAtMs > 0
     ? parsedLastMaintenanceDoseAtMs
     : fallbackMaintenanceDoseAtMs;
-  const lastMaintenanceDoseAt = toLocalDateTimeInputValue(safeLastMaintenanceDoseAtMs);
+  const normalizedLastMaintenanceDoseAtMs = normalizeLastMaintenanceToPast({
+    anchorMs: safeLastMaintenanceDoseAtMs,
+    referenceMs: Date.now(),
+    cadence: carryoverCadence,
+  });
+  const lastMaintenanceDoseAt = toLocalDateTimeInputValue(normalizedLastMaintenanceDoseAtMs || safeLastMaintenanceDoseAtMs);
 
   return {
     entries,
@@ -612,6 +759,8 @@ export default function ClonazepamTracker() {
   const [taperHoldDays, setTaperHoldDays] = useState(14);
   const [taperMinimumDoseMg, setTaperMinimumDoseMg] = useState(0.125);
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
+  const [liveCalcAt, setLiveCalcAt] = useState(() => Date.now());
+  const [liveCalcPreset, setLiveCalcPreset] = useState("current");
 
   const activeProfile = useMemo(() => {
     return profiles.find((profile) => profile.id === activeProfileId) || profiles[0] || null;
@@ -749,7 +898,12 @@ export default function ClonazepamTracker() {
   const saveLastMaintenanceDoseAt = (next) => {
     const parsedMs = new Date(next).getTime();
     if (!Number.isFinite(parsedMs) || parsedMs <= 0) return;
-    const value = toLocalDateTimeInputValue(parsedMs);
+    const normalizedMs = normalizeLastMaintenanceToPast({
+      anchorMs: parsedMs,
+      referenceMs: recalcAt,
+      cadence: carryoverCadence,
+    });
+    const value = toLocalDateTimeInputValue(normalizedMs || parsedMs);
     setLastMaintenanceDoseAt(value);
     updateActiveClonazepamState({ lastMaintenanceDoseAt: value });
   };
@@ -815,12 +969,17 @@ export default function ClonazepamTracker() {
 
   const carryoverDoseTemplate = useMemo(() => {
     const parsedLastMaintenanceDoseAt = new Date(lastMaintenanceDoseAt).getTime();
-    const hasValidAnchor = Number.isFinite(parsedLastMaintenanceDoseAt) && parsedLastMaintenanceDoseAt > 0;
+    const normalizedAnchorMs = normalizeLastMaintenanceToPast({
+      anchorMs: parsedLastMaintenanceDoseAt,
+      referenceMs: recalcAt,
+      cadence: carryoverCadence,
+    });
+    const hasValidAnchor = Number.isFinite(normalizedAnchorMs) && normalizedAnchorMs > 0;
     return {
       doseMg: hasValidAnchor ? Math.max(0, Number(maintenanceDoseMg) || 0) : 0,
-      takenAtMs: hasValidAnchor ? parsedLastMaintenanceDoseAt : null,
+      takenAtMs: hasValidAnchor ? normalizedAnchorMs : null,
     };
-  }, [maintenanceDoseMg, lastMaintenanceDoseAt]);
+  }, [maintenanceDoseMg, lastMaintenanceDoseAt, recalcAt, carryoverCadence]);
 
   const modeledCarryover = useMemo(() => {
     const priorDays = Math.max(0, Math.round(Number(daysAtCurrentDose) || 0));
@@ -834,6 +993,7 @@ export default function ClonazepamTracker() {
 
     const dayMs = 24 * 60 * 60 * 1000;
     const halfDayMs = 12 * 60 * 60 * 1000;
+    const cadenceIntervalMs = carryoverCadence === "twice" ? halfDayMs : dayMs;
     const realDoseDayKeys = new Set(
       entries
         .map((entry) => localDayKeyFromMs(getEntryTakenAtMs(entry, recalcAt)))
@@ -842,6 +1002,36 @@ export default function ClonazepamTracker() {
     const syntheticCarryover = [];
     let skippedSameDayOverrides = 0;
     const overriddenDayKeys = new Set();
+
+    const markSameDayOverrideIfNeeded = (takenAtMs) => {
+      const dayKey = localDayKeyFromMs(takenAtMs);
+      if (!dayKey || !realDoseDayKeys.has(dayKey)) return false;
+      skippedSameDayOverrides += 1;
+      overriddenDayKeys.add(dayKey);
+      return true;
+    };
+
+    // Treat the anchor day itself as overridable when real doses exist on that calendar day.
+    markSameDayOverrideIfNeeded(carryoverDoseTemplate.takenAtMs);
+
+    // Also treat elapsed expected cadence slots after the anchor as overridable for badging/debug.
+    if (Number.isFinite(cadenceIntervalMs) && cadenceIntervalMs > 0 && recalcAt > carryoverDoseTemplate.takenAtMs) {
+      for (
+        let expectedTakenAtMs = carryoverDoseTemplate.takenAtMs + cadenceIntervalMs;
+        expectedTakenAtMs <= recalcAt;
+        expectedTakenAtMs += cadenceIntervalMs
+      ) {
+        markSameDayOverrideIfNeeded(expectedTakenAtMs);
+      }
+    }
+
+    // Calendar-day override: badge "today" as soon as any real dose exists that day,
+    // even if today's expected maintenance slot has not elapsed yet.
+    const todayDayKey = localDayKeyFromMs(recalcAt);
+    if (todayDayKey && realDoseDayKeys.has(todayDayKey) && !overriddenDayKeys.has(todayDayKey)) {
+      skippedSameDayOverrides += 1;
+      overriddenDayKeys.add(todayDayKey);
+    }
 
     for (let day = 1; day <= priorDays; day += 1) {
       const primaryTakenAtMs = carryoverDoseTemplate.takenAtMs - day * dayMs;
@@ -855,10 +1045,7 @@ export default function ClonazepamTracker() {
           synthetic: true,
         });
       } else {
-        skippedSameDayOverrides += 1;
-        if (primaryDayKey && realDoseDayKeys.has(primaryDayKey)) {
-          overriddenDayKeys.add(primaryDayKey);
-        }
+        markSameDayOverrideIfNeeded(primaryTakenAtMs);
       }
 
       if (carryoverCadence === "twice") {
@@ -873,10 +1060,7 @@ export default function ClonazepamTracker() {
             synthetic: true,
           });
         } else {
-          skippedSameDayOverrides += 1;
-          if (secondDayKey && realDoseDayKeys.has(secondDayKey)) {
-            overriddenDayKeys.add(secondDayKey);
-          }
+          markSameDayOverrideIfNeeded(secondTakenAtMs);
         }
       }
     }
@@ -891,6 +1075,29 @@ export default function ClonazepamTracker() {
   const modeledEntries = modeledCarryover.entries;
   const modeledCarryoverSkippedSameDay = modeledCarryover.skippedSameDayOverrides;
   const modeledCarryoverOverriddenDayKeys = useMemo(() => new Set(modeledCarryover.overriddenDayKeys || []), [modeledCarryover.overriddenDayKeys]);
+
+  const effectiveLastMaintenanceDoseAtMs = useMemo(() => {
+    const anchorMs = Number(carryoverDoseTemplate?.takenAtMs);
+    if (!Number.isFinite(anchorMs) || anchorMs <= 0) return null;
+
+    const cadenceIntervalMs = carryoverCadence === "twice"
+      ? 12 * 60 * 60 * 1000
+      : 24 * 60 * 60 * 1000;
+
+    let candidateMs = anchorMs;
+    let safetyGuard = 0;
+
+    while (safetyGuard < 2000) {
+      const dayKey = localDayKeyFromMs(candidateMs);
+      if (!dayKey || !modeledCarryoverOverriddenDayKeys.has(dayKey)) {
+        return candidateMs;
+      }
+      candidateMs -= cadenceIntervalMs;
+      safetyGuard += 1;
+    }
+
+    return anchorMs;
+  }, [carryoverDoseTemplate, carryoverCadence, modeledCarryoverOverriddenDayKeys]);
 
   const modeledCarryoverCount = useMemo(() => {
     return modeledEntries.filter((entry) => entry?.synthetic).length;
@@ -973,7 +1180,71 @@ export default function ClonazepamTracker() {
   const recalculateNow = () => {
     const now = Date.now();
     setRecalcAt((prev) => (now <= prev ? prev + 1 : now));
+    setLiveCalcAt(now);
+    setLiveCalcPreset("current");
   };
+
+  const saveLiveCalcAt = (next) => {
+    const parsedMs = new Date(next).getTime();
+    if (!Number.isFinite(parsedMs) || parsedMs <= 0) return;
+    setLiveCalcAt(parsedMs);
+    setLiveCalcPreset("custom");
+  };
+
+  const resetLiveCalcAtNow = () => {
+    setLiveCalcAt(recalcAt);
+    setLiveCalcPreset("current");
+  };
+
+  const setLiveCalcToRelativeDay = (dayOffset, presetId) => {
+    const selected = new Date(liveCalcAt);
+    const anchor = new Date(recalcAt);
+    const source = Number.isFinite(selected.getTime()) ? selected : anchor;
+    const next = new Date(anchor);
+    next.setHours(source.getHours(), source.getMinutes(), 0, 0);
+    next.setDate(next.getDate() + dayOffset);
+    setLiveCalcAt(next.getTime());
+    setLiveCalcPreset(presetId);
+  };
+
+  const setLiveCalcToLastMaintenanceDose = () => {
+    const effectiveMs = Number(effectiveLastMaintenanceDoseAtMs);
+    if (!Number.isFinite(effectiveMs) || effectiveMs <= 0) return;
+    setLiveCalcAt(effectiveMs);
+    setLiveCalcPreset("lastMaintenance");
+  };
+
+  const setLiveCalcToLastLoggedDose = () => {
+    const latestClonazMs = entries.reduce((maxMs, entry) => {
+      const entryMs = getEntryTakenAtMs(entry, recalcAt);
+      return Number.isFinite(entryMs) ? Math.max(maxMs, entryMs) : maxMs;
+    }, 0);
+    const latestCaffeineMs = caffeineEntries.reduce((maxMs, entry) => {
+      const entryMs = getEntryTakenAtMs(entry, recalcAt);
+      return Number.isFinite(entryMs) ? Math.max(maxMs, entryMs) : maxMs;
+    }, 0);
+    const latestEntryMs = Math.max(latestClonazMs, latestCaffeineMs);
+    if (!Number.isFinite(latestEntryMs) || latestEntryMs <= 0) return;
+    setLiveCalcAt(latestEntryMs);
+    setLiveCalcPreset("lastLogged");
+  };
+
+  const liveCalcPresetButtonClass = (presetId) => {
+    const isActive = liveCalcPreset === presetId;
+    if (isActive) {
+      return "px-2 py-1 rounded-lg border border-indigo-600 dark:border-indigo-500 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold";
+    }
+    return "px-2 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/30";
+  };
+
+  useEffect(() => {
+    if (liveCalcPreset !== "lastMaintenance") return;
+    const effectiveMs = Number(effectiveLastMaintenanceDoseAtMs);
+    if (!Number.isFinite(effectiveMs) || effectiveMs <= 0) return;
+    if (effectiveMs !== liveCalcAt) {
+      setLiveCalcAt(effectiveMs);
+    }
+  }, [liveCalcPreset, effectiveLastMaintenanceDoseAtMs, liveCalcAt]);
 
   const metrics = useMemo(() => {
     const totalMg = entries.reduce((sum, entry) => sum + (entry.doseMg || 0), 0);
@@ -1140,22 +1411,30 @@ export default function ClonazepamTracker() {
   }, [sedationPressureData, recalcAt, activeProfile, caffeineEntries]);
 
   const liveMath = useMemo(() => {
-    const acuteSedationPressure = entries.reduce((sum, entry) => sum + acuteSedationFromEntry(entry, recalcAt, recalcAt), 0);
+    const selectedActiveMg = modeledEntries.reduce((sum, entry) => {
+      return sum + clonazepamActiveMgAtTime(entry, liveCalcAt, recalcAt, halfLifeHours);
+    }, 0);
+    const acuteSedationPressure = entries.reduce((sum, entry) => sum + acuteSedationFromEntry(entry, liveCalcAt, recalcAt), 0);
     const modelWeight = resolveInteractionWeightKg({ activeProfile });
     const modelWeightKg = modelWeight.kg;
-    const concentrationMgPerKg = modelWeightKg > 0 ? metrics.activeMg / modelWeightKg : 0;
+    const concentrationMgPerKg = modelWeightKg > 0 ? selectedActiveMg / modelWeightKg : 0;
     const concentrationPressure = concentrationMgPerKg > 0
       ? (concentrationMgPerKg / (concentrationMgPerKg + SEDATION_EC50_MG_PER_KG)) * 100
       : 0;
     const toleranceFactor = toleranceFactorFromDays(daysAtCurrentDose);
     const blendedPressure = 0.4 * concentrationPressure + 0.6 * Math.min(100, acuteSedationPressure);
-    const circadianPenalty = circadianSleepPenaltyPercent(recalcAt, circadianStrengthPercent, circadianShiftHours);
-    const currentInteractionPoint = interactionData.reduce((best, point) => {
-      if (!best) return point;
-      return Math.abs(point.ts - recalcAt) < Math.abs(best.ts - recalcAt) ? point : best;
-    }, null);
+    const selectedSedationPressure = modeledSedationPressure(selectedActiveMg, acuteSedationPressure, daysAtCurrentDose, modelWeightKg);
+    const circadianPenalty = circadianSleepPenaltyPercent(liveCalcAt, circadianStrengthPercent, circadianShiftHours);
+    const activeCaffeineEntries = Array.isArray(activeProfile?.entries) ? activeProfile.entries : caffeineEntries;
+    const caffeineHalfLifeRaw = Number(activeProfile?.halfLifeHours ?? localStorage.getItem(CAFFEINE_HALF_LIFE_STORAGE_KEY));
+    const caffeineHalfLifeHours = Number.isFinite(caffeineHalfLifeRaw) && caffeineHalfLifeRaw > 0 ? caffeineHalfLifeRaw : 5;
+    const activeCaffeineMg = activeCaffeineEntries.reduce((sum, entry) => {
+      return sum + activeCaffeineMgFromEntry(entry, liveCalcAt, recalcAt, caffeineHalfLifeHours);
+    }, 0);
+    const activeCaffeineMgPerKg = modelWeightKg > 0 ? activeCaffeineMg / modelWeightKg : 0;
+    const caffeineCounterPressure = (activeCaffeineMgPerKg / (activeCaffeineMgPerKg + CAFFEINE_STIM_KD_MG_PER_KG)) * 100;
     return {
-      activeMg: Number(metrics.activeMg.toFixed(3)),
+      activeMg: Number(selectedActiveMg.toFixed(3)),
       concentrationMgPerKg: Number(concentrationMgPerKg.toFixed(5)),
       sedationEc50MgPerKg: Number(SEDATION_EC50_MG_PER_KG.toFixed(5)),
       concentrationPressure: Number(concentrationPressure.toFixed(1)),
@@ -1165,16 +1444,17 @@ export default function ClonazepamTracker() {
       toleranceReduction: Number(toleranceReductionPercent(daysAtCurrentDose).toFixed(1)),
       receptorSensitivity: Number((toleranceFactor * 100).toFixed(1)),
       gabaDownregulation: Number((100 - toleranceFactor * 100).toFixed(1)),
-      sedationPressure: Number(metrics.sedationPressure.toFixed(1)),
+      sedationPressure: Number(selectedSedationPressure.toFixed(1)),
       circadianPenalty: Number(circadianPenalty.toFixed(1)),
-      alertness: Number(Math.max(0, 100 - metrics.sedationPressure - circadianPenalty).toFixed(1)),
-      caffeineCounterPressure: Number((currentInteractionPoint?.caffeineCounterPressure ?? 0).toFixed(1)),
-      alertnessWithCaffeine: Number((currentInteractionPoint?.alertnessWithCaffeine ?? Math.max(0, 100 - metrics.sedationPressure - circadianPenalty)).toFixed(1)),
+      alertness: Number(Math.max(0, 100 - selectedSedationPressure - circadianPenalty).toFixed(1)),
+      caffeineCounterPressure: Number(caffeineCounterPressure.toFixed(1)),
+      alertnessWithCaffeine: Number(Math.max(0, Math.min(100, 100 - selectedSedationPressure - circadianPenalty + caffeineCounterPressure)).toFixed(1)),
       withdrawalThresholdMg: withdrawalThresholdMg !== null ? Number(withdrawalThresholdMg.toFixed(3)) : null,
       interactionWeightKg: Number(modelWeightKg.toFixed(2)),
       interactionWeightSource: modelWeight.source,
+      evaluatedAt: liveCalcAt,
     };
-  }, [entries, recalcAt, metrics, daysAtCurrentDose, circadianStrengthPercent, circadianShiftHours, interactionData, withdrawalThresholdMg, activeProfile]);
+  }, [entries, modeledEntries, liveCalcAt, recalcAt, halfLifeHours, daysAtCurrentDose, circadianStrengthPercent, circadianShiftHours, withdrawalThresholdMg, activeProfile, caffeineEntries]);
 
   const taperSchedule = useMemo(() => {
     const startDose = Math.max(0, Number(taperStartDoseMg) || 0);
@@ -1479,7 +1759,7 @@ export default function ClonazepamTracker() {
         <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline includes 72-hour projection.</p>
         {withdrawalThresholdMg !== null && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Dashed red line marks an estimated risk zone based on chronic exposure assumptions (not a diagnostic cutoff).
+            <span className="text-red-600 dark:text-red-400 font-semibold">Dashed red line</span> marks an estimated risk zone based on chronic exposure assumptions (not a diagnostic cutoff).
           </p>
         )}
         {activeBySedationChartData.length === 0 ? (
@@ -1665,7 +1945,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Sedation Pressure (Estimated)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Gray shows baseline pressure with no tolerance; purple shows pressure adjusted by days at current dose ({daysAtCurrentDose}, {toleranceReductionPercent(daysAtCurrentDose).toFixed(1)}% reduction); cyan shows effective alertness.
+          <span className="text-gray-500 dark:text-gray-300 font-semibold">Gray</span> shows baseline pressure with no tolerance; <span className="text-purple-600 dark:text-purple-400 font-semibold">purple</span> shows pressure adjusted by days at current dose ({daysAtCurrentDose}, {toleranceReductionPercent(daysAtCurrentDose).toFixed(1)}% reduction); <span className="text-slate-500 dark:text-slate-300 font-semibold">dashed slate</span> shows circadian sleep pressure; <span className="text-cyan-500 dark:text-cyan-300 font-semibold">cyan</span> shows effective alertness.
         </p>
         {sedationPressureData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
@@ -1754,7 +2034,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">GABA-A Downregulation (Modeled)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Modeled receptor adaptation from your tolerance setting. Green is estimated receptor sensitivity, red is estimated downregulation. Current setting: {daysAtCurrentDose} days at dose.
+          Modeled receptor adaptation from your tolerance setting. <span className="text-green-600 dark:text-green-400 font-semibold">Green</span> is estimated receptor sensitivity, <span className="text-red-600 dark:text-red-400 font-semibold">red</span> is estimated downregulation. Current setting: {daysAtCurrentDose} days at dose.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-800 dark:text-gray-200">
           <p>Current receptor sensitivity: <strong>{liveMath.receptorSensitivity}%</strong></p>
@@ -1800,7 +2080,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Caffeine × Clonazepam Interaction (Estimated)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Purple is clonazepam sedation pressure, amber is caffeine wakefulness support, and cyan is effective alertness with caffeine. Caffeine does not reduce the modeled clonazepam impairment signal.
+          <span className="text-purple-600 dark:text-purple-400 font-semibold">Purple</span> is clonazepam sedation pressure, <span className="text-amber-500 dark:text-amber-300 font-semibold">amber</span> is caffeine wakefulness support, <span className="text-cyan-500 dark:text-cyan-300 font-semibold">dashed cyan</span> is baseline alertness without caffeine, and <span className="text-cyan-500 dark:text-cyan-300 font-semibold">solid cyan</span> is effective alertness with caffeine. Caffeine does not reduce the modeled clonazepam impairment signal.
         </p>
         {interactionData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
@@ -1834,6 +2114,7 @@ export default function ClonazepamTracker() {
                     const effectPhaseLabel = item?.payload?.effectPhaseLabel || "pre-dose";
                     if (name === "sedationPressure") return [`${value}% (${effectPhaseLabel})`, "Clonazepam sedation pressure"];
                     if (name === "caffeineCounterPressure") return [`${value}% (${effectPhaseLabel})`, "Caffeine wakefulness support"];
+                    if (name === "alertnessBaseline") return [`${value}% (${effectPhaseLabel})`, "Baseline alertness (no caffeine)"];
                     return [`${value}% (${effectPhaseLabel})`, "Effective alertness with caffeine"];
                   }}
                 />
@@ -1851,7 +2132,8 @@ export default function ClonazepamTracker() {
                 />
                 <Line type="monotone" dataKey="sedationPressure" name="sedationPressure" stroke="#a855f7" strokeWidth={2.5} dot={false} />
                 <Line type="monotone" dataKey="caffeineCounterPressure" name="caffeineCounterPressure" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="alertnessWithCaffeine" name="alertnessWithCaffeine" stroke="#06b6d4" strokeWidth={2} strokeDasharray="5 3" dot={false} />
+                <Line type="monotone" dataKey="alertnessBaseline" name="alertnessBaseline" stroke="#06b6d4" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                <Line type="monotone" dataKey="alertnessWithCaffeine" name="alertnessWithCaffeine" stroke="#06b6d4" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1935,9 +2217,69 @@ export default function ClonazepamTracker() {
         <h2 className="font-semibold text-gray-900 dark:text-white">Math Model</h2>
         <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-2 text-xs sm:text-sm text-indigo-950 dark:text-indigo-100">
           <h3 className="font-semibold">Live calculations using your current tracker inputs</h3>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="space-y-1">
+              <span className="text-[11px] uppercase tracking-wide text-indigo-800 dark:text-indigo-300">Calculation time</span>
+              <input
+                type="datetime-local"
+                value={toLocalDateTimeInputValue(liveCalcAt)}
+                onChange={(e) => saveLiveCalcAt(e.target.value)}
+                className="px-2 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={resetLiveCalcAtNow}
+              className={liveCalcPresetButtonClass("current")}
+            >
+              Use current time
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveCalcToRelativeDay(0, "today")}
+              className={liveCalcPresetButtonClass("today")}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveCalcToRelativeDay(-1, "yesterday")}
+              className={liveCalcPresetButtonClass("yesterday")}
+            >
+              Yesterday
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveCalcToRelativeDay(1, "tomorrow")}
+              className={liveCalcPresetButtonClass("tomorrow")}
+            >
+              Tomorrow
+            </button>
+            <button
+              type="button"
+              onClick={setLiveCalcToLastMaintenanceDose}
+              className={liveCalcPresetButtonClass("lastMaintenance")}
+            >
+              Last maintenance dose
+            </button>
+            <button
+              type="button"
+              onClick={setLiveCalcToLastLoggedDose}
+              className={liveCalcPresetButtonClass("lastLogged")}
+            >
+              Last logged dose
+            </button>
+          </div>
+          {Number.isFinite(Number(effectiveLastMaintenanceDoseAtMs)) && Number(effectiveLastMaintenanceDoseAtMs) > 0 && (
+            <p className="text-[11px] text-indigo-800 dark:text-indigo-300">
+              Resolved last maintenance: {formatChartTooltipDateTime(effectiveLastMaintenanceDoseAtMs)}.
+            </p>
+          )}
+          <p><strong>Evaluated at:</strong> {formatChartTooltipDateTime(liveMath.evaluatedAt)}.</p>
           <p><strong>Current active:</strong> {liveMath.activeMg} mg.</p>
+          <p><strong>Skipped carryover doses (same-day override):</strong> {modeledCarryoverSkippedSameDay}.</p>
           <p><strong>Concentration pressure:</strong> 100 × (Active/Weight)/(Active/Weight + {liveMath.sedationEc50MgPerKg}) = {liveMath.concentrationPressure}%.</p>
-          <p><strong>Acute sedation kernel:</strong> summed acute entry effects now = {liveMath.acuteSedationPressure}%.</p>
+          <p><strong>Acute sedation kernel:</strong> summed acute entry effects at selected time = {liveMath.acuteSedationPressure}%.</p>
           <p><strong>Blended sedation before tolerance:</strong> 0.4×P_conc + 0.6×min(100, Acute) = {liveMath.blendedPressure}%.</p>
           <p><strong>Tolerance factor:</strong> {liveMath.toleranceFactor} → {liveMath.toleranceReduction}% reduction from {daysAtCurrentDose} days at dose.</p>
           <p><strong>GABA-A adaptation (modeled):</strong> receptor sensitivity {liveMath.receptorSensitivity}%, downregulation {liveMath.gabaDownregulation}%.</p>
@@ -1961,6 +2303,46 @@ export default function ClonazepamTracker() {
           <p><strong>Caffeine wakefulness support:</strong> each caffeine entry uses a fixed {CAFFEINE_ONSET_LAG_MINUTES} min lag plus {CAFFEINE_ONSET_RAMP_MINUTES} min smooth ramp to full effect, so wakefulness support typically peaks around {CAFFEINE_ONSET_FULL_EFFECT_MINUTES} min after each sip; C = ActiveCaffeine_mg / weight_kg, Support = 100 × C/(C + 2.0), Alertness_with_caffeine = clamp(Alertness + Support, 0, 100); sedation pressure itself is unchanged.</p>
           <p><strong>Withdrawal risk threshold (estimated):</strong> decay = 0.5^(interval/halfLife), Trough_ss = MaintenanceDose × [decay/(1 − decay)], Threshold = max(0.05, 0.45 × Trough_ss)</p>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Further Research</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          External references for pharmacokinetics, tolerance biology, taper planning, and withdrawal symptom patterns.
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Evidence tags help distinguish guideline and trial sources from educational or community references.
+        </p>
+        <div className="space-y-3">
+          {RESEARCH_REFERENCE_GROUPS.map((group) => (
+            <div key={group.title} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{group.title}</h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{group.summary}</p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                {group.links.map((link) => (
+                  <li key={link.url}>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                    >
+                      {link.label}
+                    </a>
+                    {link.evidence && (
+                      <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                        {link.evidence}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Educational information only, not medical advice. Benzodiazepine tapering should be individualized and supervised by a qualified clinician.
+        </p>
       </div>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
