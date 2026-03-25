@@ -70,6 +70,56 @@ const MED_CONFIG = [
   },
 ];
 
+const VISUAL_RESEARCH_LINKS = [
+  {
+    label: "Polypharmacy overview and risk concepts (NIGMS)",
+    url: "https://nigms.nih.gov/education/fact-sheets/Pages/polypharmacy.aspx",
+    evidence: "Reference",
+  },
+  {
+    label: "Benzodiazepines: uses, dangers, and clinical considerations (PubMed Central)",
+    url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8629021/",
+    evidence: "Review",
+  },
+  {
+    label: "Caffeine and sleep disruption timing effects (PubMed)",
+    url: "https://pubmed.ncbi.nlm.nih.gov/24235903/",
+    evidence: "Clinical study",
+  },
+  {
+    label: "Drug interaction resources and labeling (DailyMed)",
+    url: "https://dailymed.nlm.nih.gov/dailymed/",
+    evidence: "Regulatory",
+  },
+];
+
+const VISUAL_COMMUNITY_LINKS = [
+  {
+    label: "ADAA Anxiety and Depression Support Community",
+    url: "https://healthunlocked.com/anxiety-depression-support",
+    type: "Moderated community",
+    summary: "Peer discussion around anxiety, sleep, and medication routines.",
+  },
+  {
+    label: "NAMI Connection Recovery Support Group",
+    url: "https://www.nami.org/Support-Education/Support-Groups/NAMI-Connection",
+    type: "Peer-led group",
+    summary: "Structured mental health support groups for ongoing care and coping.",
+  },
+  {
+    label: "BenzoBuddies",
+    url: "https://benzobuddies.org/",
+    type: "Community forum",
+    summary: "Peer forum with benzodiazepine-focused taper and recovery discussions.",
+  },
+  {
+    label: "r/caffeine (Reddit)",
+    url: "https://www.reddit.com/r/caffeine/",
+    type: "Community forum",
+    summary: "Community discussions on caffeine use patterns, tolerance, and timing.",
+  },
+];
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1016,6 +1066,60 @@ export default function MedicationVisualModels() {
         <h2 className="font-semibold text-amber-900 dark:text-amber-200">Safety Note</h2>
         <p className="text-sm text-amber-900 dark:text-amber-200">
           This visualization is educational and uses simplified math models from your tracker logs. Clonazepam is metabolized by CYP3A4, but clinically significant drug-drug interactions with vilazodone are not commonly reported. Here, CYP3A4 is shown as an exploratory overlap proxy rather than proof of a clinically significant interaction, while caffeine and levothyroxine remain wakefulness inputs rather than antidotes to sedative impairment.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Further Research & Online Discussion</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Helpful references for interaction-model context and peer communities where people discuss tracking patterns and practical routines.
+        </p>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Research</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {VISUAL_RESEARCH_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                  {link.evidence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Forums & Communities</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {VISUAL_COMMUNITY_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/20">
+                  {link.type}
+                </span>
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{link.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Community content may be useful for peer support and practical ideas, but it is not individualized medical advice.
         </p>
       </div>
     </div>

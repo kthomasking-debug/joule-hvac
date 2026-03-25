@@ -197,6 +197,33 @@ const sections = [
   },
 ];
 
+const sectionStyles = {
+  "HVAC Calculation & Sizing": {
+    shell: "border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/15",
+    title: "text-blue-900 dark:text-blue-100",
+    description: "text-blue-700 dark:text-blue-300",
+    badge: "border-blue-300 dark:border-blue-700 bg-blue-100/80 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300",
+  },
+  "Troubleshooting & Support": {
+    shell: "border-orange-200 dark:border-orange-800 bg-orange-50/40 dark:bg-orange-950/15",
+    title: "text-orange-900 dark:text-orange-100",
+    description: "text-orange-700 dark:text-orange-300",
+    badge: "border-orange-300 dark:border-orange-700 bg-orange-100/80 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300",
+  },
+  "Electrical & Wiring": {
+    shell: "border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/15",
+    title: "text-amber-900 dark:text-amber-100",
+    description: "text-amber-700 dark:text-amber-300",
+    badge: "border-amber-300 dark:border-amber-700 bg-amber-100/80 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",
+  },
+  "Data & Resources": {
+    shell: "border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-950/15",
+    title: "text-sky-900 dark:text-sky-100",
+    description: "text-sky-700 dark:text-sky-300",
+    badge: "border-sky-300 dark:border-sky-700 bg-sky-100/80 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300",
+  },
+};
+
 /**
  * Tools Index Page
  * Lists all available tools
@@ -271,22 +298,30 @@ export default function Tools() {
 
       <div className="space-y-12">
         {filteredSections.map((section, sectionIndex) => (
-          <div key={sectionIndex}>
-            <div className="mb-4">
-              <h2 className={`text-2xl font-semibold mb-1 ${
-                section.comingSoon 
-                  ? "text-gray-400 dark:text-gray-600" 
-                  : "text-gray-900 dark:text-white"
-              }`}>
-                {section.title}
-              </h2>
-              <p className={`text-sm ${
-                section.comingSoon 
-                  ? "text-gray-400 dark:text-gray-600" 
-                  : "text-gray-600 dark:text-gray-400"
-              }`}>
-                {section.description}
-              </p>
+          <div
+            key={sectionIndex}
+            className={`rounded-2xl border p-5 ${sectionStyles[section.title]?.shell || "border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20"}`}
+          >
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div>
+                <h2 className={`text-2xl font-semibold mb-1 ${
+                  section.comingSoon
+                    ? "text-gray-400 dark:text-gray-600"
+                    : sectionStyles[section.title]?.title || "text-gray-900 dark:text-white"
+                }`}>
+                  {section.title}
+                </h2>
+                <p className={`text-sm ${
+                  section.comingSoon
+                    ? "text-gray-400 dark:text-gray-600"
+                    : sectionStyles[section.title]?.description || "text-gray-600 dark:text-gray-400"
+                }`}>
+                  {section.description}
+                </p>
+              </div>
+              <span className={`ml-auto inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${sectionStyles[section.title]?.badge || "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300"}`}>
+                {section.tools.length} tool{section.tools.length === 1 ? "" : "s"}
+              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {section.tools.map((tool) => {

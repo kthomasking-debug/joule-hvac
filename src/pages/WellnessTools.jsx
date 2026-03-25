@@ -354,6 +354,7 @@ const wellnessSection = {
       icon: Scale,
       description: "Calculate daily calories and macro targets from height, weight, and daily steps.",
       color: "green",
+      category: null,
     },
     {
       path: "/wellness/caffeine-tracker",
@@ -361,7 +362,8 @@ const wellnessSection = {
       label: "Caffeine Tracker",
       icon: Coffee,
       description: "Track green tea, Earl Grey black tea, and coffee intake using your body weight to estimate active caffeine and adenosine receptor impact.",
-      color: "green",
+      color: "orange",
+      category: "Stimulating",
     },
     {
       path: "/wellness/clonazepam-tracker",
@@ -371,6 +373,7 @@ const wellnessSection = {
       description: "Track clonazepam dose timing and estimated active amount over time using a configurable half-life model.",
       color: "purple",
       storageKey: "clonazepamTrackerByUserV1",
+      category: "Tranquilizing",
     },
     {
       path: "/wellness/vilazodone-tracker",
@@ -378,8 +381,9 @@ const wellnessSection = {
       label: "Vilazodone Tracker",
       icon: Pill,
       description: "Track vilazodone dose timing and estimated active amount over time using a configurable half-life model.",
-      color: "purple",
+      color: "blue",
       storageKey: "vilazodoneTrackerByUserV1",
+      category: "Modulating / mixed models",
     },
     {
       path: "/wellness/lamotrigine-tracker",
@@ -387,8 +391,9 @@ const wellnessSection = {
       label: "Lamotrigine Tracker",
       icon: Pill,
       description: "Track lamotrigine dose timing and estimated active amount over time using a configurable half-life model.",
-      color: "purple",
+      color: "blue",
       storageKey: "lamotrigineTrackerByUserV1",
+      category: "Modulating / mixed models",
     },
     {
       path: "/wellness/doxylamine-tracker",
@@ -398,6 +403,7 @@ const wellnessSection = {
       description: "Track doxylamine dose timing and estimated active amount over time using a configurable half-life model.",
       color: "purple",
       storageKey: "doxylamineTrackerByUserV1",
+      category: "Tranquilizing",
     },
     {
       path: "/wellness/trazodone-tracker",
@@ -407,6 +413,7 @@ const wellnessSection = {
       description: "Track trazodone dose timing and estimated active amount over time using a configurable half-life model.",
       color: "purple",
       storageKey: "trazodoneTrackerByUserV1",
+      category: "Tranquilizing",
     },
     {
       path: "/wellness/levothyroxine-tracker",
@@ -414,8 +421,9 @@ const wellnessSection = {
       label: "Levothyroxine Tracker",
       icon: Pill,
       description: "Track levothyroxine dose timing and estimated active amount over time using a configurable half-life model.",
-      color: "purple",
+      color: "orange",
       storageKey: "levothyroxineTrackerByUserV1",
+      category: "Stimulating",
     },
     {
       path: "/wellness/medication-visual-models",
@@ -423,7 +431,8 @@ const wellnessSection = {
       label: "Medication Visual Models",
       icon: Thermometer,
       description: "Animated visual model cards for clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine.",
-      color: "purple",
+      color: "fuchsia",
+      category: "Combined / visualization models",
     },
     {
       path: "/wellness/medication-mix-model",
@@ -431,16 +440,48 @@ const wellnessSection = {
       label: "Medication Mix Model",
       icon: Thermometer,
       description: "Estimate combined CNS load from clonazepam, doxylamine, vilazodone, lamotrigine, trazodone, levothyroxine, and caffeine using your existing tracker logs.",
-      color: "purple",
+      color: "fuchsia",
+      category: "Combined / visualization models",
     },
   ],
 };
 
+const WELLNESS_TOOL_CATEGORY_ORDER = [
+  "Tranquilizing",
+  "Stimulating",
+  "Modulating / mixed models",
+  "Combined / visualization models",
+];
+
 const colorClasses = {
   blue: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+  fuchsia: "bg-fuchsia-50 dark:bg-fuchsia-900/20 border-fuchsia-200 dark:border-fuchsia-700 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400",
   green: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400",
   purple: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400",
   orange: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400",
+};
+
+const categoryStyles = {
+  Tranquilizing: {
+    section: "border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/15",
+    title: "text-purple-900 dark:text-purple-100",
+    badge: "border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-100/80 dark:bg-purple-900/40",
+  },
+  Stimulating: {
+    section: "border-orange-200 dark:border-orange-800 bg-orange-50/40 dark:bg-orange-950/15",
+    title: "text-orange-900 dark:text-orange-100",
+    badge: "border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 bg-orange-100/80 dark:bg-orange-900/40",
+  },
+  "Modulating / mixed models": {
+    section: "border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/15",
+    title: "text-blue-900 dark:text-blue-100",
+    badge: "border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 bg-blue-100/80 dark:bg-blue-900/40",
+  },
+  "Combined / visualization models": {
+    section: "border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/40 dark:bg-fuchsia-950/15",
+    title: "text-fuchsia-900 dark:text-fuchsia-100",
+    badge: "border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 bg-fuchsia-100/80 dark:bg-fuchsia-900/40",
+  },
 };
 
 function getEntryTakenAtMs(entry, referenceMs = Date.now()) {
@@ -544,6 +585,18 @@ function summarizeMedicationState(storageKey, state) {
   };
 }
 
+async function persistAIConfigToBridge(key, value) {
+  try {
+    await fetch(`/api/settings/${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    });
+  } catch {
+    // Ignore bridge persistence errors in browser-only mode.
+  }
+}
+
 export default function WellnessTools() {
   const [searchQuery, setSearchQuery] = useState("");
   const [globalUserName, setGlobalUserName] = useState(() => {
@@ -560,9 +613,36 @@ export default function WellnessTools() {
   const [wellnessAiMessages, setWellnessAiMessages] = useState([]);
   const [wellnessAiBusy, setWellnessAiBusy] = useState(false);
   const [wellnessAiError, setWellnessAiError] = useState("");
+  const [wellnessGroqApiKey, setWellnessGroqApiKey] = useState(() => (localStorage.getItem("groqApiKey") || "").trim());
+  const [wellnessGroqStatus, setWellnessGroqStatus] = useState("");
   const importInputRef = useRef(null);
   const cloudSyncInitializedRef = useRef(false);
   const lastCloudSyncedPayloadRef = useRef("");
+
+  useEffect(() => {
+    const syncGroqKeyFromStorage = () => {
+      try {
+        setWellnessGroqApiKey((localStorage.getItem("groqApiKey") || "").trim());
+      } catch {
+        // Ignore storage read issues.
+      }
+    };
+
+    const handleGroqApiKeyUpdate = (event) => {
+      const nextKey = typeof event?.detail?.apiKey === "string"
+        ? event.detail.apiKey.trim()
+        : (localStorage.getItem("groqApiKey") || "").trim();
+      setWellnessGroqApiKey(nextKey);
+    };
+
+    window.addEventListener("storage", syncGroqKeyFromStorage);
+    window.addEventListener("groqApiKeyUpdated", handleGroqApiKeyUpdate);
+
+    return () => {
+      window.removeEventListener("storage", syncGroqKeyFromStorage);
+      window.removeEventListener("groqApiKeyUpdated", handleGroqApiKeyUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(WELLNESS_GLOBAL_USER_NAME_KEY, globalUserName);
@@ -761,6 +841,18 @@ export default function WellnessTools() {
     );
   }, [searchQuery]);
 
+  const groupedFilteredTools = useMemo(() => {
+    const ungrouped = filteredTools.filter((tool) => !tool.category);
+    const grouped = WELLNESS_TOOL_CATEGORY_ORDER
+      .map((category) => ({
+        category,
+        tools: filteredTools.filter((tool) => tool.category === category),
+      }))
+      .filter((group) => group.tools.length > 0);
+
+    return { ungrouped, grouped };
+  }, [filteredTools]);
+
   const userSavedDataSnapshot = useMemo(() => {
     return buildUserSavedDataSnapshot(globalUserName);
   }, [globalUserName]);
@@ -828,6 +920,33 @@ export default function WellnessTools() {
   const clearWellnessAiChat = () => {
     setWellnessAiMessages([]);
     setWellnessAiError("");
+  };
+
+  const saveWellnessGroqApiKey = async () => {
+    const trimmedKey = wellnessGroqApiKey.trim();
+    setWellnessGroqStatus("");
+
+    try {
+      if (trimmedKey) {
+        localStorage.setItem("groqApiKey", trimmedKey);
+        localStorage.setItem("aiProvider", "groq");
+        await Promise.all([
+          persistAIConfigToBridge("groqApiKey", trimmedKey),
+          persistAIConfigToBridge("aiProvider", "groq"),
+        ]);
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: trimmedKey } }));
+        setWellnessGroqStatus("Groq API key saved. Settings will reflect the update.");
+      } else {
+        localStorage.removeItem("groqApiKey");
+        await persistAIConfigToBridge("groqApiKey", "");
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: "" } }));
+        setWellnessGroqStatus("Groq API key cleared.");
+      }
+    } catch {
+      setWellnessGroqStatus("Unable to save the Groq API key right now.");
+    }
   };
 
   const sendWellnessAiMessage = async (promptOverride = "") => {
@@ -921,165 +1040,198 @@ export default function WellnessTools() {
       </div>
 
       <div className="mb-8 rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/50 dark:bg-fuchsia-950/20 p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Wellness User</p>
-
-        {savedUsers.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {savedUsers.map((name) => (
-              <div
-                key={name}
-                className={`flex items-center gap-1 pl-3 pr-1 py-1 rounded-full text-sm border ${
-                  globalUserName === name
-                    ? "bg-fuchsia-600 text-white border-fuchsia-600 dark:bg-fuchsia-500 dark:border-fuchsia-500"
-                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-fuchsia-400"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => selectUser(name)}
-                  className="font-medium"
-                >
-                  {name}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeUser(name)}
-                  className={`ml-1 rounded-full p-0.5 hover:bg-black/10 ${
-                    globalUserName === name ? "text-fuchsia-100" : "text-gray-400 hover:text-red-500"
-                  }`}
-                  title={`Remove ${name}`}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newUserInput}
-            onChange={(e) => setNewUserInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && saveCurrentUser()}
-            placeholder={globalUserName ? `Active: ${globalUserName}` : "Enter a user name…"}
-            className="flex-1 px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 text-sm"
-          />
-          <button
-            type="button"
-            onClick={saveCurrentUser}
-            disabled={!newUserInput.trim() && !globalUserName.trim()}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white text-sm font-medium"
-            title="Save user"
-          >
-            <UserPlus className="w-4 h-4" />
-            Save
-          </button>
-        </div>
-
         {globalUserName && (
           <p className="text-xs text-fuchsia-700 dark:text-fuchsia-300">
             Active user: <strong>{globalUserName}</strong> · All wellness tools will use this user's settings.
           </p>
         )}
 
-        <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3 space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Backup / Transfer</p>
+        <details open className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3">
+          <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Wellness User</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {globalUserName ? `Active: ${globalUserName}` : "Choose or create the active wellness user."}
+              </p>
+            </div>
+            <span className="rounded-full border border-fuchsia-200 dark:border-fuchsia-700 bg-fuchsia-100/80 dark:bg-fuchsia-900/40 px-2 py-1 text-[11px] font-semibold text-fuchsia-700 dark:text-fuchsia-300">
+              {savedUsers.length} saved user{savedUsers.length === 1 ? "" : "s"}
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3">
+            {savedUsers.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {savedUsers.map((name) => (
+                  <div
+                    key={name}
+                    className={`flex items-center gap-1 pl-3 pr-1 py-1 rounded-full text-sm border ${
+                      globalUserName === name
+                        ? "bg-fuchsia-600 text-white border-fuchsia-600 dark:bg-fuchsia-500 dark:border-fuchsia-500"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-fuchsia-400"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectUser(name)}
+                      className="font-medium"
+                    >
+                      {name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeUser(name)}
+                      className={`ml-1 rounded-full p-0.5 hover:bg-black/10 ${
+                        globalUserName === name ? "text-fuchsia-100" : "text-gray-400 hover:text-red-500"
+                      }`}
+                      title={`Remove ${name}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newUserInput}
+                onChange={(e) => setNewUserInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveCurrentUser()}
+                placeholder={globalUserName ? `Active: ${globalUserName}` : "Enter a user name…"}
+                className="flex-1 px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 text-sm"
+              />
+              <button
+                type="button"
+                onClick={saveCurrentUser}
+                disabled={!newUserInput.trim() && !globalUserName.trim()}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white text-sm font-medium"
+                title="Save user"
+              >
+                <UserPlus className="w-4 h-4" />
+                Save
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <details className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3">
+          <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Backup / Transfer</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Download or restore your wellness JSON bundle.
+              </p>
+            </div>
+            <span className="rounded-full border border-fuchsia-200 dark:border-fuchsia-700 bg-fuchsia-100/80 dark:bg-fuchsia-900/40 px-2 py-1 text-[11px] font-semibold text-fuchsia-700 dark:text-fuchsia-300">
+              JSON tools
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3">
             <p className="text-xs text-gray-600 dark:text-gray-400">
               Download saved wellness users and their linked data as JSON, or upload a previous export to restore it into this browser.
             </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={downloadWellnessJson}
+                className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-medium"
+                title="Download saved wellness users, calorie profiles, caffeine profiles, and medication tracker data as a JSON backup file."
+              >
+                Download JSON
+              </button>
+              <button
+                type="button"
+                onClick={triggerImportPicker}
+                className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
+                title="Upload a previously exported wellness JSON file and restore it into this browser's local storage."
+              >
+                Upload JSON
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+            </div>
+            {transferMessage && (
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">{transferMessage}</p>
+            )}
+            {transferError && (
+              <p className="text-xs text-red-700 dark:text-red-300">{transferError}</p>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={downloadWellnessJson}
-              className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-medium"
-              title="Download saved wellness users, calorie profiles, caffeine profiles, and medication tracker data as a JSON backup file."
-            >
-              Download JSON
-            </button>
-            <button
-              type="button"
-              onClick={triggerImportPicker}
-              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
-              title="Upload a previously exported wellness JSON file and restore it into this browser's local storage."
-            >
-              Upload JSON
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              onChange={handleImportFile}
-              className="hidden"
-            />
-          </div>
-          {transferMessage && (
-            <p className="text-xs text-emerald-700 dark:text-emerald-300">{transferMessage}</p>
-          )}
-          {transferError && (
-            <p className="text-xs text-red-700 dark:text-red-300">{transferError}</p>
-          )}
-        </div>
+        </details>
 
-        <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3 space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Automatic Cloud Sync</p>
+        <details className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3">
+          <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">Automatic Cloud Sync</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Sync this wellness bundle across browsers with a private key.
+              </p>
+            </div>
+            <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${cloudSyncEnabled ? "border-emerald-300 dark:border-emerald-700 bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 bg-gray-100/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>
+              {cloudSyncEnabled ? "On" : "Off"}
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3">
             <p className="text-xs text-gray-600 dark:text-gray-400">
               Stores your wellness JSON bundle in Netlify cloud storage using a private sync key. Any browser with the same key can restore and keep syncing automatically.
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleCloudSync}
+                className={`px-3 py-2 rounded-lg text-sm font-medium ${cloudSyncEnabled ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"}`}
+                title="Enable or disable automatic cloud sync for wellness data in this browser."
+              >
+                {cloudSyncEnabled ? "Cloud Sync On" : "Cloud Sync Off"}
+              </button>
+              <button
+                type="button"
+                onClick={generateCloudSyncSecret}
+                className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
+                title="Generate a new sync key for automatic cloud sync. You need the same key on another browser to restore the same wellness data."
+              >
+                Generate Sync Key
+              </button>
+              <button
+                type="button"
+                onClick={() => runCloudSync({ forcePush: true })}
+                disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
+                className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Push the current browser's wellness data to cloud storage immediately."
+              >
+                {cloudSyncBusy ? "Syncing..." : "Sync Now"}
+              </button>
+              <button
+                type="button"
+                onClick={() => runCloudSync({ forcePull: true })}
+                disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
+                className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Restore wellness data from cloud storage using the current sync key. This is useful on a new browser or device."
+              >
+                Restore From Cloud
+              </button>
+            </div>
+            <label className="space-y-1 block">
+              <span className="text-sm text-gray-700 dark:text-gray-300">Sync key</span>
+              <input
+                type="text"
+                value={cloudSyncSecret}
+                onChange={(e) => setCloudSyncSecret(e.target.value.trim())}
+                placeholder="Paste or generate a sync key"
+                className="w-full px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Keep this key private. Anyone with the same key can restore the synced wellness JSON bundle.
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleCloudSync}
-              className={`px-3 py-2 rounded-lg text-sm font-medium ${cloudSyncEnabled ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"}`}
-              title="Enable or disable automatic cloud sync for wellness data in this browser."
-            >
-              {cloudSyncEnabled ? "Cloud Sync On" : "Cloud Sync Off"}
-            </button>
-            <button
-              type="button"
-              onClick={generateCloudSyncSecret}
-              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium"
-              title="Generate a new sync key for automatic cloud sync. You need the same key on another browser to restore the same wellness data."
-            >
-              Generate Sync Key
-            </button>
-            <button
-              type="button"
-              onClick={() => runCloudSync({ forcePush: true })}
-              disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
-              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Push the current browser's wellness data to cloud storage immediately."
-            >
-              {cloudSyncBusy ? "Syncing..." : "Sync Now"}
-            </button>
-            <button
-              type="button"
-              onClick={() => runCloudSync({ forcePull: true })}
-              disabled={!cloudSyncEnabled || !cloudSyncSecret.trim() || cloudSyncBusy}
-              className="px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Restore wellness data from cloud storage using the current sync key. This is useful on a new browser or device."
-            >
-              Restore From Cloud
-            </button>
-          </div>
-          <label className="space-y-1 block">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Sync key</span>
-            <input
-              type="text"
-              value={cloudSyncSecret}
-              onChange={(e) => setCloudSyncSecret(e.target.value.trim())}
-              placeholder="Paste or generate a sync key"
-              className="w-full px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            />
-          </label>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Keep this key private. Anyone with the same key can restore the synced wellness JSON bundle.
-          </p>
-        </div>
+        </details>
 
         <details className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white/70 dark:bg-gray-900/40 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">
@@ -1198,33 +1350,76 @@ export default function WellnessTools() {
         <p className="text-sm text-gray-600 dark:text-gray-400">{wellnessSection.description}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredTools.map((tool) => {
-          const Icon = tool.icon;
-          return (
-            <Link
-              key={tool.path}
-              to={tool.path}
-              className={`block rounded-lg border p-6 transition-all hover:shadow-lg ${colorClasses[tool.color]}`}
-              title={tool.description}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg border bg-white dark:bg-gray-800 ${colorClasses[tool.color].split(" ")[0]}`}>
-                  <Icon className="w-6 h-6" />
+      {groupedFilteredTools.ungrouped.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {groupedFilteredTools.ungrouped.map((tool) => {
+            const Icon = tool.icon;
+            return (
+              <Link
+                key={tool.path}
+                to={tool.path}
+                className={`block rounded-lg border p-6 transition-all hover:shadow-lg ${colorClasses[tool.color]}`}
+                title={tool.description}
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`p-3 rounded-lg border bg-white dark:bg-gray-800 ${colorClasses[tool.color].split(" ")[0]}`}>
+                    <Icon className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{tool.label}</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{tool.description}</p>
+                    {doseAlertsByPath[tool.path] && (
+                      <p className="mt-2 text-sm font-medium text-orange-700 dark:text-orange-300">
+                        Dose reminder: {doseAlertsByPath[tool.path]}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{tool.label}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{tool.description}</p>
-                  {doseAlertsByPath[tool.path] && (
-                    <p className="mt-2 text-sm font-medium text-orange-700 dark:text-orange-300">
-                      Dose reminder: {doseAlertsByPath[tool.path]}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="space-y-8">
+        {groupedFilteredTools.grouped.map((group) => (
+          <section key={group.category} className={`space-y-4 rounded-xl border p-4 ${categoryStyles[group.category]?.section || "border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20"}`}>
+            <div className="flex items-center gap-3">
+              <h3 className={`text-lg font-semibold ${categoryStyles[group.category]?.title || "text-gray-900 dark:text-white"}`}>{group.category}</h3>
+              <span className={`text-xs px-2 py-1 rounded-full border ${categoryStyles[group.category]?.badge || "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900"}`}>
+                {group.tools.length} tool{group.tools.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {group.tools.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <Link
+                    key={tool.path}
+                    to={tool.path}
+                    className={`block rounded-lg border p-6 transition-all hover:shadow-lg ${colorClasses[tool.color]}`}
+                    title={tool.description}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-lg border bg-white dark:bg-gray-800 ${colorClasses[tool.color].split(" ")[0]}`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{tool.label}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{tool.description}</p>
+                        {doseAlertsByPath[tool.path] && (
+                          <p className="mt-2 text-sm font-medium text-orange-700 dark:text-orange-300">
+                            Dose reminder: {doseAlertsByPath[tool.path]}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
 
       <div className="mt-10 rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/50 dark:bg-fuchsia-950/20 p-4 space-y-3">
@@ -1265,6 +1460,43 @@ export default function WellnessTools() {
         </div>
 
         <div className="space-y-2">
+          <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white dark:bg-gray-900 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <label className="flex-1 min-w-[240px] space-y-1">
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">Groq API key</span>
+                <input
+                  type="password"
+                  value={wellnessGroqApiKey}
+                  onChange={(event) => {
+                    setWellnessGroqApiKey(event.target.value);
+                    setWellnessGroqStatus("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      saveWellnessGroqApiKey();
+                    }
+                  }}
+                  placeholder="Paste your Groq API key here"
+                  className="w-full px-3 py-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={saveWellnessGroqApiKey}
+                className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-medium"
+              >
+                Save key
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Saving here updates the same Groq key used by Settings and other AI-powered features.
+            </p>
+            {wellnessGroqStatus && (
+              <p className="text-xs text-fuchsia-700 dark:text-fuchsia-300">{wellnessGroqStatus}</p>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {WELLNESS_AI_QUICK_PROMPTS.map((prompt) => (
               <button
@@ -1317,7 +1549,7 @@ export default function WellnessTools() {
               rel="noreferrer"
               className="text-fuchsia-700 dark:text-fuchsia-300 hover:underline"
             >
-              Requires a configured Groq API key.
+              Get a Groq API key.
             </a>{" "}
             AI responses are informational only and not medical advice.
           </p>

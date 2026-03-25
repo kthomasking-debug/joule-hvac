@@ -387,6 +387,18 @@ function localDayKeyFromMs(valueMs) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Returns the target taper dose (mg) for a given timestamp based on the taper
+// schedule rows. For days before the schedule started we use the first step's
+// dose as the reference. Returns null when no schedule is configured.
+function taperStepDoseForTs(ts, taperRows) {
+  if (!taperRows || !taperRows.length) return null;
+  const row = taperRows.find((r) => ts >= r.startMs && ts < r.endMs);
+  if (row) return row.doseMg;
+  if (ts < taperRows[0].startMs) return taperRows[0].doseMg;
+  // After schedule completes the target is 0
+  return 0;
+}
+
 function normalizeLastMaintenanceToPast({
   anchorMs,
   referenceMs = Date.now(),
@@ -993,6 +1005,17 @@ export default function ClonazepamTracker() {
 
     return groups;
   }, [combinedDoseLogEntries, recalcAt]);
+
+  // Sum of logged clonazepam doses per local day (not counting maintenance carryover)
+  const dailyClonazepamTotals = useMemo(() => {
+    const totals = {};
+    for (const entry of entries) {
+      const ts = getEntryTakenAtMs(entry, recalcAt);
+      const dayKey = localDayKeyFromMs(ts);
+      if (dayKey) totals[dayKey] = (totals[dayKey] || 0) + Math.max(0, Number(entry.doseMg || 0));
+    }
+    return totals;
+  }, [entries, recalcAt]);
 
   const carryoverDoseTemplate = useMemo(() => {
     const parsedLastMaintenanceDoseAt = new Date(lastMaintenanceDoseAt).getTime();
@@ -2185,13 +2208,36 @@ export default function ClonazepamTracker() {
           <p className="text-gray-500 dark:text-gray-400">No entries yet. Add your first dose above.</p>
         ) : (
           <div className="space-y-2">
-            {combinedDoseLogGroups.map((group) => (
-              <div key={group.dayKey} className="space-y-2">
-                <div className="flex items-center gap-2">
+            {combinedDoseLogGroups.map((group) => {
+              const dayMidnightTs = new Date(`${group.dayKey}T00:00:00`).getTime();
+              const stepDoseMg = taperStepDoseForTs(dayMidnightTs, taperSchedule.rows);
+              const dayTotalMg = dailyClonazepamTotals[group.dayKey] || 0;
+              const exceedsStep = stepDoseMg !== null && dayTotalMg > stepDoseMg + 0.0005;
+              const underStep = stepDoseMg !== null && !exceedsStep && dayTotalMg > 0 && dayTotalMg < stepDoseMg - 0.0005;
+              const dayTotalLabel = parseFloat(dayTotalMg.toFixed(3));
+              const stepDoseLabel = stepDoseMg !== null ? parseFloat(stepDoseMg.toFixed(3)) : null;
+              const dayBorderClass = exceedsStep
+                ? "rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-900/10 p-2"
+                : underStep
+                ? "rounded-lg border border-green-300 dark:border-green-700 bg-green-50/30 dark:bg-green-900/10 p-2"
+                : "";
+              return (
+              <div key={group.dayKey} className={`space-y-2 ${dayBorderClass}`}>
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{group.label}</p>
                   {modeledCarryoverOverriddenDayKeys.has(group.dayKey) && (
                     <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
                       Maintenance overridden
+                    </span>
+                  )}
+                  {exceedsStep && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={`Total logged: ${dayTotalLabel} mg — taper step target: ${stepDoseLabel} mg`}>
+                      ⚠ {dayTotalLabel} mg · over step ({stepDoseLabel} mg)
+                    </span>
+                  )}
+                  {underStep && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" title={`Total logged: ${dayTotalLabel} mg — taper step target: ${stepDoseLabel} mg`}>
+                      ✓ {dayTotalLabel} mg · under step ({stepDoseLabel} mg)
                     </span>
                   )}
                 </div>
@@ -2227,7 +2273,8 @@ export default function ClonazepamTracker() {
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

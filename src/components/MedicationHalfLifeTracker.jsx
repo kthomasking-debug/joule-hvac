@@ -15,6 +15,167 @@ const PROFILE_STORAGE_KEY = "caffeineTrackerProfilesV1";
 const ACTIVE_PROFILE_ID_STORAGE_KEY = "caffeineTrackerActiveProfileId";
 const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
 
+const MEDICATION_RESEARCH_LINKS = {
+  Vilazodone: [
+    {
+      label: "Vilazodone medication information (MedlinePlus)",
+      url: "https://medlineplus.gov/druginfo/meds/a611020.html",
+      evidence: "Reference",
+    },
+    {
+      label: "Vilazodone research index (PubMed)",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=vilazodone+major+depressive+disorder",
+      evidence: "Research index",
+    },
+    {
+      label: "Vilazodone labeling and safety updates (DailyMed search)",
+      url: "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=vilazodone",
+      evidence: "Regulatory",
+    },
+  ],
+  Lamotrigine: [
+    {
+      label: "Lamotrigine medication information (MedlinePlus)",
+      url: "https://medlineplus.gov/druginfo/meds/a695007.html",
+      evidence: "Reference",
+    },
+    {
+      label: "Lamotrigine research index (PubMed)",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=lamotrigine+clinical+review",
+      evidence: "Research index",
+    },
+    {
+      label: "Lamotrigine labeling and safety updates (DailyMed search)",
+      url: "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=lamotrigine",
+      evidence: "Regulatory",
+    },
+  ],
+  Doxylamine: [
+    {
+      label: "Doxylamine medication information (MedlinePlus)",
+      url: "https://medlineplus.gov/druginfo/meds/a682537.html",
+      evidence: "Reference",
+    },
+    {
+      label: "Doxylamine research index (PubMed)",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=doxylamine+sleep+clinical",
+      evidence: "Research index",
+    },
+    {
+      label: "Doxylamine labeling and safety updates (DailyMed search)",
+      url: "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=doxylamine",
+      evidence: "Regulatory",
+    },
+  ],
+  Trazodone: [
+    {
+      label: "Trazodone medication information (MedlinePlus)",
+      url: "https://medlineplus.gov/druginfo/meds/a681038.html",
+      evidence: "Reference",
+    },
+    {
+      label: "Trazodone research index (PubMed)",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=trazodone+insomnia+depression+review",
+      evidence: "Research index",
+    },
+    {
+      label: "Trazodone labeling and safety updates (DailyMed search)",
+      url: "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=trazodone",
+      evidence: "Regulatory",
+    },
+  ],
+  Levothyroxine: [
+    {
+      label: "Levothyroxine medication information (MedlinePlus)",
+      url: "https://medlineplus.gov/druginfo/meds/a682461.html",
+      evidence: "Reference",
+    },
+    {
+      label: "Levothyroxine research index (PubMed)",
+      url: "https://pubmed.ncbi.nlm.nih.gov/?term=levothyroxine+thyroid+replacement+review",
+      evidence: "Research index",
+    },
+    {
+      label: "Levothyroxine labeling and safety updates (DailyMed search)",
+      url: "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=levothyroxine",
+      evidence: "Regulatory",
+    },
+  ],
+};
+
+const MEDICATION_COMMUNITY_LINKS = {
+  Vilazodone: [
+    {
+      label: "r/vilazodone (Reddit)",
+      url: "https://www.reddit.com/r/vilazodone/",
+      type: "Community forum",
+      summary: "Peer discussion focused on vilazodone experiences, side effects, and practical routines.",
+    },
+    {
+      label: "ADAA Anxiety and Depression Support Community",
+      url: "https://healthunlocked.com/anxiety-depression-support",
+      type: "Moderated community",
+      summary: "Broad anxiety/depression peer support community where SSRI discussions are common.",
+    },
+  ],
+  Lamotrigine: [
+    {
+      label: "r/lamotrigine (Reddit)",
+      url: "https://www.reddit.com/r/lamotrigine/",
+      type: "Community forum",
+      summary: "Peer discussion on lamotrigine routines, side effects, and long-term use patterns.",
+    },
+    {
+      label: "NAMI Connection Recovery Support Group",
+      url: "https://www.nami.org/Support-Education/Support-Groups/NAMI-Connection",
+      type: "Peer-led group",
+      summary: "Structured mental health support groups that can complement tracker-based self-monitoring.",
+    },
+  ],
+  Doxylamine: [
+    {
+      label: "r/insomnia (Reddit)",
+      url: "https://www.reddit.com/r/insomnia/",
+      type: "Community forum",
+      summary: "Peer discussion on sleep strategies and antihistamine sleep aid experiences.",
+    },
+    {
+      label: "Sleep Foundation Sleep Care Community",
+      url: "https://community.sleepfoundation.org/",
+      type: "Q&A community",
+      summary: "Sleep-focused discussions where nighttime medication timing and sleep quality are common topics.",
+    },
+  ],
+  Trazodone: [
+    {
+      label: "r/insomnia (Reddit)",
+      url: "https://www.reddit.com/r/insomnia/",
+      type: "Community forum",
+      summary: "Peer discussion on sleep-related medication routines, timing, and side-effect experiences.",
+    },
+    {
+      label: "ADAA Anxiety and Depression Support Community",
+      url: "https://healthunlocked.com/anxiety-depression-support",
+      type: "Moderated community",
+      summary: "Anxiety/depression peer support community with medication and sleep-related discussions.",
+    },
+  ],
+  Levothyroxine: [
+    {
+      label: "r/Hypothyroidism (Reddit)",
+      url: "https://www.reddit.com/r/Hypothyroidism/",
+      type: "Community forum",
+      summary: "Peer discussion on thyroid replacement routines, labs, and symptom tracking.",
+    },
+    {
+      label: "r/Hashimotos (Reddit)",
+      url: "https://www.reddit.com/r/Hashimotos/",
+      type: "Community forum",
+      summary: "Peer support for thyroid-related symptom management and daily medication timing habits.",
+    },
+  ],
+};
+
 function getNowLocalDateTimeValue() {
   const d = new Date();
   const offsetMs = d.getTimezoneOffset() * 60 * 1000;
@@ -331,6 +492,8 @@ export default function MedicationHalfLifeTracker({
   }, [recalcAt, daysAtCurrentDose, toleranceMaxReduction, toleranceTauDays, entries, modeledEntries, metrics, halfLifeHours]);
 
   const primaryDrug = title.replace(/\s*Tracker\s*$/i, "");
+  const researchLinks = MEDICATION_RESEARCH_LINKS[primaryDrug] || [];
+  const communityLinks = MEDICATION_COMMUNITY_LINKS[primaryDrug] || [];
 
   return (
     <div className="w-full px-4 py-8 space-y-6">
@@ -551,6 +714,66 @@ export default function MedicationHalfLifeTracker({
           <p><strong>Time axis:</strong> 1-hour steps from recent history through 72-hour projection</p>
         </div>
       </div>
+
+      {(researchLinks.length > 0 || communityLinks.length > 0) && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Further Research & Online Discussion</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Helpful references and peer discussion spaces for {primaryDrug.toLowerCase()} tracking and day-to-day decision support.
+          </p>
+
+          {researchLinks.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Research</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                {researchLinks.map((link) => (
+                  <li key={link.url}>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                    >
+                      {link.label}
+                    </a>
+                    <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                      {link.evidence}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {communityLinks.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Forums & Communities</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                {communityLinks.map((link) => (
+                  <li key={link.url}>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                    >
+                      {link.label}
+                    </a>
+                    <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/20">
+                      {link.type}
+                    </span>
+                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{link.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Community discussion can support self-tracking, but it does not replace clinician guidance for diagnosis, medication changes, or urgent symptoms.
+          </p>
+        </div>
+      )}
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Educational tracker only and not medical advice. Individual metabolism and response vary. Use medication only as prescribed and consult your clinician.

@@ -76,6 +76,55 @@ const HALF_LIFE_OPTIONS = [4, 5, 6];
 const DISTRIBUTION_VOLUME_L_PER_KG = 0.7;
 const MAX_DAYS_AT_DOSE = 365;
 
+const CAFFEINE_RESEARCH_LINKS = [
+  {
+    label: "Caffeine effects on sleep timing and quality (J Clin Sleep Med, PubMed)",
+    url: "https://pubmed.ncbi.nlm.nih.gov/24235903/",
+    evidence: "Clinical study",
+  },
+  {
+    label: "Coffee, caffeine, and sleep: systematic review (Sleep Medicine Reviews)",
+    url: "https://pubmed.ncbi.nlm.nih.gov/26899133/",
+    evidence: "Systematic review",
+  },
+  {
+    label: "Caffeine overview (StatPearls, NCBI Bookshelf)",
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK519490/",
+    evidence: "Reference",
+  },
+  {
+    label: "How much caffeine is too much? (FDA)",
+    url: "https://www.fda.gov/consumers/consumer-updates/spilling-beans-how-much-caffeine-too-much",
+    evidence: "Regulatory",
+  },
+  {
+    label: "Caffeine safety scientific opinion (EFSA)",
+    url: "https://efsa.onlinelibrary.wiley.com/doi/10.2903/j.efsa.2015.4102",
+    evidence: "Scientific opinion",
+  },
+];
+
+const CAFFEINE_COMMUNITY_LINKS = [
+  {
+    label: "r/caffeine (Reddit)",
+    url: "https://www.reddit.com/r/caffeine/",
+    type: "Community forum",
+    summary: "Peer discussion on caffeine use patterns, timing, tolerance, and daily tracking experiences.",
+  },
+  {
+    label: "r/decaf (Reddit)",
+    url: "https://www.reddit.com/r/decaf/",
+    type: "Community forum",
+    summary: "Peer support for reducing or quitting caffeine, including withdrawal and sleep-focused discussion.",
+  },
+  {
+    label: "Sleep Foundation Sleep Care Community",
+    url: "https://community.sleepfoundation.org/",
+    type: "Q&A community",
+    summary: "Sleep-focused community where caffeine timing and sleep disruption questions are commonly discussed.",
+  },
+];
+
 function toKg(weight, unit) {
   if (!weight || weight <= 0) return 0;
   return unit === "lb" ? weight * 0.45359237 : weight;
@@ -1525,6 +1574,60 @@ export default function CaffeineTracker() {
           <p><strong>Blockade fraction:</strong> {liveMath.effectiveMgPerKg.toFixed(3)} / ({liveMath.effectiveMgPerKg.toFixed(3)} + 2.0) = {liveMath.blockade.toFixed(3)} ({(liveMath.blockade * 100).toFixed(1)}%)</p>
           <p><strong>Perceived pressure:</strong> {liveMath.naturalPressure.toFixed(1)}% × (1 − {liveMath.blockade.toFixed(3)}) = {liveMath.perceivedPressure.toFixed(1)}%</p>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Further Research & Online Discussion</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Helpful references for caffeine physiology, sleep impact, and intake safety, plus online communities for peer discussion.
+        </p>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Research</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {CAFFEINE_RESEARCH_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                  {link.evidence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Forums & Communities</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {CAFFEINE_COMMUNITY_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/20">
+                  {link.type}
+                </span>
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{link.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Community posts can help with practical tips, but they are not individualized medical advice. For persistent sleep issues, panic symptoms, or high-intake concerns, check with your clinician.
+        </p>
       </div>
     </div>
   );

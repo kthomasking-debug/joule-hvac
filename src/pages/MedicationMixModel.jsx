@@ -39,6 +39,56 @@ const LEVOTHYROXINE_BY_USER_STORAGE_KEY = "levothyroxineTrackerByUserV1";
 const DEFAULT_CLONAZEPAM_HALF_LIFE_HOURS = 30;
 const DEFAULT_MAINTENANCE_DOSE_MG = 0.25;
 
+const MIX_RESEARCH_LINKS = [
+  {
+    label: "Polypharmacy overview and risk concepts (NIGMS)",
+    url: "https://nigms.nih.gov/education/fact-sheets/Pages/polypharmacy.aspx",
+    evidence: "Reference",
+  },
+  {
+    label: "Benzodiazepines: uses, dangers, and clinical considerations (PubMed Central)",
+    url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8629021/",
+    evidence: "Review",
+  },
+  {
+    label: "Caffeine and sleep disruption timing effects (PubMed)",
+    url: "https://pubmed.ncbi.nlm.nih.gov/24235903/",
+    evidence: "Clinical study",
+  },
+  {
+    label: "Drug interaction resources and labeling (DailyMed search)",
+    url: "https://dailymed.nlm.nih.gov/dailymed/",
+    evidence: "Regulatory",
+  },
+];
+
+const MIX_COMMUNITY_LINKS = [
+  {
+    label: "ADAA Anxiety and Depression Support Community",
+    url: "https://healthunlocked.com/anxiety-depression-support",
+    type: "Moderated community",
+    summary: "Peer discussion for anxiety/depression trends, sleep, and medication routines.",
+  },
+  {
+    label: "NAMI Connection Recovery Support Group",
+    url: "https://www.nami.org/Support-Education/Support-Groups/NAMI-Connection",
+    type: "Peer-led group",
+    summary: "Structured support groups for mental health conditions and treatment navigation.",
+  },
+  {
+    label: "BenzoBuddies",
+    url: "https://benzobuddies.org/",
+    type: "Community forum",
+    summary: "Peer forum for benzodiazepine use, tapering, and recovery discussions.",
+  },
+  {
+    label: "r/caffeine (Reddit)",
+    url: "https://www.reddit.com/r/caffeine/",
+    type: "Community forum",
+    summary: "Discussion on caffeine timing, tolerance, and interaction experiences.",
+  },
+];
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1077,10 +1127,10 @@ export default function MedicationMixModel() {
                   <span className="text-orange-600 dark:text-orange-400">; CYP-adjusted in model: {modelData.nowAmounts.vilazodoneCypAdjustedMg.toFixed(3)} mg</span>
                 )}
               </li>
-            : <li className="text-gray-400 dark:text-gray-600">Vilazodone: <span className="italic">(no logs)</span></li>}
+            : null}
           {(modelData.nowAmounts?.lamotrigineMg ?? 0) > 0
             ? <li className="text-blue-700 dark:text-blue-300">Lamotrigine: {modelData.nowAmounts.lamotrigineMg.toFixed(3)} mg active now</li>
-            : <li className="text-gray-400 dark:text-gray-600">Lamotrigine: <span className="italic">(no logs)</span></li>}
+            : null}
           {(modelData.nowAmounts?.trazodoneMg ?? 0) > 0
             ? <li className="text-purple-700 dark:text-purple-300">
                 Trazodone: {modelData.nowAmounts.trazodoneMg.toFixed(3)} mg active now
@@ -1093,6 +1143,12 @@ export default function MedicationMixModel() {
             ? <li className="text-amber-700 dark:text-amber-300">Levothyroxine: {modelData.nowAmounts.levothyroxineMcg.toFixed(3)} mcg active now</li>
             : <li className="text-gray-400 dark:text-gray-600">Levothyroxine: <span className="italic">(no logs)</span></li>}
           <li className="text-amber-700 dark:text-amber-300">Caffeine: {modelData.nowAmounts?.caffeineMg?.toFixed(1) ?? "0.0"} mg active now ({modelData.nowAmounts?.caffeineMgPerKg?.toFixed(3) ?? "0.000"} mg/kg)</li>
+          {(modelData.nowAmounts?.vilazodoneMg ?? 0) <= 0 && (
+            <li className="text-gray-400 dark:text-gray-600">Vilazodone: <span className="italic">(no logs)</span></li>
+          )}
+          {(modelData.nowAmounts?.lamotrigineMg ?? 0) <= 0 && (
+            <li className="text-gray-400 dark:text-gray-600">Lamotrigine: <span className="italic">(no logs)</span></li>
+          )}
         </ul>
       </div>
 
@@ -1144,6 +1200,60 @@ export default function MedicationMixModel() {
         <h2 className="font-semibold text-amber-900 dark:text-amber-200">Safety Note</h2>
         <p className="text-sm text-amber-900 dark:text-amber-200">
           This is an educational approximation, not medical guidance. Clonazepam is metabolized by CYP3A4, but clinically significant drug-drug interactions with vilazodone are not commonly reported. Here, a CYP3A4 overlap proxy is used as a conservative exploratory signal that feeds back into the modeled half-lives of clonazepam, trazodone, and vilazodone, while caffeine remains a wakefulness input rather than restoration of safe function. Real interaction risk still depends on diagnosis, prescribed regimen, organ function, timing, and other substances including alcohol or opioids.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Further Research & Online Discussion</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Helpful references for multi-medication interaction context and peer discussion spaces for day-to-day self-tracking questions.
+        </p>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Research</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {MIX_RESEARCH_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                  {link.evidence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Forums & Communities</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            {MIX_COMMUNITY_LINKS.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {link.label}
+                </a>
+                <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/20">
+                  {link.type}
+                </span>
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{link.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Online communities can be helpful for lived-experience tips, but they are not individualized medical advice for diagnosis, medication changes, or urgent concerns.
         </p>
       </div>
     </div>
