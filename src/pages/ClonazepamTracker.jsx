@@ -171,6 +171,33 @@ const RESEARCH_REFERENCE_GROUPS = [
   },
 ];
 
+const SUGGESTED_COMMUNITIES = [
+  {
+    label: "BenzoBuddies",
+    url: "https://benzobuddies.org/",
+    tag: "Peer forum",
+    summary: "Large benzodiazepine-focused forum with taper, withdrawal, recovery, and clonazepam discussion spaces.",
+  },
+  {
+    label: "ADAA Anxiety and Depression Support Community",
+    url: "https://healthunlocked.com/anxiety-depression-support",
+    tag: "Moderated community",
+    summary: "Active anxiety and depression discussion community hosted with ADAA and oriented toward peer support.",
+  },
+  {
+    label: "NAMI Connection Recovery Support Group",
+    url: "https://www.nami.org/Support-Education/Support-Groups/NAMI-Connection",
+    tag: "Peer-led group",
+    summary: "Free peer-led support groups for adults with mental health conditions, including anxiety-related concerns; many are virtual.",
+  },
+  {
+    label: "Benzodiazepine Information Coalition Support Resources",
+    url: "https://www.benzoinfo.com/resources/#support-forums",
+    tag: "Support directory",
+    summary: "Curated gateway to benzodiazepine support forums, Zoom groups, and international peer-support resources.",
+  },
+];
+
 function toKg(weight, unit) {
   if (!weight || weight <= 0) return 0;
   return unit === "lb" ? weight * 0.45359237 : weight;
@@ -2342,6 +2369,39 @@ export default function ClonazepamTracker() {
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Educational information only, not medical advice. Benzodiazepine tapering should be individualized and supervised by a qualified clinician.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Suggested Communities</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Peer-support spaces for clonazepam, benzodiazepine withdrawal, and anxiety disorder discussion.
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Community advice can be useful for lived experience and coping ideas, but it should not replace clinician guidance for dosing, taper changes, or urgent symptoms.
+        </p>
+        <div className="space-y-3">
+          {SUGGESTED_COMMUNITIES.map((community) => (
+            <div key={community.url} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <div className="flex flex-wrap items-start gap-2">
+                <a
+                  href={community.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  {community.label}
+                </a>
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/20">
+                  {community.tag}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">{community.summary}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          If a discussion starts to feel destabilizing or urgent, pause the thread and contact your clinician or local crisis resources instead.
         </p>
       </div>
 
