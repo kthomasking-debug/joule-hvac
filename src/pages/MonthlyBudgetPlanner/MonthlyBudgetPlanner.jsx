@@ -881,6 +881,14 @@ const MonthlyBudgetPlanner = ({ initialMode = "budget" }) => {
   }, [mode]);
   const [showDailyForecast, setShowDailyForecast] = useState(true); // Collapsed by default — Got Your Bill? is the first thing users see
   const [showProratedDailyBreakdown, setShowProratedDailyBreakdown] = useState(true); // When prorated only: show daily forecast by default
+
+  // Collapsible panel states (persisted to localStorage)
+  const [billPanelOpen, setBillPanelOpen] = useState(() => localStorage.getItem("mbpBillPanelOpenV1") !== "0");
+  const [quickAnswerPanelOpen, setQuickAnswerPanelOpen] = useState(() => localStorage.getItem("mbpQuickAnswerPanelOpenV1") !== "0");
+  const [schedulePanelOpen, setSchedulePanelOpen] = useState(() => localStorage.getItem("mbpSchedulePanelOpenV1") !== "0");
+  useEffect(() => localStorage.setItem("mbpBillPanelOpenV1", billPanelOpen ? "1" : "0"), [billPanelOpen]);
+  useEffect(() => localStorage.setItem("mbpQuickAnswerPanelOpenV1", quickAnswerPanelOpen ? "1" : "0"), [quickAnswerPanelOpen]);
+  useEffect(() => localStorage.setItem("mbpSchedulePanelOpenV1", schedulePanelOpen ? "1" : "0"), [schedulePanelOpen]);
   const [showSinusoidalGraph, setShowSinusoidalGraph] = useState(false); // Collapsed by default
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(true); // Expanded by default for annual
   const [_showHeatingCosts, _setShowHeatingCosts] = useState(false); // Collapsed by default
@@ -3992,7 +4000,28 @@ Only output action lines when the user is clearly asking you TO CHANGE or APPLY 
       <div className="mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       {/* Bill Import & Analysis — First thing for budget mode (angry users want to blow off steam) */}
       {mode === "budget" && (
-        <div id="bill-analysis" className="mb-8 scroll-mt-4">
+        <details
+          id="bill-analysis"
+          open={billPanelOpen}
+          onToggle={(e) => setBillPanelOpen(e.currentTarget.open)}
+          className="mb-8 scroll-mt-4"
+        >
+          <summary className="cursor-pointer list-none flex items-center justify-between rounded-xl -mx-2 px-2 py-1 mb-3 hover:bg-white/5 transition-colors">
+            <div>
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                💡 Got Your Bill? Let&apos;s Compare.
+              </h2>
+              {(() => {
+                const hvacCost = totalForecastCostRef.current ?? monthlyEstimate?.hvacCost;
+                const fixed = monthlyEstimate?.fixedCost ?? fixedElectricCost ?? 0;
+                const expectedTotal = hvacCost != null ? hvacCost + fixed : null;
+                return expectedTotal != null
+                  ? <p className="text-sm text-[#A7B0BA]">Expected {displayPeriod}: ${expectedTotal.toFixed(2)}</p>
+                  : <p className="text-sm text-[#A7B0BA]">Enter your bill to compare with the forecast</p>;
+              })()}
+            </div>
+            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${billPanelOpen ? "rotate-90" : ""}`} />
+          </summary>
           {/* Prominent extracting banner — user needs to see the app is working, not crashed */}
           {billParsing && (
             <div className="mb-4 flex items-center justify-center gap-4 py-5 px-6 rounded-xl bg-amber-500/20 border-2 border-amber-500/50 animate-pulse">
@@ -4689,7 +4718,7 @@ No signs of HVAC problem.`;
               )}
             </div>
           </div>
-        </div>
+        </details>
       )}
 
       {/* City Comparison Savings Card */}
@@ -5025,7 +5054,18 @@ No signs of HVAC problem.`;
 
       {/* Quick Answer - Full month forecast (same as daily table total) */}
       {mode === "budget" && (
-        <div className="mb-2">
+        <details
+          open={quickAnswerPanelOpen}
+          onToggle={(e) => setQuickAnswerPanelOpen(e.currentTarget.open)}
+          className="mb-2"
+        >
+          <summary className="cursor-pointer list-none flex items-center justify-between rounded-xl -mx-2 px-2 py-1 mb-2 hover:bg-white/5 transition-colors">
+            <div>
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">⚡ Quick Answer</h2>
+              <p className="text-sm text-[#A7B0BA]">{displayPeriod} forecast</p>
+            </div>
+            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${quickAnswerPanelOpen ? "rotate-90" : ""}`} />
+          </summary>
           <AnswerCard
             loading={!monthlyEstimate || loading}
             location={locationData ? `${locationData.city}, ${locationData.state}` : null}
@@ -5048,27 +5088,30 @@ No signs of HVAC problem.`;
               return { hvac: hvacCost, hvacLabel: energyMode === 'heating' ? 'Heating' : energyMode === 'cooling' ? 'Cooling' : 'HVAC', fees: fixed };
             })()}
           />
-        </div>
+        </details>
       )}
 
 
-      {/* Modeled Schedule Section - Match Weekly Forecast Layout */}
+      {/* Modeled Schedule + Schedule Tuning */}
       {mode === "budget" && (
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 sm:p-4 mb-2 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
+        <details
+          open={schedulePanelOpen}
+          onToggle={(e) => setSchedulePanelOpen(e.currentTarget.open)}
+          className="mb-4"
+        >
+          <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 -mx-2 px-2 py-1 mb-2 rounded-xl hover:bg-white/5 transition-colors">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-white">📅 Modeled Schedule (What-If)</h2>
+              <p className="text-sm text-[#A7B0BA]">Day {energyMode === "heating" ? (userSettings?.winterThermostatDay ?? 70) : (summerThermostat ?? 76)}°F · Night {energyMode === "heating" ? (userSettings?.winterThermostatNight ?? 68) : (summerThermostatNight ?? 78)}°F</p>
+            </div>
+            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${schedulePanelOpen ? "rotate-90" : ""}`} />
+          </summary>
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/90 via-slate-900/90 to-slate-800/90 border border-slate-700/50 rounded-xl p-3 sm:p-4 mb-2 shadow-2xl shadow-slate-900/50 backdrop-blur-sm">
           {/* Subtle animated background */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-cyan-500/5 animate-pulse" />
           <div className="relative z-10">
-            {/* Header - stack on mobile so Smart Optimizer isn't cut off */}
+            {/* Header */}
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2 min-w-0">
-                <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  Modeled Schedule (What-If)
-                </h2>
-                <p className="text-sm sm:text-base text-slate-400 flex items-center gap-1 px-2 py-1 bg-slate-800/50 rounded border border-slate-700/50">
-                  <span>🔒</span>
-                  <span>Safe to experiment</span>
-                </p>
-              </div>
               {(energyMode === "heating" || energyMode === "cooling") && (
                 <div className="w-full sm:w-auto sm:flex-shrink-0 min-w-0">
                   <OneClickOptimizer
@@ -5343,12 +5386,11 @@ No signs of HVAC problem.`;
               </p>
             </div>
           </div>
-        </div>
-      )}
+          </div>
 
-      {/* Aux Heat Toggle - Show for heat pumps */}
-      {mode === "budget" && primarySystem === "heatPump" && energyMode === "heating" && (
-        <div className="bg-slate-800/50 border border-amber-500/30 rounded-lg p-2.5 mb-2">
+          {/* Aux Heat Toggle */}
+          {primarySystem === "heatPump" && energyMode === "heating" && (
+          <div className="bg-slate-800/50 border border-amber-500/30 rounded-lg p-2.5 mt-2">
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div className="relative">
                   <input
@@ -5435,7 +5477,9 @@ No signs of HVAC problem.`;
                 </div>
               )}
         </div>
-        )}
+          )}
+        </details>
+      )}
 
       {/* Daily Forecast Breakdown - Monthly Forecast */}
       {mode === "budget" && adjustedForecast && adjustedForecast.length > 0 && (

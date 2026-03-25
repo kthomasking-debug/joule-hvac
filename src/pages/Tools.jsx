@@ -21,7 +21,7 @@ const sections = [
         label: "Ecobee Planner",
         icon: Thermometer,
         description: "Visualize Ecobee schedule transitions to avoid immediate restarts. Plan your thermostat schedules to prevent short cycling and optimize comfort.",
-        color: "green",
+        color: "blue",
       },
       {
         path: "/tools/ecobee-settings-sandbox",
@@ -29,7 +29,7 @@ const sections = [
         label: "Ecobee Settings Sandbox",
         icon: SettingsIcon,
         description: "Virtual playground for Ecobee Premium installation settings and thresholds. See which settings appear/disappear based on equipment configuration.",
-        color: "purple",
+        color: "blue",
       },
       {
         path: "/tools/ecobee-equipment-matrix",
@@ -45,7 +45,7 @@ const sections = [
         label: "Ecobee Ventilator Explainer",
         icon: Thermometer,
         description: "Interactive explainer for whole-home ventilator control with Ecobee Premium. Wiring diagrams, relay simulator, and settings navigation.",
-        color: "green",
+        color: "blue",
       },
       {
         path: "/tools/ecobee-aux-heat-simulator",
@@ -53,7 +53,7 @@ const sections = [
         label: "Ecobee Aux Heat Simulator",
         icon: Thermometer,
         description: "Interactive simulator for heat pump auxiliary heat decision logic. Shows when aux heat engages based on temperature differentials and system settings.",
-        color: "orange",
+        color: "blue",
       },
       {
         path: "/tools/ecobee-replay-last-night",
@@ -61,7 +61,7 @@ const sections = [
         label: "Replay Last Night: Aux Heat Simulator",
         icon: Zap,
         description: "See why 'Aux starts at 40°F' nukes your bill. Compare AUTO vs MANUAL staging thresholds and find the sweet spot where your house still holds setpoint.",
-        color: "orange",
+        color: "blue",
       },
       {
         path: "/tools/hvac-static-pressure",
@@ -69,7 +69,7 @@ const sections = [
         label: "HVAC Static Pressure Analyzer",
         icon: Gauge,
         description: "Analyze how ductwork static pressure affects furnace performance, efficiency, and blower motor lifespan. Interactive tool to understand pressure impact.",
-        color: "orange",
+        color: "blue",
       },
       {
         path: "/tools/comfort-setting-strangeness-fix",
@@ -77,7 +77,7 @@ const sections = [
         label: "Comfort Setting Strangeness Fix",
         icon: Moon,
         description: "Interactive guide explaining why sensor participation changes early in Ecobee schedules, with simulations and fixes.",
-        color: "purple",
+        color: "blue",
       },
     ],
   },
@@ -107,7 +107,7 @@ const sections = [
         label: "Support Ticket",
         icon: MessageSquare,
         description: "Submit a support ticket with diagnostic information. Get help with your Joule HVAC system, bridge connection issues, or any other problems.",
-        color: "blue",
+        color: "orange",
       },
       {
         path: "/tools/bridge-support",
@@ -123,7 +123,7 @@ const sections = [
         label: "Pi E-Ink Bridge Display",
         icon: Monitor,
         description: "See exactly what the Pi Zero 2 W Waveshare e-paper shows, with live bridge data and the same Status/Actions/Guide navigation.",
-        color: "blue",
+        color: "orange",
       },
     ],
   },
@@ -137,7 +137,7 @@ const sections = [
         label: "Generator Fuel & Cost Estimator",
         icon: Droplets,
         description: "Estimate Kohler 14/20 RESA propane burn rate, daily cost, and savings with interval runtime.",
-        color: "green",
+        color: "amber",
       },
       {
         path: "/tools/hot-tub-wire-calculator",
@@ -145,7 +145,7 @@ const sections = [
         label: "Hot Tub Wire Size Calculator",
         icon: Zap,
         description: "Calculate wire gauge requirements and voltage drop for hot tub installations. Verify if existing wire meets NEC code requirements.",
-        color: "orange",
+        color: "amber",
       },
       {
         path: "/tools/two-way-switch-wiring-visualizer",
@@ -153,7 +153,7 @@ const sections = [
         label: "Two-Way Switch Wiring Visualizer",
         icon: Cable,
         description: "Animated visualizer showing 3-way switch contacts, traveler voltage states, ASCII diagrams, induction formulas, and NEC references.",
-        color: "orange",
+        color: "amber",
       },
       {
         path: "/tools/thermostat-wiring-helper",
@@ -161,7 +161,7 @@ const sections = [
         label: "Thermostat Wiring Helper",
         icon: Cable,
         description: "Interactive Ecobee wiring diagnostic to restore heat mode: identify missing W/O/B connections, system type, and safety steps.",
-        color: "blue",
+        color: "amber",
       },
       {
         path: "/tools/bosch-zoning-sim",
@@ -169,7 +169,7 @@ const sections = [
         label: "Bosch Zoning Simulator",
         icon: Cable,
         description: "Understand how Bosch inverter systems interact with Ecobee differential thresholds. Prevent fan-only standby cycles.",
-        color: "blue",
+        color: "amber",
       },
     ],
   },
@@ -183,7 +183,7 @@ const sections = [
         label: "Search Knowledge Base",
         icon: Search,
         description: "Ask questions about Manual J, load calculations, sizing, or HVAC engineering standards. Includes information from user-uploaded PDFs.",
-        color: "purple",
+        color: "sky",
       },
       {
         path: "/tools/snowfall-forecast",
@@ -191,7 +191,7 @@ const sections = [
         label: "Snowfall Forecast",
         icon: CloudSnow,
         description: "7-day snowfall forecast from the National Weather Service. View predicted snowfall amounts and probabilities for your location.",
-        color: "blue",
+        color: "sky",
       },
     ],
   },
@@ -236,6 +236,8 @@ export default function Tools() {
     green: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400",
     purple: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400",
     orange: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400",
+    amber: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400",
+    sky: "bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-700 hover:bg-sky-100 dark:hover:bg-sky-900/30 text-sky-600 dark:text-sky-400",
   };
 
   // Flatten all tools and filter based on search query

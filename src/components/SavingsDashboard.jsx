@@ -39,6 +39,145 @@ import { getAllSettings, setSetting } from "../lib/unifiedSettingsManager";
 import { getQuickActions } from "../lib/optimization/OptimizationEngine";
 import { getAnnualHDD, getAnnualCDD } from "../lib/hddData";
 
+const SAVINGS_DASHBOARD_OPEN_KEY = "savingsDashboardPanelOpenV1";
+
+function readPanelOpenState(storageKey, defaultOpen) {
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored == null) return defaultOpen;
+    return stored === "1";
+  } catch {
+    return defaultOpen;
+  }
+}
+
+function SavingsPanel({ title, summary, children, storageKey, defaultOpen = false }) {
+  const [isOpen, setIsOpen] = useState(() => readPanelOpenState(storageKey, defaultOpen));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, isOpen ? "1" : "0");
+    } catch {
+      // Ignore storage write errors.
+    }
+  }, [storageKey, isOpen]);
+
+  return (
+    <details
+      className="rounded-xl border border-slate-800 bg-[#0C1118] p-4"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer list-none flex items-center justify-between gap-3 rounded-lg -m-2 p-2 hover:bg-white/5 transition-colors">
+        <div>
+          <p className="text-sm font-semibold text-white">{title}</p>
+          {summary ? <p className="text-xs text-[#A7B0BA] mt-1">{summary}</p> : null}
+        </div>
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
+          <span>{isOpen ? "Hide" : "Show"}</span>
+          <ChevronRight className={`w-4 h-4 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+        </div>
+      </summary>
+      <div className="mt-4">{children}</div>
+    </details>
+  );
+}
+
+function readSavingsDashboardSnapshot() {
+  const snapshot = {
+    monthSavings: 0,
+    totalSavings: 0,
+    budgetSpent: 0,
+    budgetLimit: 150,
+    weeklyCost: 0,
+    weeklyDelta: null,
+    touEnabled: false,
+    achievementCount: 0,
+    achievementTotal: 5,
+    optimalWindow: "2:00 PM - 5:00 PM",
+    comparisonText: "Compare with similar homes",
+    billDate: null,
+  };
+
+  try {
+    const savings = JSON.parse(localStorage.getItem("savingsAccount") || "{}");
+    snapshot.monthSavings = Number(savings.monthSavings || 0);
+    snapshot.totalSavings = Number(savings.totalSavings || 0);
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const budget = JSON.parse(localStorage.getItem("monthlyBudget") || "{}");
+    snapshot.budgetSpent = Number(budget.spent || 0);
+    snapshot.budgetLimit = Number(budget.limit || 150);
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const forecast = JSON.parse(localStorage.getItem("last_forecast_summary") || "{}");
+    const lastWeek = JSON.parse(localStorage.getItem("last_week_summary") || "{}");
+    snapshot.weeklyCost = Number(forecast.totalCost || 0);
+    if (forecast.totalCost && lastWeek.totalCost) {
+      snapshot.weeklyDelta = Number(lastWeek.totalCost) - Number(forecast.totalCost);
+    }
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    snapshot.touEnabled = localStorage.getItem("touEnabled") === "true";
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const achievements = JSON.parse(localStorage.getItem("achievements") || "[]");
+    snapshot.achievementCount = Array.isArray(achievements) ? achievements.length : 0;
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const billHistory = JSON.parse(localStorage.getItem("billHistory") || "[]");
+    if (Array.isArray(billHistory) && billHistory.length > 0) {
+      const last = billHistory[billHistory.length - 1];
+      snapshot.billDate = last?.date ? new Date(last.date).toLocaleDateString() : null;
+    }
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const settings = getAllSettings();
+    const location = JSON.parse(localStorage.getItem("userLocation") || "{}");
+    if (location.state && settings.squareFeet) {
+      const hdd = getAnnualHDD(`${location.city}, ${location.state}`, location.state);
+      const sqft = settings.squareFeet || 1500;
+      const avgMonthly = Number((sqft * 0.12 * (hdd / 5000)).toFixed(0));
+      const yourMonthly = Number(settings.lastMonthCost || avgMonthly * 0.9);
+      if (avgMonthly > 0 && yourMonthly > 0 && avgMonthly > yourMonthly) {
+        const difference = avgMonthly - yourMonthly;
+        const percentBetter = ((difference / avgMonthly) * 100).toFixed(0);
+        snapshot.comparisonText = `${percentBetter}% less than similar homes`;
+      }
+    }
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  try {
+    const settings = getAllSettings();
+    const isCooling = settings.primarySystem === "heatPump" && new Date().getMonth() >= 4 && new Date().getMonth() <= 9;
+    snapshot.optimalWindow = isCooling ? "6:00 AM - 9:00 AM" : "2:00 PM - 5:00 PM";
+  } catch {
+    // Ignore malformed storage.
+  }
+
+  return snapshot;
+}
+
 // ==================== 1. SAVINGS TRACKER ====================
 export function SavingsTrackerWidget({ className = "" }) {
   const [savings, setSavings] = useState(() => {
@@ -780,25 +919,96 @@ export function WeeklySummaryWidget({ className = "" }) {
 
 // ==================== MAIN DASHBOARD EXPORT ====================
 export default function SavingsDashboard({ className = "" }) {
+  const [snapshot, setSnapshot] = useState(() => readSavingsDashboardSnapshot());
+  const [dashboardOpen, setDashboardOpen] = useState(() => readPanelOpenState(SAVINGS_DASHBOARD_OPEN_KEY, false));
+
+  useEffect(() => {
+    const refreshSnapshot = () => setSnapshot(readSavingsDashboardSnapshot());
+    window.addEventListener("storage", refreshSnapshot);
+    window.addEventListener("focus", refreshSnapshot);
+
+    return () => {
+      window.removeEventListener("storage", refreshSnapshot);
+      window.removeEventListener("focus", refreshSnapshot);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVINGS_DASHBOARD_OPEN_KEY, dashboardOpen ? "1" : "0");
+    } catch {
+      // Ignore storage write errors.
+    }
+  }, [dashboardOpen]);
+
+  const weeklySummary = snapshot.weeklyCost > 0
+    ? `$${snapshot.weeklyCost.toFixed(0)} forecast${snapshot.weeklyDelta != null ? `, ${snapshot.weeklyDelta >= 0 ? "down" : "up"} ${Math.abs(snapshot.weeklyDelta).toFixed(0)} vs last week` : ""}`
+    : "Open weekly forecast";
+
   return (
-    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ${className}`}>
-      {/* Row 1: Key metrics */}
-      <SavingsTrackerWidget />
-      <WeeklySummaryWidget />
-      <BudgetTracker />
-      
-      {/* Row 2: Actionable */}
-      <WhatIfSimulator />
-      <TopSavingsTips />
-      <CheapestTimeWidget />
-      
-      {/* Row 3: Engagement */}
-      <SimilarHomesComparison />
-      <TOURateWidget />
-      <AchievementBadges />
-      
-      {/* Row 4: Tracking */}
-      <BillTrackingCard className="lg:col-span-3" />
-    </div>
+    <details className={`rounded-2xl border border-slate-800 bg-[#0C1118] p-5 ${className}`} open={dashboardOpen} onToggle={(event) => setDashboardOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-3 rounded-xl -m-2 p-2 hover:bg-white/5 transition-colors">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Save Money</h2>
+          <p className="text-sm text-[#A7B0BA]">Savings tools, optimization ideas, and budget tracking.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full border border-green-500/40 bg-green-500/10 px-2.5 py-1 font-semibold text-green-300">
+            {`Saved $${snapshot.monthSavings.toFixed(0)} this month`}
+          </span>
+          <span className="rounded-full border border-purple-500/40 bg-purple-500/10 px-2.5 py-1 font-semibold text-purple-300">
+            {`Budget $${snapshot.budgetSpent.toFixed(0)}/$${snapshot.budgetLimit.toFixed(0)}`}
+          </span>
+          <span className="inline-flex items-center gap-2 font-medium text-slate-500">
+            <span>{dashboardOpen ? "Hide" : "Show"}</span>
+            <ChevronRight className={`w-4 h-4 transition-transform ${dashboardOpen ? "rotate-90" : ""}`} />
+          </span>
+        </div>
+      </summary>
+
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-slate-800 pt-4">
+        <SavingsPanel title="You've Saved" summary={`$${snapshot.monthSavings.toFixed(0)} this month · $${snapshot.totalSavings.toFixed(0)} total`} storageKey="savingsPanelSavedOpenV1" defaultOpen>
+          <SavingsTrackerWidget />
+        </SavingsPanel>
+
+        <SavingsPanel title="This Week's Forecast" summary={weeklySummary} storageKey="savingsPanelWeekOpenV1">
+          <WeeklySummaryWidget />
+        </SavingsPanel>
+
+        <SavingsPanel title="Monthly Budget" summary={`$${snapshot.budgetSpent.toFixed(0)} of $${snapshot.budgetLimit.toFixed(0)}`} storageKey="savingsPanelBudgetOpenV1">
+          <BudgetTracker />
+        </SavingsPanel>
+
+        <SavingsPanel title="What If Calculator" summary="Adjust temperature and preview monthly savings." storageKey="savingsPanelWhatIfOpenV1">
+          <WhatIfSimulator />
+        </SavingsPanel>
+
+        <SavingsPanel title="Top Ways to Save" summary="Apply the biggest easy wins." storageKey="savingsPanelTipsOpenV1">
+          <TopSavingsTips />
+        </SavingsPanel>
+
+        <SavingsPanel title="Optimal Run Time" summary={`${snapshot.optimalWindow} · Best efficiency window`} storageKey="savingsPanelRunTimeOpenV1">
+          <CheapestTimeWidget />
+        </SavingsPanel>
+
+        <SavingsPanel title="Similar Homes" summary={snapshot.comparisonText} storageKey="savingsPanelSimilarOpenV1">
+          <SimilarHomesComparison />
+        </SavingsPanel>
+
+        <SavingsPanel title="Time-of-Use Rates" summary={snapshot.touEnabled ? "TOU optimization enabled" : "Enable TOU optimization"} storageKey="savingsPanelTouOpenV1">
+          <TOURateWidget />
+        </SavingsPanel>
+
+        <SavingsPanel title="Achievements" summary={`${snapshot.achievementCount}/${snapshot.achievementTotal} earned`} storageKey="savingsPanelAchievementsOpenV1">
+          <AchievementBadges />
+        </SavingsPanel>
+
+        <div className="md:col-span-2 lg:col-span-3">
+          <SavingsPanel title="Track Your Bills" summary={snapshot.billDate ? `Last entry: ${snapshot.billDate}` : "Add your latest bill for personalized tracking."} storageKey="savingsPanelBillsOpenV1">
+            <BillTrackingCard />
+          </SavingsPanel>
+        </div>
+      </div>
+    </details>
   );
 }

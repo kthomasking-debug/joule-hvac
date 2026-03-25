@@ -29,6 +29,10 @@ import {
   ThermometerSun,
   DollarSign,
   MapPin,
+  UserPlus,
+  Cloud,
+  KeyRound,
+  RefreshCw,
 } from "lucide-react";
 import AskJoule from "../components/AskJoule";
 import HomeTopSection from "../components/HomeTopSection";
@@ -57,6 +61,230 @@ import { shouldUseLearnedHeatLoss } from "../utils/billDataUtils";
 import { warmLLM } from "../lib/aiProvider";
 
 const currency = (v) => `$${(v ?? 0).toFixed(2)}`;
+
+const APP_CLOUD_SYNC_ENDPOINT = "/.netlify/functions/wellness-sync";
+const APP_CLOUD_SYNC_ENABLED_KEY = "appCloudSyncEnabledV1";
+const APP_CLOUD_SYNC_SECRET_KEY = "appCloudSyncSecretV1";
+const LEGACY_WELLNESS_CLOUD_SYNC_ENABLED_KEY = "wellnessCloudSyncEnabledV1";
+const LEGACY_WELLNESS_CLOUD_SYNC_SECRET_KEY = "wellnessCloudSyncSecretV1";
+const APP_CLOUD_SYNC_VERSION = 1;
+const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
+const WELLNESS_USER_CHANGED_EVENT = "wellness-user-changed";
+const WELLNESS_SAVED_USERS_KEY = "wellnessSavedUsersV1";
+const PROFILE_STORAGE_KEY = "caffeineTrackerProfilesV1";
+const ACTIVE_PROFILE_ID_STORAGE_KEY = "caffeineTrackerActiveProfileId";
+const CALORIE_PROFILES_STORAGE_KEY = "dailyCalorieProfilesV1";
+const CALORIE_ACTIVE_PROFILE_STORAGE_KEY = "dailyCalorieActiveProfileId";
+const TRACKER_USER_STORAGE_KEYS = [
+  "clonazepamTrackerByUserV1",
+  "vilazodoneTrackerByUserV1",
+  "lamotrigineTrackerByUserV1",
+  "doxylamineTrackerByUserV1",
+  "trazodoneTrackerByUserV1",
+  "levothyroxineTrackerByUserV1",
+];
+const DASHBOARD_WELLNESS_PANEL_OPEN_KEY = "dashboardWellnessPanelOpenV1";
+const DASHBOARD_CLOUD_SYNC_PANEL_OPEN_KEY = "dashboardCloudSyncPanelOpenV1";
+const DASHBOARD_WELLNESS_SAVED_DATA_PANEL_OPEN_KEY = "dashboardWellnessSavedDataPanelOpenV1";
+
+function createCloudSyncSecret() {
+  try {
+    if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+      return `${globalThis.crypto.randomUUID()}${globalThis.crypto.randomUUID()}`.replace(/-/g, "");
+    }
+  } catch {
+    // Fallback below.
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
+function buildAppCloudSnapshot() {
+  const storage = {};
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (
+      key === APP_CLOUD_SYNC_ENABLED_KEY
+      || key === APP_CLOUD_SYNC_SECRET_KEY
+      || key === LEGACY_WELLNESS_CLOUD_SYNC_ENABLED_KEY
+      || key === LEGACY_WELLNESS_CLOUD_SYNC_SECRET_KEY
+    ) {
+      continue;
+    }
+    storage[key] = localStorage.getItem(key);
+  }
+
+  return {
+    type: "joule-app-cloud-export",
+    version: APP_CLOUD_SYNC_VERSION,
+    exportedAt: new Date().toISOString(),
+    storage,
+  };
+}
+
+function hasMeaningfulAppData(snapshot) {
+  return Boolean(snapshot && snapshot.storage && Object.keys(snapshot.storage).length > 0);
+}
+
+async function pullAppCloudSnapshot(syncKey) {
+  const response = await fetch(APP_CLOUD_SYNC_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "pull", syncKey }),
+  });
+
+  if (response.status === 404) {
+    return { found: false, payload: null };
+  }
+
+  const rawText = await response.text();
+  const body = rawText ? (() => {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+  })() : null;
+  if (!response.ok) {
+    throw new Error(body?.error || rawText || "Could not restore cloud data.");
+  }
+
+  if (!body || typeof body !== "object") {
+    throw new Error("Cloud response was empty or invalid.");
+  }
+
+  return body;
+}
+
+async function pushAppCloudSnapshot(syncKey, payload) {
+  const response = await fetch(APP_CLOUD_SYNC_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "push", syncKey, payload }),
+  });
+
+  const rawText = await response.text();
+  const body = rawText ? (() => {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+  })() : null;
+  if (!response.ok) {
+    throw new Error(body?.error || rawText || "Could not sync cloud data.");
+  }
+
+  return body || { ok: true };
+}
+
+function applyAppCloudSnapshot(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Cloud payload is not valid.");
+  }
+
+  if (payload.type !== "joule-app-cloud-export" || !payload.storage || typeof payload.storage !== "object") {
+    throw new Error("Cloud payload is not an app-wide export.");
+  }
+
+  let restored = 0;
+  Object.entries(payload.storage).forEach(([key, value]) => {
+    if (
+      key === APP_CLOUD_SYNC_ENABLED_KEY
+      || key === APP_CLOUD_SYNC_SECRET_KEY
+      || key === LEGACY_WELLNESS_CLOUD_SYNC_ENABLED_KEY
+      || key === LEGACY_WELLNESS_CLOUD_SYNC_SECRET_KEY
+    ) {
+      return;
+    }
+    localStorage.setItem(key, String(value ?? ""));
+    restored += 1;
+  });
+
+  window.dispatchEvent(new Event("storage"));
+  window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: localStorage.getItem("groqApiKey") || "" } }));
+
+  return restored;
+}
+
+function sanitizeUserName(value) {
+  return String(value || "").trim();
+}
+
+function safeParseJson(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "");
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadSavedUsers() {
+  const users = safeParseJson(WELLNESS_SAVED_USERS_KEY, []);
+  return Array.isArray(users) ? users.map(sanitizeUserName).filter(Boolean) : [];
+}
+
+function findUserProfile(profiles, activeId, userName) {
+  if (!Array.isArray(profiles)) return null;
+  const normalizedName = sanitizeUserName(userName);
+  if (normalizedName) {
+    const byName = profiles.find((profile) => sanitizeUserName(profile?.name) === normalizedName);
+    if (byName) return byName;
+  }
+  if (activeId) {
+    const byId = profiles.find((profile) => profile?.id === activeId);
+    if (byId) return byId;
+  }
+  return profiles[0] || null;
+}
+
+function buildUserSavedDataSnapshot(userName) {
+  const caffeineProfiles = safeParseJson(PROFILE_STORAGE_KEY, []);
+  const calorieProfiles = safeParseJson(CALORIE_PROFILES_STORAGE_KEY, []);
+  const activeCaffeineProfileId = localStorage.getItem(ACTIVE_PROFILE_ID_STORAGE_KEY) || "";
+  const activeCalorieProfileId = localStorage.getItem(CALORIE_ACTIVE_PROFILE_STORAGE_KEY) || "";
+
+  const caffeineProfile = findUserProfile(caffeineProfiles, activeCaffeineProfileId, userName);
+  const calorieProfile = findUserProfile(calorieProfiles, activeCalorieProfileId, userName);
+
+  const userProfileIds = [
+    caffeineProfile?.id,
+    calorieProfile?.id,
+    activeCaffeineProfileId,
+    activeCalorieProfileId,
+  ].filter(Boolean);
+
+  const medicationTrackersByUserState = TRACKER_USER_STORAGE_KEYS.reduce((acc, storageKey) => {
+    const byUser = safeParseJson(storageKey, {});
+    let state = null;
+
+    for (const profileId of userProfileIds) {
+      if (byUser && typeof byUser === "object" && byUser[profileId]) {
+        state = byUser[profileId];
+        break;
+      }
+    }
+
+    if (!state && byUser && typeof byUser === "object") {
+      state = Object.values(byUser)[0] || null;
+    }
+
+    acc[storageKey] = state;
+    return acc;
+  }, {});
+
+  return {
+    userName: sanitizeUserName(userName),
+    profileLinks: {
+      caffeineProfileId: caffeineProfile?.id || null,
+      calorieProfileId: calorieProfile?.id || null,
+    },
+    caffeineTracker: caffeineProfile,
+    dailyCalorieIntake: calorieProfile,
+    medicationTrackersByUserState,
+  };
+}
 
 // Stable empty object for outlet context fallback to prevent unnecessary re-renders
 const EMPTY_OUTLET = {};
@@ -257,6 +485,63 @@ const HomeDashboard = () => {
       return [];
     }
   });
+  const [appCloudSyncEnabled, setAppCloudSyncEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(APP_CLOUD_SYNC_ENABLED_KEY) === "true"
+        || localStorage.getItem(LEGACY_WELLNESS_CLOUD_SYNC_ENABLED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [appCloudSyncSecret, setAppCloudSyncSecret] = useState(() => {
+    try {
+      return (
+        localStorage.getItem(APP_CLOUD_SYNC_SECRET_KEY)
+        || localStorage.getItem(LEGACY_WELLNESS_CLOUD_SYNC_SECRET_KEY)
+        || ""
+      ).trim();
+    } catch {
+      return "";
+    }
+  });
+  const [appCloudSyncBusy, setAppCloudSyncBusy] = useState(false);
+  const [appCloudSyncMessage, setAppCloudSyncMessage] = useState("");
+  const [appCloudSyncError, setAppCloudSyncError] = useState("");
+  const [globalUserName, setGlobalUserName] = useState(() => sanitizeUserName(localStorage.getItem(WELLNESS_GLOBAL_USER_NAME_KEY) || ""));
+  const [savedUsers, setSavedUsers] = useState(() => loadSavedUsers());
+  const [newUserInput, setNewUserInput] = useState("");
+  const [showLoginSyncPanel, setShowLoginSyncPanel] = useState(false);
+  const [wellnessPanelOpen, setWellnessPanelOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem(DASHBOARD_WELLNESS_PANEL_OPEN_KEY);
+      if (stored == null) return true;
+      return stored === "1";
+    } catch {
+      return true;
+    }
+  });
+  const [cloudSyncPanelOpen, setCloudSyncPanelOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem(DASHBOARD_CLOUD_SYNC_PANEL_OPEN_KEY);
+      if (stored == null) return false;
+      return stored === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [wellnessSavedDataPanelOpen, setWellnessSavedDataPanelOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem(DASHBOARD_WELLNESS_SAVED_DATA_PANEL_OPEN_KEY);
+      if (stored == null) return false;
+      return stored === "1";
+    } catch {
+      return false;
+    }
+  });
+  const appImportInputRef = useRef(null);
+  const appCloudSyncInitializedRef = useRef(false);
+  const lastCloudSnapshotRef = useRef("");
+  const loginSyncPanelRef = useRef(null);
 
   // Listen for updates to recently viewed
   useEffect(() => {
@@ -278,6 +563,204 @@ const HomeDashboard = () => {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(APP_CLOUD_SYNC_ENABLED_KEY, appCloudSyncEnabled ? "true" : "false");
+  }, [appCloudSyncEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(APP_CLOUD_SYNC_SECRET_KEY, appCloudSyncSecret.trim());
+  }, [appCloudSyncSecret]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_WELLNESS_PANEL_OPEN_KEY, wellnessPanelOpen ? "1" : "0");
+  }, [wellnessPanelOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_CLOUD_SYNC_PANEL_OPEN_KEY, cloudSyncPanelOpen ? "1" : "0");
+  }, [cloudSyncPanelOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(DASHBOARD_WELLNESS_SAVED_DATA_PANEL_OPEN_KEY, wellnessSavedDataPanelOpen ? "1" : "0");
+  }, [wellnessSavedDataPanelOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(WELLNESS_GLOBAL_USER_NAME_KEY, globalUserName);
+    localStorage.setItem(WELLNESS_SAVED_USERS_KEY, JSON.stringify(savedUsers));
+    window.dispatchEvent(new CustomEvent(WELLNESS_USER_CHANGED_EVENT, {
+      detail: { userName: globalUserName },
+    }));
+    window.dispatchEvent(new Event("storage"));
+  }, [globalUserName, savedUsers]);
+
+  const runAppCloudSync = async ({ forcePull = false, forcePush = false } = {}) => {
+    const syncKey = appCloudSyncSecret.trim();
+    if (!appCloudSyncEnabled || !syncKey) return;
+
+    setAppCloudSyncBusy(true);
+    setAppCloudSyncError("");
+
+    try {
+      const localSnapshot = buildAppCloudSnapshot();
+      const localSnapshotString = JSON.stringify(localSnapshot);
+      const localHasData = hasMeaningfulAppData(localSnapshot);
+
+      if (forcePull || (!appCloudSyncInitializedRef.current && !localHasData)) {
+        const response = await pullAppCloudSnapshot(syncKey);
+        if (response?.found && response?.payload) {
+          const restoredCount = applyAppCloudSnapshot(response.payload);
+          lastCloudSnapshotRef.current = JSON.stringify(response.payload);
+          setAppCloudSyncMessage(`Cloud restore complete. Restored ${restoredCount} key${restoredCount === 1 ? "" : "s"}.`);
+        } else if (forcePull) {
+          setAppCloudSyncMessage("No cloud backup was found for this sync key.");
+        }
+        appCloudSyncInitializedRef.current = true;
+        return;
+      }
+
+      if (forcePush || !appCloudSyncInitializedRef.current || lastCloudSnapshotRef.current !== localSnapshotString) {
+        await pushAppCloudSnapshot(syncKey, localSnapshot);
+        lastCloudSnapshotRef.current = localSnapshotString;
+        setAppCloudSyncMessage("Automatic cloud sync is up to date.");
+      }
+
+      appCloudSyncInitializedRef.current = true;
+    } catch (error) {
+      setAppCloudSyncError(error?.message || "Cloud sync failed.");
+    } finally {
+      setAppCloudSyncBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!appCloudSyncEnabled || !appCloudSyncSecret.trim()) return;
+
+    runAppCloudSync();
+    const intervalId = window.setInterval(() => {
+      runAppCloudSync();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [appCloudSyncEnabled, appCloudSyncSecret]);
+
+  useEffect(() => {
+    if (!showLoginSyncPanel) return;
+
+    const handlePointerDown = (event) => {
+      if (!loginSyncPanelRef.current?.contains(event.target)) {
+        setShowLoginSyncPanel(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setShowLoginSyncPanel(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showLoginSyncPanel]);
+
+  const toggleAppCloudSync = () => {
+    setAppCloudSyncEnabled((prev) => !prev);
+    setAppCloudSyncMessage("");
+    setAppCloudSyncError("");
+  };
+
+  const generateAppCloudSyncSecret = () => {
+    const nextSecret = createCloudSyncSecret();
+    setAppCloudSyncSecret(nextSecret);
+    setAppCloudSyncError("");
+    setAppCloudSyncMessage("Generated a new sync key. Save it somewhere safe so another browser can restore the full app data.");
+  };
+
+  const downloadAppJson = () => {
+    try {
+      const payload = buildAppCloudSnapshot();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      anchor.href = url;
+      anchor.download = `joule-app-data-${dateStamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      setAppCloudSyncError("");
+      setAppCloudSyncMessage("Downloaded app-wide JSON backup.");
+    } catch (error) {
+      setAppCloudSyncMessage("");
+      setAppCloudSyncError(error?.message || "Could not download app JSON backup.");
+    }
+  };
+
+  const triggerAppImportPicker = () => {
+    setAppCloudSyncMessage("");
+    setAppCloudSyncError("");
+    appImportInputRef.current?.click();
+  };
+
+  const handleAppImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const restoredCount = applyAppCloudSnapshot(payload);
+      setAppCloudSyncError("");
+      setAppCloudSyncMessage(`Imported app-wide JSON backup. Restored ${restoredCount} key${restoredCount === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setAppCloudSyncMessage("");
+      setAppCloudSyncError(error?.message || "Could not import the selected JSON file.");
+    } finally {
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  };
+
+  const saveGlobalWellnessUser = () => {
+    const name = sanitizeUserName(newUserInput) || sanitizeUserName(globalUserName);
+    if (!name) return;
+    setSavedUsers((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setGlobalUserName(name);
+    setNewUserInput("");
+    setShowLoginSyncPanel(false);
+  };
+
+  const selectGlobalWellnessUser = (name) => {
+    setGlobalUserName(sanitizeUserName(name));
+    setNewUserInput("");
+    setShowLoginSyncPanel(false);
+  };
+
+  const removeGlobalWellnessUser = (name) => {
+    const normalized = sanitizeUserName(name);
+    setSavedUsers((prev) => prev.filter((user) => user !== normalized));
+    if (globalUserName === normalized) {
+      setGlobalUserName("");
+    }
+  };
+
+  const dashboardUserSnapshot = useMemo(() => {
+    return buildUserSavedDataSnapshot(globalUserName);
+  }, [globalUserName]);
+
+  const dashboardMedicationTrackerCount = useMemo(() => {
+    return Object.values(dashboardUserSnapshot.medicationTrackersByUserState || {}).filter((state) => {
+      return Array.isArray(state?.entries) && state.entries.length > 0;
+    }).length;
+  }, [dashboardUserSnapshot]);
 
   // Listen for HVAC mode changes from Ask Joule commands
   useEffect(() => {
@@ -790,13 +1273,248 @@ const HomeDashboard = () => {
                 Quick overview of your system status
               </p>
             </div>
-            <Link
-              to="/onboarding?rerun=true"
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
-            >
-              <SettingsIcon className="w-4 h-4" />
-              Re-run Onboarding
-            </Link>
+            <div ref={loginSyncPanelRef} className="relative flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLoginSyncPanel((prev) => !prev)}
+                className="px-4 py-2 text-sm border border-fuchsia-500/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-100 rounded-lg transition-colors inline-flex items-center gap-2"
+              >
+                <span className="font-medium">Login & Sync</span>
+                {globalUserName && (
+                  <span className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-50">
+                    {globalUserName}
+                  </span>
+                )}
+                {appCloudSyncEnabled && (
+                  <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-100">
+                    On
+                  </span>
+                )}
+              </button>
+              <Link
+                to="/onboarding?rerun=true"
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <SettingsIcon className="w-4 h-4" />
+                Re-run Onboarding
+              </Link>
+
+              {showLoginSyncPanel && (
+                <div className="absolute right-0 top-full z-40 mt-3 w-[min(42rem,calc(100vw-3rem))] rounded-2xl border border-slate-800 bg-[#0C1118] p-5 shadow-2xl shadow-black/40">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Login & Sync</h2>
+                      <p className="text-sm text-[#A7B0BA]">
+                        Manage your active wellness user and optional private cloud sync in one place.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/10 px-2.5 py-1 font-semibold text-fuchsia-100">
+                        {globalUserName ? `Active: ${globalUserName}` : "No user selected"}
+                      </span>
+                      <span className={`rounded-full border px-2.5 py-1 font-semibold ${appCloudSyncEnabled ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200" : "border-slate-500/60 bg-slate-700/40 text-slate-200"}`}>
+                        Cloud Sync {appCloudSyncEnabled ? "On" : "Off"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    <details
+                      className="rounded-xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-900/20 to-violet-900/20 p-5"
+                      open={wellnessPanelOpen}
+                      onToggle={(event) => setWellnessPanelOpen(event.currentTarget.open)}
+                    >
+                      <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 rounded-lg -m-2 p-2 hover:bg-white/5 transition-colors">
+                        <div>
+                          <p className="text-base font-semibold text-fuchsia-100">Wellness User</p>
+                          <p className="text-xs text-fuchsia-200/90">{globalUserName ? `Active: ${globalUserName}` : "No active wellness user selected"}</p>
+                        </div>
+                        <div className="inline-flex items-center gap-2">
+                          <span className="rounded-full border border-fuchsia-300/50 bg-fuchsia-600/20 px-2 py-1 text-[11px] font-semibold text-fuchsia-100">
+                            {savedUsers.length} saved user{savedUsers.length === 1 ? "" : "s"}
+                          </span>
+                          <ChevronRight className={`w-4 h-4 text-fuchsia-200 transition-transform ${wellnessPanelOpen ? "rotate-90" : ""}`} />
+                        </div>
+                      </summary>
+
+                      <div className="mt-3 space-y-3">
+                        {globalUserName && (
+                          <p className="text-xs text-fuchsia-200">
+                            Active user: <strong>{globalUserName}</strong> · All wellness tools will use this user's settings.
+                          </p>
+                        )}
+
+                        {savedUsers.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {savedUsers.map((name) => (
+                              <div
+                                key={name}
+                                className={`flex items-center gap-1 pl-3 pr-1 py-1 rounded-full text-sm border ${
+                                  globalUserName === name
+                                    ? "bg-fuchsia-600 text-white border-fuchsia-500"
+                                    : "bg-slate-900 text-slate-200 border-slate-600 hover:border-fuchsia-400"
+                                }`}
+                              >
+                                <button type="button" onClick={() => selectGlobalWellnessUser(name)} className="font-medium">
+                                  {name}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeGlobalWellnessUser(name)}
+                                  className={`ml-1 rounded-full p-0.5 hover:bg-black/20 ${globalUserName === name ? "text-fuchsia-100" : "text-gray-400 hover:text-red-400"}`}
+                                  title={`Remove ${name}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newUserInput}
+                            onChange={(e) => setNewUserInput(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && saveGlobalWellnessUser()}
+                            placeholder={globalUserName ? `Active: ${globalUserName}` : "Enter a user name..."}
+                            className="flex-1 px-3 py-2 rounded-lg border border-fuchsia-400/40 bg-[#0C1118] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/60 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={saveGlobalWellnessUser}
+                            disabled={!sanitizeUserName(newUserInput) && !sanitizeUserName(globalUserName)}
+                            className="flex items-center gap-1 px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-700 text-white text-sm font-medium"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            Save
+                          </button>
+                        </div>
+
+                        <details className="group rounded-lg border border-fuchsia-400/30 bg-black/20 p-3" open={wellnessSavedDataPanelOpen} onToggle={(event) => setWellnessSavedDataPanelOpen(event.currentTarget.open)}>
+                          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 rounded-md -m-1 p-1 text-sm font-semibold text-fuchsia-100 hover:bg-white/5 transition-colors">
+                            <span>Saved Data For Current User</span>
+                            <ChevronRight className="w-4 h-4 text-fuchsia-200 transition-transform group-open:rotate-90" />
+                          </summary>
+                          <div className="mt-3 space-y-1 text-xs text-slate-200">
+                            <p><strong>User:</strong> {dashboardUserSnapshot.userName || "-"}</p>
+                            <p><strong>Caffeine profile ID:</strong> {dashboardUserSnapshot.profileLinks?.caffeineProfileId || "-"}</p>
+                            <p><strong>Calorie profile ID:</strong> {dashboardUserSnapshot.profileLinks?.calorieProfileId || "-"}</p>
+                            <p><strong>Caffeine entries:</strong> {Array.isArray(dashboardUserSnapshot.caffeineTracker?.entries) ? dashboardUserSnapshot.caffeineTracker.entries.length : 0}</p>
+                            <p><strong>Calorie meal logs:</strong> {Array.isArray(dashboardUserSnapshot.dailyCalorieIntake?.mealLog) ? dashboardUserSnapshot.dailyCalorieIntake.mealLog.length : 0}</p>
+                            <p><strong>Medication trackers with entries:</strong> {dashboardMedicationTrackerCount}</p>
+                          </div>
+                        </details>
+                      </div>
+                    </details>
+
+                    <details
+                      className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-900/20 to-blue-900/20 p-5"
+                      open={cloudSyncPanelOpen}
+                      onToggle={(event) => setCloudSyncPanelOpen(event.currentTarget.open)}
+                    >
+                      <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 rounded-lg -m-2 p-2 hover:bg-white/5 transition-colors">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Cloud className="w-5 h-5 text-cyan-300" />
+                            <h2 className="text-lg font-semibold text-white">Automatic Cloud Sync</h2>
+                          </div>
+                          <p className="text-sm text-cyan-100/90">Sync this app across browsers with a private key.</p>
+                        </div>
+                        <div className="inline-flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${appCloudSyncEnabled ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200" : "border-slate-500/60 bg-slate-700/40 text-slate-200"}`}>
+                            {appCloudSyncEnabled ? "On" : "Off"}
+                          </span>
+                          <ChevronRight className={`w-4 h-4 text-cyan-200 transition-transform ${cloudSyncPanelOpen ? "rotate-90" : ""}`} />
+                        </div>
+                      </summary>
+
+                      <div className="mt-3 space-y-3">
+                        <p className="text-sm text-[#A7B0BA]">
+                          Stores your full app data bundle in Netlify cloud storage using a private sync key. Any browser with the same key can restore and keep syncing automatically.
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={toggleAppCloudSync}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium ${appCloudSyncEnabled ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-slate-700 hover:bg-slate-600 text-slate-100"}`}
+                        >
+                          {appCloudSyncEnabled ? "Cloud Sync On" : "Cloud Sync Off"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={generateAppCloudSyncSecret}
+                          className="px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10 text-sm font-medium"
+                        >
+                          Generate Sync Key
+                        </button>
+                        <button
+                          type="button"
+                          onClick={downloadAppJson}
+                          className="px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10 text-sm font-medium"
+                        >
+                          Download JSON
+                        </button>
+                        <button
+                          type="button"
+                          onClick={triggerAppImportPicker}
+                          className="px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10 text-sm font-medium"
+                        >
+                          Upload JSON
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => runAppCloudSync({ forcePush: true })}
+                          disabled={!appCloudSyncEnabled || !appCloudSyncSecret.trim() || appCloudSyncBusy}
+                          className="px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${appCloudSyncBusy ? "animate-spin" : ""}`} />
+                          {appCloudSyncBusy ? "Syncing..." : "Sync Now"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => runAppCloudSync({ forcePull: true })}
+                          disabled={!appCloudSyncEnabled || !appCloudSyncSecret.trim() || appCloudSyncBusy}
+                          className="px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Restore From Cloud
+                        </button>
+                        <input
+                          ref={appImportInputRef}
+                          type="file"
+                          accept="application/json,.json"
+                          onChange={handleAppImportFile}
+                          className="hidden"
+                        />
+                        </div>
+
+                        <label className="space-y-1 block">
+                          <span className="text-sm text-slate-200 inline-flex items-center gap-1">
+                            <KeyRound className="w-4 h-4" />
+                            Sync key
+                          </span>
+                          <input
+                            type="text"
+                            value={appCloudSyncSecret}
+                            onChange={(e) => setAppCloudSyncSecret(e.target.value.trim())}
+                            placeholder="Paste or generate a sync key"
+                            className="w-full px-3 py-2 rounded-lg border border-cyan-400/40 bg-[#0C1118] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                          />
+                        </label>
+
+                        <p className="text-xs text-slate-400">
+                          Keep this key private. Anyone with the same key can restore your synced app data bundle.
+                        </p>
+
+                        {appCloudSyncMessage && <p className="text-xs text-emerald-300">{appCloudSyncMessage}</p>}
+                        {appCloudSyncError && <p className="text-xs text-rose-300">{appCloudSyncError}</p>}
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              )}
+            </div>
           </header>
         )}
 
@@ -859,7 +1577,6 @@ const HomeDashboard = () => {
         {/* Savings Dashboard - Only show after onboarding complete */}
         {hasCompletedOnboarding && (
           <div className="mt-8">
-            <h2 className="text-xl font-semibold text-white mb-4">💰 Save Money</h2>
             <SavingsDashboard />
           </div>
         )}
