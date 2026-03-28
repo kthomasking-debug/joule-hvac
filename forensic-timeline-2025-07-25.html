@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensic Timeline — July 25, 2025</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ... All CSS from user prompt ... */
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ────────────────────────────────────────────── -->
+<header class="doc-header">
+  <div>
+    <div class="doc-meta">FINRA Case No. 25-02046 &nbsp;·&nbsp; Hearing: August 18–19, 2026 &nbsp;·&nbsp; Exhibits A, B, C (Bates 000027, 000030, 000055) + Exhibit N (Verizon Carrier Record)</div>
+    <div class="doc-title">Forensic Timeline <span>·</span> July 25, 2025</div>
+    <div class="doc-subtitle">King v. Morgan Stanley Smith Barney LLC (d/b/a E*TRADE from Morgan Stanley) &nbsp;·&nbsp; Thomas King, Pro Se Claimant</div>
+  </div>
+  <div class="doc-verdict">
+    <p>If the log says no —<br>the money should not go</p>
+  </div>
+</header>
+
+<!-- ── VERIZON BANNER ─────────────────────────────────────── -->
+<div class="verizon-bar">
+  <span class="label">Verizon (Ex. N) — Spoofed calls from 800-387-2331 = E*TRADE's own number:</span>
+  <div class="call-badge">
+    <span class="num">CALL 1</span>
+    <span class="time">2:01:18 PM</span>
+    <span class="dur">25 min (~2:26)</span>
+  </div>
+  <span class="pipe">—</span>
+  <span class="note">OTP extracted &amp; wire completed WHILE THIS CALL IS LIVE</span>
+  <span class="pipe">—</span>
+  <div class="call-badge">
+    <span class="num">CALL 2</span>
+    <span class="time">2:33:16 PM</span>
+    <span class="dur">7 min</span>
+  </div>
+  <div class="call-badge">
+    <span class="num">CALL 3</span>
+    <span class="time">2:48:39 PM</span>
+    <span class="dur">14 min</span>
+  </div>
+  <span class="note">— continued manipulation after wire executed</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     ROW 1 — EVENTS 1–5: THE INTRUSION (13:37 – 2:11 PM)
+══════════════════════════════════════════════════════════ -->
+<main class="main">
+
+<div class="row-label">
+  <span>Row 1</span> Events 1–5: The Intrusion &nbsp;(13:37 – 2:11 PM)
+</div>
+
+<!-- Time strip -->
+<div class="time-strip">
+  <div class="time-cell">13:37:09 ET</div>
+  <div class="time-cell">14:03:20 ET</div>
+  <div class="time-cell">2:01 PM + 2:04 PM</div>
+  <div class="time-cell">2:06:30 PM</div>
+  <div class="time-cell">~2:09–2:10 PM</div>
+</div>
+
+<!-- Event cards row 1 -->
+<div class="timeline-row">
+
+  <!-- 1 -->
+  <div class="event-card">
+    <div class="step-num">1</div>
+    <div class="event-title">Baseline Login</div>
+    <div class="risk-badge green">Risk: 192.0</div>
+    <div class="event-body">
+      <p>Claimant logs into E*TRADE on Android device. Normal session established. Respondent's system records the behavioral baseline. Every subsequent risk score is measured against this 192.0 figure.</p>
+    </div>
+    <div class="cite"><em>Standard of care: Respondent's own system defines what normal looks like — making every later deviation its documented responsibility. Ex. B.</em></div>
+  </div>
+
+  <!-- 2 -->
+  <div class="event-card danger">
+    <div class="no-stamp">NO #1</div>
+    <div class="step-num red">2</div>
+    <div class="event-title red">Red Flag #1 — Session Hijack</div>
+    <div class="risk-badge red">Risk: 648.0 (+238%)</div>
+    <div class="event-body">
+      <p>A Windows 10 device continues the session using a cookie issued to Claimant's Android device. Cross-platform token reuse is a recognized signature of session hijacking. No session terminated. No re-auth demanded.</p>
+    </div>
+    <div class="cite"><em>Patco v. Peoples United Bank (1st Cir. 2012): Failure to trigger a challenge on atypical device access = commercially unreasonable as a matter of law. Ex. B, Bates 000027.</em></div>
+  </div>
+
+  <!-- 3 -->
+  <div class="event-card warn">
+    <div class="step-num amber">3</div>
+    <div class="event-title">Spoofed Call Begins + $9,250 Consolidation</div>
+    <div class="event-body">
+      <p>Spoofed call begins 2:01:18 PM (25-min duration). $9,250 internal transfer at 2:04 PM — fraud staging while caller impersonates E*TRADE's Fraud Dept. using E*TRADE's own caller-ID number.</p>
+    </div>
+    <div class="cite"><em>FinCEN FIN-2011-A016 + FFIEC BSA/AML App. F: Fund consolidation immediately before a wire = Account Takeover red flag. SAR mandate triggered: 31 C.F.R. §1023.320. Ex. J + N.</em></div>
+    <div class="live-tag">● Call Live</div>
+  </div>
+
+  <!-- 4 -->
+  <div class="event-card danger">
+    <div class="step-num red">4</div>
+    <div class="event-title red">OTP Harvested — Code Extracted Live</div>
+    <div class="event-body">
+      <p>Inbound OTP text received 2:06:30 PM. Caller extracts the code in real time under fraudulent impersonation of E*TRADE's Fraud Dept. This is the code Respondent will claim "authorized" the wire.</p>
+      <p>OTP obtained by deception on a session already hijacked. Authorization requires both factors to be legitimate — not merely present. Under Reg E the transfer remains unauthorized.</p>
+    </div>
+    <div class="cite"><em>Ex. N — Verizon Record</em></div>
+    <div class="live-tag">● Call Live</div>
+  </div>
+
+  <!-- 5 -->
+  <div class="event-card danger">
+    <div class="no-stamp">NO #2</div>
+    <div class="step-num red">5</div>
+    <div class="event-title red">Wire Initiated + Security Bypass — Smoking Gun</div>
+    <div class="risk-badge red">Risk: 787.0 (+310% over baseline)</div>
+    <div class="event-body">
+      <p>$45,000 wire to unverified "Djiby Diabi." Risk 4x baseline. System logs: "Beneficiary Name Overridden: YES — no written policy (Ex. A). Beneficiary Name Required: NO." Spoofed call still live.</p>
+    </div>
+    <div class="cite"><em>Experi-Metal v. Comerica (E.D. Mich. 2011): Ignoring 787-risk override = commercially unreasonable. FFIEC 2011/2021: anomaly must trigger challenge. Ex. A, Bates 000030.</em></div>
+    <div class="live-tag">● Call Live</div>
+  </div>
+
+</div><!-- /timeline-row -->
+
+<!-- ══════════════════════════════════════════════════════════
+     ROW 2 — EVENTS 6–10: COVER-UP, LAST CHANCE & LOSS
+══════════════════════════════════════════════════════════ -->
+<div class="row-label" style="margin-top:24px;">
+  <span>Row 2</span> Events 6–10: Cover-Up, Last Chance &amp; Loss &nbsp;(2:11 PM → Monday AM)
+</div>
+
+<!-- Time strip -->
+<div class="time-strip">
+  <div class="time-cell">2:11 PM</div>
+  <div class="time-cell">14:10:22 / 2:24–2:28 PM</div>
+  <div class="time-cell">2:33 PM + 2:48 PM</div>
+  <div class="time-cell">23:06:00 ET</div>
+  <div class="time-cell">Monday AM</div>
+</div>
+
+<!-- Event cards row 2 -->
+<div class="timeline-row row-b">
+
+  <!-- 6 -->
+  <div class="event-card live">
+    <div class="step-num">6</div>
+    <div class="event-title">Wire Complete — Spoofed Call Still Live</div>
+    <div class="event-body">
+      <p>Wire marked Complete/Sent at 2:11 PM. Bank reference assigned. The spoofed call still has 15 minutes remaining. $45,000 is gone while the caller is still on the line.</p>
+      <p>Verizon confirms Call #1 runs 2:01–2:26 PM. Wire initiated, executed, and confirmed entirely within this window. Ex. N + E*TRADE email alerts.</p>
+    </div>
+    <div class="cite"><em>Ref. 729805392008801</em></div>
+    <div class="live-tag">● Call Live</div>
+  </div>
+
+  <!-- 7 -->
+  <div class="event-card danger">
+    <div class="no-stamp">NO STEP-UP</div>
+    <div class="step-num red">7</div>
+    <div class="event-title red">Alert Deletion ×3 — Additional OTPs ×3</div>
+    <div class="event-body">
+      <p>Intruder deletes security alerts three times — no step-up challenge fires. Three more OTP texts arrive at 2:24, 2:26, and 2:28 PM: continued credential harvesting by the attacker.</p>
+    </div>
+    <div class="cite"><em>FINRA Rule 3110: A reasonably designed system cannot permit evidence erasure without a challenge. SEC Order 101842 (Dec. 2024): Respondent fined $15M for identical failure 8 months earlier. Ex. B, N.</em></div>
+  </div>
+
+  <!-- 8 -->
+  <div class="event-card warn">
+    <div class="step-num amber">8</div>
+    <div class="event-title">Spoofed Calls #2 and #3</div>
+    <div class="event-body">
+      <p>Two more calls from 800-387-2331 after the wire completes. 7 min at 2:33 PM, 14 min at 2:48 PM. Consistent with confirming success or continuing manipulation. Respondent's own investigator: this is a "common tactic."</p>
+    </div>
+    <div class="cite"><em>Foreseeability established: Respondent possessed institutional knowledge of this exact attack vector and a heightened duty to deploy adaptive countermeasures. Ex. I + N.</em></div>
+  </div>
+
+  <!-- 9 -->
+  <div class="event-card danger">
+    <div class="no-stamp">NO #3</div>
+    <div class="step-num red">9</div>
+    <div class="event-title red">Last Clear Chance — Wire Still Pending</div>
+    <div class="event-body">
+      <p>Claimant reports fraud. CRM confirms wire "shows pending in transfer money tool." Wire is legally cancellable under UCC 4A-211. Respondent's personnel take no action — no recall, no escalation, no contact with receiving bank.</p>
+    </div>
+    <div class="cite"><em>City Dodge v. Gardner (Ga. 1974): Last clear chance — party who can prevent the loss and fails bears it. UCC 4A-211: cancel before beneficiary bank accepts. Ex. C, Bates 000055.</em></div>
+  </div>
+
+  <!-- 10 -->
+  <div class="event-card danger">
+    <div class="step-num red">10</div>
+    <div class="event-title red">$45,000 — Irrecoverable Loss</div>
+    <div class="event-body">
+      <p>Wire settles. Funds to unverified "Djiby Diabi." Post-fraud: no provisional credit within 10-day contractual window (Section 4.F). No substantive response to written demand. Independent bad faith. (Ex. O)</p>
+    </div>
+    <div class="cite"><em>EFTA strict liability (NY v. Citibank, S.D.N.Y. 2025) · UCC 4A-202 unreasonable · FINRA Rule 3110 supervisory failure · Contract Guarantee breached (Ex. M) · Bad faith delay (Ex. O).</em></div>
+  </div>
+
+</div><!-- /timeline-row -->
+
+</main>
+
+<!-- ── FOOTER / FLAGS ─────────────────────────────────────── -->
+<footer class="flags-row">
+  <div>
+    <div class="flags-title">Three Compounding Red Flags + Verizon Corroboration</div>
+    <ul class="flags-list">
+      <li><strong>Risk 648.0</strong> — Session hijack, no termination (Ex. B, Bates 000027)</li>
+      <li><strong>Risk 787.0</strong> — Wire override, "Secondary Verification: NO" (Ex. A, Bates 000030)</li>
+      <li><strong>No Step-Up</strong> — Beneficiary Name "Required: NO," no written policy (Ex. A)</li>
+      <li><strong>+ Verizon:</strong> 25-min spoofed call live during entire wire execution (Ex. N)</li>
+    </ul>
+  </div>
+
+  <div class="damages-block">
+    <div class="damages-label">Total Damages Sought</div>
+    <div class="damages-amount">$45,000</div>
+    <div class="damages-sub">+ interest + forum fees &nbsp;·&nbsp; King v. Morgan Stanley Smith Barney LLC &nbsp;·&nbsp; FINRA No. 25-02046</div>
+  </div>
+
+  <div class="authority-col">
+    <div class="flags-title">Key Authority</div>
+    <ul>
+      <li>Patco v. Peoples United Bank (1st Cir. 2012)</li>
+      <li>Experi-Metal v. Comerica (E.D. Mich. 2011)</li>
+      <li>NY v. Citibank (S.D.N.Y. 2025)</li>
+      <li>FinCEN FIN-2011-A016 + FFIEC 2011/2021</li>
+      <li>31 C.F.R. §1023.320 · SEC Order 101842</li>
+      <li>FINRA Rule 3110 · UCC 4A-202, 4A-211</li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
