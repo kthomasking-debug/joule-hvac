@@ -39,6 +39,7 @@ const ACTIVE_PROFILE_ID_STORAGE_KEY = "caffeineTrackerActiveProfileId";
 const CALORIE_PROFILES_STORAGE_KEY = "dailyCalorieProfilesV1";
 const CALORIE_ACTIVE_PROFILE_STORAGE_KEY = "dailyCalorieActiveProfileId";
 const CLONAZEPAM_BY_USER_STORAGE_KEY = "clonazepamTrackerByUserV1";
+const TAPER_START_DATE_STORAGE_KEY = "clonazepamTaperStartDateV1";
 const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
 const WELLNESS_USER_CHANGED_EVENT = "wellness-user-changed";
 
@@ -794,7 +795,13 @@ export default function ClonazepamTracker() {
     return initialClonazState.lastMaintenanceDoseAt || getNowLocalDateTimeValue();
   });
   const taperStartDoseMg = maintenanceDoseMg;
-  const [taperStartDate, setTaperStartDate] = useState(() => getNowLocalDateTimeValue()); // ADD THIS
+  const [taperStartDate, setTaperStartDate] = useState(() => {
+    try {
+      return localStorage.getItem(TAPER_START_DATE_STORAGE_KEY) || getNowLocalDateTimeValue();
+    } catch {
+      return getNowLocalDateTimeValue();
+    }
+  });
   const [taperStepMg, setTaperStepMg] = useState(0.125);
   const [taperHoldDays, setTaperHoldDays] = useState(14);
   const [taperMinimumDoseMg, setTaperMinimumDoseMg] = useState(0.125);
@@ -1903,7 +1910,10 @@ export default function ClonazepamTracker() {
             <input
               type="datetime-local"
               value={taperStartDate}
-              onChange={(e) => setTaperStartDate(e.target.value)}
+              onChange={(e) => {
+                setTaperStartDate(e.target.value);
+                try { localStorage.setItem(TAPER_START_DATE_STORAGE_KEY, e.target.value); } catch { /* ignore */ }
+              }}
               className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900"
             />
           </label>
