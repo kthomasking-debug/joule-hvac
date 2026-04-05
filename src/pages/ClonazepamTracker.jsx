@@ -1501,9 +1501,12 @@ export default function ClonazepamTracker() {
   const DIAZEPAM_RAMP_MS = 60 * 60 * 1000;
 
   const diazepamEquivalentChartData = useMemo(() => {
-    if (!modeledEntries.length) return [];
+    if (!entries.length || !chartData.length) return [];
     const now = recalcAt;
 
+    // Both series use ONLY actual logged entries (no synthetic carryover) so peaks are
+    // equal and the visual comparison purely reflects PK shape / volatility differences.
+    // doseMg × 20 ÷ 20 cancels — diazepam expressed directly in clonazepam-equivalent mg.
     function diazepamActiveMgAt(takenAtMs, doseClonazepamMg, atMs) {
       const elapsedMs = atMs - takenAtMs;
       if (elapsedMs < 0) return 0;
@@ -1513,29 +1516,53 @@ export default function ClonazepamTracker() {
       } else if (elapsedMs > DIAZEPAM_ONSET_LAG_MS) {
         const rampProgress = (elapsedMs - DIAZEPAM_ONSET_LAG_MS) / DIAZEPAM_RAMP_MS;
         const x = Math.max(0, Math.min(1, rampProgress));
-        onsetFraction = x * x * (3 - 2 * x); // smoothstep
+        onsetFraction = x * x * (3 - 2 * x);
       }
       if (onsetFraction <= 0) return 0;
       const elapsedHours = elapsedMs / (1000 * 60 * 60);
-      const diazepamDoseMg = doseClonazepamMg * DIAZEPAM_EQUIVALENCE_RATIO;
-      return diazepamDoseMg * onsetFraction * Math.pow(0.5, elapsedHours / DIAZEPAM_HALF_LIFE_HOURS);
+      return doseClonazepamMg * onsetFraction * Math.pow(0.5, elapsedHours / DIAZEPAM_HALF_LIFE_HOURS);
     }
 
-    return chartData.map((point) => {
-      const diazepamActiveMg = modeledEntries.reduce((sum, entry) => {
+    const points = chartData.map((point) => {
+      const clonazepamMg = entries.reduce((sum, entry) => {
+        return sum + clonazepamActiveMgAtTime(entry, point.ts, now, halfLifeHours);
+      }, 0);
+      const diazepamEquivMg = entries.reduce((sum, entry) => {
         const takenAtMs = getEntryTakenAtMs(entry, now);
         return sum + diazepamActiveMgAt(takenAtMs, entry.doseMg || 0, point.ts);
       }, 0);
-      // Express as clonazepam-equivalent mg for an apples-to-apples Y-axis comparison
-      const clonazepamEquivalentMg = diazepamActiveMg / DIAZEPAM_EQUIVALENCE_RATIO;
       return {
         ts: point.ts,
-        activeMg: Number(point.activeMg.toFixed(3)),
-        diazepamActiveMg: Number(diazepamActiveMg.toFixed(2)),
-        clonazepamEquivalentMg: Number(clonazepamEquivalentMg.toFixed(3)),
+        clonazepamMg: Number(clonazepamMg.toFixed(3)),
+        diazepamEquivMg: Number(diazepamEquivMg.toFixed(3)),
       };
     });
-  }, [modeledEntries, chartData, recalcAt]);
+
+    // Linear regression trend lines over historical points, extended across full range
+    const historicalPoints = points.filter((p) => p.ts <= now);
+    const hn = historicalPoints.length;
+
+    function regression(getY) {
+      if (hn < 2) return null;
+      const xs = historicalPoints.map((p) => p.ts);
+      const ys = historicalPoints.map(getY);
+      const meanX = xs.reduce((s, v) => s + v, 0) / hn;
+      const meanY = ys.reduce((s, v) => s + v, 0) / hn;
+      const num = xs.reduce((s, x, i) => s + (x - meanX) * (ys[i] - meanY), 0);
+      const den = xs.reduce((s, x) => s + (x - meanX) ** 2, 0);
+      const slope = den !== 0 ? num / den : 0;
+      return { slope, intercept: meanY - slope * meanX };
+    }
+
+    const clonazepamReg = regression((p) => p.clonazepamMg);
+    const diazepamReg = regression((p) => p.diazepamEquivMg);
+
+    return points.map((point) => ({
+      ...point,
+      clonazepamTrend: clonazepamReg ? Number((clonazepamReg.intercept + clonazepamReg.slope * point.ts).toFixed(3)) : undefined,
+      diazepamTrend: diazepamReg ? Number((diazepamReg.intercept + diazepamReg.slope * point.ts).toFixed(3)) : undefined,
+    }));
+  }, [entries, chartData, recalcAt, halfLifeHours]);
 
   const interactionData = useMemo(() => {
     if (!sedationPressureData.length) return [];
@@ -2023,7 +2050,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Diazepam Equivalent Comparison (Educational)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Shows how blood levels would look if the same doses were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Diazepam has a much longer half-life (~72 h) and slower offset, producing a flatter, more stable profile. Both lines use the clonazepam-equivalent mg scale for direct comparison. The <span className="text-sky-400 font-semibold">blue</span> line is the diazepam-equivalent profile expressed as clonazepam mg.
+          Shows how blood levels would look if the same logged doses were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the same doses and the same clonazepam-equivalent mg scale, so peaks are equal — the key difference is volatility: <span className="text-purple-400 font-semibold">purple</span> (clonazepam, 30 h half-life) drops steeply between doses, while <span className="text-sky-400 font-semibold">blue</span> (diazepam equivalent, 72 h half-life) maintains a much higher trough and lower oscillation. Dashed lines are linear regression trends for each.
         </p>
         {diazepamEquivalentChartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
@@ -2051,11 +2078,13 @@ export default function ClonazepamTracker() {
                       itemStyle={{ color: "#d1d5db" }}
                       labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
                       formatter={(value, name) => {
-                        if (name === "activeMg") return [`${value} mg`, "Clonazepam active (actual)"];
-                        if (name === "clonazepamEquivalentMg") {
+                        if (name === "clonazepamMg") return [`${value} mg`, "Clonazepam active (logged doses)"];
+                        if (name === "diazepamEquivMg") {
                           const diaz = Number((value * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(1));
-                          return [`${value} mg (= ${diaz} mg diazepam)`, "Active if diazepam used"];
+                          return [`${value} mg equiv (= ${diaz} mg diazepam)`, "Active if diazepam used"];
                         }
+                        if (name === "clonazepamTrend") return [`${value} mg`, "Clonazepam trend"];
+                        if (name === "diazepamTrend") return [`${value} mg equiv`, "Diazepam trend"];
                         return [value, name];
                       }}
                     />
@@ -2086,8 +2115,10 @@ export default function ClonazepamTracker() {
                         }}
                       />
                     )}
-                    <Line type="monotone" dataKey="activeMg" name="activeMg" stroke="#a855f7" strokeWidth={2} dot={false} strokeDasharray="5 3" strokeOpacity={0.55} />
-                    <Line type="monotone" dataKey="clonazepamEquivalentMg" name="clonazepamEquivalentMg" stroke="#38bdf8" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="clonazepamMg" name="clonazepamMg" stroke="#a855f7" strokeWidth={2.5} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="diazepamEquivMg" name="diazepamEquivMg" stroke="#38bdf8" strokeWidth={2.5} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="clonazepamTrend" name="clonazepamTrend" stroke="#a855f7" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
+                    <Line type="monotone" dataKey="diazepamTrend" name="diazepamTrend" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
