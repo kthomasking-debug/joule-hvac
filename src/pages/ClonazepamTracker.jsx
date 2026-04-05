@@ -797,7 +797,16 @@ export default function ClonazepamTracker() {
   const taperStartDoseMg = maintenanceDoseMg;
   const [taperStartDate, setTaperStartDate] = useState(() => {
     try {
-      return localStorage.getItem(TAPER_START_DATE_STORAGE_KEY) || getNowLocalDateTimeValue();
+      const stored = localStorage.getItem(TAPER_START_DATE_STORAGE_KEY);
+      if (stored) return stored;
+      // Default to earliest logged dose date
+      const profileId = localStorage.getItem(ACTIVE_PROFILE_ID_STORAGE_KEY) || "";
+      const state = getClonazepamStateForUser(profileId);
+      const times = (state.entries || [])
+        .map((e) => getEntryTakenAtMs(e))
+        .filter((ms) => Number.isFinite(ms) && ms > 0);
+      if (times.length) return toLocalDateTimeInputValue(Math.min(...times));
+      return getNowLocalDateTimeValue();
     } catch {
       return getNowLocalDateTimeValue();
     }
