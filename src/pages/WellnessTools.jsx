@@ -23,6 +23,8 @@ const TRACKER_USER_STORAGE_KEYS = [
 const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
 const WELLNESS_AI_QUICK_PROMPTS = [
   "Summarize my current wellness snapshot.",
+  "How consistent is my clonazepam dosing? What would help?",
+  "How does my caffeine intake interact with my taper? What should I adjust?",
   "Which tracker changed most recently?",
   "Which tracker looks most active this week?",
   "Do I have any overdue or reminder-style signals right now?",
@@ -510,6 +512,69 @@ export default function WellnessTools() {
 
     const calorieForm = userSavedDataSnapshot.dailyCalorieIntake?.form || {};
 
+    // ── Caffeine analytics ─────────────────────────────────────────────────
+    const caffeineAnalytics = (() => {
+      if (!caffeineEntries.length) return null;
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const validEntries = caffeineEntries
+        .map((e) => ({ ts: getEntryTakenAtMs(e, now), mg: Number(e.mg || e.caffeineMg || e.caffeineAmount || 0) }))
+        .filter((e) => e.ts > 0 && e.mg > 0)
+        .sort((a, b) => a.ts - b.ts);
+
+      if (!validEntries.length) return null;
+
+      // Group by calendar day
+      const byDay = {};
+      validEntries.forEach((e) => {
+        const key = new Date(e.ts).toISOString().slice(0, 10);
+        byDay[key] = (byDay[key] || 0) + e.mg;
+      });
+      const dayKeys = Object.keys(byDay).sort();
+      const dailyTotals = dayKeys.map((k) => byDay[k]);
+      const avgDailyMg = dailyTotals.length ? Number((dailyTotals.reduce((s, v) => s + v, 0) / dailyTotals.length).toFixed(1)) : 0;
+      const maxDailyMg = dailyTotals.length ? Math.max(...dailyTotals) : 0;
+      const minDailyMg = dailyTotals.length ? Math.min(...dailyTotals) : 0;
+
+      // Consistency: std dev of daily totals (lower = more consistent)
+      const meanD = avgDailyMg;
+      const stdDev = dailyTotals.length > 1
+        ? Number(Math.sqrt(dailyTotals.reduce((s, v) => s + (v - meanD) ** 2, 0) / dailyTotals.length).toFixed(1))
+        : 0;
+      const cvPercent = meanD > 0 ? Number(((stdDev / meanD) * 100).toFixed(1)) : null;
+      const consistencyRating = cvPercent === null ? "unknown" : cvPercent < 15 ? "high" : cvPercent < 35 ? "moderate" : "low";
+
+      // Time-of-day pattern: average hour of first entry per day
+      const firstEntryByDay = {};
+      validEntries.forEach((e) => {
+        const key = new Date(e.ts).toISOString().slice(0, 10);
+        if (!firstEntryByDay[key] || e.ts < firstEntryByDay[key]) firstEntryByDay[key] = e.ts;
+      });
+      const avgFirstHour = (() => {
+        const hours = Object.values(firstEntryByDay).map((ts) => new Date(ts).getHours() + new Date(ts).getMinutes() / 60);
+        return hours.length ? Number((hours.reduce((s, h) => s + h, 0) / hours.length).toFixed(1)) : null;
+      })();
+
+      // Recent 14-day entries
+      const fourteenDaysAgo = now - 14 * dayMs;
+      const recentEntries = validEntries
+        .filter((e) => e.ts >= fourteenDaysAgo)
+        .map((e) => ({ takenAt: new Date(e.ts).toISOString(), mg: e.mg }));
+
+      return {
+        daysWithData: dayKeys.length,
+        avgDailyMg,
+        maxDailyMg: Number(maxDailyMg.toFixed(1)),
+        minDailyMg: Number(minDailyMg.toFixed(1)),
+        stdDevDailyMg: stdDev,
+        cvPercent,
+        consistencyRating,
+        avgFirstCaffeineHour: avgFirstHour,
+        recentEntries,
+        note: `Average daily caffeine: ${avgDailyMg} mg over ${dayKeys.length} days (consistency: ${consistencyRating}, CV ${cvPercent ?? "?"}%). First caffeine typically around ${avgFirstHour !== null ? `${Math.floor(avgFirstHour)}:${String(Math.round((avgFirstHour % 1) * 60)).padStart(2, "0")}` : "unknown"}.`,
+      };
+    })();
+
     // ── Clonazepam detail context ──────────────────────────────────────────
     const clonazepamDetail = (() => {
       const state = userSavedDataSnapshot.medicationTrackersByUserState?.["clonazepamTrackerByUserV1"];
@@ -649,6 +714,7 @@ export default function WellnessTools() {
       },
       medicationTrackers: medicationSummaries,
       clonazepamDetail,
+      caffeineAnalytics,
       doseReminders: Object.entries(doseAlertsByPath).map(([path, detail]) => ({ path, detail })),
     };
   }, [userSavedDataSnapshot, doseAlertsByPath]);
@@ -725,7 +791,7 @@ export default function WellnessTools() {
           messages: [
             {
               role: "system",
-              content: "You are a wellness assistant inside Joule Wellness Hub. Use ONLY the provided user context JSON to answer. Be concise, clearly separate observations from suggestions, and include a safety note that this is not medical advice. The context includes a `clonazepamDetail` field with: currentActiveMg (estimated mg active right now), trendSlopeMgPerDay (positive = increasing, negative = decreasing), trendDirection (increasing/stable/decreasing), trendInterpretation (human-readable summary), dailySamples (14-day history of estimated daily average active mg), recentDoses (dose log for last 14 days), and taper (startDate, stepMg, holdDays, minimumDoseMg, schedule of planned reductions with dates and doses). Use these to answer questions about whether the trendline is going up or down, why, and what remediation steps may help. When discussing remediation, reference the taper schedule (e.g., whether the user is ahead of or behind their taper plan) and always include a safety disclaimer.",
+              content: "You are a wellness assistant inside Joule Wellness Hub. Use ONLY the provided user context JSON to answer. Be concise and actionable: when patterns or trends are visible in the data, offer specific, practical suggestions (e.g. target dose timing, caffeine mg adjustments, consistency improvements). Clearly separate observations from suggestions. Always include a safety note that this is not medical advice and important decisions should be made with a clinician. The context includes a `clonazepamDetail` field with: currentActiveMg, trendSlopeMgPerDay, trendDirection, trendInterpretation, dailySamples, recentDoses, and taper (startDate, stepMg, holdDays, minimumDoseMg, schedule). It also includes a `caffeineAnalytics` field with: avgDailyMg, consistencyRating, cvPercent, avgFirstCaffeineHour, and recentEntries. Use these to give specific advice about dose timing consistency, caffeine reduction strategies in the context of the taper, and whether the active level trend is on track with the taper plan.",
             },
             {
               role: "system",
@@ -926,7 +992,7 @@ export default function WellnessTools() {
         <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-white dark:bg-gray-900 p-3 h-72 overflow-y-auto space-y-3">
           {wellnessAiMessages.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Try: "Summarize my current wellness snapshot", "Which tracker looks most active this week?", or "What trends should I discuss with my clinician?"
+              Try: <em>"How consistent is my clonazepam dosing?"</em>, <em>"How does my caffeine intake interact with my taper?"</em>, or <em>"What trends should I discuss with my clinician?"</em>
             </p>
           ) : (
             wellnessAiMessages.map((message) => (
