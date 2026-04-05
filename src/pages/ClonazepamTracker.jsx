@@ -1330,7 +1330,7 @@ export default function ClonazepamTracker() {
     const doseTimes = modeledEntries.map((entry) => getEntryTakenAtMs(entry, now));
     const earliest = Math.min(...doseTimes);
 
-    const start = Math.max(earliest - 4 * 60 * 60 * 1000, now - 48 * 60 * 60 * 1000);
+    const start = Math.min(earliest - 4 * 60 * 60 * 1000, now - 14 * 24 * 60 * 60 * 1000);
     const end = now + 72 * 60 * 60 * 1000;
     const stepMs = 60 * 60 * 1000;
 
@@ -1355,8 +1355,9 @@ export default function ClonazepamTracker() {
     const s = chartData[0].ts;
     const e = chartData[chartData.length - 1].ts;
     const hr = 3600000;
+    const tickIntervalHours = 12;
     const out = [];
-    for (let t = Math.ceil(s / hr) * hr; t <= e; t += hr) out.push(t);
+    for (let t = Math.ceil(s / (tickIntervalHours * hr)) * (tickIntervalHours * hr); t <= e; t += tickIntervalHours * hr) out.push(t);
     return out;
   }, [chartData]);
 
@@ -1814,7 +1815,7 @@ export default function ClonazepamTracker() {
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Estimated Active Clonazepam</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline includes 72-hour projection.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline shows up to 2 weeks of history plus a 72-hour projection.</p>
         {withdrawalThresholdMg !== null && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
             <span className="text-red-600 dark:text-red-400 font-semibold">Dashed red line</span> marks an estimated risk zone based on chronic exposure assumptions (not a diagnostic cutoff).
@@ -1835,7 +1836,7 @@ export default function ClonazepamTracker() {
                   angle={-40}
                   textAnchor="end"
                   height={52}
-                  tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
                 />
                 <YAxis />
                 <Tooltip
@@ -2029,7 +2030,7 @@ export default function ClonazepamTracker() {
                   angle={-40}
                   textAnchor="end"
                   height={52}
-                  tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
                 />
                 <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
                 <Tooltip
@@ -2164,7 +2165,7 @@ export default function ClonazepamTracker() {
                   angle={-40}
                   textAnchor="end"
                   height={52}
-                  tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
                 />
                 <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
                 <Tooltip
