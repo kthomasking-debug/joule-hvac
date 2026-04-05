@@ -404,6 +404,8 @@ export default function WellnessTools() {
     return localStorage.getItem(WELLNESS_GLOBAL_USER_NAME_KEY) || "";
   });
   const [savedUsers, setSavedUsers] = useState(() => loadSavedUsers());
+  const [showUserPanel, setShowUserPanel] = useState(false);
+  const [newUserInput, setNewUserInput] = useState("");
   const [wellnessAiInput, setWellnessAiInput] = useState("");
   const [wellnessAiMessages, setWellnessAiMessages] = useState([]);
   const [wellnessAiBusy, setWellnessAiBusy] = useState(false);
@@ -836,22 +838,77 @@ export default function WellnessTools() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <Heart className="w-7 h-7 text-fuchsia-600 dark:text-fuchsia-400" />
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Wellness Hub</h1>
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+          <div className="flex items-center gap-2">
+            <Heart className="w-7 h-7 text-fuchsia-600 dark:text-fuchsia-400" />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Wellness Hub</h1>
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowUserPanel((p) => !p)}
+              className="px-4 py-2 text-sm border border-fuchsia-500/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-800 dark:text-fuchsia-100 rounded-lg transition-colors inline-flex items-center gap-2"
+            >
+              <span className="font-medium">Login &amp; Sync</span>
+              {globalUserName && (
+                <span className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-800 dark:text-fuchsia-50">
+                  {globalUserName}
+                </span>
+              )}
+            </button>
+            {showUserPanel && (
+              <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-fuchsia-300 dark:border-fuchsia-800 bg-white dark:bg-gray-900 shadow-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200">
+                  {globalUserName ? `Active: ${globalUserName}` : "No active user"}
+                </p>
+                {savedUsers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {savedUsers.map((name) => (
+                      <div key={name} className={`flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-xs border ${globalUserName === name ? "bg-fuchsia-600 text-white border-fuchsia-500" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"}`}>
+                        <button type="button" onClick={() => { setGlobalUserName(name); setShowUserPanel(false); }} className="font-medium">{name}</button>
+                        <button type="button" onClick={() => setSavedUsers((u) => u.filter((n) => n !== name))} className="ml-0.5 hover:text-red-500">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newUserInput}
+                    onChange={(e) => setNewUserInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newUserInput.trim()) {
+                        const name = sanitizeUserName(newUserInput);
+                        if (name && !savedUsers.includes(name)) setSavedUsers((u) => [...u, name]);
+                        setGlobalUserName(name);
+                        setNewUserInput("");
+                        setShowUserPanel(false);
+                      }
+                    }}
+                    placeholder="Add / switch user…"
+                    className="flex-1 px-2 py-1.5 text-sm rounded border border-fuchsia-300 dark:border-fuchsia-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-fuchsia-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = sanitizeUserName(newUserInput);
+                      if (!name) return;
+                      if (!savedUsers.includes(name)) setSavedUsers((u) => [...u, name]);
+                      setGlobalUserName(name);
+                      setNewUserInput("");
+                      setShowUserPanel(false);
+                    }}
+                    className="px-3 py-1.5 rounded bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-medium"
+                  >
+                    Set
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">Full sync controls on <Link to="/home" className="underline text-fuchsia-600 dark:text-fuchsia-400">Mission Control</Link>.</p>
+              </div>
+            )}
+          </div>
         </div>
         <p className="text-gray-600 dark:text-gray-400">Medication and caffeine tracking, interaction modeling, and wellness visualizations.</p>
-      </div>
-
-      <div className="mb-6 rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/50 dark:bg-fuchsia-950/20 p-3">
-        <p className="text-sm text-fuchsia-800 dark:text-fuchsia-200">
-          Wellness user management is now global on the dashboard.
-          <Link to="/" className="ml-1 underline decoration-fuchsia-400 underline-offset-2 hover:text-fuchsia-600 dark:hover:text-fuchsia-100">
-            Open Mission Control
-          </Link>
-          {" "}
-          to set the active user and view saved data.
-        </p>
       </div>
 
       <div className="mb-8">
@@ -1106,6 +1163,120 @@ export default function WellnessTools() {
             AI responses are informational only and not medical advice.
           </p>
         </div>
+      </div>
+
+      {/* ── Find a Therapist ──────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/30 dark:bg-teal-950/10 p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🩺</span>
+          <div>
+            <h2 className="font-semibold text-teal-900 dark:text-teal-100 text-lg">Find a Therapist</h2>
+            <p className="text-sm text-teal-700 dark:text-teal-300">Find mental health support covered under your ACA Marketplace or employer insurance plan.</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-teal-100/60 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 p-3 space-y-1 text-sm text-teal-800 dark:text-teal-200">
+          <p className="font-semibold">Quick steps to find in-network therapy under ACA plans:</p>
+          <ol className="list-decimal list-inside space-y-0.5 text-xs">
+            <li>Log in to your insurance portal (included in the links below by insurer).</li>
+            <li>Search for <strong>mental health / behavioral health</strong> providers in your ZIP code.</li>
+            <li>Filter by specialty: <em>anxiety, depression, trauma, substance use, benzo tapering</em>.</li>
+            <li>Confirm they accept your plan tier (Bronze/Silver/Gold) before booking.</li>
+            <li>ACA plans are required to cover mental health services at parity with medical services (Mental Health Parity Act).</li>
+          </ol>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            {
+              name: "MDLive (Telehealth)",
+              desc: "Accepts most major ACA plans. Therapy, psychiatry, and medication management available online same-day.",
+              url: "https://www.mdlive.com/",
+              tag: "Telehealth · Same-day",
+              color: "blue",
+            },
+            {
+              name: "SAMHSA National Helpline",
+              desc: "Free, confidential, 24/7 treatment referral. Call 1-800-662-4357 or search the national locator.",
+              url: "https://findtreatment.gov/",
+              tag: "Free · 24/7",
+              color: "green",
+            },
+            {
+              name: "Psychology Today Therapist Finder",
+              desc: "Filter by insurance, specialty (anxiety, benzo taper, withdrawal), and in-person or telehealth.",
+              url: "https://www.psychologytoday.com/us/therapists",
+              tag: "Insurance filter",
+              color: "purple",
+            },
+            {
+              name: "Open Path Collective",
+              desc: "Sliding scale $30–$80/session for uninsured or underinsured. Many therapists specialize in anxiety.",
+              url: "https://openpathcollective.org/",
+              tag: "Sliding scale",
+              color: "orange",
+            },
+            {
+              name: "HealthCare.gov Plan Finder",
+              desc: "Find or compare ACA Marketplace plans that include mental health coverage in your state.",
+              url: "https://www.healthcare.gov/see-plans/",
+              tag: "ACA Marketplace",
+              color: "sky",
+            },
+            {
+              name: "NAMI Help Line",
+              desc: "National Alliance on Mental Illness. Call 1-800-950-6264 or text 'NAMI' to 741741 for crisis support.",
+              url: "https://www.nami.org/help",
+              tag: "Crisis support",
+              color: "red",
+            },
+            {
+              name: "In Crisis? Text or Call 988",
+              desc: "Suicide & Crisis Lifeline. Call or text 988 anytime. Free, confidential, available 24/7.",
+              url: "https://988lifeline.org/",
+              tag: "Crisis · 988",
+              color: "red",
+            },
+            {
+              name: "Zocdoc (Insurance Search)",
+              desc: "Book in-person or telehealth therapists filtered by your specific insurance plan and availability.",
+              url: "https://www.zocdoc.com/search/?reason_visit=Mental+health&insurance_carrier=",
+              tag: "Book online",
+              color: "teal",
+            },
+          ].map(({ name, desc, url, tag, color }) => {
+            const colorMap = {
+              blue: "border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20",
+              green: "border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20",
+              purple: "border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20",
+              orange: "border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20",
+              sky: "border-sky-200 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20",
+              red: "border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20",
+              teal: "border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/20",
+            };
+            const tagMap = {
+              blue: "bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200",
+              green: "bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-200",
+              purple: "bg-purple-100 dark:bg-purple-800 text-purple-700 dark:text-purple-200",
+              orange: "bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-200",
+              sky: "bg-sky-100 dark:bg-sky-800 text-sky-700 dark:text-sky-200",
+              red: "bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200",
+              teal: "bg-teal-100 dark:bg-teal-800 text-teal-700 dark:text-teal-200",
+            };
+            return (
+              <a key={name} href={url} target="_blank" rel="noreferrer" className={`block rounded-lg border p-3 hover:shadow-md transition-shadow ${colorMap[color]}`}>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="font-semibold text-sm text-gray-900 dark:text-white">{name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap ${tagMap[color]}`}>{tag}</span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">{desc}</p>
+              </a>
+            );
+          })}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          This is a curated list of public resources — not a medical referral. Verify coverage with your insurer before booking. If you are in crisis, call or text <strong>988</strong>.
+        </p>
       </div>
       
     </div>

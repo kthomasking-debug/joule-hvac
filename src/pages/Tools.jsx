@@ -231,6 +231,25 @@ const sectionStyles = {
 export default function Tools() {
   const [searchQuery, setSearchQuery] = useState("");
 
+  // ── ToDo state (persisted) ──────────────────────────────────────────────
+  const [todos, setTodos] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("toolsToDoV1") || "[]"); } catch { return []; }
+  });
+  const [todoInput, setTodoInput] = React.useState("");
+
+  const saveTodos = (next) => {
+    setTodos(next);
+    try { localStorage.setItem("toolsToDoV1", JSON.stringify(next)); } catch {}
+  };
+  const addTodo = () => {
+    const text = todoInput.trim();
+    if (!text) return;
+    saveTodos([...todos, { id: Date.now(), text, done: false }]);
+    setTodoInput("");
+  };
+  const toggleTodo = (id) => saveTodos(todos.map((t) => t.id === id ? { ...t, done: !t.done } : t));
+  const deleteTodo = (id) => saveTodos(todos.filter((t) => t.id !== id));
+
   const colorClasses = {
     blue: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400",
     green: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400",
@@ -268,6 +287,56 @@ export default function Tools() {
         <p className="text-gray-600 dark:text-gray-400">
           HVAC calculation, wiring, troubleshooting, and wellness tools
         </p>
+      </div>
+
+      {/* ── ToDo ─────────────────────────────────────────────────────────── */}
+      <div className="mb-8 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white text-base flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          To-Do
+        </h2>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={todoInput}
+            onChange={(e) => setTodoInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addTodo()}
+            placeholder="Add a task and press Enter…"
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={addTodo}
+            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+          >
+            Add
+          </button>
+        </div>
+        {todos.length === 0 && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-1">No tasks yet — add one above.</p>
+        )}
+        <ul className="space-y-1.5">
+          {todos.map((todo) => (
+            <li key={todo.id} className="flex items-center gap-2 group">
+              <button
+                onClick={() => toggleTodo(todo.id)}
+                className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${todo.done ? "bg-blue-500 border-blue-500 text-white" : "border-gray-300 dark:border-gray-600 hover:border-blue-500"}`}
+                title={todo.done ? "Mark incomplete" : "Mark complete"}
+              >
+                {todo.done && (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+              </button>
+              <span className={`flex-1 text-sm ${todo.done ? "line-through text-gray-400 dark:text-gray-500" : "text-gray-800 dark:text-gray-200"}`}>{todo.text}</span>
+              <button
+                onClick={() => deleteTodo(todo.id)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                title="Delete"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Search Bar */}

@@ -832,6 +832,17 @@ export default function ClonazepamTracker() {
   const [trendExplanation, setTrendExplanation] = useState("");
   const [trendExplanationBusy, setTrendExplanationBusy] = useState(false);
   const [trendExplanationError, setTrendExplanationError] = useState("");
+  const [diazepamZoomDays, setDiazepamZoomDays] = useState(7);
+  const [diazExplanation, setDiazExplanation] = useState("");
+  const [diazExplanationBusy, setDiazExplanationBusy] = useState(false);
+  const [diazExplanationError, setDiazExplanationError] = useState("");
+  const [anxietyExplanation, setAnxietyExplanation] = useState("");
+  const [anxietyExplanationBusy, setAnxietyExplanationBusy] = useState(false);
+  const [anxietyExplanationError, setAnxietyExplanationError] = useState("");
+  const [cbtMessages, setCbtMessages] = useState([]);
+  const [cbtInput, setCbtInput] = useState("");
+  const [cbtBusy, setCbtBusy] = useState(false);
+  const [cbtError, setCbtError] = useState("");
 
   const activeProfile = useMemo(() => {
     return profiles.find((profile) => profile.id === activeProfileId) || profiles[0] || null;
@@ -1361,7 +1372,7 @@ export default function ClonazepamTracker() {
     const doseTimes = modeledEntries.map((entry) => getEntryTakenAtMs(entry, now));
     const earliest = Math.min(...doseTimes);
 
-    const start = Math.max(earliest - 4 * 60 * 60 * 1000, now - 14 * 24 * 60 * 60 * 1000);
+    const start = Math.max(earliest - 4 * 60 * 60 * 1000, now - 21 * 24 * 60 * 60 * 1000);
     const end = now + 72 * 60 * 60 * 1000;
     const stepMs = 60 * 60 * 1000;
 
@@ -1584,7 +1595,13 @@ export default function ClonazepamTracker() {
       diazepamTrend: diazepamReg ? Number((diazepamReg.intercept + diazepamReg.slope * point.ts).toFixed(3)) : undefined,
     }));
 
-    data._stats = { clonazepamVol, diazepamVol };
+    const dayMs = 24 * 60 * 60 * 1000;
+    data._stats = {
+      clonazepamVol,
+      diazepamVol,
+      cloSlopeMgPerDay: clonazepamReg ? Number((clonazepamReg.slope * dayMs).toFixed(5)) : 0,
+      diazSlopeMgPerDay: diazepamReg ? Number((diazepamReg.slope * dayMs).toFixed(5)) : 0,
+    };
     return data;
   }, [modeledEntries, chartData, recalcAt, halfLifeHours]);
 
@@ -1619,6 +1636,62 @@ export default function ClonazepamTracker() {
       };
     });
   }, [sedationPressureData, recalcAt, activeProfile, caffeineEntries]);
+
+  // Anxiety index: combines caffeine excitatory pressure (anxiogenic), clonazepam sedation pressure (anxiolytic),
+  // and a withdrawal rebound term that fires when active mg drops below the withdrawal threshold.
+  // Withdrawal rebound = sqrt(deficit) × downregulation × dependenceDepth × 90
+  //   deficit          = (threshold − activeMg) / threshold  [0→1 below threshold]
+  //   downregulation   = 1 − toleranceFactorFromDays(daysAtCurrentDose)  [GABA-A receptor adaptation depth]
+  //   dependenceDepth  = clamp(daysAtCurrentDose / 180, 0, 1)  [ramps to full severity at ~6 months]
+  // Low < 35 · Moderate 35–65 · High > 65
+  const ANXIETY_LOW_THRESHOLD = 35;
+  const ANXIETY_HIGH_THRESHOLD = 65;
+
+  const anxietyChartData = useMemo(() => {
+    if (!interactionData.length) return [];
+
+    // activeMg by timestamp (chartData spans historical + 72h projection)
+    const activeMgByTs = new Map(chartData.map((p) => [p.ts, p.activeMg]));
+    const downregulation = Math.max(0, 1 - toleranceFactorFromDays(daysAtCurrentDose));
+    const dependenceDepth = Math.min(1, daysAtCurrentDose / 180);
+
+    const data = interactionData.map((point) => {
+      const baseIdx = 40 + point.caffeineCounterPressure * 0.75 - point.sedationPressure * 0.6;
+
+      // Withdrawal rebound: exponential surge when active level falls below clinical threshold
+      let withdrawalBoost = 0;
+      if (withdrawalThresholdMg !== null && daysAtCurrentDose > 14 && withdrawalThresholdMg > 0) {
+        const activeMg = activeMgByTs.get(point.ts) ?? 0;
+        if (activeMg < withdrawalThresholdMg) {
+          const deficit = (withdrawalThresholdMg - activeMg) / withdrawalThresholdMg; // 0→1
+          // sqrt curve: even a 10% deficit below threshold gives a noticeable boost (~28%)
+          withdrawalBoost = Math.sqrt(deficit) * downregulation * dependenceDepth * 90;
+        }
+      }
+
+      const idx = Math.max(0, Math.min(100, baseIdx + withdrawalBoost));
+      const level = idx < ANXIETY_LOW_THRESHOLD ? "low" : idx < ANXIETY_HIGH_THRESHOLD ? "moderate" : "high";
+      return { ts: point.ts, idx: Number(idx.toFixed(1)), level };
+    });
+
+    // Split into three color-keyed series with bridging points for smooth transitions
+    const LOW = ANXIETY_LOW_THRESHOLD, HIGH = ANXIETY_HIGH_THRESHOLD;
+    return data.map((point, i) => {
+      const { ts, idx, level } = point;
+      const prev = data[i - 1];
+      const next = data[i + 1];
+      // A point belongs to a band if it is in that band OR adjacent to a same-band point (bridging)
+      const inLow    = level === "low"      || (prev?.level === "low"      && level !== "high")  || (next?.level === "low"      && level !== "high");
+      const inMod    = level === "moderate" || (prev?.level === "moderate")                       || (next?.level === "moderate");
+      const inHigh   = level === "high"     || (prev?.level === "high"     && level !== "low")   || (next?.level === "high"     && level !== "low");
+      return {
+        ts,
+        anxietyLow:      inLow  ? idx : null,
+        anxietyModerate: inMod  ? idx : null,
+        anxietyHigh:     inHigh ? idx : null,
+      };
+    });
+  }, [interactionData, chartData, withdrawalThresholdMg, daysAtCurrentDose]);
 
   const liveMath = useMemo(() => {
     const selectedActiveMg = modeledEntries.reduce((sum, entry) => {
@@ -1818,7 +1891,7 @@ export default function ClonazepamTracker() {
 
     // Use already-computed dailyClonazepamTotals (dayKey -> mg) — avoids raw entry timestamp issues
     const dayMs = 24 * 60 * 60 * 1000;
-    const windowStartMs = recalcAt - 14 * dayMs;
+    const windowStartMs = recalcAt - 21 * dayMs;
     const tol = 0.001;
     const taperRows = taperSchedule?.rows || [];
 
@@ -1856,9 +1929,9 @@ export default function ClonazepamTracker() {
     const prompt = [
       `CLONAZEPAM TRACKER — TREND ANALYSIS`,
       ``,
-      `Regression slope over 14-day daily-average chart: ${slopeMgPerDay.toFixed(4)} mg/day (${direction}).`,
+      `Regression slope over 21-day daily-average chart: ${slopeMgPerDay.toFixed(4)} mg/day (${direction}).`,
       `Half-life: ${halfLifeHours} h. Days at dose (tolerance model): ${daysAtCurrentDose}. Current estimated active level: ${currentActiveMgVal} mg. Maintenance dose setting: ${maintenanceDoseMg} mg.`,
-      stats ? `14-day PK stats: mean active ${stats.mean} mg, std dev ${stats.stdDev} mg, CV ${stats.cv}%, range ${stats.min}–${stats.max} mg.` : "",
+      stats ? `21-day PK stats: mean active ${stats.mean} mg, std dev ${stats.stdDev} mg, CV ${stats.cv}%, range ${stats.min}–${stats.max} mg.` : "",
       ``,
       taperSummary,
       ``,
@@ -1868,7 +1941,7 @@ export default function ClonazepamTracker() {
       `Summary: ${overDays} days over target, ${atDays} at target, ${underDays} under target. Average daily logged total: ${avgDailyTotal} mg vs current step target ${currentStepTarget} mg.`,
       ``,
       `Instructions: Using ONLY the specific numbers above, write exactly 4 bullet points, then a dosing schedule table.`,
-      `1. WHY the 14-day regression slope is ${direction} — reference the specific dates from the daily totals that pulled it that direction (e.g. "4/4 at 1.5 mg was the highest day and elevated the slope")`,
+      `1. WHY the 21-day regression slope is ${direction} — reference the specific dates from the daily totals that pulled it that direction (e.g. "4/4 at 1.5 mg was the highest day and elevated the slope")`,
       `2. What averaging ${avgDailyTotal} mg/day against a target of ${currentStepTarget} mg/day means for steady-state trough level at ${halfLifeHours}h half-life — compute the expected SS trough using the formula Trough = Dose × (0.5^(24/HL))/(1 − 0.5^(24/HL))`,
       `3. What spreading doses across multiple smaller entries per day does to peak-to-trough swing vs. a single daily dose of the same total`,
       `4. One specific numbered finding that would be useful to mention to a prescriber. When counting over/under days, use each day's own step target from the table above (e.g. "On ${overDays} of ${dailyTotals.length} days the logged dose exceeded that day's step target", naming the step targets involved)`,
@@ -1885,6 +1958,13 @@ export default function ClonazepamTracker() {
       `- Use realistic waking hours (e.g. 8 AM to 10 PM window)`,
       `- Show the table as: Time | Dose | Cumulative | Notes`,
       `- After the table, show the estimated trough level this schedule would produce using the formula above, and how it compares to the target trough for ${currentStepTarget} mg once daily`,
+      ``,
+      `TAPER EVALUATION & PRESCRIBER TALKING POINTS`,
+      `After the schedule table, add a section titled "Taper Pace Evaluation" and address ALL of these:`,
+      `- Is the current 21-day slope (${slopeMgPerDay.toFixed(4)} mg/day = ${metrics.activeMg > 0.001 ? ((slopeMgPerDay * 14 / metrics.activeMg) * 100).toFixed(1) : "N/A"}% per 2 weeks) too fast, appropriately paced, or too slow for a safe benzo taper? Clinical guideline: 5–10% reduction per 2–4 weeks is generally considered the maximum safe pace for long-term users.`,
+      `- Based on ${daysAtCurrentDose} days at current dose and the Ashton Manual / NICE guidelines framework, what symptoms should the patient monitor?`,
+      `- Provide 2–3 specific numbered talking points the patient can bring to their prescriber to have a productive conversation about the taper pace.`,
+      `- If the slope is too steep, suggest the specific next step dose that would be appropriate (must be a multiple of 0.125 mg, must be above minimum dose ${Number(taperMinimumDoseMg) || 0.125} mg).`,
       `End with exactly: "Not medical advice."`,
     ].filter(Boolean).join("\n");
 
@@ -1915,6 +1995,110 @@ export default function ClonazepamTracker() {
     } finally {
       setTrendExplanationBusy(false);
     }
+  };
+
+  const explainDiazepam = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setDiazExplanationError("Groq API key not found. Add it in Settings first."); return; }
+    if (diazExplanationBusy) return;
+    setDiazExplanationBusy(true);
+    setDiazExplanationError("");
+    setDiazExplanation("");
+    const stats = diazepamEquivalentChartData._stats;
+    const cvol = stats?.clonazepamVol, dvol = stats?.diazepamVol;
+    const prompt = [
+      `DIAZEPAM EQUIVALENCY CHART ANALYSIS`,
+      `Clonazepam (${halfLifeHours}h HL): mean active ${cvol?.mean ?? "?"} mg, CV ${cvol?.cv ?? "?"}%, range ${cvol?.min ?? "?"}–${cvol?.max ?? "?"} mg, slope ${stats?.cloSlopeMgPerDay?.toFixed(4) ?? "?"} mg/day.`,
+      `Diazepam equiv (72h HL): mean active ${dvol?.mean ?? "?"} mg-equiv, CV ${dvol?.cv ?? "?"}%, range ${dvol?.min ?? "?"}–${dvol?.max ?? "?"} mg-equiv, slope ${stats?.diazSlopeMgPerDay?.toFixed(4) ?? "?"} mg/day.`,
+      `Both lines use clonazepam-equivalent mg scale (20:1 ratio already applied). Days at current dose: ${daysAtCurrentDose}. Current dose: ${maintenanceDoseMg} mg.`,
+      ``,
+      `Write 3 concise bullet points:`,
+      `1. What the CV difference (${dvol && cvol ? Math.abs(cvol.cv - dvol.cv).toFixed(1) : "?"} percentage points) means practically — explain peak-to-trough smoothing in clinical terms.`,
+      `2. Whether the higher steady-state diazepam level observed in the chart is a benefit or risk for this patient profile. Reference the accumulation math.`,
+      `3. If this data would justify a clonazepam→diazepam crossover taper to a prescriber — name the specific clinical advantages and risks given these PK numbers.`,
+      `End with exactly: "Not medical advice."`,
+    ].join("\n");
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      setDiazExplanation(String(payload?.choices?.[0]?.message?.content || "").trim());
+    } catch (err) { setDiazExplanationError(String(err.message || "Unknown error")); }
+    finally { setDiazExplanationBusy(false); }
+  };
+
+  const explainAnxiety = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setAnxietyExplanationError("Groq API key not found. Add it in Settings first."); return; }
+    if (anxietyExplanationBusy) return;
+    setAnxietyExplanationBusy(true);
+    setAnxietyExplanationError("");
+    setAnxietyExplanation("");
+    const currentPoint = anxietyChartData.length ? anxietyChartData.filter((p) => p.ts <= recalcAt).at(-1) : null;
+    const currentIdx = currentPoint ? (currentPoint.anxietyHigh ?? currentPoint.anxietyModerate ?? currentPoint.anxietyLow ?? 0) : 0;
+    const currentLevel = currentIdx >= ANXIETY_HIGH_THRESHOLD ? "High" : currentIdx >= ANXIETY_LOW_THRESHOLD ? "Moderate" : "Low";
+    const slopeMgPerDay = activeBySedationChartData._slope ?? 0;
+    const taperRows = taperSchedule?.rows || [];
+    const currentStep = taperRows.find((r) => recalcAt >= r.startMs && recalcAt < r.endMs);
+    const prompt = [
+      `ANXIETY LEVEL MODEL ANALYSIS`,
+      `Current anxiety index: ${currentIdx.toFixed(1)}/100 (${currentLevel}). Formula: 40 + caffeineStimPressure×0.75 − sedationPressure×0.6 + withdrawalBoost.`,
+      `Days at current dose: ${daysAtCurrentDose}. Clonazepam slope: ${slopeMgPerDay.toFixed(4)} mg/day. Current active: ${metrics.activeMg.toFixed(3)} mg.`,
+      `Taper: ${currentStep ? `currently on step ${currentStep.stepNumber} (${currentStep.doseMg} mg, ${new Date(currentStep.startMs).toLocaleDateString()}–${new Date(currentStep.endMs).toLocaleDateString()})` : "no taper configured"}.`,
+      `Withdrawal threshold: ${withdrawalThresholdMg !== null ? withdrawalThresholdMg.toFixed(3) + " mg" : "not configured"}.`,
+      ``,
+      `Write 3 focused bullet points:`,
+      `1. Interpret the current anxiety index — what factors are driving it up or down the most right now based on the specific values?`,
+      `2. If the user is on a taper with a declining slope, how is the withdrawal rebound component of the model expected to change over the next 2–4 weeks, and what non-pharmacological strategies help mitigate it?`,
+      `3. One specific actionable recommendation the user can try today to improve their anxiety index score (dose timing, caffeine reduction, schedule change, etc.).`,
+      `End with exactly: "Not medical advice."`,
+    ].join("\n");
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      setAnxietyExplanation(String(payload?.choices?.[0]?.message?.content || "").trim());
+    } catch (err) { setAnxietyExplanationError(String(err.message || "Unknown error")); }
+    finally { setAnxietyExplanationBusy(false); }
+  };
+
+  const sendCbtMessage = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setCbtError("Groq API key not found. Add it in Settings first."); return; }
+    if (cbtBusy || !cbtInput.trim()) return;
+    const userMsg = { role: "user", content: cbtInput.trim() };
+    const updatedHistory = [...cbtMessages, userMsg];
+    setCbtMessages(updatedHistory);
+    setCbtInput("");
+    setCbtBusy(true);
+    setCbtError("");
+    const slopeMgPerDay = activeBySedationChartData._slope ?? 0;
+    const systemPrompt = `You are a supportive Cognitive Behavioral Therapy (CBT) assistant specializing in anxiety management during benzodiazepine tapers. You have context about the user's clonazepam taper:
+- Current active level: ${metrics.activeMg.toFixed(3)} mg, days at dose: ${daysAtCurrentDose}
+- 21-day slope: ${slopeMgPerDay.toFixed(4)} mg/day (${slopeMgPerDay < 0 ? "declining/tapering" : slopeMgPerDay > 0 ? "increasing" : "stable"})
+- Taper: ${taperSchedule?.rows?.length ? `${taperSchedule.rows.length} steps configured` : "not configured"}
+
+Use standard CBT techniques: thought challenging, cognitive restructuring, behavioral activation, exposure hierarchy, relaxation response. Always clarify this is supportive guidance and not a replacement for a licensed therapist or prescriber. Keep responses warm, concise, and practical.`;
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.5, messages: [{ role: "system", content: systemPrompt }, ...updatedHistory.slice(-10)] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      const reply = String(payload?.choices?.[0]?.message?.content || "").trim();
+      setCbtMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch (err) { setCbtError(String(err.message || "Unknown error")); }
+    finally { setCbtBusy(false); }
   };
 
   return (
@@ -2149,7 +2333,7 @@ export default function ClonazepamTracker() {
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Estimated Active Clonazepam</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline shows up to 2 weeks of history plus a 72-hour projection. Dashed white line is a linear regression trend over daily average levels.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline shows up to 3 weeks of history plus a 72-hour projection. Days without a logged dose use the daily maintenance dose as modeled carryover. Dashed white line is a linear regression trend over daily average levels.</p>
         {withdrawalThresholdMg !== null && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
             <span className="text-red-600 dark:text-red-400 font-semibold">Dashed red line</span> marks an estimated risk zone based on chronic exposure assumptions (not a diagnostic cutoff).
@@ -2176,7 +2360,14 @@ export default function ClonazepamTracker() {
                     <span className="text-green-500">Low: {pct(low)}</span>
                     <span className="text-yellow-500">Moderate: {pct(mod)}</span>
                     <span className="text-red-500">High: {pct(high)}</span>
-                    <span className={`${slopeColor} ml-2`}>Trend: {slopeDir} {Math.abs(slopeMgPerDay).toFixed(4)} mg/day</span>
+                    <span className={`${slopeColor} ml-2`}>
+                      Trend: {slopeDir} {Math.abs(slopeMgPerDay).toFixed(4)} mg/day
+                      {metrics.activeMg > 0.001 && (
+                        <span className="text-gray-400 font-normal ml-1">
+                          ({slopeMgPerDay >= 0 ? "+" : ""}{((slopeMgPerDay * 14 / metrics.activeMg) * 100).toFixed(1)}% / 2wk)
+                        </span>
+                      )}
+                    </span>
                     <button
                       onClick={explainTrend}
                       disabled={trendExplanationBusy}
@@ -2309,118 +2500,427 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Diazepam Equivalent Comparison (Educational)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Shows how blood levels would look if the same doses (including carryover from {daysAtCurrentDose} days at dose) were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the clonazepam-equivalent mg scale. Diazepam's 72 h half-life produces a higher, flatter trough than clonazepam's {halfLifeHours} h half-life. Dashed lines are linear regression trends for each.
+          Shows how blood levels would look if the same doses (including carryover from {daysAtCurrentDose} days at dose) were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the <strong>clonazepam-equivalent mg scale</strong> — the 20:1 conversion is already applied, so a 20 mg diazepam dose is plotted as 1 mg-equiv, the same starting height as 1 mg clonazepam. A single isolated dose would produce identical peak heights on both lines. The diazepam line runs approximately 2× higher at steady state not because of a scaling discrepancy, but because diazepam&apos;s 72 h half-life allows far more accumulation between daily doses (steady-state trough ≈ 3.85× one dose) compared to clonazepam&apos;s {halfLifeHours} h half-life (trough ≈ 1.35× one dose). Dashed lines are linear regression trends for each.
         </p>
         {diazepamEquivalentChartData.length > 0 && diazepamEquivalentChartData._stats?.clonazepamVol && (() => {
-          const cvol = diazepamEquivalentChartData._stats.clonazepamVol;
-          const dvol = diazepamEquivalentChartData._stats.diazepamVol;
+          // Compute stats for the selected zoom window (historical points only)
+          const zoomMs = diazepamZoomDays ? diazepamZoomDays * 24 * 60 * 60 * 1000 : Infinity;
+          const windowPoints = diazepamEquivalentChartData.filter((p) => p.ts <= recalcAt && p.ts >= recalcAt - zoomMs);
+
+          function windowStats(getY) {
+            const pts = windowPoints.length >= 2 ? windowPoints : [];
+            if (!pts.length) return null;
+            const ys = pts.map(getY);
+            const mean = ys.reduce((s, v) => s + v, 0) / ys.length;
+            const variance = ys.reduce((s, v) => s + (v - mean) ** 2, 0) / ys.length;
+            const stdDev = Math.sqrt(variance);
+            const min = Math.min(...ys), max = Math.max(...ys);
+            const cv = mean > 0 ? (stdDev / mean) * 100 : 0;
+            return { mean: +mean.toFixed(3), stdDev: +stdDev.toFixed(3), min: +min.toFixed(3), max: +max.toFixed(3), range: +(max - min).toFixed(3), cv: +cv.toFixed(1) };
+          }
+
+          const cvol = windowStats((p) => p.clonazepamMg) ?? diazepamEquivalentChartData._stats.clonazepamVol;
+          const dvol = windowStats((p) => p.diazepamEquivMg) ?? diazepamEquivalentChartData._stats.diazepamVol;
           const cvLess = dvol && dvol.cv < cvol.cv;
           const cvDiff = dvol ? Math.abs(cvol.cv - dvol.cv).toFixed(1) : null;
+
           return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm">
-              <div className="space-y-1">
-                <p className="font-semibold text-purple-500">Clonazepam ({halfLifeHours}h HL)</p>
-                <p>Mean active: <strong>{cvol.mean} mg</strong></p>
-                <p>Std dev: <strong>{cvol.stdDev} mg</strong></p>
-                <p>Range (max−min): <strong>{cvol.range} mg</strong> ({cvol.min}–{cvol.max})</p>
-                <p>Coefficient of variation: <strong>{cvol.cv}%</strong></p>
+            <>
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Stats window:</span>
+                {[5, 7, 14, null].map((d) => (
+                  <button key={d ?? "all"} onClick={() => setDiazepamZoomDays(d)}
+                    className={`px-2 py-0.5 rounded border ${diazepamZoomDays === d ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"}`}>
+                    {d ? `${d}d` : "All"}
+                  </button>
+                ))}
+                <span className="text-gray-400 dark:text-gray-500">
+                  {diazepamZoomDays ? `— stats + chart zoomed to last ${diazepamZoomDays} days` : "— full 21-day window (taper trend dominates CV)"}
+                </span>
               </div>
-              {dvol && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm">
                 <div className="space-y-1">
-                  <p className="font-semibold text-sky-400">Diazepam equiv (72h HL)</p>
-                  <p>Mean active: <strong>{dvol.mean} mg-equiv</strong></p>
-                  <p>Std dev: <strong>{dvol.stdDev} mg</strong></p>
-                  <p>Range (max−min): <strong>{dvol.range} mg</strong> ({dvol.min}–{dvol.max})</p>
-                  <p>Coefficient of variation: <strong>{dvol.cv}%</strong></p>
+                  <p className="font-semibold text-purple-500">Clonazepam ({halfLifeHours}h HL)</p>
+                  <p>Mean active: <strong>{cvol.mean} mg</strong></p>
+                  <p>Std dev: <strong>{cvol.stdDev} mg</strong></p>
+                  <p>Range (max−min): <strong>{cvol.range} mg</strong> ({cvol.min}–{cvol.max})</p>
+                  <p>Coefficient of variation: <strong>{cvol.cv}%</strong></p>
                 </div>
-              )}
-              {dvol && (
-                <div className="sm:col-span-2 pt-1 border-t border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                  {cvLess
-                    ? <>Diazepam is <strong className="text-green-500">{cvDiff}% less volatile</strong> than clonazepam (lower CV = more stable blood levels between doses).</>
-                    : <>Clonazepam and diazepam show similar volatility at this dose pattern (<strong>{cvDiff}%</strong> CV difference).</>
-                  }
-                </div>
-              )}
-            </div>
+                {dvol && (
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sky-400">Diazepam equiv (72h HL)</p>
+                    <p>Mean active: <strong>{dvol.mean} mg-equiv</strong></p>
+                    <p>Std dev: <strong>{dvol.stdDev} mg</strong></p>
+                    <p>Range (max−min): <strong>{dvol.range} mg</strong> ({dvol.min}–{dvol.max})</p>
+                    <p>Coefficient of variation: <strong>{dvol.cv}%</strong></p>
+                  </div>
+                )}
+                {dvol && (
+                  <div className="sm:col-span-2 pt-1 border-t border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+                    {cvLess
+                      ? <>Diazepam is <strong className="text-green-500">{cvDiff}% less volatile</strong> than clonazepam (lower CV = more stable blood levels between doses).</>
+                      : <>Clonazepam and diazepam show similar volatility in this window (<strong>{cvDiff}%</strong> CV difference).</>
+                    }
+                    {!diazepamZoomDays && (
+                      <p className="text-xs text-amber-500 dark:text-amber-400 mt-1">
+                        Tip: Over 21 days of a taper, the downward trend dominates the variance and compresses the CV gap. Switch to a 5–7 day window to see the within-day peak-trough oscillation difference more clearly.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           );
         })()}
+
+        <div className="rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 p-3 space-y-1.5">
+          <p className="text-sm font-semibold text-sky-900 dark:text-sky-200">Why switch to diazepam for tapering?</p>
+          <ul className="text-xs text-sky-800 dark:text-sky-300 list-disc list-inside space-y-1">
+            <li><strong>Finer dose increments:</strong> Diazepam is available as 2 mg tablets (and oral liquid) — enabling 0.5 mg or smaller reductions. Clonazepam&apos;s smallest tablet is 0.5 mg, making small cuts impractical.</li>
+            <li><strong>Interdose cushion:</strong> The 72 h HL means the trough is much closer to the peak (~1.26× ratio at q.d. dosing vs ~1.74× for clonazepam). Each dose interval is smoother, reducing the &quot;wearing off&quot; sensation between doses.</li>
+            <li><strong>Missed-dose buffer:</strong> Because half the drug is still present 3 days later, a delayed dose causes a far smaller % drop in blood level than clonazepam would — reducing rebound anxiety risk.</li>
+            <li><strong>Gentler final exit:</strong> The accumulation visible in the chart also means diazepam&apos;s steady-state level clears slowly and linearly at the end of the taper, rather than clonazepam&apos;s faster exponential drop.</li>
+          </ul>
+          <p className="text-xs text-sky-600 dark:text-sky-400">The CV difference alone understates the benefit — interdose smoothness and dose granularity are the primary clinical reasons.</p>
+        </div>
+
         {diazepamEquivalentChartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <div style={{ minWidth: 900 }}>
-              <div className="w-full h-64 min-w-0 min-h-[16rem]">
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={diazepamEquivalentChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
-                    <XAxis
-                      dataKey="ts"
-                      type="number"
-                      domain={["dataMin", "dataMax"]}
-                      ticks={chartTicks}
-                      angle={-40}
-                      textAnchor="end"
-                      height={52}
-                      tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
-                    />
-                    <YAxis tickFormatter={(value) => `${value} mg`} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
-                      labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
-                      itemStyle={{ color: "#d1d5db" }}
-                      labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
-                      formatter={(value, name) => {
-                        if (name === "clonazepamMg") return [`${value} mg`, `Clonazepam active (${halfLifeHours}h HL)`];
-                        if (name === "diazepamEquivMg") {
-                          const diaz = Number((value * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(1));
-                          return [`${value} mg-equiv (= ${diaz} mg diazepam)`, "Active if diazepam used (72h HL)"];
-                        }
-                        if (name === "clonazepamTrend") return [`${value} mg`, "Clonazepam trend"];
-                        if (name === "diazepamTrend") return [`${value} mg-equiv`, "Diazepam trend"];
-                        return [value, name];
-                      }}
-                    />
-                    <ReferenceLine
-                      x={recalcAt}
-                      stroke="#94a3b8"
-                      strokeWidth={1.5}
-                      isFront
-                      label={{
-                        value: `Now`,
-                        position: "insideTopRight",
-                        fill: "#94a3b8",
-                        fontSize: 11,
-                      }}
-                    />
-                    {withdrawalThresholdMg !== null && (
+        ) : (() => {
+          const zoomMs = diazepamZoomDays ? diazepamZoomDays * 24 * 60 * 60 * 1000 : null;
+          const diazepamDisplayData = zoomMs
+            ? diazepamEquivalentChartData.filter((p) => p.ts >= recalcAt - zoomMs)
+            : diazepamEquivalentChartData;
+          const hr = 3600000;
+          const tickStep = diazepamZoomDays && diazepamZoomDays <= 7 ? 12 * hr : 24 * hr;
+          const s = diazepamDisplayData[0]?.ts ?? 0;
+          const e = diazepamDisplayData[diazepamDisplayData.length - 1]?.ts ?? 0;
+          const diazTicks = [];
+          for (let t = Math.ceil(s / tickStep) * tickStep; t <= e; t += tickStep) diazTicks.push(t);
+          const maxVal = Math.max(...diazepamDisplayData.filter((p) => p.ts <= recalcAt).map((p) => p.diazepamEquivMg), 0);
+          return (
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: 700 }}>
+                <div className="w-full h-64 min-w-0 min-h-[16rem]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <LineChart data={diazepamDisplayData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
+                      <XAxis
+                        dataKey="ts"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
+                        ticks={diazTicks}
+                        angle={-40}
+                        textAnchor="end"
+                        height={52}
+                        tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
+                      />
+                      <YAxis
+                        tickFormatter={(value) => `${value} mg`}
+                        domain={[0, maxVal > 0 ? Number((maxVal * 1.1).toFixed(1)) : "auto"]}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
+                        labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
+                        itemStyle={{ color: "#d1d5db" }}
+                        labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
+                        formatter={(value, name) => {
+                          if (name === "clonazepamMg") return [`${value} mg`, `Clonazepam active (${halfLifeHours}h HL)`];
+                          if (name === "diazepamEquivMg") {
+                            const diaz = Number((value * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(1));
+                            return [`${value} mg-equiv (= ${diaz} mg diazepam)`, "Active if diazepam used (72h HL)"];
+                          }
+                          if (name === "clonazepamTrend") return [`${value} mg`, "Clonazepam trend"];
+                          if (name === "diazepamTrend") return [`${value} mg-equiv`, "Diazepam trend"];
+                          return [value, name];
+                        }}
+                      />
                       <ReferenceLine
-                        y={withdrawalThresholdMg}
-                        stroke="#ef4444"
-                        strokeDasharray="6 3"
+                        x={recalcAt}
+                        stroke="#94a3b8"
                         strokeWidth={1.5}
-                        ifOverflow="extendDomain"
+                        isFront
                         label={{
-                          value: `Est. risk zone ${withdrawalThresholdMg.toFixed(2)} mg`,
-                          position: "insideBottomRight",
-                          fill: "#ef4444",
+                          value: `Now`,
+                          position: "insideTopRight",
+                          fill: "#94a3b8",
                           fontSize: 11,
                         }}
                       />
-                    )}
-                    <Line type="monotone" dataKey="clonazepamMg" name="clonazepamMg" stroke="#a855f7" strokeWidth={2.5} dot={false} connectNulls />
-                    <Line type="monotone" dataKey="diazepamEquivMg" name="diazepamEquivMg" stroke="#38bdf8" strokeWidth={2.5} dot={false} connectNulls />
-                    <Line type="monotone" dataKey="clonazepamTrend" name="clonazepamTrend" stroke="#a855f7" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
-                    <Line type="monotone" dataKey="diazepamTrend" name="diazepamTrend" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
-                  </LineChart>
-                </ResponsiveContainer>
+                      {withdrawalThresholdMg !== null && (
+                        <ReferenceLine
+                          y={withdrawalThresholdMg}
+                          stroke="#ef4444"
+                          strokeDasharray="6 3"
+                          strokeWidth={1.5}
+                          ifOverflow="extendDomain"
+                          label={{
+                            value: `Est. risk zone ${withdrawalThresholdMg.toFixed(2)} mg`,
+                            position: "insideBottomRight",
+                            fill: "#ef4444",
+                            fontSize: 11,
+                          }}
+                        />
+                      )}
+                      <Line type="monotone" dataKey="clonazepamMg" name="clonazepamMg" stroke="#a855f7" strokeWidth={2.5} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="diazepamEquivMg" name="diazepamEquivMg" stroke="#38bdf8" strokeWidth={2.5} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="clonazepamTrend" name="clonazepamTrend" stroke="#a855f7" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
+                      <Line type="monotone" dataKey="diazepamTrend" name="diazepamTrend" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Educational comparison only — not medical advice. Diazepam PK model: 30 min absorption lag, 60 min ramp, 72 h half-life (no active-metabolite layer). Equivalency ratio is approximate; individual response varies. Discuss any medication decisions with your prescriber.
         </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={explainDiazepam}
+            disabled={diazExplanationBusy}
+            className="px-3 py-1.5 rounded text-xs bg-sky-700 text-white hover:bg-sky-600 disabled:opacity-50"
+          >
+            {diazExplanationBusy ? "…" : "Explain with AI"}
+          </button>
+          {diazExplanationError && <p className="text-xs text-red-400">{diazExplanationError}</p>}
+        </div>
+        {diazExplanation && (
+          <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-1.5">
+            {diazExplanation.split("\n").map((line, i) => {
+              const t = line.trim();
+              if (!t) return null;
+              if (t === "Not medical advice.") return <p key={i} className="text-gray-500">{t}</p>;
+              return <p key={i} className="leading-relaxed">{t}</p>;
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Anxiety Level Chart ───────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Estimated Anxiety Level</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Modeled composite of caffeine&apos;s excitatory (anxiogenic) pressure and clonazepam&apos;s anxiolytic effect.
+          <strong className="text-green-500"> Low</strong> (&lt;35) ·
+          <strong className="text-yellow-500"> Moderate</strong> (35–65) ·
+          <strong className="text-red-500"> High</strong> (&gt;65).
+          Higher caffeine lifts the index; higher clonazepam active level drops it.
+          Not a clinical anxiety score — educational model only.
+        </p>
+        {anxietyChartData.length > 0 ? (() => {
+          const now = recalcAt;
+          const historical = anxietyChartData.filter((p) => p.ts <= now);
+          const currentIdx = historical.length ? historical[historical.length - 1] : null;
+          const currentVal = currentIdx ? (currentIdx.anxietyHigh ?? currentIdx.anxietyModerate ?? currentIdx.anxietyLow ?? 0) : 0;
+          const currentLevel = currentVal >= ANXIETY_HIGH_THRESHOLD ? "high" : currentVal >= ANXIETY_LOW_THRESHOLD ? "moderate" : "low";
+          const levelColor = { low: "text-green-500", moderate: "text-yellow-500", high: "text-red-500" }[currentLevel];
+          const levelLabel = { low: "Low", moderate: "Moderate", high: "High" }[currentLevel];
+          return (
+            <>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Now:</span>
+                <span className={`font-semibold ${levelColor}`}>{levelLabel}</span>
+                <span className="text-gray-400 dark:text-gray-500">({currentVal.toFixed(1)} / 100)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <div style={{ minWidth: 700 }}>
+                  <div className="w-full h-56 min-w-0 min-h-[14rem]">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                      <LineChart data={anxietyChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
+                        <XAxis
+                          dataKey="ts"
+                          type="number"
+                          domain={["dataMin", "dataMax"]}
+                          ticks={chartTicks}
+                          angle={-40}
+                          textAnchor="end"
+                          height={52}
+                          tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
+                        />
+                        <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}`} width={30} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
+                          labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
+                          itemStyle={{ color: "#d1d5db" }}
+                          labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
+                          formatter={(value, name) => {
+                            const labels = { anxietyLow: "Low", anxietyModerate: "Moderate", anxietyHigh: "High" };
+                            return value !== null ? [`${value}`, `Anxiety ${labels[name] ?? name}`] : [null, null];
+                          }}
+                        />
+                        <ReferenceLine y={ANXIETY_LOW_THRESHOLD} stroke="#eab308" strokeDasharray="4 2" strokeWidth={1} strokeOpacity={0.5} />
+                        <ReferenceLine y={ANXIETY_HIGH_THRESHOLD} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1} strokeOpacity={0.5} />
+                        <ReferenceLine
+                          x={recalcAt}
+                          stroke="#94a3b8"
+                          strokeWidth={1.5}
+                          isFront
+                          label={{ value: "Now", position: "insideTopRight", fill: "#94a3b8", fontSize: 11 }}
+                        />
+                        <Line type="monotone" dataKey="anxietyLow"      name="anxietyLow"      stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false} />
+                        <Line type="monotone" dataKey="anxietyModerate" name="anxietyModerate" stroke="#eab308" strokeWidth={2.5} dot={false} connectNulls={false} />
+                        <Line type="monotone" dataKey="anxietyHigh"     name="anxietyHigh"     stroke="#ef4444" strokeWidth={2.5} dot={false} connectNulls={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })() : (
+          <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view anxiety estimate.</p>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={explainAnxiety}
+            disabled={anxietyExplanationBusy}
+            className="px-3 py-1.5 rounded text-xs bg-yellow-700 text-white hover:bg-yellow-600 disabled:opacity-50"
+          >
+            {anxietyExplanationBusy ? "…" : "Explain with AI"}
+          </button>
+          {anxietyExplanationError && <p className="text-xs text-red-400">{anxietyExplanationError}</p>}
+        </div>
+        {anxietyExplanation && (
+          <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-1.5">
+            {anxietyExplanation.split("\n").map((line, i) => {
+              const t = line.trim();
+              if (!t) return null;
+              if (t === "Not medical advice.") return <p key={i} className="text-gray-500">{t}</p>;
+              return <p key={i} className="leading-relaxed">{t}</p>;
+            })}
+          </div>
+        )}
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Formula: anxietyIndex = clamp(40 + caffeineStimPressure × 0.75 − sedationPressure × 0.6 + withdrawalBoost, 0, 100). withdrawalBoost = √(deficit) × downregulation × dependenceDepth × 90, active only when clonazepam level falls below the withdrawal threshold. Stimulant and sedation pressures use sigmoid pharmacodynamic models. Not a clinical anxiety score — not medical advice.
+        </p>
+      </div>
+
+      {/* ── CBT Support + Worksheets ─────────────────────────────────────── */}
+      <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10 p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🧠</span>
+          <div>
+            <h2 className="font-semibold text-emerald-900 dark:text-emerald-100">CBT Support for Taper Anxiety</h2>
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">Cognitive Behavioral Therapy tools and an AI chat assistant — not a replacement for a licensed therapist.</p>
+          </div>
+        </div>
+
+        {/* CBT AI Chat */}
+        <div className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">CBT AI Assistant</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Supports thought challenging, cognitive restructuring, and coping strategies. Uses your current taper context. Requires Groq API key.</p>
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {cbtMessages.map((msg, i) => (
+              <div key={i} className={`text-xs rounded p-2 ${msg.role === "user" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-100 text-right ml-8" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 mr-8"}`}>
+                {msg.content}
+              </div>
+            ))}
+            {cbtBusy && <div className="text-xs text-gray-400 animate-pulse">Thinking…</div>}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {["I'm feeling anxious right now", "Help me challenge a negative thought", "What is a grounding exercise?", "I missed a dose — how do I cope?"].map((q) => (
+              <button key={q} onClick={() => setCbtInput(q)} className="px-2 py-1 text-xs rounded-full border border-emerald-300 dark:border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">{q}</button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              value={cbtInput}
+              onChange={(e) => setCbtInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCbtMessage(); } }}
+              rows={2}
+              placeholder="Ask about a CBT technique, share a thought to challenge…"
+              className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+            />
+            <div className="flex flex-col gap-1">
+              <button onClick={sendCbtMessage} disabled={cbtBusy || !cbtInput.trim()} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium">{cbtBusy ? "…" : "Send"}</button>
+              <button onClick={() => { setCbtMessages([]); setCbtError(""); }} disabled={cbtMessages.length === 0} className="px-3 py-1 rounded-lg border border-emerald-300 dark:border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-xs disabled:opacity-50">Clear</button>
+            </div>
+          </div>
+          {cbtError && <p className="text-xs text-red-400">{cbtError}</p>}
+        </div>
+
+        {/* CBT Worksheets */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">CBT Worksheets & Tools</h3>
+          <div className="space-y-2">
+            <details className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-emerald-800 dark:text-emerald-200 list-none flex items-center justify-between">
+                📝 Thought Record (3-Column)
+                <span className="text-xs text-emerald-500">▼</span>
+              </summary>
+              <div className="mt-3 space-y-3 text-xs text-gray-700 dark:text-gray-300">
+                <p className="text-gray-500 dark:text-gray-400">Identify the automatic thought, the emotion it creates, and a balanced alternative.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[["Situation / Trigger", "What happened? When and where?"], ["Automatic Thought", "What went through your mind? (rate belief 0–100%)"], ["Balanced Response", "What would be a more balanced way to see this?"]].map(([label, hint]) => (
+                    <label key={label} className="space-y-1">
+                      <span className="font-semibold text-emerald-700 dark:text-emerald-300">{label}</span>
+                      <textarea rows={4} placeholder={hint} className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none text-xs" />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-emerald-800 dark:text-emerald-200 list-none flex items-center justify-between">
+                📊 Anxiety Hierarchy (SUD Scale)
+                <span className="text-xs text-emerald-500">▼</span>
+              </summary>
+              <div className="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-300">
+                <p className="text-gray-500 dark:text-gray-400">List anxiety-triggering situations ordered from least (10) to most (100) distressing. Use this to plan gradual exposure.</p>
+                {[10, 25, 40, 55, 70, 85, 100].map((sud) => (
+                  <div key={sud} className="flex items-center gap-2">
+                    <span className={`w-10 text-right font-bold ${sud >= 70 ? "text-red-500" : sud >= 40 ? "text-yellow-500" : "text-green-500"}`}>{sud}</span>
+                    <input type="text" placeholder={`SUD ${sud} — describe situation`} className="flex-1 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs" />
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-emerald-800 dark:text-emerald-200 list-none flex items-center justify-between">
+                ✅ Behavioral Activation Planner
+                <span className="text-xs text-emerald-500">▼</span>
+              </summary>
+              <div className="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-300">
+                <p className="text-gray-500 dark:text-gray-400">Schedule activities that provide mastery or pleasure — a core antidepressant and anti-anxiety strategy during withdrawal.</p>
+                {["Morning", "Afternoon", "Evening"].map((time) => (
+                  <div key={time} className="space-y-1">
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{time}</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="text" placeholder="Mastery activity (accomplishment)" className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs" />
+                      <input type="text" placeholder="Pleasure activity (enjoyment)" className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-emerald-800 dark:text-emerald-200 list-none flex items-center justify-between">
+                🌬️ Grounding Techniques (5-4-3-2-1)
+                <span className="text-xs text-emerald-500">▼</span>
+              </summary>
+              <div className="mt-3 space-y-2 text-xs text-gray-700 dark:text-gray-300">
+                <p className="text-gray-500 dark:text-gray-400">Use during acute anxiety or dissociation. Name things you can perceive with each sense right now.</p>
+                {[["👁️ 5 things you can SEE", 5], ["🤲 4 things you can TOUCH", 4], ["👂 3 things you can HEAR", 3], ["👃 2 things you can SMELL", 2], ["👅 1 thing you can TASTE", 1]].map(([label, n]) => (
+                  <div key={label} className="space-y-1">
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">{label}</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                      {Array.from({ length: n }).map((_, j) => (
+                        <input key={j} type="text" placeholder={`${j + 1}.`} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs" />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">CBT worksheets are educational tools only. Not a replacement for a licensed therapist. If you are in crisis, call or text 988 (Suicide & Crisis Lifeline) or contact your prescriber.</p>
       </div>
 
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/10 p-4 space-y-3">
@@ -2934,6 +3434,15 @@ export default function ClonazepamTracker() {
           {liveMath.withdrawalThresholdMg !== null && (
             <p><strong>Withdrawal-risk threshold estimate:</strong> {liveMath.withdrawalThresholdMg} mg.</p>
           )}
+          {(() => {
+            const slope = activeBySedationChartData._slope ?? 0;
+            const dir = slope < -0.0005 ? "declining" : slope > 0.0005 ? "increasing" : "stable";
+            const days = Object.keys(dailyClonazepamTotals);
+            const n = days.length;
+            return (
+              <p><strong>21-day trend slope (linear regression on daily averages):</strong> {slope >= 0 ? "+" : ""}{slope.toFixed(5)} mg/day ({dir}). Computed over {n} logged day{n !== 1 ? "s" : ""} sampled once per day (daily noon average). Formula: slope = Σ[(tᵢ − t̄)(yᵢ − ȳ)] / Σ(tᵢ − t̄)², where tᵢ is day timestamp and yᵢ is daily average active mg.</p>
+            );
+          })()}
         </div>
         <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 space-y-2">
           <p><strong>Clonazepam elimination:</strong> Active(t) = Dose × Onset(t) × 0.5^((t − t_dose) / halfLifeHours)</p>
