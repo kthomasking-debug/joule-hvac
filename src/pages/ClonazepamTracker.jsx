@@ -2032,7 +2032,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Sedation Pressure (Estimated)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          <span className="text-gray-500 dark:text-gray-300 font-semibold">Gray</span> shows baseline pressure with no tolerance; <span className="text-purple-600 dark:text-purple-400 font-semibold">purple</span> shows pressure adjusted by days at current dose ({daysAtCurrentDose}, {toleranceReductionPercent(daysAtCurrentDose).toFixed(1)}% reduction); <span className="text-slate-500 dark:text-slate-300 font-semibold">dashed slate</span> shows circadian sleep pressure; <span className="text-cyan-500 dark:text-cyan-300 font-semibold">cyan</span> shows effective alertness.
+          <span className="text-purple-600 dark:text-purple-400 font-semibold">Purple</span> shows sedation pressure adjusted by days at current dose ({daysAtCurrentDose}, {toleranceReductionPercent(daysAtCurrentDose).toFixed(1)}% reduction); <span className="text-cyan-500 dark:text-cyan-300 font-semibold">cyan</span> shows effective alertness.
         </p>
         {sedationPressureData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
@@ -2079,15 +2079,6 @@ export default function ClonazepamTracker() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="pressureNoTolerance"
-                  name="pressureNoTolerance"
-                  stroke="#9ca3af"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 4"
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
                   dataKey="pressure"
                   name="pressure"
                   stroke="#a855f7"
@@ -2096,20 +2087,10 @@ export default function ClonazepamTracker() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="circadianPenalty"
-                  name="circadianPenalty"
-                  stroke="#64748b"
-                  strokeWidth={1.5}
-                  strokeDasharray="3 3"
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
                   dataKey="alertness"
                   name="alertness"
                   stroke="#06b6d4"
                   strokeWidth={2}
-                  strokeDasharray="5 3"
                   dot={false}
                 />
               </LineChart>
