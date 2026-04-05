@@ -1501,7 +1501,7 @@ export default function CaffeineTracker() {
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900 dark:text-white">Today&apos;s Intake Log</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-white">Intake Log</h2>
           {entries.length > 0 && (
             <button
               type="button"
@@ -1516,30 +1516,56 @@ export default function CaffeineTracker() {
         {entries.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">No entries yet. Add your first drink above.</p>
         ) : (
-          <div className="space-y-2">
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
-              >
-                <div className="text-sm text-gray-900 dark:text-white">
-                  {getEntryTakenAtMs(entry, recalcAt) > recalcAt && (
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 mr-2 text-[11px] font-semibold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
-                      Future
-                    </span>
-                  )}
-                  <strong>{DRINK_LABELS[entry.drinkType]}</strong> · {entry.cups} {(DRINK_UNITS[entry.drinkType] || DRINK_UNITS.coffee)[entry.cups === 1 ? "singular" : "plural"]} · {entry.caffeineMg.toFixed(0)} mg · {formatEntryDateTime(entry, recalcAt)}{entry.durationMinutes > 0 ? ` over ${entry.durationMinutes} min` : ""}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeEntry(entry.id)}
-                  className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 dark:hover:text-red-400"
-                  aria-label="Delete entry"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+          <div className="space-y-4">
+            {(() => {
+              // Group entries by local date key, sorted newest date first
+              const grouped = {};
+              for (const entry of entries) {
+                const key = localDateKeyFromMs(getEntryTakenAtMs(entry, recalcAt));
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(entry);
+              }
+              const sortedKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+              return sortedKeys.map((dateKey) => {
+                const dayEntries = grouped[dateKey].slice().sort(
+                  (a, b) => getEntryTakenAtMs(a, recalcAt) - getEntryTakenAtMs(b, recalcAt)
+                );
+                const dailyTotal = dayEntries.reduce((sum, e) => sum + (e.caffeineMg || 0), 0);
+                const d = new Date(dateKey + "T12:00:00");
+                const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+                return (
+                  <div key={dateKey} className="space-y-1">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{dateLabel}</span>
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{dailyTotal.toFixed(0)} mg total</span>
+                    </div>
+                    {dayEntries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
+                      >
+                        <div className="text-sm text-gray-900 dark:text-white">
+                          {getEntryTakenAtMs(entry, recalcAt) > recalcAt && (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 mr-2 text-[11px] font-semibold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                              Future
+                            </span>
+                          )}
+                          <strong>{DRINK_LABELS[entry.drinkType]}</strong> · {entry.cups} {(DRINK_UNITS[entry.drinkType] || DRINK_UNITS.coffee)[entry.cups === 1 ? "singular" : "plural"]} · {entry.caffeineMg.toFixed(0)} mg · {formatEntryDateTime(entry, recalcAt)}{entry.durationMinutes > 0 ? ` over ${entry.durationMinutes} min` : ""}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeEntry(entry.id)}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+                          aria-label="Delete entry"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
       </div>
