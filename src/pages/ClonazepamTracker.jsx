@@ -1443,8 +1443,43 @@ export default function ClonazepamTracker() {
       ...point,
       sedationPressure: Number((pressureByTs.get(point.ts) ?? 0).toFixed(1)),
     }));
-    return splitActiveSeriesBySedationBand(merged);
-  }, [chartData, sedationPressureData]);
+
+    // Linear regression trend line over historical daily samples
+    const dayMs = 24 * 60 * 60 * 1000;
+    const historicalPoints = merged.filter((p) => p.ts <= recalcAt);
+    // Sample once per day (noon-ish) to smooth oscillations
+    const samples = [];
+    if (historicalPoints.length) {
+      const startDay = Math.floor(historicalPoints[0].ts / dayMs);
+      const endDay = Math.floor(recalcAt / dayMs);
+      for (let d = startDay; d <= endDay; d++) {
+        const dayStart = d * dayMs;
+        const dayEnd = dayStart + dayMs;
+        const dayPts = historicalPoints.filter((p) => p.ts >= dayStart && p.ts < dayEnd);
+        if (dayPts.length) {
+          const avgMg = dayPts.reduce((s, p) => s + p.activeMg, 0) / dayPts.length;
+          samples.push({ ts: dayStart + dayMs / 2, activeMg: avgMg });
+        }
+      }
+    }
+    let trendSlope = 0, trendIntercept = 0;
+    if (samples.length >= 2) {
+      const n = samples.length;
+      const meanTs = samples.reduce((s, p) => s + p.ts, 0) / n;
+      const meanMg = samples.reduce((s, p) => s + p.activeMg, 0) / n;
+      const num = samples.reduce((s, p) => s + (p.ts - meanTs) * (p.activeMg - meanMg), 0);
+      const den = samples.reduce((s, p) => s + (p.ts - meanTs) ** 2, 0);
+      trendSlope = den !== 0 ? num / den : 0;
+      trendIntercept = meanMg - trendSlope * meanTs;
+    }
+
+    const withTrend = merged.map((point) => ({
+      ...point,
+      trendMg: samples.length >= 2 ? Number((trendIntercept + trendSlope * point.ts).toFixed(3)) : undefined,
+    }));
+
+    return splitActiveSeriesBySedationBand(withTrend);
+  }, [chartData, sedationPressureData, recalcAt]);
 
   const interactionData = useMemo(() => {
     if (!sedationPressureData.length) return [];
@@ -1831,7 +1866,7 @@ export default function ClonazepamTracker() {
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Estimated Active Clonazepam</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline shows up to 2 weeks of history plus a 72-hour projection.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">Curve uses a fixed {CLONAZEPAM_ONSET_LAG_MINUTES}-minute absorption lag plus {CLONAZEPAM_ONSET_RAMP_MINUTES}-minute ramp to full effect, then selected half-life decay with estimated carryover from prior days at dose ({carryoverCadence === "twice" ? "twice daily" : "once daily"}). Timeline shows up to 2 weeks of history plus a 72-hour projection. Dashed white line is a linear regression trend over daily average levels.</p>
         {withdrawalThresholdMg !== null && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
             <span className="text-red-600 dark:text-red-400 font-semibold">Dashed red line</span> marks an estimated risk zone based on chronic exposure assumptions (not a diagnostic cutoff).
@@ -1899,6 +1934,7 @@ export default function ClonazepamTracker() {
                 <Line type="monotone" dataKey="activeLow" name="activeMg" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false} />
                 <Line type="monotone" dataKey="activeModerate" name="activeMg" stroke="#eab308" strokeWidth={2.5} dot={false} connectNulls={false} />
                 <Line type="monotone" dataKey="activeHigh" name="activeMg" stroke="#ef4444" strokeWidth={2.5} dot={false} connectNulls={false} />
+                <Line type="monotone" dataKey="trendMg" name="trend" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
               </LineChart>
             </ResponsiveContainer>
           </div>
