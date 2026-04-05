@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Search, X, Coffee, Pill, Thermometer, Heart, Scale, Trash2 } from "lucide-react";
+import { activeClonazepamAmountAtTime } from "../utils/clonazepamModel";
 
 const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
 const WELLNESS_USER_CHANGED_EVENT = "wellness-user-changed";
@@ -508,6 +509,123 @@ export default function WellnessTools() {
     });
 
     const calorieForm = userSavedDataSnapshot.dailyCalorieIntake?.form || {};
+
+    // ── Clonazepam detail context ──────────────────────────────────────────
+    const clonazepamDetail = (() => {
+      const state = userSavedDataSnapshot.medicationTrackersByUserState?.["clonazepamTrackerByUserV1"];
+      if (!state) return null;
+
+      const entries = Array.isArray(state.entries) ? state.entries : [];
+      const halfLifeHours = Number(state.halfLifeHours) > 0 ? Number(state.halfLifeHours) : 30;
+      const maintenanceDoseMg = Number(state.maintenanceDoseMg) || 0;
+      const daysAtCurrentDose = Number(state.daysAtCurrentDose) || 0;
+      const carryoverCadence = state.carryoverCadence || "once";
+
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const fourteenDaysAgo = now - 14 * dayMs;
+
+      // Current active mg
+      const currentActiveMg = entries.reduce((sum, entry) => {
+        const takenAtMs = getEntryTakenAtMs(entry, now);
+        return sum + activeClonazepamAmountAtTime({ doseMg: entry.doseMg, takenAtMs, atMs: now, halfLifeHours });
+      }, 0);
+
+      // Daily average activeMg samples over last 14 days (sampled at noon)
+      const samples = [];
+      for (let d = 0; d < 14; d++) {
+        const dayNoon = fourteenDaysAgo + d * dayMs + dayMs / 2;
+        if (dayNoon > now) break;
+        const avgActiveMg = entries.reduce((sum, entry) => {
+          const takenAtMs = getEntryTakenAtMs(entry, now);
+          return sum + activeClonazepamAmountAtTime({ doseMg: entry.doseMg, takenAtMs, atMs: dayNoon, halfLifeHours });
+        }, 0);
+        samples.push({ date: new Date(dayNoon).toISOString().slice(0, 10), avgActiveMg: Number(avgActiveMg.toFixed(3)) });
+      }
+
+      // Linear regression trend slope (mg/day)
+      let trendSlopeMgPerDay = 0;
+      if (samples.length >= 2) {
+        const n = samples.length;
+        const tsValues = samples.map((_, i) => i); // day index as x
+        const mgValues = samples.map((s) => s.avgActiveMg);
+        const meanX = (n - 1) / 2;
+        const meanMg = mgValues.reduce((s, v) => s + v, 0) / n;
+        const num = tsValues.reduce((s, x, i) => s + (x - meanX) * (mgValues[i] - meanMg), 0);
+        const den = tsValues.reduce((s, x) => s + (x - meanX) ** 2, 0);
+        trendSlopeMgPerDay = den !== 0 ? num / den : 0;
+      }
+      const trendDirection = trendSlopeMgPerDay > 0.002 ? "increasing" : trendSlopeMgPerDay < -0.002 ? "decreasing" : "stable";
+
+      // Recent dose log (last 14 days)
+      const recentDoses = entries
+        .filter((e) => getEntryTakenAtMs(e, now) >= fourteenDaysAgo)
+        .sort((a, b) => getEntryTakenAtMs(a, now) - getEntryTakenAtMs(b, now))
+        .map((e) => ({
+          takenAt: new Date(getEntryTakenAtMs(e, now)).toISOString(),
+          doseMg: e.doseMg,
+          note: e.note || null,
+        }));
+
+      // Taper settings from localStorage
+      const taperStartDate = localStorage.getItem("clonazepamTaperStartDateV1") || "";
+      const taperStepMg = Number(localStorage.getItem("clonazepamTaperStepMgV1")) || 0.125;
+      const taperHoldDays = Number(localStorage.getItem("clonazepamTaperHoldDaysV1")) || 14;
+      const taperMinimumDoseMg = Number(localStorage.getItem("clonazepamTaperMinimumDoseMgV1")) || 0.125;
+
+      // Compute taper schedule rows
+      const taperScheduleRows = [];
+      const startDose = maintenanceDoseMg;
+      if (startDose > 0 && taperStepMg > 0 && taperStartDate) {
+        const parsedStartMs = new Date(taperStartDate).getTime();
+        const effectiveStartMs = Number.isFinite(parsedStartMs) && parsedStartMs > 0 ? parsedStartMs : now;
+        let currentDose = startDose > taperMinimumDoseMg
+          ? Math.max(0, startDose - taperStepMg) < taperMinimumDoseMg ? taperMinimumDoseMg : Math.max(0, startDose - taperStepMg)
+          : startDose;
+        let stepStartMs = effectiveStartMs;
+        const maxSteps = 60;
+        while (currentDose > 0 && taperScheduleRows.length < maxSteps) {
+          const roundedDose = Number(currentDose.toFixed(3));
+          const stepEndMs = stepStartMs + taperHoldDays * dayMs;
+          taperScheduleRows.push({
+            step: taperScheduleRows.length + 1,
+            doseMg: roundedDose,
+            start: new Date(stepStartMs).toISOString().slice(0, 10),
+            end: new Date(stepEndMs).toISOString().slice(0, 10),
+            holdDays: taperHoldDays,
+          });
+          if (roundedDose <= taperMinimumDoseMg) break;
+          const nextDose = Math.max(0, roundedDose - taperStepMg);
+          currentDose = nextDose < taperMinimumDoseMg ? taperMinimumDoseMg : nextDose;
+          if (Number(currentDose.toFixed(3)) === roundedDose) break;
+          stepStartMs = stepEndMs;
+        }
+      }
+
+      return {
+        currentActiveMg: Number(currentActiveMg.toFixed(3)),
+        halfLifeHours,
+        maintenanceDoseMg,
+        daysAtCurrentDose,
+        carryoverCadence,
+        trendSlopeMgPerDay: Number(trendSlopeMgPerDay.toFixed(5)),
+        trendDirection,
+        trendInterpretation: `Over the last ${samples.length} days, estimated active clonazepam is ${trendDirection} at ${Math.abs(trendSlopeMgPerDay).toFixed(4)} mg/day.`,
+        dailySamples: samples,
+        recentDoses,
+        taper: {
+          startDate: taperStartDate || null,
+          startDoseMg: startDose,
+          stepMg: taperStepMg,
+          holdDays: taperHoldDays,
+          minimumDoseMg: taperMinimumDoseMg,
+          totalSteps: taperScheduleRows.length,
+          projectedEndDate: taperScheduleRows.length ? taperScheduleRows[taperScheduleRows.length - 1].end : null,
+          schedule: taperScheduleRows,
+        },
+      };
+    })();
+
     return {
       userName: userSavedDataSnapshot.userName || "",
       generatedAt: new Date().toISOString(),
@@ -530,6 +648,7 @@ export default function WellnessTools() {
         currentCalories: Number.isFinite(Number(calorieForm.currentCalories)) ? Number(calorieForm.currentCalories) : null,
       },
       medicationTrackers: medicationSummaries,
+      clonazepamDetail,
       doseReminders: Object.entries(doseAlertsByPath).map(([path, detail]) => ({ path, detail })),
     };
   }, [userSavedDataSnapshot, doseAlertsByPath]);
@@ -606,7 +725,7 @@ export default function WellnessTools() {
           messages: [
             {
               role: "system",
-              content: "You are a wellness assistant inside Joule Wellness Hub. Use ONLY the provided user context JSON to answer. Be concise, clearly separate observations from suggestions, and include a safety note that this is not medical advice.",
+              content: "You are a wellness assistant inside Joule Wellness Hub. Use ONLY the provided user context JSON to answer. Be concise, clearly separate observations from suggestions, and include a safety note that this is not medical advice. The context includes a `clonazepamDetail` field with: currentActiveMg (estimated mg active right now), trendSlopeMgPerDay (positive = increasing, negative = decreasing), trendDirection (increasing/stable/decreasing), trendInterpretation (human-readable summary), dailySamples (14-day history of estimated daily average active mg), recentDoses (dose log for last 14 days), and taper (startDate, stepMg, holdDays, minimumDoseMg, schedule of planned reductions with dates and doses). Use these to answer questions about whether the trendline is going up or down, why, and what remediation steps may help. When discussing remediation, reference the taper schedule (e.g., whether the user is ahead of or behind their taper plan) and always include a safety disclaimer.",
             },
             {
               role: "system",

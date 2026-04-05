@@ -40,6 +40,9 @@ const CALORIE_PROFILES_STORAGE_KEY = "dailyCalorieProfilesV1";
 const CALORIE_ACTIVE_PROFILE_STORAGE_KEY = "dailyCalorieActiveProfileId";
 const CLONAZEPAM_BY_USER_STORAGE_KEY = "clonazepamTrackerByUserV1";
 const TAPER_START_DATE_STORAGE_KEY = "clonazepamTaperStartDateV1";
+const TAPER_STEP_MG_STORAGE_KEY = "clonazepamTaperStepMgV1";
+const TAPER_HOLD_DAYS_STORAGE_KEY = "clonazepamTaperHoldDaysV1";
+const TAPER_MINIMUM_DOSE_MG_STORAGE_KEY = "clonazepamTaperMinimumDoseMgV1";
 const WELLNESS_GLOBAL_USER_NAME_KEY = "wellnessGlobalUserName";
 const WELLNESS_USER_CHANGED_EVENT = "wellness-user-changed";
 
@@ -811,9 +814,18 @@ export default function ClonazepamTracker() {
       return getNowLocalDateTimeValue();
     }
   });
-  const [taperStepMg, setTaperStepMg] = useState(0.125);
-  const [taperHoldDays, setTaperHoldDays] = useState(14);
-  const [taperMinimumDoseMg, setTaperMinimumDoseMg] = useState(0.125);
+  const [taperStepMg, setTaperStepMg] = useState(() => {
+    const stored = localStorage.getItem(TAPER_STEP_MG_STORAGE_KEY);
+    return stored !== null ? Number(stored) : 0.125;
+  });
+  const [taperHoldDays, setTaperHoldDays] = useState(() => {
+    const stored = localStorage.getItem(TAPER_HOLD_DAYS_STORAGE_KEY);
+    return stored !== null ? Number(stored) : 14;
+  });
+  const [taperMinimumDoseMg, setTaperMinimumDoseMg] = useState(() => {
+    const stored = localStorage.getItem(TAPER_MINIMUM_DOSE_MG_STORAGE_KEY);
+    return stored !== null ? Number(stored) : 0.125;
+  });
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
   const [liveCalcAt, setLiveCalcAt] = useState(() => Date.now());
   const [liveCalcPreset, setLiveCalcPreset] = useState("current");
@@ -2001,7 +2013,7 @@ export default function ClonazepamTracker() {
               min="0.125"
               step="0.125"
               value={taperStepMg}
-              onChange={(e) => setTaperStepMg(e.target.value)}
+              onChange={(e) => { setTaperStepMg(e.target.value); try { localStorage.setItem(TAPER_STEP_MG_STORAGE_KEY, e.target.value); } catch { /* ignore */ } }}
               className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900"
             />
           </label>
@@ -2012,7 +2024,7 @@ export default function ClonazepamTracker() {
               min="1"
               step="1"
               value={taperHoldDays}
-              onChange={(e) => setTaperHoldDays(e.target.value)}
+              onChange={(e) => { setTaperHoldDays(e.target.value); try { localStorage.setItem(TAPER_HOLD_DAYS_STORAGE_KEY, e.target.value); } catch { /* ignore */ } }}
               className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900"
             />
           </label>
@@ -2023,7 +2035,7 @@ export default function ClonazepamTracker() {
               min="0"
               step="0.125"
               value={taperMinimumDoseMg}
-              onChange={(e) => setTaperMinimumDoseMg(e.target.value)}
+              onChange={(e) => { setTaperMinimumDoseMg(e.target.value); try { localStorage.setItem(TAPER_MINIMUM_DOSE_MG_STORAGE_KEY, e.target.value); } catch { /* ignore */ } }}
               className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900"
             />
           </label>
