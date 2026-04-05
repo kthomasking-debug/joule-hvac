@@ -1742,6 +1742,61 @@ export default function ClonazepamTracker() {
     return { rowId: taperSchedule.rows[0].id, isStop: false };
   }, [taperSchedule, recalcAt]);
 
+  // Diazepam equivalency for each taper step: expected steady-state trough and step slopes.
+  // Steady-state trough for once-daily dosing = doseMg × (decay / (1 − decay))
+  // decay = 0.5^(24/HL)
+  const taperDiazepamProjection = useMemo(() => {
+    if (!taperSchedule.rows.length) return { rows: [], summary: null };
+
+    const cloDecay = Math.pow(0.5, 24 / halfLifeHours);
+    const cloAccum = cloDecay / (1 - cloDecay); // SS trough multiplier for clonazepam
+    const diazDecay = Math.pow(0.5, 24 / DIAZEPAM_HALF_LIFE_HOURS);
+    const diazAccum = diazDecay / (1 - diazDecay); // SS trough multiplier for diazepam-equiv
+
+    const allStepDoses = [taperStartDoseMg, ...taperSchedule.rows.map((r) => r.doseMg), 0];
+
+    const rows = taperSchedule.rows.map((row, i) => {
+      const prevDoseMg = allStepDoses[i];       // dose before this step started
+      const nextDoseMg = allStepDoses[i + 2];   // dose after this step ends
+
+      const diazepamMg = Number((row.doseMg * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(2));
+      const cloSSTrough = Number((row.doseMg * cloAccum).toFixed(3));
+      const diazSSTroughEquiv = Number((row.doseMg * diazAccum).toFixed(3));
+
+      // Slope during this hold: transition from previous SS to this step's SS
+      // Diazepam HL 72h → after 14 days ≈ 96% settled. Linearize across holdDays.
+      const prevDiazSS = Number((prevDoseMg * diazAccum).toFixed(3));
+      const slopeThisStepMgPerDay = Number(((diazSSTroughEquiv - prevDiazSS) / row.holdDays).toFixed(4));
+
+      // Slope going into next step (what happens when next step starts)
+      const nextDiazSS = nextDoseMg !== undefined ? Number((nextDoseMg * diazAccum).toFixed(3)) : null;
+      const slopeNextStepMgPerDay = nextDiazSS !== null
+        ? Number(((nextDiazSS - diazSSTroughEquiv) / row.holdDays).toFixed(4))
+        : null;
+
+      return { id: row.id, diazepamMg, cloSSTrough, diazSSTroughEquiv, slopeThisStepMgPerDay, slopeNextStepMgPerDay };
+    });
+
+    // Overall taper slope: first step SS → last step SS over total duration
+    const firstCloSS = taperSchedule.rows[0].doseMg * cloAccum;
+    const lastCloSS = taperSchedule.rows[taperSchedule.rows.length - 1].doseMg * cloAccum;
+    const firstDiazSS = taperSchedule.rows[0].doseMg * diazAccum;
+    const lastDiazSS = taperSchedule.rows[taperSchedule.rows.length - 1].doseMg * diazAccum;
+    const totalDays = taperSchedule.totalDays || 1;
+
+    const summary = {
+      cloOverallSlope: Number(((lastCloSS - firstCloSS) / totalDays).toFixed(4)),
+      diazOverallSlope: Number(((lastDiazSS - firstDiazSS) / totalDays).toFixed(4)),
+      firstDiazSS: Number(firstDiazSS.toFixed(3)),
+      lastDiazSS: Number(lastDiazSS.toFixed(3)),
+      firstCloSS: Number(firstCloSS.toFixed(3)),
+      lastCloSS: Number(lastCloSS.toFixed(3)),
+      totalDays,
+    };
+
+    return { rows, summary };
+  }, [taperSchedule, halfLifeHours, taperStartDoseMg]);
+
   return (
     <div className="w-full px-4 py-8 space-y-6">
       <div className="flex items-center gap-3">
@@ -2259,6 +2314,9 @@ export default function ClonazepamTracker() {
                 <tr>
                   <th className="px-3 py-2 text-left">Step</th>
                   <th className="px-3 py-2 text-left">Dose</th>
+                  <th className="px-3 py-2 text-left">Diazepam equiv</th>
+                  <th className="px-3 py-2 text-left">Diazepam SS trough</th>
+                  <th className="px-3 py-2 text-left">Step slope</th>
                   <th className="px-3 py-2 text-left">Start</th>
                   <th className="px-3 py-2 text-left">Hold until</th>
                   <th className="px-3 py-2 text-left">Days</th>
@@ -2277,6 +2335,19 @@ export default function ClonazepamTracker() {
                       {isCurrentStep && <span className="ml-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">Current</span>}
                     </td>
                     <td className="px-3 py-2">{row.doseMg.toFixed(3)} mg</td>
+                    {(() => {
+                      const proj = taperDiazepamProjection.rows.find((r) => r.id === row.id);
+                      const slope = proj?.slopeThisStepMgPerDay;
+                      const slopeDir = slope > 0.0001 ? "↑" : slope < -0.0001 ? "↓" : "→";
+                      const slopeColor = slope > 0.0001 ? "text-red-500" : slope < -0.0001 ? "text-green-500" : "text-gray-400";
+                      return (
+                        <>
+                          <td className="px-3 py-2 text-sky-600 dark:text-sky-400">{proj ? `${proj.diazepamMg} mg` : "—"}</td>
+                          <td className="px-3 py-2 text-sky-600 dark:text-sky-400">{proj ? `${proj.diazSSTroughEquiv} mg-eq` : "—"}</td>
+                          <td className={`px-3 py-2 font-mono text-xs ${slopeColor}`}>{proj ? `${slopeDir} ${Math.abs(slope).toFixed(4)} mg/d` : "—"}</td>
+                        </>
+                      );
+                    })()}
                     <td className="px-3 py-2">{formatScheduleDate(row.startMs)}</td>
                     <td className="px-3 py-2">{formatScheduleDate(row.endMs)}</td>
                     <td className="px-3 py-2">{row.holdDays}</td>
@@ -2289,6 +2360,9 @@ export default function ClonazepamTracker() {
                     {currentTaperStep.isStop && <span className="ml-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">Current</span>}
                   </td>
                   <td className="px-3 py-2">0 mg</td>
+                  <td className="px-3 py-2 text-sky-600 dark:text-sky-400">0 mg</td>
+                  <td className="px-3 py-2 text-sky-600 dark:text-sky-400">0 mg-eq</td>
+                  <td className="px-3 py-2">—</td>
                   <td className="px-3 py-2">{taperSchedule.completedAt ? formatScheduleDate(taperSchedule.completedAt) : "-"}</td>
                   <td className="px-3 py-2">—</td>
                   <td className="px-3 py-2">—</td>
@@ -2298,6 +2372,26 @@ export default function ClonazepamTracker() {
           </div>
         ) : (
           <p className="text-sm text-indigo-900 dark:text-indigo-200">Enter a starting dose and step size to preview a schedule.</p>
+        )}
+        {taperDiazepamProjection.summary && (
+          <div className="rounded-lg bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 p-3 space-y-1.5 text-sm text-indigo-950 dark:text-indigo-100">
+            <p className="font-semibold text-indigo-800 dark:text-indigo-200">Taper trajectory (steady-state estimate, once-daily dosing)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-0.5">
+                <p className="font-medium text-purple-600 dark:text-purple-400">Clonazepam ({halfLifeHours}h HL)</p>
+                <p>First step SS trough: <strong>{taperDiazepamProjection.summary.firstCloSS} mg</strong></p>
+                <p>Last step SS trough: <strong>{taperDiazepamProjection.summary.lastCloSS} mg</strong></p>
+                <p>Overall slope: <strong className={taperDiazepamProjection.summary.cloOverallSlope < 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}>{taperDiazepamProjection.summary.cloOverallSlope > 0 ? "↑" : "↓"} {Math.abs(taperDiazepamProjection.summary.cloOverallSlope).toFixed(4)} mg/day</strong> over {taperDiazepamProjection.summary.totalDays} days</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="font-medium text-sky-500 dark:text-sky-400">Diazepam equivalent (72h HL)</p>
+                <p>First step SS trough: <strong>{taperDiazepamProjection.summary.firstDiazSS} mg-equiv</strong></p>
+                <p>Last step SS trough: <strong>{taperDiazepamProjection.summary.lastDiazSS} mg-equiv</strong></p>
+                <p>Overall slope: <strong className={taperDiazepamProjection.summary.diazOverallSlope < 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}>{taperDiazepamProjection.summary.diazOverallSlope > 0 ? "↑" : "↓"} {Math.abs(taperDiazepamProjection.summary.diazOverallSlope).toFixed(4)} mg-equiv/day</strong> over {taperDiazepamProjection.summary.totalDays} days</p>
+              </div>
+            </div>
+            <p className="text-xs text-indigo-800 dark:text-indigo-400 pt-1">SS trough = estimated steady-state trough level with once-daily dosing. Step slope = rate of change in blood level as body adjusts to each new dose. Clonazepam adjusts faster (30h HL); diazepam transitions span ~3–4 days (72h HL) but ultimately reaches a lower relative trough per mg due to accumulation.</p>
+          </div>
         )}
         <p className="text-xs text-indigo-900 dark:text-indigo-200">
           Safety note: benzodiazepine tapers should be planned with your prescriber. This preview is only a date-and-dose worksheet for an already-decided plan.
