@@ -1875,69 +1875,89 @@ export default function ClonazepamTracker() {
         {activeBySedationChartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
         ) : (
-          <div className="w-full h-72 min-w-0 min-h-[18rem]">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <LineChart data={activeBySedationChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
-                <XAxis
-                  dataKey="ts"
-                  type="number"
-                  domain={["dataMin", "dataMax"]}
-                  ticks={chartTicks}
-                  angle={-40}
-                  textAnchor="end"
-                  height={52}
-                  tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
-                />
-                <YAxis />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
-                  labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
-                  itemStyle={{ color: "#d1d5db" }}
-                  labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
-                  formatter={(value, _name, item) => {
-                    const sedation = item?.payload?.sedationPressure ?? 0;
-                    const effectPhaseLabel = item?.payload?.effectPhaseLabel || "pre-dose";
-                    let level = "Low";
-                    if (sedation >= 55) level = "High";
-                    else if (sedation >= 25) level = "Moderate";
-                    return [`${value} mg (${Number(sedation).toFixed(1)}% sedation, ${level}, ${effectPhaseLabel})`, "Estimated active"];
-                  }}
-                />
-                <ReferenceLine
-                  x={recalcAt}
-                  stroke="#94a3b8"
-                  strokeWidth={1.5}
-                  isFront
-                  label={{
-                    value: `Now ${new Date(recalcAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
-                    position: "insideTopRight",
-                    fill: "#94a3b8",
-                    fontSize: 11,
-                  }}
-                />
-                {withdrawalThresholdMg !== null && (
-                  <ReferenceLine
-                    y={withdrawalThresholdMg}
-                    stroke="#ef4444"
-                    strokeDasharray="6 4"
-                    strokeWidth={1.5}
-                    ifOverflow="extendDomain"
-                    label={{
-                      value: `Est. risk zone ${withdrawalThresholdMg.toFixed(2)} mg`,
-                      position: "insideBottomRight",
-                      fill: "#ef4444",
-                      fontSize: 11,
-                    }}
-                  />
-                )}
-                <Line type="monotone" dataKey="activeLow" name="activeMg" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="activeModerate" name="activeMg" stroke="#eab308" strokeWidth={2.5} dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="activeHigh" name="activeMg" stroke="#ef4444" strokeWidth={2.5} dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="trendMg" name="trend" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <>
+            {(() => {
+              const historical = activeBySedationChartData.filter((p) => p.ts <= recalcAt);
+              const total = historical.length;
+              if (!total) return null;
+              const low = historical.filter((p) => (p.sedationPressure ?? 0) < 25).length;
+              const high = historical.filter((p) => (p.sedationPressure ?? 0) >= 55).length;
+              const mod = total - low - high;
+              const pct = (n) => `${((n / total) * 100).toFixed(0)}%`;
+              return (
+                <div className="flex gap-4 text-xs font-semibold">
+                  <span className="text-green-500">Low: {pct(low)}</span>
+                  <span className="text-yellow-500">Moderate: {pct(mod)}</span>
+                  <span className="text-red-500">High: {pct(high)}</span>
+                </div>
+              );
+            })()}
+            <div className="w-full overflow-x-auto">
+              <div style={{ minWidth: "900px" }} className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={activeBySedationChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
+                    <XAxis
+                      dataKey="ts"
+                      type="number"
+                      domain={["dataMin", "dataMax"]}
+                      ticks={chartTicks}
+                      angle={-40}
+                      textAnchor="end"
+                      height={52}
+                      tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
+                    />
+                    <YAxis />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
+                      itemStyle={{ color: "#d1d5db" }}
+                      labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
+                      formatter={(value, _name, item) => {
+                        const sedation = item?.payload?.sedationPressure ?? 0;
+                        const effectPhaseLabel = item?.payload?.effectPhaseLabel || "pre-dose";
+                        let level = "Low";
+                        if (sedation >= 55) level = "High";
+                        else if (sedation >= 25) level = "Moderate";
+                        return [`${value} mg (${Number(sedation).toFixed(1)}% sedation, ${level}, ${effectPhaseLabel})`, "Estimated active"];
+                      }}
+                    />
+                    <ReferenceLine
+                      x={recalcAt}
+                      stroke="#94a3b8"
+                      strokeWidth={1.5}
+                      isFront
+                      label={{
+                        value: `Now ${new Date(recalcAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
+                        position: "insideTopRight",
+                        fill: "#94a3b8",
+                        fontSize: 11,
+                      }}
+                    />
+                    {withdrawalThresholdMg !== null && (
+                      <ReferenceLine
+                        y={withdrawalThresholdMg}
+                        stroke="#ef4444"
+                        strokeDasharray="6 4"
+                        strokeWidth={1.5}
+                        ifOverflow="extendDomain"
+                        label={{
+                          value: `Est. risk zone ${withdrawalThresholdMg.toFixed(2)} mg`,
+                          position: "insideBottomRight",
+                          fill: "#ef4444",
+                          fontSize: 11,
+                        }}
+                      />
+                    )}
+                    <Line type="monotone" dataKey="activeLow" name="activeMg" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls={false} />
+                    <Line type="monotone" dataKey="activeModerate" name="activeMg" stroke="#eab308" strokeWidth={2.5} dot={false} connectNulls={false} />
+                    <Line type="monotone" dataKey="activeHigh" name="activeMg" stroke="#ef4444" strokeWidth={2.5} dot={false} connectNulls={false} />
+                    <Line type="monotone" dataKey="trendMg" name="trend" stroke="#ffffff" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={true} strokeOpacity={0.5} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
         )}
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Sedation color bands (tolerance-adjusted pressure): <span className="text-green-500">Low (&lt;25%)</span> · <span className="text-yellow-500">Moderate (25-55%)</span> · <span className="text-red-500">High (&ge;55%)</span>
