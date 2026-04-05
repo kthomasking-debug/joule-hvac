@@ -829,6 +829,9 @@ export default function ClonazepamTracker() {
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
   const [liveCalcAt, setLiveCalcAt] = useState(() => Date.now());
   const [liveCalcPreset, setLiveCalcPreset] = useState("current");
+  const [trendExplanation, setTrendExplanation] = useState("");
+  const [trendExplanationBusy, setTrendExplanationBusy] = useState(false);
+  const [trendExplanationError, setTrendExplanationError] = useState("");
 
   const activeProfile = useMemo(() => {
     return profiles.find((profile) => profile.id === activeProfileId) || profiles[0] || null;
@@ -1490,7 +1493,9 @@ export default function ClonazepamTracker() {
       trendMg: samples.length >= 2 ? Number((trendIntercept + trendSlope * point.ts).toFixed(3)) : undefined,
     }));
 
-    return splitActiveSeriesBySedationBand(withTrend);
+    const result = splitActiveSeriesBySedationBand(withTrend);
+    result._slope = trendSlope * 86400000; // mg/day
+    return result;
   }, [chartData, sedationPressureData, recalcAt]);
 
   // Diazepam equivalence chart: 1 mg clonazepam ≈ 20 mg diazepam (BZD equivalency tables)
@@ -1797,6 +1802,121 @@ export default function ClonazepamTracker() {
     return { rows, summary };
   }, [taperSchedule, halfLifeHours, taperStartDoseMg]);
 
+  const explainTrend = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) {
+      setTrendExplanationError("Groq API key not found. Add it in Settings first.");
+      return;
+    }
+    if (trendExplanationBusy) return;
+    setTrendExplanationBusy(true);
+    setTrendExplanationError("");
+    setTrendExplanation("");
+
+    const slopeMgPerDay = activeBySedationChartData._slope ?? 0;
+    const direction = slopeMgPerDay < -0.0005 ? "declining" : slopeMgPerDay > 0.0005 ? "increasing" : "stable";
+
+    // Use already-computed dailyClonazepamTotals (dayKey -> mg) — avoids raw entry timestamp issues
+    const dayMs = 24 * 60 * 60 * 1000;
+    const windowStartMs = recalcAt - 14 * dayMs;
+    const tol = 0.001;
+    const taperRows = taperSchedule?.rows || [];
+
+    const dailyTotals = Object.entries(dailyClonazepamTotals)
+      .map(([key, total]) => {
+        const dayNoonMs = new Date(`${key}T12:00:00`).getTime();
+        const stepTarget = taperStepDoseForTs(dayNoonMs, taperRows) ?? maintenanceDoseMg;
+        return { date: key, total: Number(total.toFixed(3)), stepTarget, dayNoonMs };
+      })
+      .filter(({ dayNoonMs }) => Number.isFinite(dayNoonMs) && dayNoonMs >= windowStartMs)
+      .sort((a, b) => a.dayNoonMs - b.dayNoonMs);
+
+    const overDays = dailyTotals.filter(({ total, stepTarget }) => total > stepTarget + tol).length;
+    const underDays = dailyTotals.filter(({ total, stepTarget }) => total < stepTarget - tol).length;
+    const atDays = dailyTotals.length - overDays - underDays;
+    const avgDailyTotal = dailyTotals.length
+      ? Number((dailyTotals.reduce((s, d) => s + d.total, 0) / dailyTotals.length).toFixed(3))
+      : 0;
+    const currentStep = taperRows.find((r) => recalcAt >= r.startMs && recalcAt < r.endMs);
+    const currentStepTarget = currentStep?.doseMg ?? maintenanceDoseMg;
+
+    // Current active mg from metrics (calculated at recalcAt)
+    const currentActiveMgVal = Number(metrics.activeMg.toFixed(3));
+    const stats = diazepamEquivalentChartData._stats?.clonazepamVol;
+
+    const dailyTotalsText = dailyTotals.map(({ date, total, stepTarget }) => {
+      const flag = total > stepTarget + tol ? "OVER" : total < stepTarget - tol ? "under" : "at";
+      return `  ${date}: ${total} mg (target ${stepTarget} mg → ${flag})`;
+    }).join("\n");
+
+    const taperSummary = taperRows.length
+      ? `Taper: ${taperRows.length} steps of ${taperStepMg} mg each, ${taperHoldDays} days/step. Current step target: ${currentStepTarget} mg. Full schedule: ${taperRows.map((r) => `step${r.stepNumber}=${r.doseMg}mg (${new Date(r.startMs).toLocaleDateString()}–${new Date(r.endMs).toLocaleDateString()})`).join(", ")}.`
+      : "No taper plan configured.";
+
+    const prompt = [
+      `CLONAZEPAM TRACKER — TREND ANALYSIS`,
+      ``,
+      `Regression slope over 14-day daily-average chart: ${slopeMgPerDay.toFixed(4)} mg/day (${direction}).`,
+      `Half-life: ${halfLifeHours} h. Days at dose (tolerance model): ${daysAtCurrentDose}. Current estimated active level: ${currentActiveMgVal} mg. Maintenance dose setting: ${maintenanceDoseMg} mg.`,
+      stats ? `14-day PK stats: mean active ${stats.mean} mg, std dev ${stats.stdDev} mg, CV ${stats.cv}%, range ${stats.min}–${stats.max} mg.` : "",
+      ``,
+      taperSummary,
+      ``,
+      `DAILY LOGGED DOSE TOTALS — last ${dailyTotals.length} days (with per-day taper target):`,
+      dailyTotalsText || "  (no logged doses in window)",
+      ``,
+      `Summary: ${overDays} days over target, ${atDays} at target, ${underDays} under target. Average daily logged total: ${avgDailyTotal} mg vs current step target ${currentStepTarget} mg.`,
+      ``,
+      `Instructions: Using ONLY the specific numbers above, write exactly 4 bullet points, then a dosing schedule table.`,
+      `1. WHY the 14-day regression slope is ${direction} — reference the specific dates from the daily totals that pulled it that direction (e.g. "4/4 at 1.5 mg was the highest day and elevated the slope")`,
+      `2. What averaging ${avgDailyTotal} mg/day against a target of ${currentStepTarget} mg/day means for steady-state trough level at ${halfLifeHours}h half-life — compute the expected SS trough using the formula Trough = Dose × (0.5^(24/HL))/(1 − 0.5^(24/HL))`,
+      `3. What spreading doses across multiple smaller entries per day does to peak-to-trough swing vs. a single daily dose of the same total`,
+      `4. One specific numbered finding that would be useful to mention to a prescriber. When counting over/under days, use each day's own step target from the table above (e.g. "On ${overDays} of ${dailyTotals.length} days the logged dose exceeded that day's step target", naming the step targets involved)`,
+      ``,
+      `DAILY DOSING SCHEDULE`,
+      `After the 4 bullets, output a section titled "Suggested Daily Schedule to Maintain Stable Levels" with a plain-text table showing how to split the target dose of ${currentStepTarget} mg across up to 5 administration times to minimize peak-to-trough swing.`,
+      `Rules for the schedule:`,
+      `- Minimum dose per administration: 0.125 mg`,
+      `- All doses must be multiples of 0.125 mg`,
+      `- Maximum 5 doses per day`,
+      `- Total must sum exactly to ${currentStepTarget} mg`,
+      `- Prefer equal dose sizes and equal time spacing to minimize swing`,
+      `- Half-life is ${halfLifeHours}h so evenly spaced doses flatten the trough best`,
+      `- Use realistic waking hours (e.g. 8 AM to 10 PM window)`,
+      `- Show the table as: Time | Dose | Cumulative | Notes`,
+      `- After the table, show the estimated trough level this schedule would produce using the formula above, and how it compares to the target trough for ${currentStepTarget} mg once daily`,
+      `End with exactly: "Not medical advice."`,
+    ].filter(Boolean).join("\n");
+
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim() || "llama-3.3-70b-versatile";
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq API error ${response.status}: ${errorText.slice(0, 200)}`);
+      }
+      const payload = await response.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setTrendExplanation(content);
+    } catch (err) {
+      setTrendExplanationError(String(err.message || "Unknown error"));
+    } finally {
+      setTrendExplanationBusy(false);
+    }
+  };
+
   return (
     <div className="w-full px-4 py-8 space-y-6">
       <div className="flex items-center gap-3">
@@ -1999,6 +2119,12 @@ export default function ClonazepamTracker() {
           </p>
           <div className="space-y-1 text-gray-900 dark:text-white">
             <p>Total logged: <strong>{metrics.totalMg.toFixed(3)} mg</strong></p>
+            {(() => {
+              const days = Object.keys(dailyClonazepamTotals).length;
+              if (!days) return null;
+              const avg = metrics.totalMg / days;
+              return <p>Avg dose/day: <strong>{avg.toFixed(3)} mg</strong> <span className="text-xs text-gray-500 dark:text-gray-400">({days} logged day{days !== 1 ? "s" : ""})</span></p>;
+            })()}
             <p>Estimated active now: <strong>{metrics.activeMg.toFixed(3)} mg</strong></p>
             <p>Modeled carryover doses: <strong>{modeledCarryoverCount}</strong></p>
             <p>Skipped carryover doses (same-day override): <strong>{modeledCarryoverSkippedSameDay}</strong></p>
@@ -2041,12 +2167,71 @@ export default function ClonazepamTracker() {
               const high = historical.filter((p) => (p.sedationPressure ?? 0) >= 55).length;
               const mod = total - low - high;
               const pct = (n) => `${((n / total) * 100).toFixed(0)}%`;
+              const slopeMgPerDay = activeBySedationChartData._slope ?? 0;
+              const slopeDir = slopeMgPerDay < -0.0005 ? "↓" : slopeMgPerDay > 0.0005 ? "↑" : "→";
+              const slopeColor = slopeMgPerDay < -0.0005 ? "text-green-400" : slopeMgPerDay > 0.0005 ? "text-red-400" : "text-gray-400";
               return (
-                <div className="flex gap-4 text-xs font-semibold">
-                  <span className="text-green-500">Low: {pct(low)}</span>
-                  <span className="text-yellow-500">Moderate: {pct(mod)}</span>
-                  <span className="text-red-500">High: {pct(high)}</span>
-                </div>
+                <>
+                  <div className="flex flex-wrap gap-4 text-xs font-semibold items-center">
+                    <span className="text-green-500">Low: {pct(low)}</span>
+                    <span className="text-yellow-500">Moderate: {pct(mod)}</span>
+                    <span className="text-red-500">High: {pct(high)}</span>
+                    <span className={`${slopeColor} ml-2`}>Trend: {slopeDir} {Math.abs(slopeMgPerDay).toFixed(4)} mg/day</span>
+                    <button
+                      onClick={explainTrend}
+                      disabled={trendExplanationBusy}
+                      className="ml-1 px-2 py-0.5 rounded text-xs bg-indigo-700 text-white hover:bg-indigo-600 disabled:opacity-50"
+                    >
+                      {trendExplanationBusy ? "…" : "Explain with AI"}
+                    </button>
+                  </div>
+                  {trendExplanationError && <p className="text-xs text-red-400">{trendExplanationError}</p>}
+                  {trendExplanation && (
+                    <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+                      {trendExplanation.split("\n").map((line, i) => {
+                        const trimmed = line.trim();
+                        if (!trimmed) return null;
+                        // Section header
+                        if (trimmed.startsWith("Suggested Daily Schedule") || trimmed.startsWith("SUGGESTED")) {
+                          return <p key={i} className="font-semibold text-indigo-300 mt-2">{trimmed}</p>;
+                        }
+                        // Table header row (Time | Dose | ...)
+                        if (/^Time\s*\|/.test(trimmed)) {
+                          const cols = trimmed.split("|").map((c) => c.trim());
+                          return (
+                            <div key={i} className="overflow-x-auto">
+                              <table className="text-xs w-full border-collapse mt-1">
+                                <thead>
+                                  <tr>{cols.map((c, j) => <th key={j} className="border border-gray-600 px-2 py-1 text-left text-indigo-300">{c}</th>)}</tr>
+                                </thead>
+                              </table>
+                            </div>
+                          );
+                        }
+                        // Table divider row (---|---|...)
+                        if (/^-+\s*\|/.test(trimmed)) return null;
+                        // Table data row (starts with a time like "8:00 AM |" or "8 AM |")
+                        if (/^\d/.test(trimmed) && trimmed.includes("|")) {
+                          const cols = trimmed.split("|").map((c) => c.trim());
+                          return (
+                            <div key={i} className="overflow-x-auto -mt-1">
+                              <table className="text-xs w-full border-collapse">
+                                <tbody>
+                                  <tr>{cols.map((c, j) => <td key={j} className="border border-gray-700 px-2 py-0.5">{c}</td>)}</tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        }
+                        // Safety footer
+                        if (trimmed === "Not medical advice.") {
+                          return <p key={i} className="text-gray-500 mt-1">{trimmed}</p>;
+                        }
+                        return <p key={i} className="leading-relaxed">{trimmed}</p>;
+                      })}
+                    </div>
+                  )}
+                </>
               );
             })()}
             <div className="w-full overflow-x-auto">
@@ -2594,8 +2779,8 @@ export default function ClonazepamTracker() {
         ) : (
           <div className="space-y-2">
             {combinedDoseLogGroups.map((group) => {
-              const dayMidnightTs = new Date(`${group.dayKey}T00:00:00`).getTime();
-              const stepDoseMg = taperStepDoseForTs(dayMidnightTs, taperSchedule.rows);
+              const dayEndTs = new Date(`${group.dayKey}T23:59:59`).getTime();
+              const stepDoseMg = taperStepDoseForTs(dayEndTs, taperSchedule.rows);
               const dayTotalMg = dailyClonazepamTotals[group.dayKey] || 0;
               const exceedsStep = stepDoseMg !== null && dayTotalMg > stepDoseMg + 0.0005;
               const underStep = stepDoseMg !== null && !exceedsStep && dayTotalMg > 0 && dayTotalMg < stepDoseMg - 0.0005;
