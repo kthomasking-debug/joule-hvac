@@ -1330,7 +1330,7 @@ export default function ClonazepamTracker() {
     const doseTimes = modeledEntries.map((entry) => getEntryTakenAtMs(entry, now));
     const earliest = Math.min(...doseTimes);
 
-    const start = Math.min(earliest - 4 * 60 * 60 * 1000, now - 14 * 24 * 60 * 60 * 1000);
+    const start = Math.max(earliest - 4 * 60 * 60 * 1000, now - 14 * 24 * 60 * 60 * 1000);
     const end = now + 72 * 60 * 60 * 1000;
     const stepMs = 60 * 60 * 1000;
 
