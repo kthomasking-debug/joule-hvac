@@ -1501,12 +1501,13 @@ export default function ClonazepamTracker() {
   const DIAZEPAM_RAMP_MS = 60 * 60 * 1000;
 
   const diazepamEquivalentChartData = useMemo(() => {
-    if (!entries.length || !chartData.length) return [];
+    if (!modeledEntries.length || !chartData.length) return [];
     const now = recalcAt;
 
-    // Both series use ONLY actual logged entries (no synthetic carryover) so peaks are
-    // equal and the visual comparison purely reflects PK shape / volatility differences.
-    // doseMg × 20 ÷ 20 cancels — diazepam expressed directly in clonazepam-equivalent mg.
+    // Both series use modeledEntries so the 100 days of carryover applies to both.
+    // Clonazepam PK: actual halfLifeHours.
+    // Diazepam PK: 72 h HL, 30 min lag, 60 min ramp.
+    // Both expressed in clonazepam-equivalent mg (doseMg × 20 ÷ 20 = doseMg).
     function diazepamActiveMgAt(takenAtMs, doseClonazepamMg, atMs) {
       const elapsedMs = atMs - takenAtMs;
       if (elapsedMs < 0) return 0;
@@ -1524,10 +1525,10 @@ export default function ClonazepamTracker() {
     }
 
     const points = chartData.map((point) => {
-      const clonazepamMg = entries.reduce((sum, entry) => {
+      const clonazepamMg = modeledEntries.reduce((sum, entry) => {
         return sum + clonazepamActiveMgAtTime(entry, point.ts, now, halfLifeHours);
       }, 0);
-      const diazepamEquivMg = entries.reduce((sum, entry) => {
+      const diazepamEquivMg = modeledEntries.reduce((sum, entry) => {
         const takenAtMs = getEntryTakenAtMs(entry, now);
         return sum + diazepamActiveMgAt(takenAtMs, entry.doseMg || 0, point.ts);
       }, 0);
@@ -1538,10 +1539,23 @@ export default function ClonazepamTracker() {
       };
     });
 
-    // Linear regression trend lines over historical points, extended across full range
+    // Volatility stats computed over historical hourly points
     const historicalPoints = points.filter((p) => p.ts <= now);
     const hn = historicalPoints.length;
 
+    function volatilityStats(getY) {
+      if (hn < 2) return null;
+      const ys = historicalPoints.map(getY);
+      const mean = ys.reduce((s, v) => s + v, 0) / hn;
+      const variance = ys.reduce((s, v) => s + (v - mean) ** 2, 0) / hn;
+      const stdDev = Math.sqrt(variance);
+      const min = Math.min(...ys);
+      const max = Math.max(...ys);
+      const cv = mean > 0 ? (stdDev / mean) * 100 : 0;
+      return { mean: Number(mean.toFixed(3)), stdDev: Number(stdDev.toFixed(3)), min: Number(min.toFixed(3)), max: Number(max.toFixed(3)), range: Number((max - min).toFixed(3)), cv: Number(cv.toFixed(1)) };
+    }
+
+    // Linear regression trend lines over historical points, extended across full range
     function regression(getY) {
       if (hn < 2) return null;
       const xs = historicalPoints.map((p) => p.ts);
@@ -1556,13 +1570,18 @@ export default function ClonazepamTracker() {
 
     const clonazepamReg = regression((p) => p.clonazepamMg);
     const diazepamReg = regression((p) => p.diazepamEquivMg);
+    const clonazepamVol = volatilityStats((p) => p.clonazepamMg);
+    const diazepamVol = volatilityStats((p) => p.diazepamEquivMg);
 
-    return points.map((point) => ({
+    const data = points.map((point) => ({
       ...point,
       clonazepamTrend: clonazepamReg ? Number((clonazepamReg.intercept + clonazepamReg.slope * point.ts).toFixed(3)) : undefined,
       diazepamTrend: diazepamReg ? Number((diazepamReg.intercept + diazepamReg.slope * point.ts).toFixed(3)) : undefined,
     }));
-  }, [entries, chartData, recalcAt, halfLifeHours]);
+
+    data._stats = { clonazepamVol, diazepamVol };
+    return data;
+  }, [modeledEntries, chartData, recalcAt, halfLifeHours]);
 
   const interactionData = useMemo(() => {
     if (!sedationPressureData.length) return [];
@@ -2050,8 +2069,42 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Diazepam Equivalent Comparison (Educational)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Shows how blood levels would look if the same logged doses were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the same doses and the same clonazepam-equivalent mg scale, so peaks are equal — the key difference is volatility: <span className="text-purple-400 font-semibold">purple</span> (clonazepam, 30 h half-life) drops steeply between doses, while <span className="text-sky-400 font-semibold">blue</span> (diazepam equivalent, 72 h half-life) maintains a much higher trough and lower oscillation. Dashed lines are linear regression trends for each.
+          Shows how blood levels would look if the same doses (including carryover from {daysAtCurrentDose} days at dose) were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the clonazepam-equivalent mg scale. Diazepam's 72 h half-life produces a higher, flatter trough than clonazepam's {halfLifeHours} h half-life. Dashed lines are linear regression trends for each.
         </p>
+        {diazepamEquivalentChartData.length > 0 && diazepamEquivalentChartData._stats?.clonazepamVol && (() => {
+          const cvol = diazepamEquivalentChartData._stats.clonazepamVol;
+          const dvol = diazepamEquivalentChartData._stats.diazepamVol;
+          const cvLess = dvol && dvol.cv < cvol.cv;
+          const cvDiff = dvol ? Math.abs(cvol.cv - dvol.cv).toFixed(1) : null;
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm">
+              <div className="space-y-1">
+                <p className="font-semibold text-purple-500">Clonazepam ({halfLifeHours}h HL)</p>
+                <p>Mean active: <strong>{cvol.mean} mg</strong></p>
+                <p>Std dev: <strong>{cvol.stdDev} mg</strong></p>
+                <p>Range (max−min): <strong>{cvol.range} mg</strong> ({cvol.min}–{cvol.max})</p>
+                <p>Coefficient of variation: <strong>{cvol.cv}%</strong></p>
+              </div>
+              {dvol && (
+                <div className="space-y-1">
+                  <p className="font-semibold text-sky-400">Diazepam equiv (72h HL)</p>
+                  <p>Mean active: <strong>{dvol.mean} mg-equiv</strong></p>
+                  <p>Std dev: <strong>{dvol.stdDev} mg</strong></p>
+                  <p>Range (max−min): <strong>{dvol.range} mg</strong> ({dvol.min}–{dvol.max})</p>
+                  <p>Coefficient of variation: <strong>{dvol.cv}%</strong></p>
+                </div>
+              )}
+              {dvol && (
+                <div className="sm:col-span-2 pt-1 border-t border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+                  {cvLess
+                    ? <>Diazepam is <strong className="text-green-500">{cvDiff}% less volatile</strong> than clonazepam (lower CV = more stable blood levels between doses).</>
+                    : <>Clonazepam and diazepam show similar volatility at this dose pattern (<strong>{cvDiff}%</strong> CV difference).</>
+                  }
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {diazepamEquivalentChartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
         ) : (
@@ -2078,13 +2131,13 @@ export default function ClonazepamTracker() {
                       itemStyle={{ color: "#d1d5db" }}
                       labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
                       formatter={(value, name) => {
-                        if (name === "clonazepamMg") return [`${value} mg`, "Clonazepam active (logged doses)"];
+                        if (name === "clonazepamMg") return [`${value} mg`, `Clonazepam active (${halfLifeHours}h HL)`];
                         if (name === "diazepamEquivMg") {
                           const diaz = Number((value * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(1));
-                          return [`${value} mg equiv (= ${diaz} mg diazepam)`, "Active if diazepam used"];
+                          return [`${value} mg-equiv (= ${diaz} mg diazepam)`, "Active if diazepam used (72h HL)"];
                         }
                         if (name === "clonazepamTrend") return [`${value} mg`, "Clonazepam trend"];
-                        if (name === "diazepamTrend") return [`${value} mg equiv`, "Diazepam trend"];
+                        if (name === "diazepamTrend") return [`${value} mg-equiv`, "Diazepam trend"];
                         return [value, name];
                       }}
                     />
