@@ -1546,41 +1546,24 @@ const HomeDashboard = () => {
         {/* ── Budget Section ──────────────────────────────────────── */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-widest text-[#6B7785]">Budget</p>
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              onClick={(e) => {
-                const now = new Date();
-                const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-                const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-                handleFeatureClick(`/analysis/monthly?month=${lastMonth}&year=${lastYear}`, e);
-              }}
-              className="bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-5 hover:border-orange-400/60 transition-colors text-left w-full"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Calendar className="w-7 h-7 text-orange-400" />
-                <h3 className="text-lg font-semibold text-white">Why is my bill so high?</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">Compare last month&apos;s bill to forecast — runs onboarding if needed</p>
-            </button>
-            <button
-              onClick={(e) => {
-                const now = new Date();
-                handleFeatureClick(`/analysis/monthly?month=${now.getMonth() + 1}&year=${now.getFullYear()}`, e);
-              }}
-              className="bg-gradient-to-br from-emerald-600/20 to-teal-700/20 border-2 border-emerald-500/40 rounded-xl p-5 hover:border-emerald-400/60 transition-colors text-left w-full"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <DollarSign className="w-7 h-7 text-emerald-400" />
-                <h3 className="text-lg font-semibold text-white">This month&apos;s bill forecast</h3>
-              </div>
-              <p className="text-sm text-[#A7B0BA]">See expected cost for this month — runs onboarding if needed</p>
-            </button>
-          </div>
+          <Link
+            to="/budget"
+            className="flex items-center gap-4 bg-gradient-to-br from-orange-600/20 to-amber-700/20 border-2 border-orange-500/40 rounded-xl p-5 hover:border-orange-400/60 transition-colors"
+          >
+            <div className="p-2.5 rounded-lg bg-orange-500/20">
+              <DollarSign className="w-7 h-7 text-orange-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Budget</h3>
+              <p className="text-sm text-[#A7B0BA]">Analyze last month&apos;s bill and estimate this month&apos;s HVAC cost</p>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-orange-400 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </Link>
         </div>
 
-        {/* ── Tools Section ───────────────────────────────────────── */}
+        {/* ── Engineering Tools Section ───────────────────────────── */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#6B7785]">Tools</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#6B7785]">Engineering Tools</p>
           <Link
             to="/tools"
             className="flex items-center gap-4 bg-gradient-to-br from-sky-600/20 to-blue-700/20 border-2 border-sky-500/40 rounded-xl p-5 hover:border-sky-400/60 transition-colors"
@@ -1589,8 +1572,8 @@ const HomeDashboard = () => {
               <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">HVAC &amp; Electrical Tools</h3>
-              <p className="text-sm text-[#A7B0BA]">Load calcs, wiring tools, equipment guides, and more</p>
+              <h3 className="text-lg font-semibold text-white">Engineering Tools</h3>
+              <p className="text-sm text-[#A7B0BA]">HVAC load calcs, wiring tools, equipment guides, and more</p>
             </div>
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-sky-400 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </Link>

@@ -843,6 +843,12 @@ export default function ClonazepamTracker() {
   const [cbtInput, setCbtInput] = useState("");
   const [cbtBusy, setCbtBusy] = useState(false);
   const [cbtError, setCbtError] = useState("");
+  // Follow-up prompt state for each AI explain section
+  const [trendFollowup, setTrendFollowup] = useState("");
+  const [diazFollowup, setDiazFollowup] = useState("");
+  const [anxietyFollowup, setAnxietyFollowup] = useState("");
+  // Inline Groq key for CBT section
+  const [cbtGroqKeyInput, setCbtGroqKeyInput] = useState(() => (localStorage.getItem("groqApiKey") || "").trim());
 
   const activeProfile = useMemo(() => {
     return profiles.find((profile) => profile.id === activeProfileId) || profiles[0] || null;
@@ -2070,6 +2076,28 @@ export default function ClonazepamTracker() {
     finally { setAnxietyExplanationBusy(false); }
   };
 
+  // Generic follow-up handler for any AI explain output
+  const sendFollowup = async (prevExplanation, question, setOutput, setBusy, setError) => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setError("Groq API key not found. Add it in Settings."); return; }
+    if (!question.trim()) return;
+    setBusy(true);
+    setError("");
+    const prompt = `Context (previous answer):\n${prevExplanation}\n\nFollow-up question from user: ${question.trim()}\n\nAnswer the follow-up question concisely, referencing the context above where appropriate. End with "Not medical advice."`;
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      const reply = String(payload?.choices?.[0]?.message?.content || "").trim();
+      setOutput((prev) => prev + "\n\n---\n\n**Follow-up:** " + question.trim() + "\n\n" + reply);
+    } catch (err) { setError(String(err.message || "Unknown error")); }
+    finally { setBusy(false); }
+  };
+
   const sendCbtMessage = async () => {
     const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
     if (!groqApiKey) { setCbtError("Groq API key not found. Add it in Settings first."); return; }
@@ -2102,12 +2130,12 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
   };
 
   return (
-    <div className="w-full px-4 py-8 space-y-6">
+    <div className="w-full px-4 py-8 space-y-6 bg-gradient-to-b from-slate-50/50 to-white dark:from-slate-950/60 dark:to-slate-900 min-h-screen">
       <div className="flex items-center gap-3">
-        <Pill className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+        <Pill className="w-8 h-8 text-blue-400 dark:text-blue-300" />
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Clonazepam Tracker</h1>
-          <p className="text-gray-600 dark:text-gray-400">Track clonazepam doses over time using half-life and tolerance-adjusted sedation modeling.</p>
+          <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Clonazepam Tracker</h1>
+          <p className="text-slate-500 dark:text-slate-400">Track clonazepam doses over time using half-life and tolerance-adjusted sedation modeling.</p>
         </div>
       </div>
 
@@ -2378,48 +2406,56 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
                   </div>
                   {trendExplanationError && <p className="text-xs text-red-400">{trendExplanationError}</p>}
                   {trendExplanation && (
-                    <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+                    <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-2">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+                        <button onClick={() => { setTrendExplanation(""); setTrendFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+                      </div>
                       {trendExplanation.split("\n").map((line, i) => {
                         const trimmed = line.trim();
                         if (!trimmed) return null;
-                        // Section header
-                        if (trimmed.startsWith("Suggested Daily Schedule") || trimmed.startsWith("SUGGESTED")) {
-                          return <p key={i} className="font-semibold text-indigo-300 mt-2">{trimmed}</p>;
+                        if (trimmed.startsWith("Suggested Daily Schedule") || trimmed.startsWith("SUGGESTED") || trimmed.startsWith("Taper Pace") || trimmed.startsWith("TAPER")) {
+                          return <p key={i} className="font-semibold text-blue-300 mt-2">{trimmed}</p>;
                         }
-                        // Table header row (Time | Dose | ...)
                         if (/^Time\s*\|/.test(trimmed)) {
                           const cols = trimmed.split("|").map((c) => c.trim());
-                          return (
-                            <div key={i} className="overflow-x-auto">
-                              <table className="text-xs w-full border-collapse mt-1">
-                                <thead>
-                                  <tr>{cols.map((c, j) => <th key={j} className="border border-gray-600 px-2 py-1 text-left text-indigo-300">{c}</th>)}</tr>
-                                </thead>
-                              </table>
-                            </div>
-                          );
+                          return (<div key={i} className="overflow-x-auto"><table className="text-xs w-full border-collapse mt-1"><thead><tr>{cols.map((c, j) => <th key={j} className="border border-slate-600 px-2 py-1 text-left text-blue-300">{c}</th>)}</tr></thead></table></div>);
                         }
-                        // Table divider row (---|---|...)
                         if (/^-+\s*\|/.test(trimmed)) return null;
-                        // Table data row (starts with a time like "8:00 AM |" or "8 AM |")
                         if (/^\d/.test(trimmed) && trimmed.includes("|")) {
                           const cols = trimmed.split("|").map((c) => c.trim());
-                          return (
-                            <div key={i} className="overflow-x-auto -mt-1">
-                              <table className="text-xs w-full border-collapse">
-                                <tbody>
-                                  <tr>{cols.map((c, j) => <td key={j} className="border border-gray-700 px-2 py-0.5">{c}</td>)}</tr>
-                                </tbody>
-                              </table>
-                            </div>
-                          );
+                          return (<div key={i} className="overflow-x-auto -mt-1"><table className="text-xs w-full border-collapse"><tbody><tr>{cols.map((c, j) => <td key={j} className="border border-slate-700 px-2 py-0.5">{c}</td>)}</tr></tbody></table></div>);
                         }
-                        // Safety footer
-                        if (trimmed === "Not medical advice.") {
-                          return <p key={i} className="text-gray-500 mt-1">{trimmed}</p>;
-                        }
+                        if (trimmed === "Not medical advice.") return <p key={i} className="text-slate-500 mt-1">{trimmed}</p>;
+                        if (trimmed.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-blue-200 mt-2">{trimmed.replace(/\*\*/g, "")}</p>;
+                        if (trimmed === "---") return <hr key={i} className="border-slate-600 my-1" />;
                         return <p key={i} className="leading-relaxed">{trimmed}</p>;
                       })}
+                      <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+                        <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={trendFollowup}
+                            onChange={(e) => setTrendFollowup(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && trendFollowup.trim()) {
+                                sendFollowup(trendExplanation, trendFollowup, setTrendExplanation, setTrendExplanationBusy, setTrendExplanationError);
+                                setTrendFollowup("");
+                              }
+                            }}
+                            placeholder="e.g. What does this mean for my next prescriber visit?"
+                            className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            disabled={trendExplanationBusy || !trendFollowup.trim()}
+                            onClick={() => { sendFollowup(trendExplanation, trendFollowup, setTrendExplanation, setTrendExplanationBusy, setTrendExplanationError); setTrendFollowup(""); }}
+                            className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs disabled:opacity-50"
+                          >
+                            {trendExplanationBusy ? "…" : "Ask"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </>
@@ -2500,8 +2536,17 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Diazepam Equivalent Comparison (Educational)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Shows how blood levels would look if the same doses (including carryover from {daysAtCurrentDose} days at dose) were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the <strong>clonazepam-equivalent mg scale</strong> — the 20:1 conversion is already applied, so a 20 mg diazepam dose is plotted as 1 mg-equiv, the same starting height as 1 mg clonazepam. A single isolated dose would produce identical peak heights on both lines. The diazepam line runs approximately 2× higher at steady state not because of a scaling discrepancy, but because diazepam&apos;s 72 h half-life allows far more accumulation between daily doses (steady-state trough ≈ 3.85× one dose) compared to clonazepam&apos;s {halfLifeHours} h half-life (trough ≈ 1.35× one dose). Dashed lines are linear regression trends for each.
+          Shows how blood levels would look if the same doses (including carryover from {daysAtCurrentDose} days at dose) were taken as diazepam instead.
         </p>
+        <details className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/20 dark:bg-sky-950/10">
+          <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-medium text-sky-700 dark:text-sky-300">
+            <span>📖 How to read this chart (PK explanation)</span>
+            <span className="text-sky-400">▼</span>
+          </summary>
+          <p className="px-3 pb-3 pt-1 text-xs text-sky-800 dark:text-sky-300">
+            Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Both lines use the <strong>clonazepam-equivalent mg scale</strong> — the 20:1 conversion is already applied, so a 20 mg diazepam dose is plotted as 1 mg-equiv, the same starting height as 1 mg clonazepam. A single isolated dose would produce identical peak heights on both lines. The diazepam line runs approximately 2× higher at steady state not because of a scaling discrepancy, but because diazepam&apos;s 72 h half-life allows far more accumulation between daily doses (steady-state trough ≈ 3.85× one dose) compared to clonazepam&apos;s {halfLifeHours} h half-life (trough ≈ 1.35× one dose). Dashed lines are linear regression trends for each.
+          </p>
+        </details>
         {diazepamEquivalentChartData.length > 0 && diazepamEquivalentChartData._stats?.clonazepamVol && (() => {
           // Compute stats for the selected zoom window (historical points only)
           const zoomMs = diazepamZoomDays ? diazepamZoomDays * 24 * 60 * 60 * 1000 : Infinity;
@@ -2687,13 +2732,44 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
           {diazExplanationError && <p className="text-xs text-red-400">{diazExplanationError}</p>}
         </div>
         {diazExplanation && (
-          <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-1.5">
+          <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+              <button onClick={() => { setDiazExplanation(""); setDiazFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+            </div>
             {diazExplanation.split("\n").map((line, i) => {
               const t = line.trim();
               if (!t) return null;
-              if (t === "Not medical advice.") return <p key={i} className="text-gray-500">{t}</p>;
+              if (t === "Not medical advice.") return <p key={i} className="text-slate-500">{t}</p>;
+              if (t.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-sky-200 mt-2">{t.replace(/\*\*/g, "")}</p>;
+              if (t === "---") return <hr key={i} className="border-slate-600 my-1" />;
               return <p key={i} className="leading-relaxed">{t}</p>;
             })}
+            <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+              <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={diazFollowup}
+                  onChange={(e) => setDiazFollowup(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && diazFollowup.trim()) {
+                      sendFollowup(diazExplanation, diazFollowup, setDiazExplanation, setDiazExplanationBusy, setDiazExplanationError);
+                      setDiazFollowup("");
+                    }
+                  }}
+                  placeholder="e.g. Would diazepam be less sedating at the same dose?"
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <button
+                  disabled={diazExplanationBusy || !diazFollowup.trim()}
+                  onClick={() => { sendFollowup(diazExplanation, diazFollowup, setDiazExplanation, setDiazExplanationBusy, setDiazExplanationError); setDiazFollowup(""); }}
+                  className="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-white text-xs disabled:opacity-50"
+                >
+                  {diazExplanationBusy ? "…" : "Ask"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -2784,13 +2860,44 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
           {anxietyExplanationError && <p className="text-xs text-red-400">{anxietyExplanationError}</p>}
         </div>
         {anxietyExplanation && (
-          <div className="text-xs text-gray-300 bg-gray-800 rounded p-3 border border-gray-700 space-y-1.5">
+          <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+              <button onClick={() => { setAnxietyExplanation(""); setAnxietyFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+            </div>
             {anxietyExplanation.split("\n").map((line, i) => {
               const t = line.trim();
               if (!t) return null;
-              if (t === "Not medical advice.") return <p key={i} className="text-gray-500">{t}</p>;
+              if (t === "Not medical advice.") return <p key={i} className="text-slate-500">{t}</p>;
+              if (t.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-yellow-200 mt-2">{t.replace(/\*\*/g, "")}</p>;
+              if (t === "---") return <hr key={i} className="border-slate-600 my-1" />;
               return <p key={i} className="leading-relaxed">{t}</p>;
             })}
+            <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+              <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={anxietyFollowup}
+                  onChange={(e) => setAnxietyFollowup(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && anxietyFollowup.trim()) {
+                      sendFollowup(anxietyExplanation, anxietyFollowup, setAnxietyExplanation, setAnxietyExplanationBusy, setAnxietyExplanationError);
+                      setAnxietyFollowup("");
+                    }
+                  }}
+                  placeholder="e.g. What can I do tonight to reduce my anxiety index?"
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                />
+                <button
+                  disabled={anxietyExplanationBusy || !anxietyFollowup.trim()}
+                  onClick={() => { sendFollowup(anxietyExplanation, anxietyFollowup, setAnxietyExplanation, setAnxietyExplanationBusy, setAnxietyExplanationError); setAnxietyFollowup(""); }}
+                  className="px-2 py-1 rounded bg-yellow-700 hover:bg-yellow-600 text-white text-xs disabled:opacity-50"
+                >
+                  {anxietyExplanationBusy ? "…" : "Ask"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -2799,19 +2906,51 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
       </div>
 
       {/* ── CBT Support + Worksheets ─────────────────────────────────────── */}
-      <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10 p-4 space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">🧠</span>
-          <div>
-            <h2 className="font-semibold text-emerald-900 dark:text-emerald-100">CBT Support for Taper Anxiety</h2>
-            <p className="text-sm text-emerald-700 dark:text-emerald-300">Cognitive Behavioral Therapy tools and an AI chat assistant — not a replacement for a licensed therapist.</p>
+      <details className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10" open>
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🧠</span>
+            <div>
+              <h2 className="font-semibold text-emerald-900 dark:text-emerald-100">CBT Support for Taper Anxiety</h2>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">Cognitive Behavioral Therapy tools and AI chat assistant</p>
+            </div>
           </div>
-        </div>
+          <span className="text-emerald-400 text-sm group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div className="px-4 pb-4 space-y-4">
 
         {/* CBT AI Chat */}
         <div className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-900 p-4 space-y-3">
           <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">CBT AI Assistant</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">Supports thought challenging, cognitive restructuring, and coping strategies. Uses your current taper context. Requires Groq API key.</p>
+          {/* Inline Groq key entry */}
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 px-3 py-2 space-y-1">
+            <label className="block text-xs font-medium text-emerald-800 dark:text-emerald-200">Groq API Key</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={cbtGroqKeyInput}
+                onChange={(e) => setCbtGroqKeyInput(e.target.value)}
+                placeholder="gsk_…"
+                className="flex-1 px-2 py-1 text-xs rounded border border-emerald-300 dark:border-emerald-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const k = cbtGroqKeyInput.trim();
+                  if (k) {
+                    try { localStorage.setItem("groqApiKey", k); window.dispatchEvent(new CustomEvent("groqApiKeyUpdated", { detail: { apiKey: k } })); }
+                    catch {}
+                    setCbtError("");
+                  }
+                }}
+                className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium"
+              >
+                Save
+              </button>
+            </div>
+            <p className="text-[10px] text-emerald-600 dark:text-emerald-400">Key is saved locally to your browser. Get a free key at <a href="https://console.groq.com" target="_blank" rel="noreferrer" className="underline">console.groq.com</a>.</p>
+          </div>
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
             {cbtMessages.map((msg, i) => (
               <div key={i} className={`text-xs rounded p-2 ${msg.role === "user" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-100 text-right ml-8" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 mr-8"}`}>
@@ -2921,7 +3060,8 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
           </div>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">CBT worksheets are educational tools only. Not a replacement for a licensed therapist. If you are in crisis, call or text 988 (Suicide & Crisis Lifeline) or contact your prescriber.</p>
-      </div>
+        </div>{/* end inner content wrapper */}
+      </details>
 
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/10 p-4 space-y-3">
         <h2 className="font-semibold text-indigo-950 dark:text-indigo-100">Educational Taper Schedule Preview</h2>
@@ -3260,9 +3400,14 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
         )}
       </div>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" open>
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
           <h2 className="font-semibold text-gray-900 dark:text-white">Dose Log</h2>
+          <span className="text-gray-400 text-sm group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div className="px-4 pb-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span />
           {combinedDoseLogEntries.length > 0 && (
             <button
               type="button"
@@ -3347,18 +3492,28 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
             })}
           </div>
         )}
-      </div>
+        </div>
+      </details>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-white">Drug List</h2>
+      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Drug List</h2>
+          <span className="text-gray-400 text-sm group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div className="px-4 pb-4 space-y-3">
         <ul className="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
           <li>Clonazepam (tracked)</li>
           <li>Caffeine (interaction layer from Caffeine Tracker)</li>
         </ul>
-      </div>
+        </div>
+      </details>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-white">Math Model</h2>
+      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Math Model</h2>
+          <span className="text-gray-400 text-sm group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div className="px-4 pb-4 space-y-3">
         <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-2 text-xs sm:text-sm text-indigo-950 dark:text-indigo-100">
           <h3 className="font-semibold">Live calculations using your current tracker inputs</h3>
           <div className="flex flex-wrap items-end gap-2">
@@ -3456,10 +3611,15 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
           <p><strong>Caffeine wakefulness support:</strong> each caffeine entry uses a fixed {CAFFEINE_ONSET_LAG_MINUTES} min lag plus {CAFFEINE_ONSET_RAMP_MINUTES} min smooth ramp to full effect, so wakefulness support typically peaks around {CAFFEINE_ONSET_FULL_EFFECT_MINUTES} min after each sip; C = ActiveCaffeine_mg / weight_kg, Support = 100 × C/(C + 2.0), Alertness_with_caffeine = clamp(Alertness + Support, 0, 100); sedation pressure itself is unchanged.</p>
           <p><strong>Withdrawal risk threshold (estimated):</strong> decay = 0.5^(interval/halfLife), Trough_ss = MaintenanceDose × [decay/(1 − decay)], Threshold = max(0.05, 0.45 × Trough_ss)</p>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-white">Further Research</h2>
+      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Further Research</h2>
+          <span className="text-gray-400 text-sm group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div className="px-4 pb-4 space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           External references for pharmacokinetics, tolerance biology, taper planning, and withdrawal symptom patterns.
         </p>
@@ -3496,7 +3656,8 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Educational information only, not medical advice. Benzodiazepine tapering should be individualized and supervised by a qualified clinician.
         </p>
-      </div>
+        </div>
+      </details>
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Suggested Communities</h2>

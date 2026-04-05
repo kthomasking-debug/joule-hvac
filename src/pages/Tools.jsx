@@ -282,10 +282,10 @@ export default function Tools() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Tools
+          Engineering Tools
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          HVAC calculation, wiring, troubleshooting, and wellness tools
+          HVAC calculation, wiring, troubleshooting, and electrical tools
         </p>
       </div>
 

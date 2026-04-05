@@ -26,6 +26,7 @@ const MonthlyBudgetPlanner = lazy(() => import("./pages/MonthlyBudgetPlanner"));
 const ProfessionalMode = lazy(() => import("./pages/ProfessionalMode"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Tools = lazy(() => import("./pages/Tools"));
+const BudgetHub = lazy(() => import("./pages/BudgetHub"));
 const WellnessTools = lazy(() => import("./pages/WellnessTools"));
 const DailyCalorieIntake = lazy(() => import("./pages/DailyCalorieIntake"));
 const NWSSnowfallChart = lazy(() => import("./pages/NWSSnowfallChart"));
@@ -149,6 +150,7 @@ import {
   ReceiptText,
   Coffee,
   Pill,
+  BarChart3,
 } from "lucide-react";
 
 export const routes = [
@@ -897,9 +899,20 @@ export const routes = [
       "Model Kohler 14/20 RESA propane usage and interval savings.",
   },
   {
+    path: "/budget",
+    name: "Budget",
+    label: "Budget",
+    icon: BarChart3,
+    Component: BudgetHub,
+    showInNav: false,
+    inMobileNav: false,
+    inPrimaryNav: false,
+    description: "HVAC bill analysis and monthly cost forecasting",
+  },
+  {
     path: "/tools",
-    name: "Tools",
-    label: "Tools",
+    name: "Engineering Tools",
+    label: "Engineering Tools",
     icon: Tool,
     Component: Tools,
     showInNav: true,

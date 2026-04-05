@@ -904,6 +904,74 @@ export default function WellnessTools() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-400">Full sync controls on <Link to="/home" className="underline text-fuchsia-600 dark:text-fuchsia-400">Mission Control</Link>.</p>
+                <div className="border-t border-fuchsia-100 dark:border-fuchsia-900 pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-300">Export &amp; Sync</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const allKeys = Object.keys(localStorage);
+                        const hvacKeys = allKeys.filter((k) =>
+                          k.startsWith("userSetting") || k.startsWith("onboarding") ||
+                          k.startsWith("hvac") || k === "squareFeet" || k === "insulationLevel" ||
+                          k === "primarySystem" || k === "heatPumpTons" || k === "furnaceSizeKbtu" ||
+                          k === "afue" || k === "acTons" || k === "daytimeTemp" || k === "nightTemp" ||
+                          k.startsWith("analysis") || k.startsWith("bill")
+                        );
+                        const wellnessKeys = allKeys.filter((k) =>
+                          k.startsWith("wellness") || k.startsWith("caffeine") || k.startsWith("calorie") ||
+                          k.startsWith("clonazepam") || k.startsWith("taper") || k.startsWith("medication")
+                        );
+                        const snapshot = {
+                          exportedAt: new Date().toISOString(),
+                          user: globalUserName || "unknown",
+                          todo: (() => { try { return JSON.parse(localStorage.getItem("toolsToDoV1") || "[]"); } catch { return []; } })(),
+                          hvacOnboarding: Object.fromEntries(hvacKeys.map((k) => [k, (() => { try { return JSON.parse(localStorage.getItem(k)); } catch { return localStorage.getItem(k); } })()])),
+                          wellness: Object.fromEntries(wellnessKeys.map((k) => [k, (() => { try { return JSON.parse(localStorage.getItem(k)); } catch { return localStorage.getItem(k); } })()])),
+                          groqModel: localStorage.getItem("groqModel") || "llama-3.3-70b-versatile",
+                        };
+                        const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `joule-data-${globalUserName || "export"}-${new Date().toISOString().slice(0, 10)}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        alert("Export failed: " + (err?.message || "unknown error"));
+                      }
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-700 text-xs text-fuchsia-800 dark:text-fuchsia-200 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/40 transition-colors"
+                  >
+                    ⬇ Download all data as JSON
+                    <span className="block text-[10px] text-fuchsia-500 dark:text-fuchsia-400 mt-0.5">Includes todo, HVAC onboarding, wellness, and tracker data</span>
+                  </button>
+                  <label className="block">
+                    <span className="text-xs text-fuchsia-700 dark:text-fuchsia-300 block mb-1">⬆ Restore from JSON backup</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      className="text-xs text-gray-600 dark:text-gray-400 w-full"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          try {
+                            const data = JSON.parse(ev.target.result);
+                            let count = 0;
+                            if (data.todo) { localStorage.setItem("toolsToDoV1", JSON.stringify(data.todo)); count++; }
+                            if (data.hvacOnboarding) { Object.entries(data.hvacOnboarding).forEach(([k, v]) => { localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v)); count++; }); }
+                            if (data.wellness) { Object.entries(data.wellness).forEach(([k, v]) => { localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v)); count++; }); }
+                            alert(`Restored ${count} items. Reload the page to apply.`);
+                            e.target.value = "";
+                          } catch (err) { alert("Restore failed: " + (err?.message || "invalid JSON")); }
+                        };
+                        reader.readAsText(file);
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
             )}
           </div>
