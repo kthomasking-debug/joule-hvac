@@ -794,6 +794,7 @@ export default function ClonazepamTracker() {
     return initialClonazState.lastMaintenanceDoseAt || getNowLocalDateTimeValue();
   });
   const taperStartDoseMg = maintenanceDoseMg;
+  const [taperStartDate, setTaperStartDate] = useState(() => getNowLocalDateTimeValue()); // ADD THIS
   const [taperStepMg, setTaperStepMg] = useState(0.125);
   const [taperHoldDays, setTaperHoldDays] = useState(14);
   const [taperMinimumDoseMg, setTaperMinimumDoseMg] = useState(0.125);
@@ -1522,8 +1523,11 @@ export default function ClonazepamTracker() {
       const firstCutDose = Math.max(0, startDose - stepDose);
       currentDose = firstCutDose < minimumDose ? minimumDose : firstCutDose;
     }
+    const parsedStartMs = new Date(taperStartDate).getTime();
+    const effectiveStartMs = Number.isFinite(parsedStartMs) && parsedStartMs > 0 ? parsedStartMs : recalcAt;
+
     let stepIndex = 0;
-    let stepStartMs = recalcAt;
+    let stepStartMs = effectiveStartMs;
     const maxSteps = 60;
 
     while (currentDose > 0 && stepIndex < maxSteps) {
@@ -1560,7 +1564,7 @@ export default function ClonazepamTracker() {
       totalDays: rows.length * holdDays,
       completedAt,
     };
-  }, [taperStartDoseMg, taperStepMg, taperHoldDays, taperMinimumDoseMg, recalcAt]);
+  }, [taperStartDoseMg, taperStepMg, taperHoldDays, taperMinimumDoseMg, taperStartDate, recalcAt]);
 
   const currentTaperStep = useMemo(() => {
     if (!taperSchedule.rows.length) {
@@ -1575,6 +1579,10 @@ export default function ClonazepamTracker() {
 
     if (taperSchedule.completedAt && now >= taperSchedule.completedAt) {
       return { rowId: null, isStop: true };
+    }
+    // If we haven't reached the start date yet, don't highlight any step
+    if (now < taperSchedule.rows[0].startMs) {
+      return { rowId: null, isStop: false };
     }
 
     return { rowId: taperSchedule.rows[0].id, isStop: false };
@@ -1888,7 +1896,16 @@ export default function ClonazepamTracker() {
         <p className="text-sm text-indigo-900 dark:text-indigo-200">
           Enter a clinician-agreed taper pattern below to preview dates and dose steps. The first reduction is applied immediately at schedule start. This does not recommend a taper and is not medical advice.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <label className="space-y-1">
+            <span className="text-sm text-indigo-900 dark:text-indigo-200">Start date</span>
+            <input
+              type="datetime-local"
+              value={taperStartDate}
+              onChange={(e) => setTaperStartDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-900"
+            />
+          </label>
           <label className="space-y-1">
             <span className="text-sm text-indigo-900 dark:text-indigo-200">Start dose (mg)</span>
             <input
