@@ -1507,7 +1507,7 @@ export default function ClonazepamTracker() {
 
     const withTrend = merged.map((point) => ({
       ...point,
-      trendMg: samples.length >= 2 ? Number((trendIntercept + trendSlope * point.ts).toFixed(3)) : undefined,
+      trendMg: samples.length >= 2 && point.ts <= recalcAt ? Number((trendIntercept + trendSlope * point.ts).toFixed(3)) : undefined,
     }));
 
     const result = splitActiveSeriesBySedationBand(withTrend);
@@ -2906,7 +2906,7 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
       </div>
 
       {/* ── CBT Support + Worksheets ─────────────────────────────────────── */}
-      <details className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10" open>
+      <details className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10">
         <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🧠</span>
@@ -3400,7 +3400,7 @@ Use standard CBT techniques: thought challenging, cognitive restructuring, behav
         )}
       </div>
 
-      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" open>
+      <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between group">
           <h2 className="font-semibold text-gray-900 dark:text-white">Dose Log</h2>
           <span className="text-gray-400 text-sm group-open:rotate-180 transition-transform">▼</span>

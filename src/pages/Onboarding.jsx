@@ -1134,12 +1134,12 @@ export default function Onboarding() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
             You're all set!
           </h2>
-          <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-base text-gray-600 dark:text-gray-400 mb-6">
             You've already completed onboarding. Ready to launch the app?
           </p>
           <button
             onClick={() => navigate("/analysis/monthly#bill-analysis")}
-            className="btn btn-primary px-8 py-3 text-xl"
+            className="btn btn-primary px-8 py-3 text-base"
           >
             Launch App <ArrowRight size={20} className="inline ml-2" />
           </button>
@@ -1176,7 +1176,7 @@ export default function Onboarding() {
             {STEP_LABELS.map((label, i) => (
               <div
                 key={i}
-                className={`flex-1 text-center text-lg font-medium transition-colors ${
+                className={`flex-1 text-center text-sm font-medium transition-colors ${
                   i <= step ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-600"
                 }`}
               >
@@ -1223,7 +1223,7 @@ export default function Onboarding() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
               Welcome — let's figure out your bill
             </h2>
-            <p className="text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-4 max-w-xl mx-auto">
+            <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed mb-4 max-w-xl mx-auto">
               We'll guide you step by step. No rush, no jargon—just a simple path
               to understanding your energy costs.
             </p>
@@ -1233,11 +1233,11 @@ export default function Onboarding() {
               <span>Takes about 2 minutes</span>
             </div>
 
-            <p className="text-lg text-gray-500 dark:text-gray-400 mb-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               Uses sensible defaults. You'll still confirm your home details for accurate estimates.
             </p>
 
-            <button onClick={handleNext} className="btn btn-primary px-8 py-3 text-xl">
+            <button onClick={handleNext} className="btn btn-primary px-8 py-3 text-base">
               Let's Begin
             </button>
           </div>
@@ -1249,13 +1249,13 @@ export default function Onboarding() {
             <div className="mb-4">
               <MapPin size={48} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
               STEP {step + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
               Where do you live?
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-base text-gray-600 dark:text-gray-400 mb-6">
               We use this for local weather and utility rate data.
             </p>
 
@@ -1272,23 +1272,23 @@ export default function Onboarding() {
                   }
                 }}
               />
-              <p className="text-lg text-gray-600 dark:text-gray-300 mb-3 mt-2">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 mt-2">
                 Format: <span className="font-semibold">City, State</span>
               </p>
 
               {locationError && (
                 <div className="flex items-center gap-2 mt-3 mb-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200">
-                  <span className="text-xl font-medium">{locationError}</span>
+                  <span className="text-sm">{locationError}</span>
                 </div>
               )}
 
               {foundLocation && !locationLoading && (
                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-900/30 dark:border-green-700">
-                  <p className="text-green-800 text-lg dark:text-green-400 flex items-center justify-center gap-2">
+                  <p className="text-green-800 text-sm dark:text-green-400 flex items-center justify-center gap-2">
                     <Check size={16} className="text-green-600" />
                     Found: <strong>{foundLocation}</strong>
                     {locationElevation !== null && (
-                      <span className="text-lg">({Math.round(locationElevation)} ft elevation)</span>
+                      <span className="text-sm">({Math.round(locationElevation)} ft elevation)</span>
                     )}
                   </p>
                 </div>
@@ -1330,19 +1330,19 @@ export default function Onboarding() {
             <div className="mb-2">
               <Home size={36} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
               STEP {step + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
               Tell us about your home
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 mb-3">
+            <p className="text-base text-gray-600 dark:text-gray-400 mb-3">
               This helps estimate your energy usage and enables personalized answers.
             </p>
             
             {/* Validation error display */}
             {buildingError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200 text-xl max-w-md mx-auto">
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200 text-sm max-w-md mx-auto">
                 {buildingError}
               </div>
             )}
@@ -1350,7 +1350,7 @@ export default function Onboarding() {
             <div className="space-y-3 text-left max-w-md mx-auto">
               {/* Square Feet */}
               <div>
-                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Home Size (sq ft)
                   {squareFeet >= 100 && squareFeet <= 20000 && (
                     <Check size={14} className="text-green-500" />
@@ -1368,7 +1368,7 @@ export default function Onboarding() {
 
               {/* Insulation */}
               <div>
-                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                   Insulation Quality
                   {insulationLevel > 0 && <Check size={14} className="text-green-500" />}
                 </label>
@@ -1385,7 +1385,7 @@ export default function Onboarding() {
 
               {/* Building Shape */}
               <div>
-                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Building Shape
                 </label>
                 <select
@@ -1401,7 +1401,7 @@ export default function Onboarding() {
                 </select>
                 {/* Loft toggle - only show for Cabin */}
                 {homeShape >= 1.2 && homeShape < 1.3 && (
-                  <label className="flex items-center gap-3 text-xl text-gray-700 dark:text-gray-300 cursor-pointer mt-1">
+                  <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300 cursor-pointer mt-1">
                     <input
                       type="checkbox"
                       checked={hasLoft}
@@ -1415,7 +1415,7 @@ export default function Onboarding() {
 
               {/* Ceiling Height */}
               <div>
-                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Ceiling Height
                 </label>
                 <select
@@ -1433,7 +1433,7 @@ export default function Onboarding() {
 
               {/* Primary System */}
               <div>
-                <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Primary Heating System
                 </label>
                 <select
@@ -1446,14 +1446,14 @@ export default function Onboarding() {
                   <option value="acPlusGas">Central AC + Gas Furnace</option>
                 </select>
                 {primarySystem === "acPlusGas" && (
-                  <p className="text-xl text-gray-500 dark:text-gray-400 mt-1">Cooling in summer (condenser), gas heat in winter.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Cooling in summer (condenser), gas heat in winter.</p>
                 )}
               </div>
 
               {/* Heat Pump Size (only show if heat pump is selected) */}
               {primarySystem === "heatPump" && (
                 <div>
-                  <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                     Heat Pump Size (total system tonnage)
                     <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total system capacity in tons. Check outdoor unit label — 12k BTU = 1 ton. Single or multi-zone: use the combined tonnage.">
                       <HelpCircle size={12} />
@@ -1478,7 +1478,7 @@ export default function Onboarding() {
               {primarySystem === "gasFurnace" && (
                 <>
                   <div>
-                    <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                       Furnace Size (total BTUs)
                       <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total furnace capacity in BTU/hr. Check furnace nameplate or model. Single or multi-zone: use the combined heating output.">
                         <HelpCircle size={12} />
@@ -1495,7 +1495,7 @@ export default function Onboarding() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       AFUE (efficiency)
                     </label>
                     <select
@@ -1513,7 +1513,7 @@ export default function Onboarding() {
 
               {primarySystem === "acPlusGas" && (
                 <div>
-                  <label className="block text-xl font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                     AC / Condenser Size (total system tonnage, summer cooling)
                     <span className="text-gray-400 hover:text-blue-500 cursor-help" title="Enter your total system cooling capacity in tons. 12k BTU = 1 ton. Single or multi-zone: use combined tonnage — this must match your whole-house bill.">
                       <HelpCircle size={12} />
@@ -1555,19 +1555,19 @@ export default function Onboarding() {
         {/* Step 3: Thermostat — simple day/night temps, no schedule */}
         {step === STEPS.THERMOSTAT && (
           <div className="text-center space-y-8">
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               STEP {STEPS.THERMOSTAT + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               About what temperature do you keep the house?
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+            <p className="text-base text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
               This helps Joule estimate heating demand. You can change it later.
             </p>
 
             <div className="max-w-md mx-auto space-y-6 text-left">
               <div>
-                <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   Daytime temperature
                 </label>
                 <div className="flex items-center gap-2">
@@ -1579,7 +1579,7 @@ export default function Onboarding() {
                     onChange={(e) => setDaytimeTemp(Math.min(85, Math.max(55, Number(e.target.value) || 70)))}
                     className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
                   />
-                  <span className="text-2xl text-gray-500 dark:text-gray-400">°F</span>
+                  <span className="text-lg text-gray-500 dark:text-gray-400">°F</span>
                 </div>
               </div>
 
@@ -1590,17 +1590,17 @@ export default function Onboarding() {
                   onChange={(e) => setDropsAtNight(e.target.checked)}
                   className="w-6 h-6 rounded border-gray-300 dark:border-gray-600"
                 />
-                <span className="text-xl text-gray-700 dark:text-gray-300">It drops at night</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">It drops at night</span>
               </label>
               {dropsAtNight && (
-                <p className="text-lg text-gray-500 dark:text-gray-400 -mt-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400 -mt-2">
                   Most homes drop 3–5°F overnight.
                 </p>
               )}
 
               {dropsAtNight && (
                 <div>
-                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                     Night temperature
                   </label>
                   <div className="flex items-center gap-2">
@@ -1612,7 +1612,7 @@ export default function Onboarding() {
                       onChange={(e) => setNightTemp(Math.min(80, Math.max(50, Number(e.target.value) || 66)))}
                       className={`${fullInputClasses} flex-1 max-w-[140px] text-4xl py-4`}
                     />
-                    <span className="text-2xl text-gray-500 dark:text-gray-400">°F</span>
+                    <span className="text-lg text-gray-500 dark:text-gray-400">°F</span>
                   </div>
                 </div>
               )}
@@ -1641,28 +1641,28 @@ export default function Onboarding() {
           return (
             <div className="space-y-8">
               <div className="text-center mb-6">
-                <p className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
                   STEP {STEPS.COST_SETTINGS + 1} OF {totalSteps}
                 </p>
                 <DollarSign size={48} className="mx-auto text-emerald-600 dark:text-emerald-400 mb-4" />
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
                   Cost Settings
                 </h2>
-                <p className="text-xl text-gray-600 dark:text-gray-400">
+                <p className="text-base text-gray-600 dark:text-gray-400">
                   Used for 7-day cost forecasts, annual estimates, and gas vs heat pump comparisons.
                 </p>
-                <p className="text-lg text-gray-500 dark:text-gray-400 mt-2 italic">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 italic">
                   These rates are used for budgeting and comparisons. They do not affect your utility bill or thermostat.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                 <div>
-                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">
                     Cost per kWh ($)
                   </label>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
+                    <span className="text-xl text-gray-500 dark:text-gray-400">$</span>
                     <input
                       type="number"
                       min={0.05}
@@ -1672,18 +1672,18 @@ export default function Onboarding() {
                       onChange={(e) => setUtilityCost(Math.min(1.0, Math.max(0.05, Number(e.target.value) || 0.05)))}
                       className={`${fullInputClasses} flex-1 text-4xl py-4`}
                     />
-                    <span className="text-4xl text-gray-500 dark:text-gray-400">/kWh</span>
+                    <span className="text-xl text-gray-500 dark:text-gray-400">/kWh</span>
                   </div>
                   {costLocationDisplay && costStateName && (
                     <>
                       <button
                         type="button"
                         onClick={() => setUtilityCost(stateElecRate)}
-                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="mb-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Use State Average
                       </button>
-                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} average: ${stateElecRate.toFixed(2)}/kWh (EIA data)
                       </p>
                     </>
@@ -1691,11 +1691,11 @@ export default function Onboarding() {
                 </div>
 
                 <div>
-                  <label className="block text-xl font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">
                     Gas Cost per Therm ($)
                   </label>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-4xl text-gray-500 dark:text-gray-400">$</span>
+                    <span className="text-xl text-gray-500 dark:text-gray-400">$</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1705,18 +1705,18 @@ export default function Onboarding() {
                       onChange={(e) => setGasCost(Math.min(5.0, Math.max(0.5, Number(e.target.value) || 0.5)))}
                       className={`${fullInputClasses} flex-1 text-4xl py-4`}
                     />
-                    <span className="text-4xl text-gray-500 dark:text-gray-400">/therm</span>
+                    <span className="text-xl text-gray-500 dark:text-gray-400">/therm</span>
                   </div>
                   {costLocationDisplay && costStateName && (
                     <>
                       <button
                         type="button"
                         onClick={() => setGasCost(stateGasRate)}
-                        className="mb-2 px-3 py-1.5 text-lg font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="mb-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Use State Average
                       </button>
-                      <p className="text-lg text-blue-600 dark:text-blue-400 mt-1.5">
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1.5">
                         💡 {costLocationDisplay} average: ~${stateGasRate.toFixed(2)}/therm (EIA data)
                       </p>
                     </>
@@ -1747,13 +1747,13 @@ export default function Onboarding() {
             <div className="mb-2">
               <Cpu size={36} className="mx-auto text-blue-600 dark:text-blue-400" />
             </div>
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               STEP {STEPS.AI + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               Add your Groq API key
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-base text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Entering a key enables cloud AI immediately and sets Groq as your default model provider.
             </p>
 
@@ -1802,20 +1802,20 @@ export default function Onboarding() {
         {/* Step 6: Bill Upload — emotional hook */}
         {step === STEPS.BILL_UPLOAD && (
           <div className="text-center space-y-6">
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               STEP {STEPS.BILL_UPLOAD + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               Enter your last bill
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+            <p className="text-base text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
               Finally someone will explain this.
             </p>
 
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 text-left max-w-lg mx-auto space-y-3">
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                <p className="text-lg font-medium text-gray-700 dark:text-gray-300">Bill period</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Bill period</p>
               </div>
               <div className="flex flex-wrap gap-3 items-center">
                 <select
@@ -1842,21 +1842,21 @@ export default function Onboarding() {
                   })()}
                 </select>
               </div>
-              <p className="text-lg text-gray-600 dark:text-gray-400 mb-2">Bill amount (usage)</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Bill amount (usage)</p>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-xl text-gray-700 dark:text-gray-300">$</span>
+                <span className="text-base text-gray-700 dark:text-gray-300">$</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={billAmountManual}
                   onChange={(e) => setBillAmountManual(e.target.value.replace(/[^0-9.]/g, ""))}
                   placeholder="e.g. 150"
-                  className="w-28 px-3 py-2 text-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-28 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Flat monthly fee (optional)</p>
               <div className="flex items-center gap-2">
-                <span className="text-lg text-gray-600 dark:text-gray-400">$</span>
+                <span className="text-base text-gray-600 dark:text-gray-400">$</span>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -1943,7 +1943,7 @@ export default function Onboarding() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
               {localStorage.getItem("onboardingBillExtracted") || localStorage.getItem("onboardingBillPaste") ? "Preparing your forecast" : "Joule is analyzing your home"}
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400">
+            <p className="text-base text-gray-600 dark:text-gray-400">
               {localStorage.getItem("onboardingBillExtracted") || localStorage.getItem("onboardingBillPaste") ? "Preparing your monthly forecast..." : "Comparing to similar homes in your area..."}
             </p>
           </div>
@@ -1970,18 +1970,18 @@ export default function Onboarding() {
           const costPercentile = 100 - efficiencyPercentile;
           return (
           <div className="text-center space-y-6">
-            <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               STEP {STEPS.PAYOFF + 1} OF {totalSteps}
             </p>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               Your heating cost is higher than {costPercentile}% of homes in your area.
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+            <p className="text-base text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
               Let's find out why.
             </p>
 
             <div className="flex justify-center pt-4">
-              <button onClick={handleNext} className="btn btn-primary px-10 py-3 text-xl">
+              <button onClick={handleNext} className="btn btn-primary px-10 py-3 text-base">
                 Find Out Why <ArrowRight size={20} />
               </button>
             </div>

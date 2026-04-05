@@ -1298,7 +1298,7 @@ const HomeDashboard = () => {
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
             >
               <SettingsIcon className="w-4 h-4" />
-              Re-run Onboarding
+              Run Onboarding
             </Link>
 
             {showLoginSyncPanel && (

@@ -548,6 +548,10 @@ export default function MedicationMixModel() {
   });
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
   const [showAdvancedMath, setShowAdvancedMath] = useState(false);
+  const [cnsExplanation, setCnsExplanation] = useState("");
+  const [cnsExplanationBusy, setCnsExplanationBusy] = useState(false);
+  const [cnsExplanationError, setCnsExplanationError] = useState("");
+  const [cnsFollowup, setCnsFollowup] = useState("");
 
   useEffect(() => {
     const globalUserName = localStorage.getItem(WELLNESS_GLOBAL_USER_NAME_KEY);
@@ -938,6 +942,64 @@ export default function MedicationMixModel() {
     return out;
   }, [modelData.points]);
 
+  const sendCnsFollowup = async (prevExplanation, question) => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setCnsExplanationError("Groq API key not found. Add it in Settings."); return; }
+    setCnsExplanationBusy(true); setCnsExplanationError("");
+    const prompt = `Previous analysis:\n${prevExplanation}\n\n---\n\nFollow-up question: ${question}`;
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setCnsExplanation((prev) => prev + "\n\n---\n\n**Follow-up:** " + question + "\n\n" + content);
+    } catch (err) { setCnsExplanationError(String(err.message || "Unknown error")); }
+    finally { setCnsExplanationBusy(false); }
+  };
+
+  const explainCnsChart = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setCnsExplanationError("Groq API key not found. Add it in Settings first."); return; }
+    if (cnsExplanationBusy) return;
+    setCnsExplanationBusy(true); setCnsExplanationError(""); setCnsExplanation("");
+    const nowPt = modelData.points.find((p) => p.ts >= recalcAt) || modelData.points[modelData.points.length - 1];
+    const sedative = nowPt?.sedativePressure ?? 0;
+    const caffeine = nowPt?.stimulantCounterPressure ?? 0;
+    const psychomotor = nowPt?.psychomotorImpairment ?? 0;
+    const alertness = nowPt?.alertness ?? 0;
+    const drugs = Object.entries(modelData.nowAmounts || {}).filter(([, v]) => typeof v === "number" && v > 0).map(([k, v]) => `${k}: ${v.toFixed(3)}`).join(", ");
+    const prompt = [
+      `COMBINED CNS LOAD MODEL — CURRENT SNAPSHOT`,
+      `Active drug amounts right now: ${drugs || "none logged"}.`,
+      `Modeled values at this moment: Sedative pressure ${sedative.toFixed(0)}%, Caffeine counter-pressure ${caffeine.toFixed(0)}%, Psychomotor impairment ${psychomotor.toFixed(0)}%, Functional alertness ${alertness.toFixed(0)}%.`,
+      ``,
+      `In 3–4 bullet points, explain what these CNS load numbers mean in plain language:`,
+      `1. What the combined sedative pressure of ${sedative.toFixed(0)}% and caffeine counter-pressure of ${caffeine.toFixed(0)}% indicates for functional state right now`,
+      `2. What psychomotor impairment of ${psychomotor.toFixed(0)}% means for activities like driving or precision tasks`,
+      `3. How the interaction between the sedating drugs and caffeine affects the net alertness of ${alertness.toFixed(0)}%`,
+      `4. One practical safety consideration given this combination`,
+      `End with: "Not medical advice."`,
+    ].join("\n");
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) { const t = await res.text(); throw new Error(`Groq API error ${res.status}: ${t.slice(0, 200)}`); }
+      const payload = await res.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setCnsExplanation(content);
+    } catch (err) { setCnsExplanationError(String(err.message || "Unknown error")); }
+    finally { setCnsExplanationBusy(false); }
+  };
+
   return (
     <div className="w-full px-4 py-8 space-y-6">
       <div className="flex items-center gap-3">
@@ -1093,6 +1155,46 @@ export default function MedicationMixModel() {
                 <Line type="monotone" dataKey="alertness" name="alertness" stroke="#14b8a6" strokeWidth={2} strokeDasharray="5 3" dot={false} />
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            onClick={explainCnsChart}
+            disabled={cnsExplanationBusy || modelData.points.length === 0}
+            className="px-3 py-1 rounded text-xs bg-indigo-700 text-white hover:bg-indigo-600 disabled:opacity-50"
+          >
+            {cnsExplanationBusy ? "…" : "Ask AI"}
+          </button>
+        </div>
+        {cnsExplanationError && <p className="text-xs text-red-400">{cnsExplanationError}</p>}
+        {cnsExplanation && (
+          <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-2">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+              <button onClick={() => { setCnsExplanation(""); setCnsFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+            </div>
+            {cnsExplanation.split("\n").map((line, i) => {
+              const t = line.trim();
+              if (!t) return null;
+              if (t === "Not medical advice.") return <p key={i} className="text-slate-500 mt-1">{t}</p>;
+              if (t === "---") return <hr key={i} className="border-slate-600 my-1" />;
+              if (t.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-blue-200 mt-2">{t.replace(/\*\*/g, "")}</p>;
+              return <p key={i} className="leading-relaxed">{t}</p>;
+            })}
+            <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+              <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+              <div className="flex gap-2">
+                <input type="text" value={cnsFollowup} onChange={(e) => setCnsFollowup(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && cnsFollowup.trim()) { sendCnsFollowup(cnsExplanation, cnsFollowup); setCnsFollowup(""); } }}
+                  placeholder="e.g. Is it safe to drive with these levels?"
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button disabled={cnsExplanationBusy || !cnsFollowup.trim()}
+                  onClick={() => { sendCnsFollowup(cnsExplanation, cnsFollowup); setCnsFollowup(""); }}
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs disabled:opacity-50">
+                  {cnsExplanationBusy ? "…" : "Ask"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

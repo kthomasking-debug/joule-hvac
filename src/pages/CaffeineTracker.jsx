@@ -479,6 +479,17 @@ export default function CaffeineTracker() {
     return Number(initialActiveProfile.daysAtDose) || 0;
   });
   const [recalcAt, setRecalcAt] = useState(() => Date.now());
+
+  // AI explain state
+  const [caffeineExplanation, setCaffeineExplanation] = useState("");
+  const [caffeineExplanationBusy, setCaffeineExplanationBusy] = useState(false);
+  const [caffeineExplanationError, setCaffeineExplanationError] = useState("");
+  const [caffeineFollowup, setCaffeineFollowup] = useState("");
+  const [adenosineExplanation, setAdenosineExplanation] = useState("");
+  const [adenosineExplanationBusy, setAdenosineExplanationBusy] = useState(false);
+  const [adenosineExplanationError, setAdenosineExplanationError] = useState("");
+  const [adenosineFollowup, setAdenosineFollowup] = useState("");
+
   const didInitCurrentIntakeDateTime = useRef(false);
   const selectedDrinkUnit = DRINK_UNITS[drinkType] || DRINK_UNITS.coffee;
 
@@ -1053,6 +1064,103 @@ export default function CaffeineTracker() {
     };
   }, [bloodChartData, adenosineChartData]);
 
+  const sendCaffeineFollowup = async (prevExplanation, question, setOutput, setBusy, setError) => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setError("Groq API key not found. Add it in Settings."); return; }
+    setBusy(true); setError("");
+    const prompt = `Previous analysis:\n${prevExplanation}\n\n---\n\nFollow-up question: ${question}`;
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) throw new Error(`Groq API error ${res.status}`);
+      const payload = await res.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setOutput((prev) => prev + "\n\n---\n\n**Follow-up:** " + question + "\n\n" + content);
+    } catch (err) { setError(String(err.message || "Unknown error")); }
+    finally { setBusy(false); }
+  };
+
+  const explainCaffeineChart = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setCaffeineExplanationError("Groq API key not found. Add it in Settings first."); return; }
+    if (caffeineExplanationBusy) return;
+    setCaffeineExplanationBusy(true); setCaffeineExplanationError(""); setCaffeineExplanation("");
+    const weightKg = weightUnit === "lb" ? Number(weight) * 0.453592 : Number(weight);
+    const nowEntry = bloodChartData.find((p) => p.ts >= recalcAt) || bloodChartData[bloodChartData.length - 1];
+    const nowBlood = nowEntry ? (nowEntry.bloodLow ?? nowEntry.bloodModerate ?? nowEntry.bloodElevated ?? nowEntry.bloodHigh ?? 0) : 0;
+    const nowMgPerKg = nowEntry?.activeMgPerKg ?? 0;
+    const totalMg = entries.reduce((s, e) => s + (e.caffeineMg || 0), 0);
+    const prompt = [
+      `CAFFEINE TRACKER — BLOOD CONCENTRATION ANALYSIS`,
+      `Weight: ${weightKg.toFixed(1)} kg. Half-life setting: ${halfLifeHours} h. Days at this caffeine dose (tolerance): ${daysAtDose}.`,
+      `Total logged caffeine: ${totalMg.toFixed(0)} mg from ${entries.length} entr${entries.length === 1 ? "y" : "ies"}.`,
+      `Estimated blood concentration right now: ${nowBlood.toFixed(3)} mg/L (${nowMgPerKg.toFixed(2)} mg/kg).`,
+      `Anxiety likelihood thresholds: Low <1 mg/kg, Moderate 1–2 mg/kg, Elevated 2–3 mg/kg, High ≥3 mg/kg.`,
+      ``,
+      `In 3–4 bullet points, explain:`,
+      `1. What the current blood concentration of ${nowMgPerKg.toFixed(2)} mg/kg means for anxiety and alertness right now`,
+      `2. How the chosen half-life of ${halfLifeHours} h affects clearance timing and when blood level will drop below the Low threshold`,
+      `3. Whether splitting doses or timing relative to bedtime looks optimal given the logged entries`,
+      `4. One practical suggestion for this user's caffeine timing`,
+      `End with: "Not medical advice."`,
+    ].join("\n");
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) { const t = await res.text(); throw new Error(`Groq API error ${res.status}: ${t.slice(0, 200)}`); }
+      const payload = await res.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setCaffeineExplanation(content);
+    } catch (err) { setCaffeineExplanationError(String(err.message || "Unknown error")); }
+    finally { setCaffeineExplanationBusy(false); }
+  };
+
+  const explainAdenosineChart = async () => {
+    const groqApiKey = (localStorage.getItem("groqApiKey") || import.meta.env?.VITE_GROQ_API_KEY || "").trim();
+    if (!groqApiKey) { setAdenosineExplanationError("Groq API key not found. Add it in Settings first."); return; }
+    if (adenosineExplanationBusy) return;
+    setAdenosineExplanationBusy(true); setAdenosineExplanationError(""); setAdenosineExplanation("");
+    const nowEntry = adenosineChartData.find((p) => p.ts >= recalcAt) || adenosineChartData[0];
+    const natural = nowEntry?.natural ?? 0;
+    const perceived = nowEntry?.perceived ?? 0;
+    const perceivedNoTol = nowEntry?.perceivedNoTolerance ?? 0;
+    const gap = Math.max(0, natural - perceived);
+    const prompt = [
+      `CAFFEINE TRACKER — ADENOSINE BUILDUP ANALYSIS`,
+      `Days at this caffeine dose (tolerance): ${daysAtDose}. Half-life: ${halfLifeHours} h. Wake time: ${wakeTime}. Sleep target: ${sleepTarget}.`,
+      `Adenosine pressure right now: Natural ${natural.toFixed(0)}%, Perceived (no tolerance) ${perceivedNoTol.toFixed(0)}%, Perceived (tolerance-adjusted) ${perceived.toFixed(0)}%.`,
+      `Masked adenosine gap (caffeine is hiding this much pressure): ${gap.toFixed(0)}%.`,
+      ``,
+      `In 3–4 bullet points, explain:`,
+      `1. What the current gap between natural adenosine (${natural.toFixed(0)}%) and perceived pressure (${perceived.toFixed(0)}%) means in terms of hidden fatigue`,
+      `2. What will happen as caffeine clears — when will the masked adenosine become strongest, and how should the user plan around it`,
+      `3. How ${daysAtDose} days at this dose affects tolerance and the perceived pressure line`,
+      `4. One practical suggestion for managing adenosine and avoiding afternoon energy crashes`,
+      `End with: "Not medical advice."`,
+    ].join("\n");
+    try {
+      const model = (localStorage.getItem("groqModel") || "llama-3.3-70b-versatile").trim();
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqApiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!res.ok) { const t = await res.text(); throw new Error(`Groq API error ${res.status}: ${t.slice(0, 200)}`); }
+      const payload = await res.json();
+      const content = String(payload?.choices?.[0]?.message?.content || "").trim();
+      if (!content) throw new Error("Empty response from AI.");
+      setAdenosineExplanation(content);
+    } catch (err) { setAdenosineExplanationError(String(err.message || "Unknown error")); }
+    finally { setAdenosineExplanationBusy(false); }
+  };
+
   return (
     <div className="w-full px-4 py-8 space-y-6">
       <div className="flex items-center gap-3">
@@ -1412,6 +1520,46 @@ export default function CaffeineTracker() {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Anxiety likelihood coloring by active caffeine dose: <span className="text-green-500">Low (&lt;1 mg/kg)</span> · <span className="text-yellow-500">Moderate (1-2 mg/kg)</span> · <span className="text-orange-500">Elevated (2-3 mg/kg)</span> · <span className="text-red-500">High (&ge;3 mg/kg)</span>
         </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            onClick={explainCaffeineChart}
+            disabled={caffeineExplanationBusy || bloodChartData.length === 0}
+            className="px-3 py-1 rounded text-xs bg-indigo-700 text-white hover:bg-indigo-600 disabled:opacity-50"
+          >
+            {caffeineExplanationBusy ? "…" : "Ask AI"}
+          </button>
+        </div>
+        {caffeineExplanationError && <p className="text-xs text-red-400">{caffeineExplanationError}</p>}
+        {caffeineExplanation && (
+          <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-2">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+              <button onClick={() => { setCaffeineExplanation(""); setCaffeineFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+            </div>
+            {caffeineExplanation.split("\n").map((line, i) => {
+              const t = line.trim();
+              if (!t) return null;
+              if (t === "Not medical advice.") return <p key={i} className="text-slate-500 mt-1">{t}</p>;
+              if (t === "---") return <hr key={i} className="border-slate-600 my-1" />;
+              if (t.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-blue-200 mt-2">{t.replace(/\*\*/g, "")}</p>;
+              return <p key={i} className="leading-relaxed">{t}</p>;
+            })}
+            <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+              <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+              <div className="flex gap-2">
+                <input type="text" value={caffeineFollowup} onChange={(e) => setCaffeineFollowup(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && caffeineFollowup.trim()) { sendCaffeineFollowup(caffeineExplanation, caffeineFollowup, setCaffeineExplanation, setCaffeineExplanationBusy, setCaffeineExplanationError); setCaffeineFollowup(""); } }}
+                  placeholder="e.g. When should I stop caffeine before bed?"
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button disabled={caffeineExplanationBusy || !caffeineFollowup.trim()}
+                  onClick={() => { sendCaffeineFollowup(caffeineExplanation, caffeineFollowup, setCaffeineExplanation, setCaffeineExplanationBusy, setCaffeineExplanationError); setCaffeineFollowup(""); }}
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs disabled:opacity-50">
+                  {caffeineExplanationBusy ? "…" : "Ask"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
@@ -1495,6 +1643,46 @@ export default function CaffeineTracker() {
                 />
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            onClick={explainAdenosineChart}
+            disabled={adenosineExplanationBusy || adenosineChartData.length < 2}
+            className="px-3 py-1 rounded text-xs bg-indigo-700 text-white hover:bg-indigo-600 disabled:opacity-50"
+          >
+            {adenosineExplanationBusy ? "…" : "Ask AI"}
+          </button>
+        </div>
+        {adenosineExplanationError && <p className="text-xs text-red-400">{adenosineExplanationError}</p>}
+        {adenosineExplanation && (
+          <div className="text-xs text-slate-300 bg-slate-800 rounded-xl p-3 border border-slate-600 space-y-2">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">AI Analysis</span>
+              <button onClick={() => { setAdenosineExplanation(""); setAdenosineFollowup(""); }} className="text-slate-400 hover:text-red-400 text-xs px-1.5 py-0.5 rounded border border-slate-600 hover:border-red-400 transition-colors">✕ Close</button>
+            </div>
+            {adenosineExplanation.split("\n").map((line, i) => {
+              const t = line.trim();
+              if (!t) return null;
+              if (t === "Not medical advice.") return <p key={i} className="text-slate-500 mt-1">{t}</p>;
+              if (t === "---") return <hr key={i} className="border-slate-600 my-1" />;
+              if (t.startsWith("**Follow-up:")) return <p key={i} className="font-semibold text-blue-200 mt-2">{t.replace(/\*\*/g, "")}</p>;
+              return <p key={i} className="leading-relaxed">{t}</p>;
+            })}
+            <div className="mt-3 pt-2 border-t border-slate-700 space-y-1">
+              <p className="text-[10px] text-slate-400">Ask a follow-up question:</p>
+              <div className="flex gap-2">
+                <input type="text" value={adenosineFollowup} onChange={(e) => setAdenosineFollowup(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && adenosineFollowup.trim()) { sendCaffeineFollowup(adenosineExplanation, adenosineFollowup, setAdenosineExplanation, setAdenosineExplanationBusy, setAdenosineExplanationError); setAdenosineFollowup(""); } }}
+                  placeholder="e.g. How can I reduce rebound fatigue?"
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button disabled={adenosineExplanationBusy || !adenosineFollowup.trim()}
+                  onClick={() => { sendCaffeineFollowup(adenosineExplanation, adenosineFollowup, setAdenosineExplanation, setAdenosineExplanationBusy, setAdenosineExplanationError); setAdenosineFollowup(""); }}
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs disabled:opacity-50">
+                  {adenosineExplanationBusy ? "…" : "Ask"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
