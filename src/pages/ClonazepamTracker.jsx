@@ -2167,7 +2167,7 @@ export default function ClonazepamTracker() {
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-white">Caffeine × Clonazepam Interaction (Estimated)</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          <span className="text-purple-600 dark:text-purple-400 font-semibold">Purple</span> is clonazepam sedation pressure, <span className="text-amber-500 dark:text-amber-300 font-semibold">amber</span> is caffeine wakefulness support, <span className="text-cyan-500 dark:text-cyan-300 font-semibold">dashed cyan</span> is baseline alertness without caffeine, and <span className="text-cyan-500 dark:text-cyan-300 font-semibold">solid cyan</span> is effective alertness with caffeine. Caffeine does not reduce the modeled clonazepam impairment signal.
+          <span className="text-purple-600 dark:text-purple-400 font-semibold">Purple</span> is clonazepam sedation pressure, <span className="text-amber-500 dark:text-amber-300 font-semibold">amber</span> is caffeine wakefulness support. Caffeine does not reduce the modeled clonazepam impairment signal.
         </p>
         {interactionData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
@@ -2219,8 +2219,6 @@ export default function ClonazepamTracker() {
                 />
                 <Line type="monotone" dataKey="sedationPressure" name="sedationPressure" stroke="#a855f7" strokeWidth={2.5} dot={false} />
                 <Line type="monotone" dataKey="caffeineCounterPressure" name="caffeineCounterPressure" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="alertnessBaseline" name="alertnessBaseline" stroke="#06b6d4" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-                <Line type="monotone" dataKey="alertnessWithCaffeine" name="alertnessWithCaffeine" stroke="#06b6d4" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
