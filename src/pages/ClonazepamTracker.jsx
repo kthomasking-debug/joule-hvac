@@ -1493,6 +1493,50 @@ export default function ClonazepamTracker() {
     return splitActiveSeriesBySedationBand(withTrend);
   }, [chartData, sedationPressureData, recalcAt]);
 
+  // Diazepam equivalence chart: 1 mg clonazepam ≈ 20 mg diazepam (BZD equivalency tables)
+  // Diazepam PK: ~30 min lag, ~60 min ramp to full effect, parent half-life ~72 h
+  const DIAZEPAM_EQUIVALENCE_RATIO = 20; // clonazepam mg × 20 = diazepam mg
+  const DIAZEPAM_HALF_LIFE_HOURS = 72;
+  const DIAZEPAM_ONSET_LAG_MS = 30 * 60 * 1000;
+  const DIAZEPAM_RAMP_MS = 60 * 60 * 1000;
+
+  const diazepamEquivalentChartData = useMemo(() => {
+    if (!modeledEntries.length) return [];
+    const now = recalcAt;
+
+    function diazepamActiveMgAt(takenAtMs, doseClonazepamMg, atMs) {
+      const elapsedMs = atMs - takenAtMs;
+      if (elapsedMs < 0) return 0;
+      let onsetFraction = 0;
+      if (elapsedMs >= DIAZEPAM_ONSET_LAG_MS + DIAZEPAM_RAMP_MS) {
+        onsetFraction = 1;
+      } else if (elapsedMs > DIAZEPAM_ONSET_LAG_MS) {
+        const rampProgress = (elapsedMs - DIAZEPAM_ONSET_LAG_MS) / DIAZEPAM_RAMP_MS;
+        const x = Math.max(0, Math.min(1, rampProgress));
+        onsetFraction = x * x * (3 - 2 * x); // smoothstep
+      }
+      if (onsetFraction <= 0) return 0;
+      const elapsedHours = elapsedMs / (1000 * 60 * 60);
+      const diazepamDoseMg = doseClonazepamMg * DIAZEPAM_EQUIVALENCE_RATIO;
+      return diazepamDoseMg * onsetFraction * Math.pow(0.5, elapsedHours / DIAZEPAM_HALF_LIFE_HOURS);
+    }
+
+    return chartData.map((point) => {
+      const diazepamActiveMg = modeledEntries.reduce((sum, entry) => {
+        const takenAtMs = getEntryTakenAtMs(entry, now);
+        return sum + diazepamActiveMgAt(takenAtMs, entry.doseMg || 0, point.ts);
+      }, 0);
+      // Express as clonazepam-equivalent mg for an apples-to-apples Y-axis comparison
+      const clonazepamEquivalentMg = diazepamActiveMg / DIAZEPAM_EQUIVALENCE_RATIO;
+      return {
+        ts: point.ts,
+        activeMg: Number(point.activeMg.toFixed(3)),
+        diazepamActiveMg: Number(diazepamActiveMg.toFixed(2)),
+        clonazepamEquivalentMg: Number(clonazepamEquivalentMg.toFixed(3)),
+      };
+    });
+  }, [modeledEntries, chartData, recalcAt]);
+
   const interactionData = useMemo(() => {
     if (!sedationPressureData.length) return [];
 
@@ -1973,6 +2017,85 @@ export default function ClonazepamTracker() {
         )}
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Sedation color bands (tolerance-adjusted pressure): <span className="text-green-500">Low (&lt;25%)</span> · <span className="text-yellow-500">Moderate (25-55%)</span> · <span className="text-red-500">High (&ge;55%)</span>
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white">Diazepam Equivalent Comparison (Educational)</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Shows how blood levels would look if the same doses were taken as diazepam instead. Uses the standard benzodiazepine equivalency ratio: <strong>1 mg clonazepam ≈ 20 mg diazepam</strong>. Diazepam has a much longer half-life (~72 h) and slower offset, producing a flatter, more stable profile. Both lines use the clonazepam-equivalent mg scale for direct comparison. The <span className="text-sky-400 font-semibold">blue</span> line is the diazepam-equivalent profile expressed as clonazepam mg.
+        </p>
+        {diazepamEquivalentChartData.length === 0 ? (
+          <p className="text-gray-500 dark:text-gray-400">Add at least one dose to view the graph.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: 900 }}>
+              <div className="w-full h-64 min-w-0 min-h-[16rem]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <LineChart data={diazepamEquivalentChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#9ca3af" opacity={0.25} />
+                    <XAxis
+                      dataKey="ts"
+                      type="number"
+                      domain={["dataMin", "dataMax"]}
+                      ticks={chartTicks}
+                      angle={-40}
+                      textAnchor="end"
+                      height={52}
+                      tickFormatter={(value) => { const d = new Date(value); return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: "numeric" })}`; }}
+                    />
+                    <YAxis tickFormatter={(value) => `${value} mg`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
+                      labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: 4 }}
+                      itemStyle={{ color: "#d1d5db" }}
+                      labelFormatter={(value) => `🕐 ${formatChartTooltipDateTime(value)}`}
+                      formatter={(value, name) => {
+                        if (name === "activeMg") return [`${value} mg`, "Clonazepam active (actual)"];
+                        if (name === "clonazepamEquivalentMg") {
+                          const diaz = Number((value * DIAZEPAM_EQUIVALENCE_RATIO).toFixed(1));
+                          return [`${value} mg (= ${diaz} mg diazepam)`, "Active if diazepam used"];
+                        }
+                        return [value, name];
+                      }}
+                    />
+                    <ReferenceLine
+                      x={recalcAt}
+                      stroke="#94a3b8"
+                      strokeWidth={1.5}
+                      isFront
+                      label={{
+                        value: `Now`,
+                        position: "insideTopRight",
+                        fill: "#94a3b8",
+                        fontSize: 11,
+                      }}
+                    />
+                    {withdrawalThresholdMg !== null && (
+                      <ReferenceLine
+                        y={withdrawalThresholdMg}
+                        stroke="#ef4444"
+                        strokeDasharray="6 3"
+                        strokeWidth={1.5}
+                        ifOverflow="extendDomain"
+                        label={{
+                          value: `Est. risk zone ${withdrawalThresholdMg.toFixed(2)} mg`,
+                          position: "insideBottomRight",
+                          fill: "#ef4444",
+                          fontSize: 11,
+                        }}
+                      />
+                    )}
+                    <Line type="monotone" dataKey="activeMg" name="activeMg" stroke="#a855f7" strokeWidth={2} dot={false} strokeDasharray="5 3" strokeOpacity={0.55} />
+                    <Line type="monotone" dataKey="clonazepamEquivalentMg" name="clonazepamEquivalentMg" stroke="#38bdf8" strokeWidth={2.5} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Educational comparison only — not medical advice. Diazepam PK model: 30 min absorption lag, 60 min ramp, 72 h half-life (no active-metabolite layer). Equivalency ratio is approximate; individual response varies. Discuss any medication decisions with your prescriber.
         </p>
       </div>
 
